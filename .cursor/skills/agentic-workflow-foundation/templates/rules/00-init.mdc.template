@@ -5,7 +5,7 @@ description: 全タスクで AGENTS.md を先に読み docs を裏取り元と�
 
 # タスク開始前の絶対原則（宣言）
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
 すべての調査・実装・修正・ドキュメント作成タスクにおいて、以下の**宣言的制約**を守る。具体的な手順は `AGENTS.md` の `## Session Protocol` に一元化されているため、本ルールでは制約のみを記述する。
 

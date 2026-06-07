@@ -5,7 +5,7 @@ description: AI エージェントの行動規律（根拠なし同意禁止 / �
 
 # AI エージェントの行動規律（宣言）
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
 > 本ルールは宣言のみを記載する。詳細な手順は [`AGENTS.md`](mdc:AGENTS.md) を参照。
 >

@@ -1,6 +1,6 @@
 # DECISIONS — Architecture Decision Records (ADR)
 
-<!-- このファイルの「運用ルール / テンプレート」は create-agentic-workflow-foundation スキルの生成物。ADR エントリ（## ADR-NNNN）は本ファイルに直接追記する（生成対象外）。 -->
+<!-- このファイルの「運用ルール / テンプレート」は agentic-workflow-foundation スキルの生成物。ADR エントリ（## ADR-NNNN）は本ファイルに直接追記する（生成対象外）。 -->
 
 > {{project.name}} の **リポジトリ全体に波及する設計判断** を時系列で記録するログ。コンテキストの即時外部化原則に基づき、会話に閉じがちな判断根拠を Meta 層に永続化する。
 >

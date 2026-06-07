@@ -1,5 +1,5 @@
 ---
-name: create-agentic-workflow-foundation
+name: agentic-workflow-foundation
 description: >-
   3つの統一設計書（.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md /
   AI_BUSINESS_AGENT_SUITE.md / TECHNOLOGY_STACK_UNIFIED_DESIGN.md）を絶対ルール(SoT)とし、Agentic Workflow 基盤
@@ -9,7 +9,7 @@ description: >-
   YAML 正本(manifest.yaml) + テンプレート + Python generator で冪等・再現的に
   生成/メンテナンスする。「Agentic 基盤を生成して」「基盤ファイルを作って/更新して」
   「統一設計書から再生成して」「AGENTS.md や hooks をまとめて整備して」
-  「create-agentic-workflow-foundation スキル」等を検知したときに使う。
+  「agentic-workflow-foundation スキル」等を検知したときに使う。
   Generate / maintain the agentic workflow foundation files deterministically
   from the two unified design docs via a YAML manifest + templates + generator.
   Do NOT use for: 機能単位の Design Doc（基本設計書）の作成・テンプレート書き出し（create-design-doc）、
@@ -17,7 +17,7 @@ description: >-
 disable-model-invocation: true
 ---
 
-# create-agentic-workflow-foundation
+# agentic-workflow-foundation
 
 3つの統一設計書を**絶対的ルール（Source of Truth）**とし、Agentic Workflow 基盤ファイル群を**冪等・再現的**に生成/メンテナンスするスキル。
 
@@ -75,7 +75,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 **Phase 0b: fingerprint 照合**
 
 ```bash
-python3 .cursor/skills/create-agentic-workflow-foundation/scripts/check_design_drift.py
+python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 ```
 
 - exit 0（改版なし）→ **Phase 2 へ**（既存 manifest のまま再生成）。
@@ -92,7 +92,7 @@ python3 .cursor/skills/create-agentic-workflow-foundation/scripts/check_design_d
 4. fingerprint を書き戻す:
 
 ```bash
-python3 .cursor/skills/create-agentic-workflow-foundation/scripts/check_design_drift.py --update
+python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py --update
 ```
 
 ### Phase 1.5: プロジェクトパターン確定（AskQuestion）
@@ -117,7 +117,7 @@ python3 .cursor/skills/create-agentic-workflow-foundation/scripts/check_design_d
    | パイプライン型 | `playbook.md` |
    | ドキュメント型 | `session_plan.md` |
 
-3. 確定値を `create-agentic-workflow-foundation/manifest.yaml > project.workflow_pattern` / `project.tracking_artifact` に記入する（共有 SoT。子 `create-session-workflow` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
+3. 確定値を `agentic-workflow-foundation/manifest.yaml > project.workflow_pattern` / `project.tracking_artifact` に記入する（共有 SoT。子 `create-session-workflow` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
 4. 「複合型」になりそうな場合は §8「複合型の場合」のワークスペース分離判断を PO に確認してから主パターンを確定する。
 
 > `tracking_artifact` は追跡ドキュメント（`plan.md` / `playbook.md` / `session_plan.md`）であり、AI 実装レポート（`docs/agent-tasks/reports/`、`create-design-doc` 下流の別工程）とは別物。manifest 初期値の例示パスに引きずられないこと。
@@ -130,7 +130,7 @@ python3 .cursor/skills/create-agentic-workflow-foundation/scripts/check_design_d
 
 ```bash
 python3 .cursor/skills/manifest-generator/scripts/generate.py \
-  --skill-dir .cursor/skills/create-agentic-workflow-foundation
+  --skill-dir .cursor/skills/agentic-workflow-foundation
 ```
 
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。
@@ -153,7 +153,7 @@ python3 .cursor/skills/manifest-generator/scripts/generate.py \
 
 ```bash
 python3 .cursor/skills/manifest-generator/scripts/audit.py \
-  --skill-dir .cursor/skills/create-agentic-workflow-foundation
+  --skill-dir .cursor/skills/agentic-workflow-foundation
 python3 .cursor/skills/manifest-generator/scripts/audit.py \
   --skill-dir .cursor/skills/create-session-workflow
 ```
@@ -192,7 +192,7 @@ python3 .cursor/skills/manifest-generator/scripts/audit.py \
 
 > 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
 >
-> create-agentic-workflow-foundation 運用中の失敗・踏み外し記録。Observe → Amend → Evolve サイクルの入口。
+> agentic-workflow-foundation 運用中の失敗・踏み外し記録。Observe → Amend → Evolve サイクルの入口。
 > 集約済みエントリは docs/GOTCHAS.md を参照。新規エントリは下記「エントリ」配下に追記し、次回集約で `docs/GOTCHAS.md` に転記後ここからは削除される。
 
 ### 起票トリガー（いずれか 1 つ以上）

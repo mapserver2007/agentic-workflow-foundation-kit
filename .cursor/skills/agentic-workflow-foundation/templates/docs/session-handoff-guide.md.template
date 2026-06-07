@@ -1,6 +1,6 @@
 # Cursor セッション引き継ぎガイド（Context Budget Auto-Handoff）
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。しきい値は manifest.yaml の framework.budget_thresholds を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。しきい値は manifest.yaml の framework.budget_thresholds を更新して再生成する。 -->
 
 > **目的**: 長時間セッションによる AI 回答品質劣化（Lost in the Middle）を防ぐ自動引き継ぎ機構の使い方。
 
@@ -38,7 +38,7 @@
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
-閾値を変更する場合は manifest を編集し `python3 .cursor/skills/create-agentic-workflow-foundation/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+閾値を変更する場合は manifest を編集し `python3 .cursor/skills/agentic-workflow-foundation/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
 ## ユーザーが実際にやること
 

@@ -48,6 +48,6 @@ secret/
 .cursor/plans/
 
 # >>> agentic-foundation managed >>>
-# create-agentic-workflow-foundation: Context Budget セッション state（コミットしない）
+# agentic-workflow-foundation: Context Budget セッション state（コミットしない）
 .cursor/.session/
 # <<< agentic-foundation managed <<<

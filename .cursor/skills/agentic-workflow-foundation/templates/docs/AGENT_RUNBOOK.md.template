@@ -1,6 +1,6 @@
 # AGENT_RUNBOOK — AI エージェント運用フレームワーク
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物（骨格）。Domain 層の具体例は manifest.yaml を更新して再生成し、[要確認] を PO が埋める。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物（骨格）。Domain 層の具体例は manifest.yaml を更新して再生成し、[要確認] を PO が埋める。 -->
 
 > AI エージェント（Cursor / Claude Code / Codex CLI 等）の **起動 / 停止 / 復旧 / 観測** を扱う**汎用フレームワーク**。semantic 2層モデルの「Meta 層」に位置する。
 >
@@ -80,7 +80,7 @@ flowchart LR
 | 品質ゲート失敗 | `docs/QUALITY_GATE.md > §2 例外承認フロー` | ユーザー承認 → 修正 or 例外起票 |
 | 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR 起票（Status: Proposed） |
 | 同じ失敗を繰り返した | `AGENTS.md > ## Gotchas` | Gotcha 追記 → 集約閾値超なら集約 |
-| 基盤ファイルが設計書とずれた | `python3 .cursor/skills/create-agentic-workflow-foundation/scripts/audit.py` | drift 検出 → 再生成 or manifest 修正 |
+| 基盤ファイルが設計書とずれた | `python3 .cursor/skills/agentic-workflow-foundation/scripts/audit.py` | drift 検出 → 再生成 or manifest 修正 |
 
 ## 5. 参考
 

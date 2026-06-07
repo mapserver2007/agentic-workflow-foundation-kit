@@ -1,6 +1,6 @@
 secret/*.yaml
 # >>> agentic-foundation managed >>>
-# create-agentic-workflow-foundation: セッション state を AI コンテキストから除外
+# agentic-workflow-foundation: セッション state を AI コンテキストから除外
 .cursor/.session/
 # <<< agentic-foundation managed <<<
 

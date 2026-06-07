@@ -1,6 +1,6 @@
 # QUALITY_GATE — 検証ゲートの通過基準
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。プロジェクト固有のコマンド/ゲートは manifest.yaml の project.quality_gate を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。プロジェクト固有のコマンド/ゲートは manifest.yaml の project.quality_gate を更新して再生成する。 -->
 
 > {{project.name}} でセッション終了 / PR マージ / フェーズ境界で実行する品質ゲートの定義。**検証ゲートは exit code ベースのスクリプトで実装する** 原則に基づく。
 >
@@ -79,7 +79,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-python3 .cursor/skills/create-agentic-workflow-foundation/scripts/audit.py
+python3 .cursor/skills/agentic-workflow-foundation/scripts/audit.py
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足

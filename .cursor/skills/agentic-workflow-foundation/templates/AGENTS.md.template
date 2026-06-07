@@ -1,6 +1,6 @@
 # {{project.name}}
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物（骨格）。枠組み章は manifest.yaml を更新して再生成し、[要確認] のプロジェクト固有値を PO が埋める。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物（骨格）。枠組み章は manifest.yaml を更新して再生成し、[要確認] のプロジェクト固有値を PO が埋める。 -->
 
 {{project.one_liner}}
 

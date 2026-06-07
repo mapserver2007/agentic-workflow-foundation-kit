@@ -5,7 +5,7 @@ description: >-
   AI_BUSINESS_AGENT_SUITE / TECHNOLOGY_STACK_UNIFIED_DESIGN）を GitHub MCP
   （失敗時は gh CLI フォールバック）で取得し、`.cursor/docs/` に冪等同期する。
   設計書が存在しない場合は取得し、存在しても改版/更新があれば上書きする（内容差分時のみ）。
-  主目的は create-agentic-workflow-foundation の Phase 0 から呼ばれて統一設計書(SoT)を
+  主目的は agentic-workflow-foundation の Phase 0 から呼ばれて統一設計書(SoT)を
   揃えることだが、PO が単独で実行してもよい。「統一設計書を取得/同期して」「設計書を最新化して」
   「sync-ai-agent-unified-design スキル」「統一設計書が無いので取得して」等を検知したときに使う。
   Fetch the 3 unified design docs from a private GitHub repo into `.cursor/docs/`.
@@ -14,12 +14,12 @@ disable-model-invocation: true
 
 # sync-ai-agent-unified-design
 
-private リポジトリ上の「3つの統一設計書」Markdown を `.cursor/docs/` に**冪等同期**するスキル。`create-agentic-workflow-foundation` が SoT として参照する設計書を取得・最新化する入口。
+private リポジトリ上の「3つの統一設計書」Markdown を `.cursor/docs/` に**冪等同期**するスキル。`agentic-workflow-foundation` が SoT として参照する設計書を取得・最新化する入口。
 
 ## 役割と境界
 
 - **取得元**: private リポジトリ（`references/source.yaml` の `repository`）。
-- **配置先（固定3ファイル）**: `create-agentic-workflow-foundation` が SoT として参照する正規パス。
+- **配置先（固定3ファイル）**: `agentic-workflow-foundation` が SoT として参照する正規パス。
   - `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md`
   - `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md`
   - `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`
@@ -96,11 +96,11 @@ gh api "repos/{owner}/{repo}/contents/{src}?ref={ref}" --jq '.content' | base64 
 
 - `.cursor/docs/` 配下の**固定3ファイルのみ**管理する。他のファイルは作らない/触らない。
 - 取得失敗時は空ファイルや部分内容を書かない。明確に FAILED として報告する。
-- 設計書の**内容は編集しない**（取得した内容をそのまま配置）。manifest への反映は `create-agentic-workflow-foundation` の責務。
+- 設計書の**内容は編集しない**（取得した内容をそのまま配置）。manifest への反映は `agentic-workflow-foundation` の責務。
 - 設定は `references/source.yaml` に集約する。SKILL.md にリポジトリ識別子やパスをハードコードしない。
 
 ## スコープ外
 
 - 取得した設計書の内容生成・要約・整形。
-- `create-agentic-workflow-foundation` の manifest 更新や基盤ファイル生成（親スキルの責務）。
+- `agentic-workflow-foundation` の manifest 更新や基盤ファイル生成（親スキルの責務）。
 - `.cursor/docs/` 配下の固定3ファイル以外の Domain docs の取得。

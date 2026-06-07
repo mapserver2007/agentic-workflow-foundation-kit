@@ -5,7 +5,7 @@ description: 絶対に守るべき制約（違反すると致命的な問題が�
 
 # 絶対に守るべき制約（MUST）
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
 > 本ルールは宣言のみを記載する。詳細は [`AGENTS.md > Boundaries`](mdc:AGENTS.md) を参照。
 

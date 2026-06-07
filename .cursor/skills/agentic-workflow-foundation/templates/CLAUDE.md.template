@@ -1,6 +1,6 @@
 # {{project.name}}
 
-<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
 > Claude Code / Codex CLI 併用時の文脈統一のため、Cursor の主要 Context ファイル `AGENTS.md` を Source of Truth として参照する。
 
