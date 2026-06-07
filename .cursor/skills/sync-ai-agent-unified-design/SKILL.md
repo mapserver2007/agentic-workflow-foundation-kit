@@ -30,7 +30,7 @@ private リポジトリ上の「3つの統一設計書」Markdown を `.cursor/d
 
 - **取得設定**: `references/source.yaml` に `repository` / `ref` / `files`（src→dest 対応）を記入済みであること。`[要確認]` が残っている `src` は取得対象外（未確定として報告）。
 - **GitHub 認証（Fine-grained PAT）**: 対象 repo / Contents: Read-only / Metadata: Read-only に絞った PAT を、リポジトリ直下の `.env` に `GITHUB_TOKEN=...` として設定する。`.env` は `.gitignore` / `.cursorignore` / `.megaignore` で除外し、git および AI コンテキストに含めない。**PAT を mcp.json や SKILL.md に直書きしない**。
-- **MCP 経路（主）**: `.cursor/mcp.json` の `github` サーバが `.cursor/scripts/github-mcp-wrapper.sh` 経由で `.env` を読み込み、docker `ghcr.io/github/github-mcp-server` を起動する。docker 必須。`mcp.json` は秘密を含まないためリポジトリにコミット共有してよい。
+- **MCP 経路（主）**: `.cursor/mcp.json` の `github` サーバが `scripts/github-mcp-wrapper.sh`（スキル配下）経由で `.env` を読み込み、docker `ghcr.io/github/github-mcp-server` を起動する。docker 必須。`mcp.json` は秘密を含まないためリポジトリにコミット共有してよい。
 - **診断**: `scripts/check-mcp-env.sh` で `.env` の存在・`GITHUB_TOKEN` 設定・Docker 稼働を確認する。
 - **gh CLI 経路（フォールバック）**: MCP が未稼働/失敗のとき `gh` を使う。MCP と同じ Fine-grained PAT を使う（`gh auth login --with-token` 等）。
 

@@ -2,7 +2,7 @@
   "mcpServers": {
     "github": {
       "command": "bash",
-      "args": [".cursor/scripts/github-mcp-wrapper.sh"]
+      "args": [".cursor/skills/sync-ai-agent-unified-design/scripts/github-mcp-wrapper.sh"]
     }
   }
 }
