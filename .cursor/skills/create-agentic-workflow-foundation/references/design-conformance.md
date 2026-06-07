@@ -1,0 +1,69 @@
+# design-conformance — 設計書由来の必須要件（audit 判定基準）
+
+> `audit.py` が検証する「設計書に準拠しているか」の判定基準の **設計根拠** を説明する。
+> 機械可読な必須セクション一覧は `manifest.yaml > outputs[].required_sections` が SoT であり、
+> 本ファイルはその各項目が **どの設計書要件に由来するか** を人間向けに記録する（重複定義しない）。
+
+## 監査の2軸
+
+`audit.py` は次の2軸で exit code を返す（QUALITY_GATE exit code 3段階に準拠）。
+
+1. **冪等性 / SoT 一元化**: 出力ファイル == manifest からの再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
+2. **設計書準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
+3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
+4. `project.*` の `[要確認]` 残存は **WARN（exit 0）**。記入は PO の責務であり生成基盤の欠陥ではないため。
+
+## 必須要件の設計根拠
+
+### AGENTS.md（unified §12 Layer1）
+- `## Workflow Pattern`: §3 の3パターン分類を宣言（開発/パイプライン/ドキュメント型）。
+- `## Documentation Naming Convention`: §12 semantic 2層モデル（Meta=大文字 / Domain=kebab-case）。
+- `## Agent Role` / `## Boundaries`: §13.3 宣言的制約 + bas Interaction Principles。
+- `## Session Protocol`: 3構成要素（追跡ドキュメント/検証ゲート/再開プロトコル）の手続き SoT。
+- `## Gotchas`: 原則8 自己改善サイクルの入口（起票トリガー必須）。
+
+### .cursor/rules/02-agent-conduct.mdc（bas Agent Conduct）
+- `Humble` / `Cautious` / `Thorough` / `Selective`: bas の4行動原則。各原則が宣言的制約として存在すること。
+
+### .cursor/hooks.json（unified §13.5.2）
+- `"version": 1`: Cursor 公式スキーマ。
+- `sessionStart` / `stop`: Context Budget Auto-Handoff の最小構成イベント。
+
+### .cursor/hooks/*.sh（unified §13.5 / ADR Context Budget）
+- `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask（Advisory→Deterministic 昇格）。
+- `session-bootstrap.sh`: `additional_context` で handoff manifest 注入。
+- `session-budget-evaluator.sh`: `followup_message` で `[CONTEXT_BUDGET=...]` を AI に通知。
+- フェイルオープン（`{}` 素通り）が全 hook の共通設計。
+
+### docs/DECISIONS.md（DECISIONS 運用ルール）
+- `D-BOUNDARY` 〜 `D-PATTERN`: 8 つの設計次元の定義。
+- `Significance` / `Alternatives Considered`: ADR テンプレートの必須セクション。
+
+### docs/QUALITY_GATE.md（unified §9 / exit code）
+- `exit code`: 3段階（0/1/2）の定義。
+- `Hook`: §2.1 Deterministic 強制範囲。
+- `リンク衛生`: 原則5 コンテキスト保護。
+
+### docs/GOTCHAS.md（原則8）
+- `起票トリガー`: 「期待と違う / 2回以上 / 想定外」の3トリガー。
+- `Observe`: Observe → Amend → Evolve サイクル。
+
+### docs/AGENT_RUNBOOK.md（unified Appendix E.4 / bas ACCD）
+- `ACCD`: bas の5軸対応表。
+- `5層モデル`: Context/Constraints/Capabilities/Automation/Delegation のマッピング。
+- `復旧プロトコル`: セッション中断からの復旧手順。
+
+### docs/session-handoff-guide.md（ADR Context Budget Auto-Handoff）
+- `CONTEXT_BUDGET`: Yellow/Red プロトコル。
+- `handoff-active.md`: manifest パス規約の SoT。
+
+### docs/tech-stack.md（techstack §9）
+- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。
+- `TECHNOLOGY_STACK_UNIFIED_DESIGN.md`: 生成元 SoT への逆参照ポインタ（Domain サマリと Meta SoT の依存方向を明示）。
+
+## 必須要件を増減する場合
+
+必須要件は設計書の改版に追従する。新しい要件を追加する場合は:
+1. `manifest.yaml > outputs[].required_sections` に文字列を追加。
+2. 本ファイルにその設計書由来を1行追記。
+3. 対応するテンプレートに当該セクションを追加。

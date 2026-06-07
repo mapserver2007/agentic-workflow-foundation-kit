@@ -1,0 +1,14 @@
+# 技術スタック（Domain 層サマリ）
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（framework.tech_stack）を更新して再生成する。SoT は .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md。 -->
+
+> 本ファイルは Meta 層 SoT [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](../.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md) から符号化された Domain 層サマリ。下流の Design Doc（`create-design-doc`）/ AI レポート生成は本一覧を技術制約として参照する。詳細な根拠・トレードオフは SoT 設計書を参照。
+
+## 技術スタック一覧とバージョン方針
+
+> {{framework.tech_stack_note}}
+
+| レイヤ | 技術 | バージョン方針 | 備考 |
+| --- | --- | --- | --- |
+{{#each framework.tech_stack}}| {{this.layer}} | {{this.technology}} | {{this.version_policy}} | {{this.note}} |
+{{/each}}

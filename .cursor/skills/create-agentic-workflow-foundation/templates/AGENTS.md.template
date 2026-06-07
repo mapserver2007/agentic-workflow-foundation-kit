@@ -1,0 +1,136 @@
+# {{project.name}}
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物（骨格）。枠組み章は manifest.yaml を更新して再生成し、[要確認] のプロジェクト固有値を PO が埋める。 -->
+
+{{project.one_liner}}
+
+## Workflow Pattern
+
+このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
+
+- 主アウトプットと検証ゲート: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
+- 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）
+
+### コンテキスト保護の原則（統一設計書 原則5）
+
+- **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
+- **アーカイブ境界**: 完了した追跡ドキュメントは `archive/` に移動し AI の読み込み対象外にする
+
+## Documentation Naming Convention
+
+本リポジトリは **semantic 2層モデル** を採用する。新規ドキュメントは命名でレイヤーを明示する。
+
+| 層 | 命名規約 | 意味 | 例 |
+| --- | --- | --- | --- |
+| **Meta 層** | 大文字 `{{framework.naming.meta_pattern}}` | 判断フレームワーク・運用ルール・記録フォーマット。**他リポジトリに移植しても同じ役割名で通用する** | `AGENTS.md` / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / `AGENT_RUNBOOK.md` |
+| **Domain 層** | 小文字 `{{framework.naming.domain_pattern}}` | このリポ固有の業務仕様・実装詳細・調査ログ | `docs/spec.md` / `docs/architecture.md` / `docs/api.md` |
+
+**判定基準**: 「このファイル名を他リポジトリに持っていったとき、同じ役割を期待できるか？」が Yes なら Meta、No なら Domain。
+
+**公式固定ファイル名**（大文字維持）: {{#each framework.naming.official_fixed}}`{{this}}` {{/each}}
+
+`.cursor/rules/*.mdc` は kebab-case が公式推奨。
+
+## Agent Role
+
+{{project.agent_role}}
+
+**優先順位**（トレードオフ発生時の判断基準）:
+{{#each project.priorities}}{{@index}}. {{this}}
+{{/each}}
+
+## Tech Stack
+
+技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md)）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
+
+## Key Commands
+
+```bash
+{{project.quality_gate.build_cmd}}   # ビルド
+{{project.quality_gate.lint_cmd}}    # lint
+{{project.quality_gate.test_cmd}}    # テスト
+```
+
+**exit code**: `0` = 通過 / `1` = 修正して再実行（Advisory ループ）/ `2` = 致命的エラー（ユーザー報告）。詳細は `docs/QUALITY_GATE.md`。
+
+## Session Protocol
+
+「追跡ドキュメント / 検証ゲート / 再開プロトコル」の3要素を以下の3手順として実装する。
+
+### セッション開始
+
+1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
+2. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
+3. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
+4. ソースコード調査はドキュメント把握後に開始する
+
+### セッション終了
+
+1. 追跡ドキュメントの「完了チェック / 次セッションTODO / 残作業」を最新化
+2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
+3. 設計次元 D-* を変更する判断が発生した場合は **即時** `docs/DECISIONS.md` に ADR を追記
+4. 失敗・踏み外しの学びが発生した場合は `## Gotchas` 起票トリガーを確認し、該当すれば追記
+5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-active.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/session-handoff-guide.md`](docs/session-handoff-guide.md)。`.cursor/` 直下に独自ファイルを作成しない
+
+### セッション再開
+
+1. 追跡ドキュメントの最終チェック位置から再開
+2. 「次セッションTODO」「追加調査が必要な項目」を優先処理
+3. 前セッションの Gotchas / DECISIONS 追記を読み直して文脈を復元
+
+## Boundaries
+
+> Git 不可逆操作（強制 push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*`）は [`.cursor/hooks/guard-git-write.sh`](.cursor/hooks/guard-git-write.sh) で deterministic deny。Hook 強制範囲の SoT は [`docs/QUALITY_GATE.md §2.1`](docs/QUALITY_GATE.md)。
+
+### Always
+{{#each project.boundaries.always}}- {{this}}
+{{/each}}
+
+### Ask First
+{{#each project.boundaries.ask_first}}- {{this}}
+{{/each}}
+
+### Never
+- 無断 push / commit / 強制 push（`--force` / `--force-with-lease`）
+- 保護ブランチ（main / master / develop / release/*）への直 push / `gh pr merge`
+- `git reset --hard origin/*`（リモート同期型 hard reset）
+- 仕様の推測（ドキュメント不明時は質問）
+{{#each project.boundaries.never_extra}}- {{this}}
+{{/each}}
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](docs/GOTCHAS.md)
+>
+> 既存実装・ドキュメント通りに作業して防ぎきれなかった踏み外し・失敗の運用ログ。Observe → Amend → Evolve サイクルの入口。
+
+### 起票トリガー（いずれか1つ以上）
+
+1. 開発者から「期待と違う」等の不一致指摘を受けた
+2. 同じ問題で 2 回以上の修正が必要になった
+3. 既存スキル・ドキュメント通りに作業したのに想定外の結果になった
+
+### 記録フォーマット
+
+```
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
+```
+
+### エントリ
+
+(現時点のエントリは無し)
+
+## Documentation Navigation
+
+### Meta 層（判断フレームワーク・運用ルール / 大文字）
+- **AGENTS.md**: 本ファイル。Layer 1 のメインコンテキスト
+- **CLAUDE.md**: `@AGENTS.md` 参照（Claude Code / Codex CLI 併用時の文脈統一）
+- **docs/DECISIONS.md**: ADR（設計判断記録）
+- **docs/QUALITY_GATE.md**: 必須ゲート / 例外承認フロー / フェーズ境界
+- **docs/GOTCHAS.md**: 失敗事例集約版
+- **docs/AGENT_RUNBOOK.md**: AI エージェント運用フレームワーク（起動/停止/復旧/観測）
+- **docs/session-handoff-guide.md**: Context Budget Auto-Handoff の使い方 / handoff manifest パス規約の SoT
+
+### Domain 層（このリポ固有の業務・実装 / kebab-case）
+{{#each project.doc_navigation.domain}}- **{{this.path}}**: {{this.desc}}
+{{/each}}

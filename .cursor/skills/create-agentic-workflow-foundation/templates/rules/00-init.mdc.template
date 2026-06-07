@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+description: 全タスクで AGENTS.md を先に読み docs を裏取り元とする
+---
+
+# タスク開始前の絶対原則（宣言）
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+すべての調査・実装・修正・ドキュメント作成タスクにおいて、以下の**宣言的制約**を守る。具体的な手順は `AGENTS.md` の `## Session Protocol` に一元化されているため、本ルールでは制約のみを記述する。
+
+## 必須
+
+- **最初に `AGENTS.md` を読む**。コードベース検索 / grep / 実装コード確認より先に読む
+- **参照順序は `AGENTS.md > Documentation Navigation` に従う**（本ルールで重複定義しない）
+- **仕様の Source of Truth は docs/**（Domain 層）— コードからの推論だけで仕様を断定しない
+- **コードから読み取った仕様は docs で裏取りしてから回答する** — 矛盾時は docs を優先し、乖離を明記する
+- **設計次元 D-*（{{#each framework.design_dimensions}}{{this.id}} {{/each}}）の変更に該当する設計判断のみ `docs/DECISIONS.md` に ADR を追記する**（軽微な実装変更は対象外）
+
+## 禁止
+
+- ドキュメントを読まずにコード検索から開始する
+- docs で裏取りせずに「仕様として断定的な結論」を出す
+- `AGENTS.md` の Boundaries（Never）に抵触する操作（無断 push / commit、強制 push 等）
+
+## 例外
+
+極めて単純なタスク（タイポ修正・コメント追加・フォーマット修正のみ）は docs 参照を省略可。仕様理解が少しでも必要なら `AGENTS.md` から開始する。
+
+## 優先度
+
+このルールは他のすべてのルールに優先する。詳細な手順・参照順序・セッション終了時の作業は `AGENTS.md` を参照。

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".cursor/hooks/session-bootstrap.sh",
+        "timeout": 5
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": ".cursor/hooks/session-budget-tracker.sh",
+        "timeout": 5
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": ".cursor/hooks/session-shell-tracker.sh",
+        "timeout": 5
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/guard-git-write.sh",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/session-budget-evaluator.sh",
+        "timeout": 10,
+        "loop_limit": 5
+      }
+    ]
+  }
+}

@@ -1,0 +1,361 @@
+# ============================================================
+# manifest.yaml — Agentic Workflow 基盤 YAML 正本（Source of Truth）
+# ============================================================
+# このファイルが基盤ファイル群の唯一の定義元（BAS:「Markdownは表現・YAMLは定義」）。
+# scripts/generate.py が本ファイル + templates/ から出力ファイルを決定論的に生成する。
+# 出力ファイルを直接編集してはならない（audit.py が drift として exit 1 にする）。
+#
+# 記法制約（同梱の最小YAMLローダのサブセット）:
+#   - block style のみ（flow の {..} / [..] は使わない）
+#   - インデントは半角スペース2
+#   - 複数行テキストは "|" ブロックリテラルを使う
+# ============================================================
+
+version: 1
+
+# 生成エンジン（manifest-generator）の marker モードで使うマーカー識別子。
+# 既定値は移設前のハードコード値と一致し、既存 .gitignore / .cursorignore の
+# 管理ブロックとの後方互換を保つ。
+marker_id: agentic-foundation
+
+# ------------------------------------------------------------
+# (1) 設計書 fingerprint — 改版検知の基準（check_design_drift.py が照合）
+#     sha256 は空のままでよい。drift 検知 → PO 承認後に drift スクリプトが書き戻す。
+# ------------------------------------------------------------
+design_docs:
+  - id: unified
+    path: .cursor/docs/AI_AGENT_UNIFIED_DESIGN.md
+    title: AI Agent 基盤 統一設計書（開発責任者版）
+    doc_version: "3.0"
+    sha256: "2cd3c8b4d71e2993a9311f559a236b7d2f639db1e27b0a49dd3ef9e44032a721"
+  - id: bas
+    path: .cursor/docs/AI_BUSINESS_AGENT_SUITE.md
+    title: AI Business Agent Suite (BAS) 設計体系統合ドキュメント
+    doc_version: "1.0"
+    sha256: "c0d64622f24b638c9e98ce5e0a0b34fd44833368a1c8b743be4a5f73b6ef4222"
+  # techstack は他2種と性質が異なる: Meta 層基盤(AGENTS.md 等)へは焼き込まず、
+  # framework.tech_stack 経由で Domain 層 docs/tech-stack.md を生成する SoT。
+  - id: techstack
+    path: .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+    title: Web アプリケーション技術スタック 統一設計書
+    doc_version: "1.0"
+    sha256: "b8681bf8635ff14173b937e60891ea0545aa6bf3ff24a9e13eaf89f7491df55b"
+
+# ------------------------------------------------------------
+# (2) 設計書由来の framework 要件（設計書改版時のみ変更する）
+# ------------------------------------------------------------
+framework:
+  naming:
+    meta_pattern: "UPPER_SNAKE_CASE.md"
+    domain_pattern: "kebab-case.md"
+    official_fixed:
+      - AGENTS.md
+      - CLAUDE.md
+      - CLAUDE.local.md
+      - MEMORY.md
+  hook_events:
+    - sessionStart
+    - beforeSubmitPrompt
+    - afterShellExecution
+    - beforeShellExecution
+    - stop
+  exit_codes:
+    - code: 0
+      meaning: 全検査PASS。次フェーズへ進む
+    - code: 1
+      meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
+    - code: 2
+      meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
+  design_dimensions:
+    - id: D-BOUNDARY
+      desc: Boundaries（Always/Ask First/Never）の追加・変更
+    - id: D-WORKFLOW
+      desc: ワークフロー / Session Protocol の構造変更
+    - id: D-NAMING
+      desc: Documentation Naming Convention（semantic 2層モデル）の変更
+    - id: D-QUALITY
+      desc: 品質ゲートのセマンティクス / exit code / 例外承認フローの変更
+    - id: D-ARCH
+      desc: アーキテクチャのレイヤー責務 / トランザクション境界の変更
+    - id: D-SOT
+      desc: Source of Truth の定義変更
+    - id: D-DEPENDENCY
+      desc: 新しい外部依存（package / API / infra）の導入
+    - id: D-PATTERN
+      desc: 複数箇所で採用される新実装パターンの導入
+  accd_axes:
+    - id: A
+      name: 制約の補完
+      impl: "[要確認] 永続化された制約の置き場（reports / AGENTS.md 参照順序 / rules）"
+    - id: B
+      name: 専念の委譲
+      impl: "[要確認] 機械的判定（品質ゲート / guard hook）"
+    - id: C
+      name: 認知的多様性
+      impl: "[要確認] 自己反論 / subagent 並列探索 / 複数視点レビュー"
+    - id: D
+      name: 段階的圧縮
+      impl: "[要確認] テンプレート必須セクション / handoff manifest / Progressive Disclosure"
+    - id: E
+      name: 自律的進化
+      impl: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+  agent_conduct:
+    - id: Humble
+      rule: 根拠なし同意の禁止。同意前にコード/docsで裏取りし根拠を1行で示す
+    - id: Cautious
+      rule: 修正前の証拠収集。再現条件/影響範囲/既存実装パターンの3点を明示してから提案
+    - id: Thorough
+      rule: 対症療法の禁止。テスト失敗をskip/抑制する前に原因仮説を文章化
+    - id: Selective
+      rule: 完了の自己宣言禁止。ゲート実行記録なしに「完了」と書かない
+  budget_thresholds:
+    yellow:
+      elapsed_min: 45
+      prompt_count: 45
+      shell_bytes: 1048576
+    red:
+      elapsed_min: 90
+      prompt_count: 90
+      shell_bytes: 5242880
+  # techstack 設計書 §9 由来。Meta 層には焼き込まず Domain 層 docs/tech-stack.md を駆動する。
+  # 別の技術スタックへ差し替える場合は本リストを設計書に合わせて更新し再生成する。
+  tech_stack_note: "下表は技術スタック統一設計書 執筆時点（2026-06）の現行安定版を基準にした方針であり、固定バージョンの宣言ではない。実際の固定は各 package.json / wrangler.jsonc で行う。最終リリースが古く後継があるライブラリは採用しない。"
+  tech_stack:
+    - layer: "実行基盤"
+      technology: "Cloudflare Workers"
+      version_policy: "—"
+      note: "`workerd` ランタイム"
+    - layer: "デプロイ CLI"
+      technology: "Wrangler"
+      version_policy: "v4 系"
+      note: "OpenNext 利用時は 3.99.0 以上必須、実質 v4 推奨"
+    - layer: "Frontend"
+      technology: "Next.js"
+      version_policy: "15 / 16 系"
+      note: "14 は OpenNext 側で 2026 Q1 にサポート終了"
+    - layer: "Next.js アダプタ"
+      technology: "`@opennextjs/cloudflare`"
+      version_policy: "1.x 系（GA）"
+      note: "公式推奨。`next-on-pages` は不採用"
+    - layer: "Backend"
+      technology: "Hono"
+      version_policy: "4 系"
+      note: "Workers ネイティブ"
+    - layer: "API 定義"
+      technology: "OpenAPI"
+      version_policy: "3.1"
+      note: "JSON Schema 2020-12 準拠"
+    - layer: "OpenAPI lint"
+      technology: "Spectral"
+      version_policy: "6 系"
+      note: "ルールセットをリポジトリで管理"
+    - layer: "OpenAPI bundle/diff"
+      technology: "Redocly CLI"
+      version_policy: "1 系"
+      note: "`bundle` / `lint` / breaking diff"
+    - layer: "型生成"
+      technology: "openapi-typescript"
+      version_policy: "7 系"
+      note: "OpenAPI 3.1 対応"
+    - layer: "フロント client"
+      technology: "openapi-fetch"
+      version_policy: "0.x（安定）"
+      note: "メンテナンスモードだが本番安定"
+    - layer: "データ取得統合"
+      technology: "openapi-react-query"
+      version_policy: "0.x"
+      note: "TanStack Query 統合（任意）"
+    - layer: "自動生成 client（代替）"
+      technology: "Orval"
+      version_policy: "7 系"
+      note: "React Query/SWR フックを自動生成したい場合の代替"
+    - layer: "Mock"
+      technology: "Prism"
+      version_policy: "5 系"
+      note: "OpenAPI モックサーバー（3.1 は一部制約あり）"
+    - layer: "契約テスト"
+      technology: "Vitest + `@cloudflare/vitest-pool-workers`"
+      version_policy: "—"
+      note: "`workerd` 上でテスト実行"
+    - layer: "ランタイム言語"
+      technology: "TypeScript"
+      version_policy: "5 系"
+      note: "strict"
+    - layer: "パッケージ管理"
+      technology: "pnpm"
+      version_policy: "9 系以降"
+      note: "workspace"
+    - layer: "タスク管理"
+      technology: "Turborepo"
+      version_policy: "2 系"
+      note: "任意"
+
+# ------------------------------------------------------------
+# (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
+#   mode: render = テンプレート全展開 / marker = マーカーブロックを既存ファイルへ upsert
+#   required_sections: 生成結果に必ず含まれるべき文字列（設計書準拠の機械検査）
+#       設計書由来の根拠は references/design-conformance.md を参照
+# ------------------------------------------------------------
+outputs:
+  - path: AGENTS.md
+    template: AGENTS.md.template
+    mode: render
+    required_sections:
+      - "## Workflow Pattern"
+      - "## Documentation Naming Convention"
+      - "## Agent Role"
+      - "## Session Protocol"
+      - "## Boundaries"
+      - "## Gotchas"
+  - path: CLAUDE.md
+    template: CLAUDE.md.template
+    mode: render
+    required_sections:
+      - "@AGENTS.md"
+  - path: .cursor/rules/00-init.mdc
+    template: rules/00-init.mdc.template
+    mode: render
+    required_sections:
+      - "alwaysApply: true"
+  - path: .cursor/rules/01-critical-constraints.mdc
+    template: rules/01-critical-constraints.mdc.template
+    mode: render
+    required_sections:
+      - "alwaysApply: true"
+  - path: .cursor/rules/02-agent-conduct.mdc
+    template: rules/02-agent-conduct.mdc.template
+    mode: render
+    required_sections:
+      - "Humble"
+      - "Cautious"
+      - "Thorough"
+      - "Selective"
+  - path: .cursor/hooks/guard-git-write.sh
+    template: hooks/guard-git-write.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "beforeShellExecution"
+      - "permission"
+  - path: .cursor/hooks/session-bootstrap.sh
+    template: hooks/session-bootstrap.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "additional_context"
+  - path: .cursor/hooks/session-budget-tracker.sh
+    template: hooks/session-budget-tracker.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "prompt_count"
+  - path: .cursor/hooks/session-shell-tracker.sh
+    template: hooks/session-shell-tracker.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "shell_bytes"
+  - path: .cursor/hooks/session-budget-evaluator.sh
+    template: hooks/session-budget-evaluator.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "CONTEXT_BUDGET"
+      - "followup_message"
+  - path: .cursor/hooks/README.md
+    template: hooks/README.md.template
+    mode: render
+    required_sections:
+      - "fail_open"
+  - path: .cursor/hooks.json
+    template: hooks.json.template
+    mode: render
+    required_sections:
+      - '"version": 1'
+      - "sessionStart"
+      - "stop"
+  - path: docs/AGENT_RUNBOOK.md
+    template: docs/AGENT_RUNBOOK.md.template
+    mode: render
+    required_sections:
+      - "ACCD"
+      - "5層モデル"
+      - "復旧プロトコル"
+  # DECISIONS.md / GOTCHAS.md は ADR / Gotchas を継続追記する append-log。
+  # render だと generate のたびに追記内容を上書き消失させるため seed モード
+  # （存在しなければ初期生成・存在すれば不可侵）にする。詳細は ADR-0006。
+  - path: docs/DECISIONS.md
+    template: docs/DECISIONS.md.template
+    mode: seed
+    required_sections:
+      - "D-BOUNDARY"
+      - "D-PATTERN"
+      - "Significance"
+      - "Alternatives Considered"
+  - path: docs/GOTCHAS.md
+    template: docs/GOTCHAS.md.template
+    mode: seed
+    required_sections:
+      - "起票トリガー"
+      - "Observe"
+  - path: docs/QUALITY_GATE.md
+    template: docs/QUALITY_GATE.md.template
+    mode: render
+    required_sections:
+      - "exit code"
+      - "Hook"
+      - "リンク衛生"
+  - path: docs/session-handoff-guide.md
+    template: docs/session-handoff-guide.md.template
+    mode: render
+    required_sections:
+      - "CONTEXT_BUDGET"
+      - "handoff-active.md"
+  # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
+  - path: docs/tech-stack.md
+    template: docs/tech-stack.md.template
+    mode: render
+    required_sections:
+      - "技術スタック一覧とバージョン方針"
+      - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  - path: .gitignore
+    template: gitignore.block.template
+    mode: marker
+  - path: .cursorignore
+    template: cursorignore.block.template
+    mode: marker
+
+# ------------------------------------------------------------
+# (3) project_overrides — プロジェクト固有値（PO が記入）
+#     未記入の "[要確認]" は audit が WARN として列挙する（FAIL ではない）。
+# ------------------------------------------------------------
+project:
+  name: aiportfolio
+  slug: aiportfolio
+  one_liner: ポートフォリオ管理(アプリ、サービス)などを総合的に管理するプロジェクト。
+  # 開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
+  workflow_pattern: "開発型"
+  tracking_artifact: "plan.md"
+  agent_role: "[要確認] エージェントが振る舞う専門ロール"
+  priorities:
+    - "[要確認] トレードオフ時の優先順位1"
+  # tech_stack は framework.tech_stack（techstack 設計書 §9 由来）へ移管。
+  # PO 記入欄ではなく設計書 SoT を符号化したものとして framework 側で管理する。
+  quality_gate:
+    build_cmd: "[要確認] 例: make build"
+    lint_cmd: "[要確認] 例: make lint"
+    test_cmd: "[要確認] 例: make test"
+    extra:
+      - "[要確認] 追加ゲート（任意）"
+  boundaries:
+    always:
+      - "[要確認] 常に守る制約"
+    ask_first:
+      - "[要確認] 事前承認が必要な操作"
+    # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）
+    never_extra:
+      - "[要確認] プロジェクト固有の禁止操作（任意）"
+  doc_navigation:
+    domain:
+      - path: "[要確認] docs/spec.md"
+        desc: "[要確認] 仕様サマリ"

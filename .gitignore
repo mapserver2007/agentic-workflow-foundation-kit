@@ -1,0 +1,53 @@
+# Binary files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage files
+*.out
+
+# Dependency directories
+/vendor/
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build output directories
+/bin/
+/dist/
+/tmp/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Secret
+secret/
+
+# Archive / superseded docs (any depth)
+**/old/
+
+.cursor/plans/
+
+# >>> agentic-foundation managed >>>
+# create-agentic-workflow-foundation: Context Budget セッション state（コミットしない）
+.cursor/.session/
+# <<< agentic-foundation managed <<<

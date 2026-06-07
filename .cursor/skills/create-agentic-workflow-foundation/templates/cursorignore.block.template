@@ -1,0 +1,2 @@
+# create-agentic-workflow-foundation: セッション state を AI コンテキストから除外
+.cursor/.session/

@@ -1,0 +1,76 @@
+# DECISIONS — Architecture Decision Records (ADR)
+
+<!-- このファイルの「運用ルール / テンプレート」は create-agentic-workflow-foundation スキルの生成物。ADR エントリ（## ADR-NNNN）は本ファイルに直接追記する（生成対象外）。 -->
+
+> {{project.name}} の **リポジトリ全体に波及する設計判断** を時系列で記録するログ。コンテキストの即時外部化原則に基づき、会話に閉じがちな判断根拠を Meta 層に永続化する。
+>
+> **本ファイルに記録するのは「設計変更」のみ**。実装レベルの変更（バグ修正・通常リファクタリング・値チューニング・リネーム・ドキュメント整理）は記録しない。
+
+## 運用ルール
+
+### 起票判定
+
+ADR 起票の唯一の判定軸は **「リポジトリ全体の設計次元 D-* のいずれかを変更したか」**。行為のラベル（バグ修正 / リファクタリング / リネーム等）は判定軸にしない。
+
+#### 設計次元（D-*）
+
+| ID | 設計次元 |
+|----|----------|
+{{#each framework.design_dimensions}}| **{{this.id}}** | {{this.desc}} |
+{{/each}}
+
+#### 起票しないケース（D-* 不該当 = 実装レベル）
+
+- 単一機能のバグ修正（behavior 変更を伴うが設計次元は不変）
+- 通常リファクタリング（レイヤー責務 / 境界が不変）
+- 値のチューニング（threshold 調整等でポリシー自体は不変）
+- 単一ファイルのリネーム・移動 / ドキュメント整理 / 既存パターンへの単純準拠
+
+### 必須セクション
+
+各 ADR は以下を満たす必要がある:
+
+- 1 判断 = 1 セクション（`## ADR-NNNN: タイトル`）
+- **Significance セクション必須**: 変更した D-* を 1 件以上、波及範囲（影響を受ける docs / スキル）を 2 件以上ファイルパスで宣言
+- **Alternatives Considered 必須**: 却下した選択肢を 2 件以上、各却下理由を非空で記載
+- Status の遷移: `Proposed → Accepted → (後日) Superseded by ADR-NNNN` または `Deprecated`
+- 実装詳細ではなく **判断** を書く。過去判断の取り消しは編集せず新規 ADR で Supersede する
+
+## テンプレート
+
+```markdown
+## ADR-NNNN: {判断のタイトル}
+
+- **Status**: Proposed | Accepted | Superseded by ADR-XXXX | Deprecated
+- **Date**: YYYY-MM-DD
+- **Deciders**: {承認者}
+- **Related**: {関連 spec / reports / ファイル}
+
+### Significance（リポジトリ全体性の根拠）
+
+- **変更した設計次元**: {{#each framework.design_dimensions}}{{this.id}} {{/each}}（1 件以上、複数可）
+- **波及範囲**（2 件以上、ファイルパスで列挙）:
+  - {docs / スキルパス}
+  - {同上}
+
+### Context
+{判断が必要になった背景・制約・課題。事実のみ}
+
+### Decision
+{採用した選択肢。命令形で簡潔に}
+
+### Consequences
+- **Positive**: {期待される利点}
+- **Negative**: {許容するトレードオフ・負債}
+- **Follow-up**: {後続で必要な作業・監視項目}
+
+### Alternatives Considered
+- {却下した選択肢1} — 却下理由
+- {却下した選択肢2} — 却下理由
+```
+
+---
+
+<!-- 以下に ADR エントリを追記する。最初の設計判断が発生したら ## ADR-0001 から起票する。 -->
+
+(まだ ADR は起票されていません)

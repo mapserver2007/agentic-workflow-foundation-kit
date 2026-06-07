@@ -1,0 +1,6 @@
+# Python bytecode
+-d:__pycache__
+-f:*.py[cod]
+-f:*$py.class
+
+-d:tmp

@@ -1,0 +1,33 @@
+---
+alwaysApply: true
+description: 絶対に守るべき制約（違反すると致命的な問題が発生）
+---
+
+# 絶対に守るべき制約（MUST）
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+> 本ルールは宣言のみを記載する。詳細は [`AGENTS.md > Boundaries`](mdc:AGENTS.md) を参照。
+
+## Git 操作（Never / Ask / Hook 強制）
+
+- 明示的指示がない限り push / commit / `--force` は禁止
+- `--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) で deterministic deny
+- `git commit --amend` / `git rebase` は ask（ユーザー承認）
+- Hook 強制範囲の SoT: [`docs/QUALITY_GATE.md §2.1`](mdc:docs/QUALITY_GATE.md)
+
+## ファイル操作（Always）
+
+- ファイル全体を読み込む（部分読み込みでの変更禁止）
+- コード変更前に関連するすべてのファイルを読み込む
+
+## 仕様確認（Always）
+
+- 仕様不明時は docs（Domain 層）で確認、またはユーザーに質問（推測禁止）
+{{#each project.boundaries.always}}- {{this}}
+{{/each}}
+## プロジェクト固有制約（Ask First）
+
+{{#each project.boundaries.ask_first}}- {{this}}
+{{/each}}
+> プロジェクト固有の制約（技術スタック / アーキテクチャ層責務 / 禁止ライブラリ等）は manifest.yaml の `project.boundaries` に追記し再生成する。

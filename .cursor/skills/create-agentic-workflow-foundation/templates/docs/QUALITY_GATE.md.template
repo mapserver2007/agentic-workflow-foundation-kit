@@ -1,0 +1,92 @@
+# QUALITY_GATE — 検証ゲートの通過基準
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物。プロジェクト固有のコマンド/ゲートは manifest.yaml の project.quality_gate を更新して再生成する。 -->
+
+> {{project.name}} でセッション終了 / PR マージ / フェーズ境界で実行する品質ゲートの定義。**検証ゲートは exit code ベースのスクリプトで実装する** 原則に基づく。
+>
+> 原則:
+> - ゲートは **exit code ベース** で自動化可能にする（自然言語指示ではなくコマンド / スクリプト）
+> - 例外は**ユーザー承認が必須**。AI 単独でのスキップは禁止
+
+## 1. 必須ゲート
+
+### exit code の 3 段階（全ゲート共通）
+
+AI エージェントは **exit 0 を観測するまで修正と再実行を繰り返す** Advisory ループで運用する。
+
+| exit code | 意味 |
+| --- | --- |
+{{#each framework.exit_codes}}| `{{this.code}}` | {{this.meaning}} |
+{{/each}}
+
+### 1.1 コードゲート（実装 / PR 前の必須）
+
+| ゲート | コマンド | 合格条件 |
+| --- | --- | --- |
+| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
+| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
+| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
+
+**実行順序の推奨**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+
+### 1.2 ドキュメントゲート（docs 変更を伴う PR）
+
+| ゲート | 内容 | 合格条件 |
+| --- | --- | --- |
+| G-DOC-ADR | 設計次元 D-* を変更する判断が発生した場合、`docs/DECISIONS.md` に ADR 追記 | Significance / Alternatives Considered を満たす |
+| G-DOC-NAMING | 新規ドキュメント名が semantic 2層モデルに従っている | Meta 層は大文字 / Domain 層は kebab-case（`AGENTS.md > Documentation Naming Convention`） |
+
+### 1.3 リンク衛生ゲート
+
+| ゲート | 内容 | 合格条件 |
+| --- | --- | --- |
+| G-LINK | 追跡ドキュメントにセッションID・大規模ログ全文を含めない | 本文が自己完結で読み切れる |
+
+## 2. 例外承認フロー
+
+ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。
+
+1. **ユーザーに明示的に承認を求め、承認記録を残す**
+2. 代替検証手段を提示し、ユーザーが合意している
+3. 既知の課題として `docs/DECISIONS.md` に ADR を起票し、Follow-up を明記
+
+**禁止事項**（AI 単独でやってはいけないこと）:
+
+- テストの一部失敗を黙って無視する
+- lint 指摘を一括抑制する
+
+## 2.1 Hook による Deterministic 強制（Git/gh 操作）
+
+以下のコマンドは [`.cursor/hooks/guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) で deterministic にブロック / 確認される（**Hook 強制** layer）。`AGENTS.md > Boundaries > Never` の Advisory（~80%）から Deterministic（~100%）への昇格適用。
+
+| コマンドパターン | 挙動 |
+|---|---|
+| `git push --force` / `-f` / `--force-with-lease` | deny |
+| `git push --delete` | deny |
+| `git push origin <main\|master\|develop\|release/*>` | deny |
+| `git reset --hard origin/*` / `upstream/*` | deny |
+| `gh pr merge` | deny |
+| `gh repo delete` / `gh repo archive` | deny |
+| `git commit --amend` | ask |
+| `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask |
+
+**素通り（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / `gh pr create` / 全ての読み取り系。
+
+**詳細・テスト手順**: [`.cursor/hooks/README.md`](../.cursor/hooks/README.md)
+
+## 3. 基盤ファイルの自己検証ゲート
+
+基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
+
+```bash
+python3 .cursor/skills/create-agentic-workflow-foundation/scripts/audit.py
+```
+
+- exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足
+- exit 1 = 出力ファイルが直接編集された（drift）または必須要件欠落 → 再生成または manifest 修正
+- exit 2 = テンプレート不在 / manifest 破損
+
+## 4. 参考
+
+- `AGENTS.md > Session Protocol`（本ゲートの実行タイミング）
+- `docs/AGENT_RUNBOOK.md`（5層モデルでのアーティファクト配置）

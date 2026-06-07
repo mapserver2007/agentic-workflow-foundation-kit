@@ -1,0 +1,90 @@
+# AGENT_RUNBOOK — AI エージェント運用フレームワーク
+
+<!-- このファイルは create-agentic-workflow-foundation スキルの生成物（骨格）。Domain 層の具体例は manifest.yaml を更新して再生成し、[要確認] を PO が埋める。 -->
+
+> AI エージェント（Cursor / Claude Code / Codex CLI 等）の **起動 / 停止 / 復旧 / 観測** を扱う**汎用フレームワーク**。semantic 2層モデルの「Meta 層」に位置する。
+>
+> 本ファイルは「いつ・なぜ・どのレイヤーが動くか」を扱う。手続きの単一ソースは `AGENTS.md > Session Protocol`。
+
+## 0. ACCD 5 軸と本リポの対応
+
+ACCD（AI Context Constraints Design）は、AI の揮発性 / 容量上限 / 断崖性を 5 軸で補完する設計フレームワーク。詳細は [`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md`](../.cursor/docs/AI_BUSINESS_AGENT_SUITE.md) を参照。
+
+| ACCD 軸 | 本リポの実装 |
+|---------|-------------|
+{{#each framework.accd_axes}}| **{{this.id}} {{this.name}}** | {{this.impl}} |
+{{/each}}
+
+判断基準: 重い機構の丸移植ではなく、各軸を本リポの規模・運用パターンに合った最小実装でカバーする。
+
+## 1. 5層モデルでの実装マッピング
+
+| Layer | 役割 | 本リポでの実装 |
+| --- | --- | --- |
+| 1. Context | プロジェクト文脈 | `AGENTS.md` / `CLAUDE.md` / docs（Domain 層） |
+| 2. Constraints | 常時適用ルール | `.cursor/rules/00-init.mdc` / `01-critical-constraints.mdc` / `02-agent-conduct.mdc` |
+| 3. Capabilities | スキル | `.cursor/skills/*/SKILL.md` |
+| 4. Automation | Hooks / スクリプト | `.cursor/hooks/*` / `.cursor/hooks.json` / 品質ゲートコマンド |
+| 5. Delegation | サブエージェント | `Task` ツール（`explore` / `shell` / `browser` 等） |
+
+## 2. ライフサイクル別の参照アーティファクト
+
+`AGENTS.md > ## Session Protocol` を**手続きの単一ソース**とし、本章は各段階の**アーティファクト依存関係**を可視化する。
+
+### 2.1 セッション開始
+```
+AGENTS.md 読込
+  ├→ ## Workflow Pattern（パターン確認）
+  ├→ ## Documentation Naming Convention（命名規約確認）
+  ├→ 追跡ドキュメント一覧（進行中キャンペーンの SoT）
+  └→ ## Documentation Navigation（タスク別参照順序）
+```
+
+### 2.2 セッション終了
+```
+QUALITY_GATE.md §1 コードゲート実行
+設計判断が発生 → docs/DECISIONS.md に ADR 追記（ADR-NNNN）
+失敗の学びが発生 → AGENTS.md > ## Gotchas → docs/GOTCHAS.md 集約
+Context Budget Yellow/Red → .cursor/.session/handoff-active.md へ manifest 書き出し
+```
+
+## 3. アーティファクト依存関係の俯瞰
+
+```mermaid
+flowchart LR
+    AG["AGENTS.md - Meta"]
+    CL["CLAUDE.md - Meta"]
+    INI[".cursor/rules/00-init.mdc"]
+    QG["docs/QUALITY_GATE.md - Meta"]
+    DEC["docs/DECISIONS.md - Meta"]
+    GX["docs/GOTCHAS.md - Meta"]
+    AR["docs/AGENT_RUNBOOK.md - Meta"]
+    HK[".cursor/hooks/* - Automation"]
+
+    CL -->|"@"| AG
+    INI -->|first-read| AG
+    AR -.->|meta-framework| AG
+    AG -->|Session Protocol| QG
+    AG -->|Session Protocol| DEC
+    AG -->|Gotchas lifecycle| GX
+    HK -->|enforce/observe| QG
+```
+
+## 4. 復旧プロトコル（汎用）
+
+セッション中断・コンテキスト喪失・タスク失敗からの復旧は以下の順序で行う。
+
+| 状況 | 第一参照 | 復旧アクション |
+| --- | --- | --- |
+| セッション再開 | 追跡ドキュメント（archive 除く） | 最終チェック位置から続行 |
+| 品質ゲート失敗 | `docs/QUALITY_GATE.md > §2 例外承認フロー` | ユーザー承認 → 修正 or 例外起票 |
+| 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR 起票（Status: Proposed） |
+| 同じ失敗を繰り返した | `AGENTS.md > ## Gotchas` | Gotcha 追記 → 集約閾値超なら集約 |
+| 基盤ファイルが設計書とずれた | `python3 .cursor/skills/create-agentic-workflow-foundation/scripts/audit.py` | drift 検出 → 再生成 or manifest 修正 |
+
+## 5. 参考
+
+- [`AGENTS.md`](../AGENTS.md): セッションプロトコル / Documentation Navigation の SoT
+- [`docs/QUALITY_GATE.md`](QUALITY_GATE.md): 検証ゲートと例外承認フロー
+- [`docs/DECISIONS.md`](DECISIONS.md): 設計判断の ADR ログ
+- [`docs/GOTCHAS.md`](GOTCHAS.md): 失敗事例集約
