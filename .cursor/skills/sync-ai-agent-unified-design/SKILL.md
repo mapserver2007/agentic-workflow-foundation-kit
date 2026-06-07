@@ -31,7 +31,23 @@ private リポジトリ上の「3つの統一設計書」Markdown を `.cursor/d
 - **取得設定**: `references/source.yaml` に `repository` / `ref` / `files`（src→dest 対応）を記入済みであること。`[要確認]` が残っている `src` は取得対象外（未確定として報告）。
 - **GitHub 認証（Fine-grained PAT）**: 対象 repo / Contents: Read-only / Metadata: Read-only に絞った PAT を、環境変数 `GITHUB_TOKEN` で供給する（`~/.zshenv` に `export GITHUB_TOKEN="..."` を推奨）。
 - **MCP 経路（主）**: `.cursor/mcp.json` の `github` サーバ（docker `ghcr.io/github/github-mcp-server`、`GITHUB_PERSONAL_ACCESS_TOKEN: ${env:GITHUB_TOKEN}`）が稼働。docker 必須。`mcp.json` は秘密を含まない（環境変数参照のみ）ためリポジトリにコミット共有してよい。**PAT を mcp.json に直書きしない**。
+- **Cursor と環境変数（macOS）**: `${env:GITHUB_TOKEN}` は **Cursor プロセスの環境**を参照する。`~/.zshenv` はターミナル（zsh）向けであり、Dock/Finder 起動の Cursor には届かない。GUI 起動でも MCP を動かすには `launchctl setenv GITHUB_TOKEN "$GITHUB_TOKEN"` が必要（ログアウトで消える）。診断・修復は `scripts/check-mcp-env.sh` を使う。
 - **gh CLI 経路（フォールバック）**: MCP が未稼働/失敗のとき `gh` を使う。MCP と同じ Fine-grained PAT を使う（`gh auth login --with-token` 等）。
+
+### MCP 環境セットアップ（初回・障害時）
+
+```bash
+# 1. PAT を ~/.zshenv に設定（既にある場合はスキップ）
+#    export GITHUB_TOKEN="ghp_..."
+
+# 2. 診断（NG があれば内容に従う）
+.cursor/skills/sync-ai-agent-unified-design/scripts/check-mcp-env.sh
+
+# 3. launchctl 未登録なら修復（シェルに GITHUB_TOKEN がある前提）
+.cursor/skills/sync-ai-agent-unified-design/scripts/check-mcp-env.sh --fix
+
+# 4. Cursor を完全終了して再起動 → Settings → MCP で github が接続済みか確認
+```
 
 ## ワークフロー
 
@@ -45,9 +61,10 @@ private リポジトリ上の「3つの統一設計書」Markdown を `.cursor/d
 
 ### Step 0: 設定読込・前提チェック
 
-1. `references/source.yaml` を読む。`repository` が `[要確認]` のままなら停止して PO に記入を依頼する。
-2. `files` の各エントリの `src` が `[要確認]` のものは取得対象から除外し、Step 4 で「未確定」として列挙する。
-3. 取得対象が 0 件なら、その旨を報告して停止する。
+1. `scripts/check-mcp-env.sh` を実行する。NG がある場合は修復手順を案内し、MCP 経路を使う前に停止する（`--fix` 後は Cursor 再起動が必要）。
+2. `references/source.yaml` を読む。`repository` が `[要確認]` のままなら停止して PO に記入を依頼する。
+3. `files` の各エントリの `src` が `[要確認]` のものは取得対象から除外し、Step 4 で「未確定」として列挙する。
+4. 取得対象が 0 件なら、その旨を報告して停止する。
 
 ### Step 1: 配置先ディレクトリ
 
