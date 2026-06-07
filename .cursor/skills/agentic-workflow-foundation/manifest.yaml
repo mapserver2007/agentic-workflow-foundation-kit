@@ -330,12 +330,12 @@ outputs:
 #     未記入の "[要確認]" は audit が WARN として列挙する（FAIL ではない）。
 # ------------------------------------------------------------
 project:
-  name: aiportfolio
-  slug: aiportfolio
-  one_liner: ポートフォリオ管理(アプリ、サービス)などを総合的に管理するプロジェクト。
-  # 開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
-  workflow_pattern: "開発型"
-  tracking_artifact: "plan.md"
+  name: "[要確認] プロジェクト名"
+  slug: "[要確認] プロジェクトスラッグ"
+  one_liner: "[要確認] プロジェクトの一行説明"
+  # 開発型 / パイプライン型 / ドキュメント型 / ハイブリッド（Phase 1.5 の AskQuestion で確定）
+  workflow_pattern: "[要確認]"
+  tracking_artifact: "[要確認]"
   agent_role: "[要確認] エージェントが振る舞う専門ロール"
   priorities:
     - "[要確認] トレードオフ時の優先順位1"
