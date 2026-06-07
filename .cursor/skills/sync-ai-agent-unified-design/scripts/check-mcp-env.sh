@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# check-mcp-env.sh — GitHub MCP 用の環境診断・（任意）launchctl 登録
-# 秘密はリポジトリに書かない。PAT は ~/.zshenv 等のユーザー環境で供給する。
+# check-mcp-env.sh — GitHub MCP 用の環境診断
+# 秘密はリポジトリに書かない。PAT はリポジトリ直下の .env で供給する。
 
 set -uo pipefail
-
-FIX=false
-if [[ "${1:-}" == "--fix" ]]; then
-  FIX=true
-fi
 
 ok=0
 warn=0
@@ -17,43 +12,32 @@ pass() { echo "  OK   $1"; ok=$((ok + 1)); }
 note() { echo "  NOTE $1"; warn=$((warn + 1)); }
 err()  { echo "  NG   $1"; fail=$((fail + 1)); }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+ENV_FILE="$REPO_ROOT/.env"
+
 echo "GitHub MCP 環境チェック"
 echo
 
-# ~/.zshenv は zsh のみ。シェルに未設定なら読み込んで試す（値は表示しない）
-if [[ -z "${GITHUB_TOKEN:-}" && -f "${HOME}/.zshenv" ]]; then
-  # shellcheck disable=SC1090
-  source "${HOME}/.zshenv" 2>/dev/null || true
+# --- .env ---
+if [[ -f "$ENV_FILE" ]]; then
+  pass ".env が存在する: ${ENV_FILE}"
+else
+  err ".env がない: ${ENV_FILE} を作成し GITHUB_TOKEN を設定"
 fi
 
-# --- GITHUB_TOKEN（シェル） ---
+# --- GITHUB_TOKEN（.env から読み込み） ---
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ENV_FILE"
+  set +a
+fi
+
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  pass "GITHUB_TOKEN がシェル環境に設定されている"
+  pass "GITHUB_TOKEN が .env に設定されている"
 else
-  err "GITHUB_TOKEN がシェル環境にない（~/.zshenv に export を追加）"
-fi
-
-# --- GITHUB_TOKEN（launchd / Cursor 向け） ---
-launchctl_token=""
-if launchctl_token="$(launchctl getenv GITHUB_TOKEN 2>/dev/null)"; then
-  :
-else
-  launchctl_token=""
-fi
-
-if [[ -n "$launchctl_token" ]]; then
-  pass "GITHUB_TOKEN が launchctl に登録されている（GUI 起動の Cursor が参照可能）"
-elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  err "GITHUB_TOKEN が launchctl 未登録（Dock/Finder 起動の Cursor は PAT を読めない）"
-  if $FIX; then
-    launchctl setenv GITHUB_TOKEN "$GITHUB_TOKEN"
-    pass "--fix: launchctl setenv GITHUB_TOKEN を実行した（Cursor を再起動すること）"
-    fail=$((fail - 1))
-  else
-    note "修復: $0 --fix  または  launchctl setenv GITHUB_TOKEN \"\$GITHUB_TOKEN\""
-  fi
-else
-  err "GITHUB_TOKEN が launchctl 未登録（先に ~/.zshenv へ PAT を設定）"
+  err "GITHUB_TOKEN が .env にない: ${ENV_FILE} に GITHUB_TOKEN=ghp_... を追加"
 fi
 
 # --- Docker ---
@@ -96,8 +80,8 @@ echo "結果: OK=$ok / NOTE=$warn / NG=$fail"
 if [[ $fail -gt 0 ]]; then
   echo
   echo "次の手順:"
-  echo "  1. ~/.zshenv に  export GITHUB_TOKEN=\"ghp_...\"  を追加"
-  echo "  2. $0 --fix  で launchctl へ登録（ログアウトで消える）"
+  echo "  1. リポジトリ直下に .env を作成し  GITHUB_TOKEN=ghp_...  を設定"
+  echo "  2. Docker Desktop を起動"
   echo "  3. Cursor を完全終了して再起動し、Settings → MCP で github を確認"
   exit 1
 fi

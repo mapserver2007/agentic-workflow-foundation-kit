@@ -41,6 +41,7 @@ __pycache__/
 
 # Secret
 secret/
+.env
 
 # Archive / superseded docs (any depth)
 **/old/

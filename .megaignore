@@ -4,3 +4,5 @@
 -f:*$py.class
 
 -d:tmp
+
+-f:.env
