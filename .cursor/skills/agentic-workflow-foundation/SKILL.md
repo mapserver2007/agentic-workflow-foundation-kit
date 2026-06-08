@@ -88,20 +88,22 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 2. 影響する `framework.*` キーを更新する。
    - **`framework.*`（Meta 層）の変更は設計判断**。`AskQuestion` で PO に確認し、承認を得てから変更する。
    - 変更が設計次元 D-* に該当する場合は、生成後 `docs/DECISIONS.md` に ADR を起票する。
-3. `project.*` は PO 記入欄。ここでは触らない（`workflow_pattern` / `tracking_artifact` は **Phase 1.5** で AskQuestion により確定。その他は PO が別途記入）。
+3. `project.*` は **Phase 1.5 の対話（`AskQuestion` + 自由入力）で確定する**。manifest への PO 直接手入力は廃止した。ここ（Phase 1）では触らない。
 4. fingerprint を書き戻す:
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py --update
 ```
 
-### Phase 1.5: プロジェクトパターン確定（AskQuestion）
+### Phase 1.5: プロジェクト設定確定（対話: `AskQuestion` + 自由入力）
 
-`project.workflow_pattern` が `[要確認]`（未確定）の場合に発火する。確定済みならスキップして **Phase 2 へ**。
+**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合に発火する。**`[要確認]` が残るフィールドのみ**を対象に問う（確定済みは再質問しない＝冪等再生成で質問が膨れない）。全必須フィールドが確定済みならスキップして **Phase 2 へ**。
 
-`workflow_pattern` と `tracking_artifact` は下流生成（Phase 2a の `AGENTS.md`、Phase 2b のセッション管理スキル）の入力になるため、**生成前に確定する**。これらは「AI の推測で埋める」のではなく、統一設計書 §8 のパターン選択フローに沿って **`AskQuestion` で PO に選択させて確定する**（BAS 提案→推奨→承認）。
+`project.*` は manifest への PO 直接手入力を廃止し、**すべて対話で AI が聞き取り、確定値を manifest に記入する**（BAS 提案→推奨→承認）。`AskQuestion` は多肢選択専用ツールのため、選択肢化できないフィールドは「自由入力」で聞き取る。両者を総称して本スキルでは「対話で確定」と呼ぶ。確定手段はフィールドの性質で3分類:
 
-1. 統一設計書 §8 の4問（主アウトプット / 最大リスク / 検知方法 → パターン）を踏まえ、`AskQuestion` で PO にパターンを選択させる。`project.one_liner` 等から妥当な **推奨案を1つ明示**する（例: 主アウトプットが動くアプリケーションなら「開発型」を推奨）。
+**(1) `AskQuestion`（多肢選択） — 選択肢化できるもの**
+
+- `workflow_pattern`: 統一設計書 §8 の4問（主アウトプット / 最大リスク / 検知方法 → パターン）を踏まえ、`AskQuestion` で PO に選択させる。`project.one_liner` 等から妥当な **推奨案を1つ明示**する（例: 主アウトプットが動くアプリケーションなら「開発型」を推奨）。
 
    | 選択肢 | 主アウトプット | 最大リスク | 検証方法 |
    | --- | --- | --- | --- |
@@ -109,7 +111,11 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
    | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
    | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-2. PO の選択に応じて、`tracking_artifact` を **決定論マッピング**で確定する（マッピングの SoT は [`create-session-workflow` パターン別記入ガイド](../create-session-workflow/SKILL.md)）。
+- `quality_gate.{build,lint,test}_cmd`: AI がリポジトリ調査（`package.json` / `Makefile` / `pyproject.toml` 等）から候補コマンドを抽出し `AskQuestion` の選択肢にする。ビルド/テスト構成が無くゲートを敷けない場合は「該当なし」とし、**`quality_gate` を設定しない**（`[要確認]` を残さない＝audit の WARN 対象にもしない。推測でコマンドを断定しない）。
+
+**(2) 決定論マッピング（質問不要）**
+
+- `tracking_artifact`: `workflow_pattern` から自動確定する（マッピングの SoT は [`create-session-workflow` パターン別記入ガイド](../create-session-workflow/SKILL.md)）。
 
    | workflow_pattern | tracking_artifact |
    | --- | --- |
@@ -117,8 +123,18 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
    | パイプライン型 | `playbook.md` |
    | ドキュメント型 | `session_plan.md` |
 
-3. 確定値を `agentic-workflow-foundation/manifest.yaml > project.workflow_pattern` / `project.tracking_artifact` に記入する（共有 SoT。子 `create-session-workflow` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
-4. 「複合型」になりそうな場合は §8「複合型の場合」のワークスペース分離判断を PO に確認してから主パターンを確定する。
+- `slug`: `name` から AI が導出する（厳密なルールは設けず AI 任せでよい。下流の出力ファイルで未使用のため弊害はない）。**PO には問わない**。
+
+**(3) 自由入力（チャットで聞き取り → AI が manifest に記入。`AskQuestion` ではない）**
+
+- `name` / `one_liner` / `agent_role` / `priorities` / `boundaries.{always,ask_first,never_extra}` / `doc_navigation.domain[]`
+- これらはビジネス文脈依存で、AI が選択肢を作ると推測になる。**自由入力で PO の回答をそのまま記入する**。AI は参考例を提示してよいが、推測値で確定しない（BAS Humble）。
+- 任意項目（`quality_gate.extra` / `boundaries.never_extra` 等）は PO が「不要」と回答すればスキップし `[要確認]` のまま残してよい。
+
+**確定後**
+
+- 確定値はすべて `agentic-workflow-foundation/manifest.yaml > project.*` に記入する（共有 SoT。子 `create-session-workflow` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
+- 「複合型」になりそうな場合は §8「複合型の場合」のワークスペース分離判断を PO に確認してから主パターンを確定する。
 
 > `tracking_artifact` は追跡ドキュメント（`plan.md` / `playbook.md` / `session_plan.md`）であり、AI 実装レポート（`docs/agent-tasks/reports/`、`create-design-doc` 下流の別工程）とは別物。manifest 初期値の例示パスに引きずられないこと。
 
@@ -145,7 +161,7 @@ python3 .cursor/skills/manifest-generator/scripts/generate.py \
 ```
 
 - `session-planning` / `session-handover` / `decisions-record` と検証ゲート雛形を生成する。
-- 共有 `project.*` は本スキルの manifest から継承される（`inherits_project`）。子固有値（`large_task_threshold` / `verification.gate_command`）は子 manifest の PO 記入欄。
+- 共有 `project.*` は本スキルの manifest から継承される（`inherits_project`）。子固有値（`large_task_threshold` / `verification.gate_command`）は子スキルの Phase 1.5 で対話により確定する（`large_task_threshold` は `AskQuestion` の数値選択肢、`verification.gate_command` は親 `quality_gate` の流用 or リポジトリ調査→`AskQuestion`）。manifest 直接手入力は廃止。
 
 ### Phase 3: 監査ゲート
 
@@ -171,15 +187,15 @@ python3 .cursor/skills/manifest-generator/scripts/audit.py \
 
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
-- Phase 1.5 で確定した `workflow_pattern` / `tracking_artifact`（選択された場合）
-- `project.*` に残る `[要確認]` 一覧（**PO が次に記入すべき項目**）
+- Phase 1.5 の対話で確定した `project.*` 値一覧（`AskQuestion` / 決定論マッピング / 自由入力の別）
+- PO が「不要」と判断しスキップした任意項目（`[要確認]` のまま残したもの）
 - drift があった場合は更新した manifest キーと起票すべき ADR
 
 ## 重要な制約
 
 - **出力ファイルを直接編集しない**。変更は必ず `manifest.yaml` か `templates/` を編集して再生成する（直接編集は audit が drift 検出）。
 - **`framework.*` の変更は Meta 層の設計判断**。設計書改版に基づき、PO 承認を得て行う。
-- **`project.*` の `[要確認]` を AI が推測で埋めない**。PO 記入欄として残す（audit は WARN 扱い）。ただし `workflow_pattern` / `tracking_artifact` は例外で、**Phase 1.5 の `AskQuestion` による PO 選択結果**を決定論マッピングで確定する（AI の推測ではなく PO 承認に基づく確定）。
+- **`project.*` は Phase 1.5 の対話で AI が候補/推奨を提示し PO 承認で確定する**（manifest 直接手入力は廃止）。`AskQuestion`（多肢選択）/ 決定論マッピング / 自由入力の3分類で確定し、AI が候補を作れない純ビジネス値（`name` / `one_liner` / `agent_role` / `priorities` 等）は **PO の回答をそのまま記入し、推測で埋めない**（BAS Humble）。未確定で残った `[要確認]` は audit が WARN 扱い（FAIL ではない）。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 
 ## スコープ外

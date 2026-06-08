@@ -34,6 +34,6 @@
 
 1. `check_design_drift.py` が `design_docs[].sha256` の不一致を検知。
 2. 本表で変更セクション → 影響 manifest キー → 影響出力ファイルを特定。
-3. `framework.*` の変更なら manifest を更新（Meta 層変更につき PO 承認）。`project.*` のみなら PO 記入のみ。
+3. `framework.*` の変更なら manifest を更新（Meta 層変更につき PO 承認）。`project.*` のみなら Phase 1.5 の対話（`AskQuestion` + 自由入力）で確定する（PO 直接手入力は廃止）。
 4. `generate.py` で再生成 → `audit.py` で準拠検証。
 5. drift スクリプトが新しい sha256 を manifest に書き戻す。
