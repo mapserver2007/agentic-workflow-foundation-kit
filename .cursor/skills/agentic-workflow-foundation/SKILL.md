@@ -34,8 +34,8 @@ disable-model-invocation: true
 - **`manifest.yaml` → 出力ファイル** は完全決定論（再実行でバイト一致 = 冪等）。AI は生成ループに入らない。
 - **設計書 → `manifest.yaml`** は AI/PO レビュー付きマッピング。`check_design_drift.py` の fingerprint 照合で改版を検知し、manifest 更新を促して同期を保つ。
 - BAS の「Markdown は表現・YAML は定義」パターンに準拠。
-- **生成/監査エンジン（how）は [`manifest-generator`](../manifest-generator/SKILL.md) に分離**。本スキルは「what（設定: manifest + templates + 設計書固有ロジック）」を担う設定スキルであり、生成・冪等監査の実体は manifest-generator の `generate.py` / `audit.py` を `--skill-dir` 付きで呼び出す。出力ファイルの直接編集は同エンジンの audit が drift として検出する。
-- **セッション管理スキル（Layer 3）の生成を orchestrate する**。`create-session-workflow` はエンジン視点では兄弟の設定スキル（別 manifest + templates）だが、セッション管理は基盤インフラの一部であり、人間が単独で実行するのではなく **本スキルの基盤メンテと同期して再生成する**（運用視点では親→子）。共有 `project.*` の Source of Truth は本スキルの manifest に一本化し、子は `inherits_project` で継承する（ADR-0007）。
+- **生成/監査エンジン（how）は独立スキル [`manifest-generator`](../manifest-generator/SKILL.md) に分離**。本スキルは「what（manifest + templates + 設計書固有ロジック）」を担う設定スキルで、生成・冪等監査の実体は manifest-generator の `generate.py` / `audit.py` を `--skill-dir` 付きで呼び出す（エンジン自体の扱いは「スコープ外」を参照）。
+- **セッション管理スキル（Layer 3 / `create-session-workflow`）の生成を orchestrate する**。基盤メンテと同期して再生成し（親→子）、共有 `project.*` は本スキルの manifest を SoT として子が `inherits_project` で継承する（ADR-0007）。
 
 ### 構成ファイル
 
@@ -200,6 +200,7 @@ python3 .cursor/skills/manifest-generator/scripts/audit.py \
 
 ## スコープ外
 
+- **生成/監査エンジン `manifest-generator` 自体の生成**。エンジン（How）は独立スキルで、統一設計書を正本とする自動生成・drift 追跡の対象外（正本はエンジンの工学仕様）。本スキルはそれを `--skill-dir` 付きで**呼び出すだけ**で、エンジンのコードは生成・改修しない。エンジンの改修は `manifest-generator` スキル内のスクリプトを正本として行う。
 - プロジェクト固有の品質ゲートコマンド（`make build` 等）の実装。manifest の空欄として残す。
 - セッション管理スキルの **テンプレート/manifest 定義**（what）は `create-session-workflow` が持つ。本スキルは Phase 2b/3 でその**生成を orchestrate するだけ**で、テンプレート内容は改修しない。
 - techstack 由来の `docs/tech-stack.md` **以外** の Domain 層 docs（業務仕様 `docs/spec.md` / API 仕様 `docs/api.md` / curated 目次 `docs/README.md` 等）の生成。これらは下流の doc 生成スキルが実装物から作る。
