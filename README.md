@@ -12,13 +12,13 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 | **Domain 層**（プロジェクト文書） | `docs/AGENT_RUNBOOK.md` / `docs/QUALITY_GATE.md` / `docs/tech-stack.md` / `docs/DECISIONS.md`（seed）/ `docs/GOTCHAS.md`（seed） 等 |
 | **Layer 3**（セッション管理スキル） | `session-planning` / `session-handover` / `decisions-record` スキルと検証ゲート雛形 |
 
-> **用語の整理**: 上表の **Meta 層 / Domain 層** はドキュメント命名の semantic 2層モデル（大文字 = 判断フレームワーク、小文字 = プロジェクト固有仕様）です。**Layer 1〜5** は別軸の 5層モデル（エージェントの文脈・制約・能力・自動化・委譲）です。Meta 層の成果物は主に Layer 1〜2 と Layer 4 に、Domain 層は主に Layer 1 にマッピングされます。Layer 3 は 5層モデル上の Capabilities 層であり、Meta 層とは別カテゴリです（[ADR-0007](.cursor/skills/agentic-session-management/references/decisions.md)）。
+> **用語の整理**: 上表の **Meta 層 / Domain 層** はドキュメント命名の semantic 2層モデル（大文字 = 判断フレームワーク、小文字 = プロジェクト固有仕様）です。**Layer 1〜5** は別軸の 5層モデル（エージェントの文脈・制約・能力・自動化・委譲）です。Meta 層の成果物は主に Layer 1〜2 と Layer 4 に、Domain 層は主に Layer 1 にマッピングされます。Layer 3 は 5層モデル上の Capabilities 層であり、Meta 層とは別カテゴリです。
 
 対象プロジェクトに対して Cursor で「Agentic 基盤を生成して」「統一設計書から再生成して」等と依頼すると、[`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキルが 5 フェーズのワークフローを実行します。
 
 ## 5層モデル（Layer 1〜5）
 
-[統一設計書 §5](.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md) で定義される 5層モデルは、AI エージェントへのオンボーディングを**ソフトウェア開発プロセス（設計〜QA）のアナロジー**で整理したものです。各層の実装方法の詳細は [§12](.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md) を参照してください。
+5層モデルは、AI エージェントへのオンボーディングを**ソフトウェア開発プロセス（設計〜QA）のアナロジー**で整理したものです。
 
 ```
 ┌─────────────────────────────────────────
@@ -62,7 +62,7 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 **Layer 4（Automation）** — Rules（~80% 遵守）では不十分な制約を Hooks（~100% 遵守）で強制します。例: `beforeShellExecution` で危険な Git 操作をブロック、`sessionStart` でコンテキスト注入、`stop` でセッション境界の検証を促進。
 
-**Layer 5（Delegation）** — 調査・並列処理・レビューなどを子エージェントに委譲し、メインのコンテキストウィンドウを保護します。本キットの生成範囲外ですが、統一設計書では組み込み Subagent の活用を推奨しています。
+**Layer 5（Delegation）** — 調査・並列処理・レビューなどを子エージェントに委譲し、メインのコンテキストウィンドウを保護します。本キットの生成範囲外です。まず Cursor 組み込み Subagent（`explore` / `bash` / `browser`）の活用を検討し、不足する場合のみ `.cursor/agents/` を手動追加します。
 
 ## アーキテクチャ
 
