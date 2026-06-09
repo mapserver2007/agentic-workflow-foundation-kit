@@ -25,10 +25,10 @@ marker_id: session-management
 inherits_project: .cursor/skills/agentic-workflow-foundation
 
 # ------------------------------------------------------------
-# session.* — 本スキル固有値（Phase 1.5 の対話で確定）。
+# session.* — 本スキル固有値。
 #   large_task_threshold: 大規模タスク検知の閾値（unified §12 session_planning 由来）。
-#       AskQuestion の数値選択で再確認する。
-#   verification.gate_command: セッション境界ゲートで実行する検証コマンド。
+#       統一設計書 §12 の推奨値（files=5 / subtasks=3）で固定。AskQuestion で問わない。
+#   verification.gate_command: セッション境界ゲートで実行する検証コマンド（Phase 1.5 で確定）。
 #       親 quality_gate の流用 or リポジトリ調査 → AskQuestion で確定。
 #       未確定（[要確認]）の間は verification-gate.sh が SKIP（exit 0）する。
 # ------------------------------------------------------------

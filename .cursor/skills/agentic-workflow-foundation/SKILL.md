@@ -63,6 +63,19 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 4: 報告
 ```
 
+### 対話と中断の原則（全フェーズ共通）
+
+本ワークフローの PO 対話・フェーズ遷移は以下を守る。
+
+- **AskQuestion は1ステップ＝1論点ずつ提示する**。複数の確認事項を1回の `AskQuestion` にまとめて詰め込まない。PO の回答を受け取ってから次の質問・次のステップへ進む（逐次確認）。
+- **各 AskQuestion には推奨案を必ず1つ添える**（BAS 提案→推奨→承認）。トレードオフを1〜2行で示し、判断を丸投げしない。
+- **ステップが失敗・問題を検知したら、そのステップで中断する**。次フェーズへ進まず、検知内容・原因・影響範囲・推奨対応を PO に報告し、解決（承認・修正・指示）を促す。PO の解決を得てから当該ステップを再実行し、成功を確認してから先へ進む。
+- 中断トリガーの例:
+  - Phase 0a の同期失敗（取得設定未記入 / 取得エラー）
+  - Phase 0b の fingerprint 不一致（DRIFT / 未記録）
+  - Phase 1 の framework 変更で PO 承認が得られない / 判断保留
+  - Phase 3 の audit FAIL（exit 1）/ 致命的エラー（exit 2）
+
 ### Phase 0: 統一設計書の同期 → fingerprint 照合
 
 3つの統一設計書（`.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` / `TECHNOLOGY_STACK_UNIFIED_DESIGN.md`）は private リポジトリが SoT であり、`.cursor/docs/` への配置は [`sync-ai-agent-unified-design`](../sync-ai-agent-unified-design/SKILL.md) が担う。fingerprint 照合の前に**取得/最新化**を済ませる。
@@ -79,14 +92,15 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 ```
 
 - exit 0（改版なし）→ **Phase 2 へ**（既存 manifest のまま再生成）。
-- exit 1（DRIFT / 未記録）→ **Phase 1 へ**。出力された「影響 manifest キー / 出力ファイル」を控える。
+- exit 1（DRIFT / 未記録）→ **このステップで中断**（「対話と中断の原則」）。fingerprint 不一致を検知した旨と、出力された「影響 manifest キー / 出力ファイル」を PO に報告し、対応方針（Phase 1 で framework 変更が必要か / fingerprint のみ更新でよいか）の判断を促す。PO の判断を得てから **Phase 1 へ**進む（PO 確認前に framework や fingerprint を書き換えない）。
 - exit 2（設計書不在）→ Phase 0a の同期を実行しても取得できていない状態。`sync-ai-agent-unified-design` の報告（設定未記入 / 取得失敗）をユーザーに伝えて停止する。
 
 ### Phase 1: manifest 更新（改版時のみ）
 
 1. 設計書の変更差分を `references/source-mapping.md` で影響範囲に展開する。
 2. 影響する `framework.*` キーを更新する。
-   - **`framework.*`（Meta 層）の変更は設計判断**。`AskQuestion` で PO に確認し、承認を得てから変更する。
+   - **`framework.*`（Meta 層）の変更は設計判断**。`AskQuestion` で PO に確認し、承認を得てから変更する。**変更候補が複数あっても1キー（1論点）ずつ AskQuestion で確認**し、まとめて提示しない（「対話と中断の原則」）。
+   - 承認が得られない／判断保留の論点があれば、**その時点で中断**して PO の判断を待つ（未承認のまま framework を変更して先へ進まない）。
    - 変更が設計次元 D-* に該当する場合は、生成後 `docs/DECISIONS.md` に ADR を起票する。
 3. `project.*` は **Phase 1.5 の対話（`AskQuestion` + 自由入力）で確定する**。manifest への PO 直接手入力は廃止した。ここ（Phase 1）では触らない。
 4. fingerprint を書き戻す:
@@ -95,11 +109,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py --update
 ```
 
-### Phase 1.5: プロジェクト設定確定（対話: `AskQuestion` + 自由入力）
+### Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値）
 
-**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合に発火する。**`[要確認]` が残るフィールドのみ**を対象に問う（確定済みは再質問しない＝冪等再生成で質問が膨れない）。全必須フィールドが確定済みならスキップして **Phase 2 へ**。
+**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合に発火する。本ツールキットは新規リポジトリにコピーして実行する配布モデルで、`project.*` の大半は自動導出/固定値のため、**実質 `workflow_pattern` のみ PO に問う**（他は確定済みなら再質問しない＝冪等再生成で質問が膨れない）。全必須フィールドが確定済みならスキップして **Phase 2 へ**。
 
-`project.*` は manifest への PO 直接手入力を廃止し、**すべて対話で AI が聞き取り、確定値を manifest に記入する**（BAS 提案→推奨→承認）。`AskQuestion` は多肢選択専用ツールのため、選択肢化できないフィールドは「自由入力」で聞き取る。両者を総称して本スキルでは「対話で確定」と呼ぶ。確定手段はフィールドの性質で3分類:
+`project.*` は manifest への PO 直接手入力・自由入力を廃止し、**AskQuestion / 自動導出 / 固定値の3分類で確定する**（BAS 提案→推奨→承認）。
+
+`AskQuestion` は「対話と中断の原則」に従い、**1論点ずつ提示し PO の回答を得てから次へ進む**（複数を1回の質問にまとめない）。確定手段はフィールドの性質で3分類:
 
 **(1) `AskQuestion`（多肢選択） — 選択肢化できるもの**
 
@@ -111,9 +127,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
    | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
    | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `quality_gate.{build,lint,test}_cmd`: AI がリポジトリ調査（`package.json` / `Makefile` / `pyproject.toml` 等）から候補コマンドを抽出し `AskQuestion` の選択肢にする。ビルド/テスト構成が無くゲートを敷けない場合は「該当なし」とし、**`quality_gate` を設定しない**（`[要確認]` を残さない＝audit の WARN 対象にもしない。推測でコマンドを断定しない）。
-
-**(2) 決定論マッピング（質問不要）**
+**(2) 自動導出（決定論マッピング・質問不要）**
 
 - `tracking_artifact`: `workflow_pattern` から自動確定する（マッピングの SoT は [`agentic-session-management` パターン別記入ガイド](../agentic-session-management/SKILL.md)）。
 
@@ -123,13 +137,28 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
    | パイプライン型 | `playbook.md` |
    | ドキュメント型 | `session_plan.md` |
 
+- `quality_gate.{build,lint,test}_cmd`: `workflow_pattern`（ゲート戦略）× `framework.tech_stack`（ツール系統）から**決定論的に導出する**。両者とも manifest で確定済みのため **PO には問わない**（`AskQuestion` 廃止）。
+  - **ゲート戦略は `workflow_pattern` が決める**（統一設計書 §9-11）: 開発型 = テスト + ビルド + 型チェック / パイプライン型 = スクリプト出力の整合性検証 / ドキュメント型 = 完了基準チェック。
+  - **具体コマンドは `framework.tech_stack` のツール系統に従う**（統一設計書 §16）。固定スタック（pnpm + Turborepo + Vitest + Next.js/Hono）の開発型は下表を既定とする。
+
+   | workflow_pattern | build_cmd | lint_cmd | test_cmd |
+   | --- | --- | --- | --- |
+   | 開発型（pnpm/Turborepo/Vitest） | `pnpm build` | `pnpm lint` | `pnpm test` |
+   | パイプライン型 | （該当なし） | （該当なし） | スクリプト出力検証コマンド |
+   | ドキュメント型 | （該当なし） | （該当なし） | 完了基準チェックコマンド |
+
+  - **実リポジトリが優先**: `package.json` scripts / `Makefile` 等が存在する場合はその実コマンドを正とし上書きする（導出値は未スキャフォールド時の既定）。
+  - tech_stack が別系統に差し替えられた場合は §16 に従う（Rust → `cargo test` / `cargo build`、Python → `pytest` / `mypy`、Go → `go test ./...` / `go build ./...`）。
+  - 導出も実リポジトリ証拠も得られない例外時のみ「該当なし」とし `quality_gate` を設定しない（推測でコマンドを断定しない＝audit の WARN 対象にもしない）。
+
+- `name`: **コピー先（実行先）リポジトリのディレクトリ名から自動導出する**。本ツールキットは新規リポジトリにコピーして実行する配布モデルのため、`agentic-workflow-foundation-kit` 等の固定文字列を焼き込まない。**PO には問わない**。
 - `slug`: `name` から AI が導出する（厳密なルールは設けず AI 任せでよい。下流の出力ファイルで未使用のため弊害はない）。**PO には問わない**。
 
-**(3) 自由入力（チャットで聞き取り → AI が manifest に記入。`AskQuestion` ではない）**
+**(3) 固定値（本基盤が表す機能の説明。manifest に既定値を保持し、PO には問わない）**
 
-- `name` / `one_liner` / `agent_role` / `priorities` / `boundaries.{always,ask_first,never_extra}` / `doc_navigation.domain[]`
-- これらはビジネス文脈依存で、AI が選択肢を作ると推測になる。**自由入力で PO の回答をそのまま記入する**。AI は参考例を提示してよいが、推測値で確定しない（BAS Humble）。
-- 任意項目（`quality_gate.extra` / `boundaries.never_extra` 等）は PO が「不要」と回答すればスキップし `[要確認]` のまま残してよい。
+- `one_liner` / `agent_role` / `priorities` / `boundaries.{always,ask_first,never_extra}` / `doc_navigation.domain[]`
+- これらは「Agentic Workflow 基盤（本ツールキット）が表す機能・運用制約」を説明する**固定値**であり、コピー先リポジトリが変わっても不変。manifest `project.*` に既定値として保持する。**自由入力・PO への質問は行わない**。
+- `boundaries.never` の git 不可逆操作は framework 固定（`guard-git-write.sh`）。`never_extra` も固定値として持つ。
 
 **確定後**
 
@@ -161,7 +190,7 @@ python3 .cursor/skills/deterministic-generator/scripts/generate.py \
 ```
 
 - `session-planning` / `session-handover` / `decisions-record` と検証ゲート雛形を生成する。
-- 共有 `project.*` は本スキルの manifest から継承される（`inherits_project`）。子固有値（`large_task_threshold` / `verification.gate_command`）は子スキルの Phase 1.5 で対話により確定する（`large_task_threshold` は `AskQuestion` の数値選択肢、`verification.gate_command` は親 `quality_gate` の流用 or リポジトリ調査→`AskQuestion`）。manifest 直接手入力は廃止。
+- 共有 `project.*` は本スキルの manifest から継承される（`inherits_project`）。子固有値のうち `large_task_threshold` は統一設計書 §12 の推奨値（files=5 / subtasks=3）で**固定**（質問しない）。`verification.gate_command` のみ子スキルの Phase 1.5 で確定する（親 `quality_gate` の流用 or リポジトリ調査→`AskQuestion`）。manifest 直接手入力は廃止。
 
 ### Phase 3: 監査ゲート
 
@@ -175,8 +204,8 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 ```
 
 - exit 0 → 冪等性 + 設計書準拠 OK（`project.*` の `[要確認]` は WARN 表示だが PASS）。
-- exit 1 → drift / 必須要件欠落 / ファイル不在。**FAIL を修正して Phase 2 から再実行**（Advisory ループ）。
-- exit 2 → テンプレート不在 / manifest 破損。ユーザーに報告して停止。
+- exit 1 → drift / 必須要件欠落 / ファイル不在。原因を特定し **Phase 2 から再生成して修正**（Advisory ループ）。Advisory ループで解消しない／原因が manifest 仕様・設計判断に及ぶ場合は、**このステップで中断**して PO に報告し判断を促す（「対話と中断の原則」）。
+- exit 2 → テンプレート不在 / manifest 破損。**中断**してユーザーに報告して停止。
 
 > 子（`agentic-session-management`）の audit は `inherits_project` 解決後の `project` を検査するため、親由来の共有キー（`workflow_pattern` 等）が未記入なら子の WARN にも列挙される（＝親へ 1 度記入すれば解消する）。
 > 冪等性の最終確認は両 `--skill-dir` で `generate.py ... --check` が exit 0 になることで担保する。
@@ -187,7 +216,7 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
-- Phase 1.5 の対話で確定した `project.*` 値一覧（`AskQuestion` / 決定論マッピング / 自由入力の別）
+- Phase 1.5 で確定した `project.*` 値一覧（`AskQuestion`(workflow_pattern) / 自動導出(name 等) / 固定値の別）
 - PO が「不要」と判断しスキップした任意項目（`[要確認]` のまま残したもの）
 - drift があった場合は更新した manifest キーと起票すべき ADR
 
@@ -195,7 +224,8 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 
 - **出力ファイルを直接編集しない**。変更は必ず `manifest.yaml` か `templates/` を編集して再生成する（直接編集は audit が drift 検出）。
 - **`framework.*` の変更は Meta 層の設計判断**。設計書改版に基づき、PO 承認を得て行う。
-- **`project.*` は Phase 1.5 の対話で AI が候補/推奨を提示し PO 承認で確定する**（manifest 直接手入力は廃止）。`AskQuestion`（多肢選択）/ 決定論マッピング / 自由入力の3分類で確定し、AI が候補を作れない純ビジネス値（`name` / `one_liner` / `agent_role` / `priorities` 等）は **PO の回答をそのまま記入し、推測で埋めない**（BAS Humble）。未確定で残った `[要確認]` は audit が WARN 扱い（FAIL ではない）。
+- **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定する**（manifest 直接手入力・自由入力は廃止）。本ツールキットは新規リポジトリにコピーして実行する配布モデルのため、`name` はコピー先リポジトリ名から**自動導出**、`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation` は本基盤の機能を表す**固定値**（manifest 既定値）とし、PO には問わない。PO への質問は実質 `workflow_pattern` のみ。未確定で残った `[要確認]` は audit が WARN 扱い（FAIL ではない）。
+- **`quality_gate` は `workflow_pattern` × `framework.tech_stack` からの決定論マッピングで導出し、PO には問わない**（`AskQuestion` 廃止）。これは純ビジネス値ではなく、確定済みの2要素から機械的に導けるため。実リポジトリの `package.json` / `Makefile` 等があればその実コマンドを優先する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 
 ## スコープ外

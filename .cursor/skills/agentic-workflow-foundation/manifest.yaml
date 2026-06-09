@@ -326,51 +326,59 @@ outputs:
     mode: marker
 
 # ------------------------------------------------------------
-# (3) project_overrides — プロジェクト固有値（Phase 1.5 の対話で確定）
-#     PO による manifest 直接手入力は廃止。AskQuestion(多肢選択) / 決定論マッピング /
-#     自由入力 の3分類で AI が聞き取り記入する（SKILL.md Phase 1.5 参照）。
-#     未確定で残った "[要確認]" は audit が WARN として列挙する（FAIL ではない）。
+# (3) project_overrides — プロジェクト固有値
+#     本ツールキットは新規リポジトリにコピーして実行する配布モデル。project.* は
+#     (a) AskQuestion(workflow_pattern のみ) / (b) 自動導出(name/slug/tracking_artifact/quality_gate) /
+#     (c) 固定値(one_liner/agent_role/priorities/boundaries/doc_navigation = 本基盤の機能説明)
+#     の3分類で確定する（SKILL.md Phase 1.5 参照）。自由入力・PO 直接手入力は廃止。
+#     未確定で残った "[要確認]"（実質 workflow_pattern のみ）は audit が WARN として列挙する（FAIL ではない）。
 # ------------------------------------------------------------
 project:
-  # 自由入力で確定（AI は推測で埋めない）
-  name: "[要確認] プロジェクト名"
+  # コピー先（実行先）リポジトリのディレクトリ名から自動導出する（PO には問わない）。
+  # 本ツールキットは新規リポジトリにコピーして実行する配布モデルのため、固定文字列を焼き込まない。
+  name: "[自動導出] コピー先リポジトリのディレクトリ名"
   # name から自動導出（小文字化・空白をハイフン化）。PO には問わない
-  slug: "[要確認] プロジェクトスラッグ"
-  # 自由入力で確定
-  one_liner: "[要確認] プロジェクトの一行説明"
+  slug: "[自動導出] name から導出"
+  # 固定値（本基盤が表す機能の説明。PO には問わない）。
+  one_liner: "3つの統一設計書を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする"
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
   # workflow_pattern から決定論マッピングで自動確定
   tracking_artifact: "[要確認]"
-  # 自由入力で確定
-  agent_role: "[要確認] エージェントが振る舞う専門ロール"
-  # 自由入力で確定
+  # 固定値（本基盤が表す機能の説明。PO には問わない）。
+  agent_role: "統一設計書(SoT)を manifest 経由で決定論的に符号化し、Agentic Workflow 基盤ファイル群を生成・監査・メンテナンスするエージェント"
+  # 固定値（PO には問わない）。
   priorities:
-    - "[要確認] トレードオフ時の優先順位1"
+    - "冪等性と Source of Truth 一元化（設計書 → manifest → 出力）を最優先する"
+    - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
+    - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
   # tech_stack は framework.tech_stack（techstack 設計書 §9 由来）へ移管。
   # PO 記入欄ではなく設計書 SoT を符号化したものとして framework 側で管理する。
-  # AskQuestion(多肢選択) で確定。AI がリポジトリ調査(package.json/Makefile 等)から
-  # 候補コマンドを抽出し選択肢化。ゲートを敷けない場合は「該当なし」とし quality_gate を
-  # 設定しない([要確認] を残さない=audit の WARN 対象にもしない)
+  # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
+  # workflow_pattern（ゲート戦略 / 統一設計書 §9-11）× framework.tech_stack（ツール系統 / §16）
+  # から導出する。固定スタック(pnpm/Turborepo/Vitest)の開発型は pnpm build/lint/test を既定とし、
+  # 実リポジトリ(package.json/Makefile 等)があればその実コマンドを優先(上書き)する。
+  # 導出も実証拠も無い例外時のみ「該当なし」とし quality_gate を設定しない(推測で断定しない)。
   quality_gate:
-    build_cmd: "[要確認] 例: make build"
-    lint_cmd: "[要確認] 例: make lint"
-    test_cmd: "[要確認] 例: make test"
+    build_cmd: "[要確認] 例: pnpm build"
+    lint_cmd: "[要確認] 例: pnpm lint"
+    test_cmd: "[要確認] 例: pnpm test"
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"
-  # 自由入力で確定
+  # 固定値（本基盤の運用制約。PO には問わない）。
   boundaries:
     always:
-      - "[要確認] 常に守る制約"
+      - "出力ファイルを直接編集しない（manifest.yaml / templates を編集して再生成する）"
+      - "変更前に関連ファイルを全体読み込みする"
     ask_first:
-      - "[要確認] 事前承認が必要な操作"
+      - "framework.* の変更（Meta 層の設計判断）"
+      - "git commit / push などの履歴操作"
     # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）。
-    # never_extra は任意。PO が「不要」なら [要確認] のままスキップ可
     never_extra:
-      - "[要確認] プロジェクト固有の禁止操作（任意）"
-  # 自由入力で確定
+      - "統一設計書(.cursor/docs/*)を手元で改変する（SoT は private リポジトリ）"
+  # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
   doc_navigation:
     domain:
-      - path: "[要確認] docs/spec.md"
-        desc: "[要確認] 仕様サマリ"
+      - path: "docs/tech-stack.md"
+        desc: "技術スタック方針（framework.tech_stack 由来の Domain 層サマリ・生成物）"

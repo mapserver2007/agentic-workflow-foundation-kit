@@ -29,7 +29,7 @@ disable-model-invocation: true
 
 - **`manifest.yaml` + templates → 出力スキル** は完全決定論（再実行でバイト一致）。
 - 共有 `project.*`（`workflow_pattern` / `tracking_artifact` 等）は親から継承。本スキルは記入しない。
-- 本スキル固有値（`session.large_task_threshold` / `session.verification.gate_command`）のみ本スキルが持ち、Phase 1.5 の対話で確定する。
+- 本スキル固有値（`session.large_task_threshold` / `session.verification.gate_command`）のみ本スキルが持つ。`large_task_threshold` は統一設計書 §12 の推奨値で**固定**（質問しない）、`verification.gate_command` のみ Phase 1.5 の対話で確定する。
 
 ### 構成ファイル
 
@@ -64,7 +64,7 @@ disable-model-invocation: true
 
 `session.*` に `[要確認]` が残る場合のみ発火する（確定済みは再質問しない＝冪等再生成で質問が膨れない）。`project.*` は親から継承するため**本スキルでは問わない**（親 `agentic-workflow-foundation` の Phase 1.5 で確定）。
 
-1. **`session.large_task_threshold.{files,subtasks}`**: `AskQuestion`（数値選択）で確定する。統一設計書 §12 の既定値（files=5 / subtasks=3）を**推奨案**として提示し、PO が変更しなければ既定を採用する。
+1. **`session.large_task_threshold.{files,subtasks}`**: 統一設計書 §12 の推奨値（files=5 / subtasks=3）で**固定**する。`AskQuestion` で問わない（manifest に既定値が確定済みのため対象外）。
 2. **`session.verification.gate_command`**: 確定手段は2段階。
    - 親 `agentic-workflow-foundation/manifest.yaml > project.quality_gate.test_cmd` 等が確定済みならそれを**流用候補**として提示する。
    - 未確定ならリポジトリ（`package.json` / `Makefile` / `pyproject.toml` 等）を調査して候補コマンドを抽出し `AskQuestion` の選択肢にする。
@@ -97,7 +97,7 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 
 - 生成/更新した出力スキル一覧。
 - audit の結果（PASS / FAIL）。
-- Phase 1.5 で確定した `session.*` 値（`AskQuestion` / 調査流用の別）。
+- Phase 1.5 で確定した `session.*` 値（`large_task_threshold` は推奨値固定 / `gate_command` は調査流用の別）。
 - `[要確認]` のまま残した任意項目（`gate_command` 未設定等）。
 
 ## 重要な制約
