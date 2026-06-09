@@ -1,0 +1,46 @@
+---
+name: session-planning
+description: >-
+  大規模タスク（変更ファイル {{ session.large_task_threshold.files }} 件以上、またはサブタスク {{ session.large_task_threshold.subtasks }} つ以上）を検知したときに、セッション分割計画と追跡ドキュメント（{{ project.tracking_artifact }}）を作成・更新する。追跡ドキュメントが存在しなければ新キャンペーンと判断し、パターン選択フローを実行してから新規作成する。「計画して」「タスクを分割して」「大きめの作業を始める」等の発話や、大規模変更の着手時に発火する。
+  Do NOT use for: 単一ファイル修正・バグ修正など1セッションで完了する小規模タスク / セッション終了処理（session-handover の責務）。
+---
+
+# session-planning
+
+<!-- このファイルは agentic-session-management スキルの生成物。直接編集せず agentic-session-management/manifest.yaml または templates を更新して再生成する。 -->
+
+{{ project.name }}（パターン: {{ project.workflow_pattern }}）のセッション計画スキル。大規模タスクを複数セッションに分割し、文脈断絶を最小化する（統一設計書 §1-2 / Layer 3）。
+
+## 大規模タスクの検知
+
+以下のいずれかを満たすとき大規模タスクと判断し、本スキルを発動する:
+
+- 変更ファイルが {{ session.large_task_threshold.files }} 件以上
+- サブタスクが {{ session.large_task_threshold.subtasks }} つ以上
+
+小規模（単一ファイル / バグ修正）は対象外。検知したら、まず追跡ドキュメントの有無を確認する。
+
+## 追跡ドキュメント
+
+計画・進捗・引き継ぎを**単一ファイル {{ project.tracking_artifact }}** に集約する（設計原則1: Source of Truth の一元化）。
+
+- 配置: プロジェクトルート直下（Active 状態は常に最大1つ）。
+- 内容: タスクリスト（チェックボックス）/ 決定事項 / 次にやること。
+- 即時外部化: 意思決定・発見は即座に {{ project.tracking_artifact }} へ書く（原則4。コンテキストウィンドウに頼らない）。
+
+## パターン選択フロー
+
+追跡ドキュメントが**存在しない = 新キャンペーン**。次の4問でパターンを確定してから {{ project.tracking_artifact }} を新規作成する（統一設計書 §8）:
+
+1. 主アウトプットは？（コード / データ / ドキュメント）
+2. それを壊す最大リスクは？（リグレッション / AI幻覚 / 不完全・不整合）
+3. リスクの検知方法は？（自動テスト / スクリプト検証 / チェックリスト）
+4. → パターン確定: 開発型=`plan.md` / パイプライン型=`playbook.md` / ドキュメント型=`session_plan.md`
+
+> 本プロジェクトの確定パターンは **{{ project.workflow_pattern }}**（追跡ドキュメント {{ project.tracking_artifact }}）。既存追跡ドキュメントがあれば再選択せず「未完了を続行」する（再プランニングの抑制）。
+
+## Gotchas
+
+- 既存の {{ project.tracking_artifact }} があるのに再プランニングしない（「未完了を続行」で再開）。
+- 追跡ドキュメントを複数作らない（Active は常に1つ）。
+- 起票トリガー（期待と違う / 2回以上の修正 / 想定外）に該当したら docs/GOTCHAS.md へ。

@@ -13,7 +13,7 @@
 
 version: 1
 
-# 生成エンジン（manifest-generator）の marker モードで使うマーカー識別子。
+# 生成エンジン（deterministic-generator）の marker モードで使うマーカー識別子。
 # 既定値は移設前のハードコード値と一致し、既存 .gitignore / .cursorignore の
 # 管理ブロックとの後方互換を保つ。
 marker_id: agentic-foundation

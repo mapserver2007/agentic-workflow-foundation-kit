@@ -9,9 +9,9 @@ fetch_method: "auto"        # auto（MCP優先→gh CLIフォールバック） 
 overwrite: "diff"           # diff（内容差分時のみ上書き） | always
 
 files:
-  - src: "[要確認] repo 内パス（例: docs/AI_AGENT_UNIFIED_DESIGN.md）"
+  - src: "AI_AGENT_UNIFIED_DESIGN.md"
     dest: ".cursor/docs/AI_AGENT_UNIFIED_DESIGN.md"
-  - src: "[要確認] repo 内パス（例: docs/AI_BUSINESS_AGENT_SUITE.md）"
+  - src: "AI_BUSINESS_AGENT_SUITE.md"
     dest: ".cursor/docs/AI_BUSINESS_AGENT_SUITE.md"
-  - src: "[要確認] repo 内パス（例: docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md）"
+  - src: "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
     dest: ".cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md"

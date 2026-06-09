@@ -35,6 +35,7 @@ def run(skill_dir: str) -> int:
     templates_dir = os.path.join(skill_dir, "templates")
     try:
         manifest = genlib.load_manifest(manifest_path)
+        manifest = genlib.apply_inherited_project(manifest, skill_dir)
     except genlib.YamlError as e:
         print(f"FATAL: {e}", file=sys.stderr)
         return 2

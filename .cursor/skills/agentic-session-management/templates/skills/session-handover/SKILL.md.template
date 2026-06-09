@@ -1,0 +1,49 @@
+---
+name: session-handover
+description: >-
+  セッション終了時（「セッションを終了する」「引き継ぎを作成して」「今日はここまで」「コミットして区切る」等の発話を検知）に、検証ゲート（scripts/verification-gate.sh）を実行し、追跡ドキュメント（{{ project.tracking_artifact }}）を更新する。全タスク / 全 Phase の完了を検知した場合は archive/ へのアーカイブを提案する。追跡ドキュメントにセッションIDや大規模ファイルへのリンクを含めない（リンク衛生）。
+  Do NOT use for: セッション途中の進捗確認 / セッション開始時の操作 / 大規模タスクの計画作成（session-planning の責務）。
+---
+
+# session-handover
+
+<!-- このファイルは agentic-session-management スキルの生成物。直接編集せず agentic-session-management/manifest.yaml または templates を更新して再生成する。 -->
+
+{{ project.name }}（パターン: {{ project.workflow_pattern }}）のセッション終了スキル。検証 → 記録 → 引き継ぎの3手順でコンテキストドリフトを検知し、次セッションへ橋渡しする（統一設計書 §2 / §6）。
+
+## 検証ゲート
+
+セッション完了時に検証スクリプトを実行し、**exit 0 を確認してから終了**する（設計原則2: 検証は自然言語指示でなくスクリプトで実装）。
+
+```bash
+bash .cursor/skills/session-handover/scripts/verification-gate.sh
+```
+
+- 実行コマンドの SoT は `agentic-session-management/manifest.yaml > session.verification.gate_command`。
+- exit 1（検証失敗）なら終了せず、原因を {{ project.tracking_artifact }} に記録して修正する。
+
+## 追跡ドキュメントの更新
+
+- {{ project.tracking_artifact }} の進捗チェックボックス / 実施記録 / 次にやることを最新化する。
+- 決定事項のうち設計次元（D-*）に該当するものは decisions-record で docs/DECISIONS.md へ外部化する。
+
+## リンク衛生
+
+{{ project.tracking_artifact }} に以下を**含めない**（設計原則5。再開時のコンテキスト爆発を防ぐ）:
+
+- セッションID / agent-transcript へのリンク
+- 大規模ファイル・生成物への直接リンク
+
+## アーカイブ提案（キャンペーン完了時）
+
+全タスク / 全 Phase 完了を検知したら、{{ project.tracking_artifact }} を `archive/` へ移動することを提案する（Active → Complete → Archive）。判断経緯は docs/DECISIONS.md に外部化済みであることを前提とする。
+
+## 再開プロトコル
+
+次セッションは {{ project.tracking_artifact }} の「未完了を続行」で再開する（再プランニングしない）。Context Budget の RED 通知時は session-handoff-guide の手順（Cmd+N → 短文送信で自動注入）に従う。
+
+## Gotchas
+
+- 検証ゲートを飛ばして終了しない（exit 0 未確認のコミット禁止）。
+- 追跡ドキュメントにセッションID / transcript リンクを書かない（リンク衛生違反）。
+- 起票トリガー（期待と違う / 2回以上の修正 / 想定外）に該当したら docs/GOTCHAS.md へ。

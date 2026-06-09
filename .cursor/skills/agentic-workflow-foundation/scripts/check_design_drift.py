@@ -18,7 +18,7 @@ import sys
 sys.path.insert(
     0,
     os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "..", "manifest-generator", "scripts"
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "deterministic-generator", "scripts"
     ),
 )
 import genlib  # noqa: E402

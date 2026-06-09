@@ -1,0 +1,81 @@
+# ============================================================
+# manifest.yaml — agentic-session-management YAML 正本（Source of Truth）
+# ============================================================
+# Layer 3「セッション管理」（統一設計書 §2/§5/§6/§8-12/§13.2 由来）を符号化する設定スキル。
+# deterministic-generator/scripts/generate.py が本ファイル + templates/ から
+# セッション管理スキル群（session-planning / session-handover / decisions-record）と
+# 検証ゲート雛形を決定論的に生成する。出力ファイルを直接編集してはならない
+# （audit.py が drift として exit 1 にする）。
+#
+# 記法制約（deterministic-generator 同梱の最小 YAML ローダのサブセット）:
+#   - block style のみ（flow の {..} / [..] は使わない）
+#   - インデントは半角スペース2
+# ============================================================
+
+version: 1
+
+# generate の marker モード用識別子（本スキルは marker 出力を持たないが将来用に保持）。
+marker_id: session-management
+
+# ------------------------------------------------------------
+# project.* の共有 SoT は親 agentic-workflow-foundation。
+# 本スキルは project を持たず inherits_project で親 project.* を継承する（ADR-0007）。
+# 解決は deterministic-generator の apply_inherited_project（子優先 deep-merge）。
+# ------------------------------------------------------------
+inherits_project: .cursor/skills/agentic-workflow-foundation
+
+# ------------------------------------------------------------
+# session.* — 本スキル固有値（Phase 1.5 の対話で確定）。
+#   large_task_threshold: 大規模タスク検知の閾値（unified §12 session_planning 由来）。
+#       AskQuestion の数値選択で再確認する。
+#   verification.gate_command: セッション境界ゲートで実行する検証コマンド。
+#       親 quality_gate の流用 or リポジトリ調査 → AskQuestion で確定。
+#       未確定（[要確認]）の間は verification-gate.sh が SKIP（exit 0）する。
+# ------------------------------------------------------------
+session:
+  large_task_threshold:
+    files: 5
+    subtasks: 3
+  verification:
+    gate_command: "[要確認] 例: 親 quality_gate.test_cmd 等"
+
+# ------------------------------------------------------------
+# outputs — 生成対象（Layer 3 セッション管理スキル群 + 検証ゲート）。
+#   mode: render = テンプレート全展開（直接編集は drift）
+#   required_sections: 生成結果に必ず含まれる文字列（設計書準拠の機械検査）。
+#       設計書由来の根拠は references/design-conformance.md を参照。
+# ------------------------------------------------------------
+outputs:
+  - path: .cursor/skills/session-planning/SKILL.md
+    template: skills/session-planning/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-planning"
+      - "## 大規模タスクの検知"
+      - "## パターン選択フロー"
+      - "## 追跡ドキュメント"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/SKILL.md
+    template: skills/session-handover/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-handover"
+      - "## 検証ゲート"
+      - "## リンク衛生"
+      - "## 再開プロトコル"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/scripts/verification-gate.sh
+    template: skills/session-handover/scripts/verification-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "session.verification.gate_command"
+      - "=== verification gate ==="
+  - path: .cursor/skills/decisions-record/SKILL.md
+    template: skills/decisions-record/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: decisions-record"
+      - "D-BOUNDARY"
+      - "Alternatives Considered"
+      - "## Gotchas"

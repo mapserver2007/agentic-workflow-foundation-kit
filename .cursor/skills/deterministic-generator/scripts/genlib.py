@@ -64,6 +64,44 @@ def root_from_skill_dir(skill_dir: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# project 継承（inherits_project）
+# --------------------------------------------------------------------------
+def deep_merge(base, override):
+    """base に override を再帰マージして新しい値を返す（override 優先）。
+
+    両者が dict のときのみ再帰的にキー単位でマージし、それ以外（スカラ / リスト）は
+    override の値で置換する。リストはマージせず置換（設定の意図を素直に反映）。
+    """
+    if isinstance(base, dict) and isinstance(override, dict):
+        result = dict(base)
+        for key, value in override.items():
+            result[key] = deep_merge(result[key], value) if key in result else value
+        return result
+    return override
+
+
+def apply_inherited_project(manifest: dict, skill_dir: str) -> dict:
+    """`inherits_project` があれば親 manifest の `project` を子へマージした manifest を返す。
+
+    - `inherits_project` はリポジトリルートからの親設定スキルディレクトリの相対パス。
+    - 共有 SoT は親の `project.*`、子の `project.*` が上書き（子優先 deep-merge）。
+    - `inherits_project` がなければ manifest をそのまま返す（非破壊）。
+    親 manifest が読めない場合は `YamlError` を送出する（呼び出し側で exit 2 とする）。
+    """
+    parent_rel = manifest.get("inherits_project")
+    if not parent_rel:
+        return manifest
+    root = root_from_skill_dir(skill_dir)
+    parent_manifest_path = os.path.join(root, parent_rel, "manifest.yaml")
+    parent = load_manifest(parent_manifest_path)
+    parent_project = parent.get("project") or {}
+    child_project = manifest.get("project") or {}
+    merged = dict(manifest)
+    merged["project"] = deep_merge(parent_project, child_project)
+    return merged
+
+
+# --------------------------------------------------------------------------
 # 最小 YAML ローダ
 # --------------------------------------------------------------------------
 _MAPPING_RE = re.compile(r"[^\s:#]+:(\s|$)")

@@ -34,8 +34,8 @@ disable-model-invocation: true
 - **`manifest.yaml` → 出力ファイル** は完全決定論（再実行でバイト一致 = 冪等）。AI は生成ループに入らない。
 - **設計書 → `manifest.yaml`** は AI/PO レビュー付きマッピング。`check_design_drift.py` の fingerprint 照合で改版を検知し、manifest 更新を促して同期を保つ。
 - BAS の「Markdown は表現・YAML は定義」パターンに準拠。
-- **生成/監査エンジン（how）は独立スキル [`manifest-generator`](../manifest-generator/SKILL.md) に分離**。本スキルは「what（manifest + templates + 設計書固有ロジック）」を担う設定スキルで、生成・冪等監査の実体は manifest-generator の `generate.py` / `audit.py` を `--skill-dir` 付きで呼び出す（エンジン自体の扱いは「スコープ外」を参照）。
-- **セッション管理スキル（Layer 3 / `create-session-workflow`）の生成を orchestrate する**。基盤メンテと同期して再生成し（親→子）、共有 `project.*` は本スキルの manifest を SoT として子が `inherits_project` で継承する（ADR-0007）。
+- **生成/監査エンジン（how）は独立スキル [`deterministic-generator`](../deterministic-generator/SKILL.md) に分離**。本スキルは「what（manifest + templates + 設計書固有ロジック）」を担う設定スキルで、生成・冪等監査の実体は deterministic-generator の `generate.py` / `audit.py` を `--skill-dir` 付きで呼び出す（エンジン自体の扱いは「スコープ外」を参照）。
+- **セッション管理スキル（Layer 3 / `agentic-session-management`）の生成を orchestrate する**。基盤メンテと同期して再生成し（親→子）、共有 `project.*` は本スキルの manifest を SoT として子が `inherits_project` で継承する（ADR-0007）。
 
 ### 構成ファイル
 
@@ -47,7 +47,7 @@ disable-model-invocation: true
 | `templates/*` | 出力ファイルのテンプレート（`{{path}}` プレースホルダ） |
 | `scripts/check_design_drift.py` | 設計書 fingerprint 照合 → 改版検知 / `--update` で書き戻し（本スキル固有） |
 
-> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`manifest-generator`](../manifest-generator/SKILL.md) が提供する。
+> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`deterministic-generator`](../deterministic-generator/SKILL.md) が提供する。
 > 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
 
 ## ワークフロー（5フェーズ）
@@ -115,7 +115,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 
 **(2) 決定論マッピング（質問不要）**
 
-- `tracking_artifact`: `workflow_pattern` から自動確定する（マッピングの SoT は [`create-session-workflow` パターン別記入ガイド](../create-session-workflow/SKILL.md)）。
+- `tracking_artifact`: `workflow_pattern` から自動確定する（マッピングの SoT は [`agentic-session-management` パターン別記入ガイド](../agentic-session-management/SKILL.md)）。
 
    | workflow_pattern | tracking_artifact |
    | --- | --- |
@@ -133,7 +133,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 
 **確定後**
 
-- 確定値はすべて `agentic-workflow-foundation/manifest.yaml > project.*` に記入する（共有 SoT。子 `create-session-workflow` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
+- 確定値はすべて `agentic-workflow-foundation/manifest.yaml > project.*` に記入する（共有 SoT。子 `agentic-session-management` は `inherits_project` で継承するため記入は親 1 箇所のみ）。
 - 「複合型」になりそうな場合は §8「複合型の場合」のワークスペース分離判断を PO に確認してから主パターンを確定する。
 
 > `tracking_artifact` は追跡ドキュメント（`plan.md` / `playbook.md` / `session_plan.md`）であり、AI 実装レポート（`docs/agent-tasks/reports/`、`create-design-doc` 下流の別工程）とは別物。manifest 初期値の例示パスに引きずられないこと。
@@ -145,7 +145,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
 **2a. 基盤ファイル群（Meta 層）**
 
 ```bash
-python3 .cursor/skills/manifest-generator/scripts/generate.py \
+python3 .cursor/skills/deterministic-generator/scripts/generate.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
 ```
 
@@ -153,11 +153,11 @@ python3 .cursor/skills/manifest-generator/scripts/generate.py \
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトには実行ビットを付与する。
 
-**2b. セッション管理スキル群（Layer 3 / `create-session-workflow`）**
+**2b. セッション管理スキル群（Layer 3 / `agentic-session-management`）**
 
 ```bash
-python3 .cursor/skills/manifest-generator/scripts/generate.py \
-  --skill-dir .cursor/skills/create-session-workflow
+python3 .cursor/skills/deterministic-generator/scripts/generate.py \
+  --skill-dir .cursor/skills/agentic-session-management
 ```
 
 - `session-planning` / `session-handover` / `decisions-record` と検証ゲート雛形を生成する。
@@ -168,17 +168,17 @@ python3 .cursor/skills/manifest-generator/scripts/generate.py \
 2a / 2b の両方を監査する（親 → 子の順）。
 
 ```bash
-python3 .cursor/skills/manifest-generator/scripts/audit.py \
+python3 .cursor/skills/deterministic-generator/scripts/audit.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
-python3 .cursor/skills/manifest-generator/scripts/audit.py \
-  --skill-dir .cursor/skills/create-session-workflow
+python3 .cursor/skills/deterministic-generator/scripts/audit.py \
+  --skill-dir .cursor/skills/agentic-session-management
 ```
 
 - exit 0 → 冪等性 + 設計書準拠 OK（`project.*` の `[要確認]` は WARN 表示だが PASS）。
 - exit 1 → drift / 必須要件欠落 / ファイル不在。**FAIL を修正して Phase 2 から再実行**（Advisory ループ）。
 - exit 2 → テンプレート不在 / manifest 破損。ユーザーに報告して停止。
 
-> 子（`create-session-workflow`）の audit は `inherits_project` 解決後の `project` を検査するため、親由来の共有キー（`workflow_pattern` 等）が未記入なら子の WARN にも列挙される（＝親へ 1 度記入すれば解消する）。
+> 子（`agentic-session-management`）の audit は `inherits_project` 解決後の `project` を検査するため、親由来の共有キー（`workflow_pattern` 等）が未記入なら子の WARN にも列挙される（＝親へ 1 度記入すれば解消する）。
 > 冪等性の最終確認は両 `--skill-dir` で `generate.py ... --check` が exit 0 になることで担保する。
 
 ### Phase 4: 報告
@@ -200,9 +200,9 @@ python3 .cursor/skills/manifest-generator/scripts/audit.py \
 
 ## スコープ外
 
-- **生成/監査エンジン `manifest-generator` 自体の生成**。エンジン（How）は独立スキルで、統一設計書を正本とする自動生成・drift 追跡の対象外（正本はエンジンの工学仕様）。本スキルはそれを `--skill-dir` 付きで**呼び出すだけ**で、エンジンのコードは生成・改修しない。エンジンの改修は `manifest-generator` スキル内のスクリプトを正本として行う。
+- **生成/監査エンジン `deterministic-generator` 自体の生成**。エンジン（How）は独立スキルで、統一設計書を正本とする自動生成・drift 追跡の対象外（正本はエンジンの工学仕様）。本スキルはそれを `--skill-dir` 付きで**呼び出すだけ**で、エンジンのコードは生成・改修しない。エンジンの改修は `deterministic-generator` スキル内のスクリプトを正本として行う。
 - プロジェクト固有の品質ゲートコマンド（`make build` 等）の実装。manifest の空欄として残す。
-- セッション管理スキルの **テンプレート/manifest 定義**（what）は `create-session-workflow` が持つ。本スキルは Phase 2b/3 でその**生成を orchestrate するだけ**で、テンプレート内容は改修しない。
+- セッション管理スキルの **テンプレート/manifest 定義**（what）は `agentic-session-management` が持つ。本スキルは Phase 2b/3 でその**生成を orchestrate するだけ**で、テンプレート内容は改修しない。
 - techstack 由来の `docs/tech-stack.md` **以外** の Domain 層 docs（業務仕様 `docs/spec.md` / API 仕様 `docs/api.md` / curated 目次 `docs/README.md` 等）の生成。これらは下流の doc 生成スキルが実装物から作る。
 
 ## Gotchas

@@ -1,0 +1,25 @@
+#!/bin/bash
+# このファイルは agentic-session-management スキルの生成物。直接編集せず
+# agentic-session-management/manifest.yaml または templates を更新して再生成する。
+#
+# セッション境界ゲート（統一設計書 §9-11 検証スクリプト由来）。
+# 検証コマンドを実行し exit 0/1 を返す薄いラッパー。パターン差（quality_gate.sh /
+# verify_output.py / check_completion.sh）は実行コマンド値で吸収する。
+# 検証コマンドの SoT は agentic-session-management/manifest.yaml > session.verification.gate_command。
+set -euo pipefail
+
+GATE_CMD="{{ session.verification.gate_command }}"
+
+echo "=== verification gate ==="
+
+if [ -z "${GATE_CMD}" ] || printf '%s' "${GATE_CMD}" | grep -q '要確認'; then
+  echo "SKIP: gate_command が未確定です。"
+  echo "      agentic-session-management/manifest.yaml の session.verification.gate_command を"
+  echo "      確定（親 quality_gate の流用 or リポジトリ調査）してから再生成してください。"
+  exit 0
+fi
+
+echo "[run] ${GATE_CMD}"
+eval "${GATE_CMD}"
+
+echo "=== gate passed ==="
