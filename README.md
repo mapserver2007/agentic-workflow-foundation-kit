@@ -12,7 +12,57 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 | **Domain 層**（プロジェクト文書） | `docs/AGENT_RUNBOOK.md` / `docs/QUALITY_GATE.md` / `docs/tech-stack.md` / `docs/DECISIONS.md`（seed）/ `docs/GOTCHAS.md`（seed） 等 |
 | **Layer 3**（セッション管理スキル） | `session-planning` / `session-handover` / `decisions-record` スキルと検証ゲート雛形 |
 
+> **用語の整理**: 上表の **Meta 層 / Domain 層** はドキュメント命名の semantic 2層モデル（大文字 = 判断フレームワーク、小文字 = プロジェクト固有仕様）です。**Layer 1〜5** は別軸の 5層モデル（エージェントの文脈・制約・能力・自動化・委譲）です。Meta 層の成果物は主に Layer 1〜2 と Layer 4 に、Domain 層は主に Layer 1 にマッピングされます。Layer 3 は 5層モデル上の Capabilities 層であり、Meta 層とは別カテゴリです（[ADR-0007](.cursor/skills/agentic-session-management/references/decisions.md)）。
+
 対象プロジェクトに対して Cursor で「Agentic 基盤を生成して」「統一設計書から再生成して」等と依頼すると、[`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキルが 5 フェーズのワークフローを実行します。
+
+## 5層モデル（Layer 1〜5）
+
+[統一設計書 §5](.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md) で定義される 5層モデルは、AI エージェントへのオンボーディングを**ソフトウェア開発プロセス（設計〜QA）のアナロジー**で整理したものです。各層の実装方法の詳細は [§12](.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md) を参照してください。
+
+```
+┌─────────────────────────────────────────
+│  Layer 1: Context（文脈）
+│  プロジェクトの設定ファイル
+│  = 要件定義書・仕様書（What / Why）
+├─────────────────────────────────────────
+│  Layer 2: Constraints（制約）
+│  常時適用されるルール
+│  = コーディング規約・設計ガイドライン
+├─────────────────────────────────────────
+│  Layer 3: Capabilities（能力）
+│  必要時に呼び出されるスキル
+│  = 実装手順書・ランブック・再利用可能モジュール
+├─────────────────────────────────────────
+│  Layer 4: Automation（自動化）
+│  ツール実行前後の自動処理
+│  = CI / 静的解析 / QA ゲート
+├─────────────────────────────────────────
+│  Layer 5: Delegation（委譲）
+│  子エージェントへのタスク委譲
+│  = 並列ワーカー / 専門ビルドジョブ
+└─────────────────────────────────────────
+```
+
+| Layer | 役割 | 開発プロセスのアナロジー | 読み込みタイミング | 本キットが生成する主な成果物 |
+| --- | --- | --- | --- | --- |
+| **1. Context** | プロジェクトの目的・判断基準・セッションプロトコルを定義 | 要件定義書 / 仕様書 / README | セッション開始時に自動 | `AGENTS.md` / `CLAUDE.md` / `docs/AGENT_RUNBOOK.md` / `docs/QUALITY_GATE.md` 等（Meta 層 + Domain 層の文脈ドキュメント） |
+| **2. Constraints** | 全セッションで守るべきルールを宣言的に定義 | コーディング規約 / lint ルール / 設計原則 | セッション開始時に自動 | `.cursor/rules/00-init.mdc` / `01-critical-constraints.mdc` / `02-agent-conduct.mdc` |
+| **3. Capabilities** | トリガー条件に応じて呼び出される専門手順 | 実装手順書 / ランブック / 再利用モジュール | トリガー条件合致時 | `session-planning` / `session-handover` / `decisions-record` スキルと `verification-gate.sh`（`agentic-session-management` が生成） |
+| **4. Automation** | エージェントループの特定タイミングで自動実行 | CI / pre-commit hook / QA ゲート | ツール実行前後・セッション境界 | `.cursor/hooks/*` / `.cursor/hooks.json`（`guard-git-write.sh` / `session-bootstrap.sh` 等） |
+| **5. Delegation** | メインコンテキストを保護し専門タスクを委譲 | 並列ジョブ / 専門ビルドワーカー / レビューボット | 明示的に起動 | **本キットでは生成しない**。Cursor 組み込み Subagent（`explore` / `bash` / `browser`）を優先し、必要時は `.cursor/agents/` を手動追加 |
+
+### 各層の要点
+
+**Layer 1（Context）** — エージェントが「何のために・どう判断するか」を復元する入口。`AGENTS.md` は Cursor の主要 Context ファイルであり、`.cursor/rules` の簡易代替としても機能します。`docs/` 配下は semantic 2層モデルで **Meta 層**（`DECISIONS.md` 等・他プロジェクトでも通用する役割名）と **Domain 層**（`tech-stack.md` 等・プロジェクト固有仕様）に分類されます。
+
+**Layer 2（Constraints）** — 手続きではなく**宣言的な制約のみ**を記述します。ワークフロー手順は Layer 3 スキルに委譲し、ルールからは参照だけにします（Single Source of Truth）。
+
+**Layer 3（Capabilities）** — セッション管理の中核。大規模タスク検知・追跡ドキュメント作成（`session-planning`）、セッション終了時の検証ゲートと引き継ぎ（`session-handover`）、設計判断の ADR 記録（`decisions-record`）を担います。設定スキル `agentic-session-management` が親 `agentic-workflow-foundation` と分離されており、基盤再生成時に親→子の順で同期されます。
+
+**Layer 4（Automation）** — Rules（~80% 遵守）では不十分な制約を Hooks（~100% 遵守）で強制します。例: `beforeShellExecution` で危険な Git 操作をブロック、`sessionStart` でコンテキスト注入、`stop` でセッション境界の検証を促進。
+
+**Layer 5（Delegation）** — 調査・並列処理・レビューなどを子エージェントに委譲し、メインのコンテキストウィンドウを保護します。本キットの生成範囲外ですが、統一設計書では組み込み Subagent の活用を推奨しています。
 
 ## アーキテクチャ
 
