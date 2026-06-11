@@ -7,8 +7,8 @@
   - fingerprint（`sha256_file`）/ スキル・リポジトリルートのパス解決
   - 例外（`YamlError` / `RenderError`）
 
-`generate.py` / `audit.py` / `check_design_drift.py` はすべて本モジュールを共有し、
-同一の解析・描画ロジックで決定論性を担保する。
+`generate.py` / `audit.py`（および設定スキル固有スクリプト）はすべて本モジュールを
+共有し、同一の解析・描画ロジックで決定論性を担保する。
 
 対応する YAML サブセット（manifest.yaml はこの範囲で記述する）:
   - block style のみ（flow `{}` / `[]` 不可）

@@ -47,8 +47,3 @@ secret/
 **/old/
 
 .cursor/plans/
-
-# >>> agentic-foundation managed >>>
-# agentic-workflow-foundation: Context Budget セッション state（コミットしない）
-.cursor/.session/
-# <<< agentic-foundation managed <<<

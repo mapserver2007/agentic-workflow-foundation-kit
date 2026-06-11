@@ -19,30 +19,17 @@ version: 1
 marker_id: agentic-foundation
 
 # ------------------------------------------------------------
-# (1) 設計書 fingerprint — 改版検知の基準（check_design_drift.py が照合）
-#     sha256 は空のままでよい。drift 検知 → PO 承認後に drift スクリプトが書き戻す。
+# (1) 自己完結 SoT 宣言
+#     本 manifest + templates が一次 SoT。統一設計書 unified/bas は本 skill 作成時に
+#     内部化済みの「設計由来メモ（非権威）」であり、生成時に参照しない（drift 機構は撤去）。
+#     技術スタックは techstack 設計書（プロジェクト別ポリシー源）からトップレベル
+#     tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
 # ------------------------------------------------------------
-design_docs:
-  - id: unified
-    path: .cursor/docs/AI_AGENT_UNIFIED_DESIGN.md
-    title: AI Agent 基盤 統一設計書（開発責任者版）
-    doc_version: "3.0"
-    sha256: "2cd3c8b4d71e2993a9311f559a236b7d2f639db1e27b0a49dd3ef9e44032a721"
-  - id: bas
-    path: .cursor/docs/AI_BUSINESS_AGENT_SUITE.md
-    title: AI Business Agent Suite (BAS) 設計体系統合ドキュメント
-    doc_version: "1.0"
-    sha256: "c0d64622f24b638c9e98ce5e0a0b34fd44833368a1c8b743be4a5f73b6ef4222"
-  # techstack は他2種と性質が異なる: Meta 層基盤(AGENTS.md 等)へは焼き込まず、
-  # framework.tech_stack 経由で Domain 層 docs/tech-stack.md を生成する SoT。
-  - id: techstack
-    path: .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md
-    title: Web アプリケーション技術スタック 統一設計書
-    doc_version: "1.0"
-    sha256: "b8681bf8635ff14173b937e60891ea0545aa6bf3ff24a9e13eaf89f7491df55b"
 
 # ------------------------------------------------------------
-# (2) 設計書由来の framework 要件（設計書改版時のみ変更する）
+# (2) framework 要件（自己完結 SoT のフレームワーク定義）
+#     unified/bas 由来の思想を内部化したもの。変更は設計書改版ではなく、本 manifest を
+#     直接編集する設計判断（PO 承認）として行う。
 # ------------------------------------------------------------
 framework:
   naming:
@@ -117,10 +104,16 @@ framework:
       elapsed_min: 90
       prompt_count: 90
       shell_bytes: 5242880
-  # techstack 設計書 §9 由来。Meta 層には焼き込まず Domain 層 docs/tech-stack.md を駆動する。
-  # 別の技術スタックへ差し替える場合は本リストを設計書に合わせて更新し再生成する。
-  tech_stack_note: "下表は技術スタック統一設計書 執筆時点（2026-06）の現行安定版を基準にした方針であり、固定バージョンの宣言ではない。実際の固定は各 package.json / wrangler.jsonc で行う。最終リリースが古く後継があるライブラリは採用しない。"
-  tech_stack:
+# ------------------------------------------------------------
+# (2c) tech_stack — プロジェクト・パラメータ層（per-project 入力 / Phase 1.6 取り込み）
+#   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
+#   ingest_tech_stack.py が techstack 設計書 §9 表を decode し、実 package.json があれば
+#   実態優先でバージョンを上書きして本ブロック（note / items）へ書き戻す。
+#   templates/docs/tech-stack.md.template が tech_stack.note / tech_stack.items を描画する。
+# ------------------------------------------------------------
+tech_stack:
+  note: "下表は本書執筆時点（2026-06）の現行安定版を基準にした方針であり、固定バージョンの宣言ではない。実際の固定は各 package.json / wrangler.jsonc で行う。「最終リリースが古く後継がある」ライブラリは採用しない。"
+  items:
     - layer: "実行基盤"
       technology: "Cloudflare Workers"
       version_policy: "—"
@@ -189,6 +182,18 @@ framework:
       technology: "Turborepo"
       version_policy: "2 系"
       note: "任意"
+
+# ------------------------------------------------------------
+# (2d) session — Layer 3 セッション管理（親へ内包）
+#   session-planning / session-handover / decisions-record は本 manifest の
+#   outputs[] から生成する。project.* は同一 manifest 内の値を直接参照する。
+# ------------------------------------------------------------
+session:
+  large_task_threshold:
+    files: 5
+    subtasks: 3
+  verification:
+    gate_command: "[要確認] 例: project.quality_gate.test_cmd 等"
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
@@ -318,6 +323,40 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
       - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  # Layer 3 セッション管理スキル群（親 manifest に内包）。
+  - path: .cursor/skills/session-planning/SKILL.md
+    template: skills/session-planning/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-planning"
+      - "## 大規模タスクの検知"
+      - "## パターン選択フロー"
+      - "## 追跡ドキュメント"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/SKILL.md
+    template: skills/session-handover/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-handover"
+      - "## 検証ゲート"
+      - "## リンク衛生"
+      - "## 再開プロトコル"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/scripts/verification-gate.sh
+    template: skills/session-handover/scripts/verification-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "session.verification.gate_command"
+      - "=== verification gate ==="
+  - path: .cursor/skills/decisions-record/SKILL.md
+    template: skills/decisions-record/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: decisions-record"
+      - "D-BOUNDARY"
+      - "Alternatives Considered"
+      - "## Gotchas"
   - path: .gitignore
     template: gitignore.block.template
     mode: marker
@@ -340,22 +379,22 @@ project:
   # name から自動導出（小文字化・空白をハイフン化）。PO には問わない
   slug: "[自動導出] name から導出"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
-  one_liner: "3つの統一設計書を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする"
+  one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
   # workflow_pattern から決定論マッピングで自動確定
   tracking_artifact: "[要確認]"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
-  agent_role: "統一設計書(SoT)を manifest 経由で決定論的に符号化し、Agentic Workflow 基盤ファイル群を生成・監査・メンテナンスするエージェント"
+  agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
   # 固定値（PO には問わない）。
   priorities:
-    - "冪等性と Source of Truth 一元化（設計書 → manifest → 出力）を最優先する"
+    - "冪等性と Source of Truth 一元化（manifest → 出力）を最優先する"
     - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
-  # tech_stack は framework.tech_stack（techstack 設計書 §9 由来）へ移管。
-  # PO 記入欄ではなく設計書 SoT を符号化したものとして framework 側で管理する。
+  # tech_stack はトップレベル tech_stack（per-project 入力 / Phase 1.6 取り込み）へ移管。
+  # PO 記入欄ではなくプロジェクト別ポリシー源（techstack 設計書）から取り込む。
   # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
-  # workflow_pattern（ゲート戦略 / 統一設計書 §9-11）× framework.tech_stack（ツール系統 / §16）
+  # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）
   # から導出する。固定スタック(pnpm/Turborepo/Vitest)の開発型は pnpm build/lint/test を既定とし、
   # 実リポジトリ(package.json/Makefile 等)があればその実コマンドを優先(上書き)する。
   # 導出も実証拠も無い例外時のみ「該当なし」とし quality_gate を設定しない(推測で断定しない)。
@@ -376,9 +415,9 @@ project:
       - "git commit / push などの履歴操作"
     # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）。
     never_extra:
-      - "統一設計書(.cursor/docs/*)を手元で改変する（SoT は private リポジトリ）"
+      - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
   # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
   doc_navigation:
     domain:
       - path: "docs/tech-stack.md"
-        desc: "技術スタック方針（framework.tech_stack 由来の Domain 層サマリ・生成物）"
+        desc: "技術スタック方針（tech_stack 由来の Domain 層サマリ・生成物）"

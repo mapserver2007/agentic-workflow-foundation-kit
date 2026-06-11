@@ -1,9 +1,4 @@
 secret/*.yaml
-# >>> agentic-foundation managed >>>
-# agentic-workflow-foundation: セッション state を AI コンテキストから除外
-.cursor/.session/
-# <<< agentic-foundation managed <<<
-
 # Python bytecode（AI コンテキスト不要）
 __pycache__/
 *.py[cod]

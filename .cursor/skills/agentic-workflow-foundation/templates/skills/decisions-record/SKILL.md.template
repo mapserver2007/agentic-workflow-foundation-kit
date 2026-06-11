@@ -1,0 +1,76 @@
+---
+name: decisions-record
+description: >-
+  Agentic Workflow 利用先アプリケーションで、設計次元 D-* に該当する判断を
+  docs/DECISIONS.md へ ADR として記録する。
+disable-model-invocation: true
+---
+
+# decisions-record
+
+設計判断を `docs/DECISIONS.md` に ADR として残すためのスキル。
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+
+## 起票対象
+
+次の設計次元 D-* に該当する判断のみ ADR 化する。
+
+{{#each framework.design_dimensions}}- `{{this.id}}`: {{this.desc}}
+{{/each}}
+
+軽微な実装変更、コメント修正、未出荷ブランチ内の単純な作り直しは ADR 対象外。
+
+## 記録手順
+
+1. 判断の背景と制約を確認する
+2. 採用案を1つ明確にする
+3. Alternatives Considered を最低1つ書く
+4. 影響するファイル/境界/品質ゲートを記録する
+5. `docs/DECISIONS.md` に追記する
+
+## ADR テンプレート
+
+```markdown
+## ADR-XXXX: {title}
+
+- Date: YYYY-MM-DD
+- Status: Accepted
+- Significance: D-*
+
+### Context
+
+{背景・制約}
+
+### Decision
+
+{決定内容}
+
+### Alternatives Considered
+
+- {代替案}: {採用しなかった理由}
+
+### Consequences
+
+{影響・フォローアップ}
+```
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+
+### 起票トリガー
+
+1. 重要判断がチャットだけに残った
+2. ADR 対象外の軽微変更まで記録し過ぎた
+3. Alternatives Considered がなく判断理由が復元できなかった
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec/runbookリンク}
+```
+
+### エントリ
+
+(現時点のエントリは無し)

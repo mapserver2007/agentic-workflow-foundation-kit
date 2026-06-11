@@ -2,7 +2,7 @@
 
 AI エージェント（Cursor Agent 等）を開発プロジェクトに組み込むための**基盤ファイル群を、設計書から決定論的に生成・メンテナンスする**ツールキットです。
 
-統一設計書（Source of Truth）を YAML 正本（`manifest.yaml`）に符号化し、Python ジェネレータで `AGENTS.md`・Cursor Rules・Hooks・ドキュメント一式を**冪等・再現的**に出力します。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
+**自己完結した YAML 正本（`manifest.yaml`）+ テンプレート**を Source of Truth とし、Python ジェネレータで `AGENTS.md`・Cursor Rules・Hooks・ドキュメント一式を**冪等・再現的**に出力します。フレームワークの思想（旧 `AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md`）はスキル作成時に manifest + テンプレートへ内部化済みで、生成時に設計書を参照しません。技術スタックのみプロジェクト毎に変動するため、`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を実行時入力として動的に取り込みます。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
 
 ## 何ができるか
 
@@ -14,7 +14,7 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 > **用語の整理**: 上表の **Meta 層 / Domain 層** はドキュメント命名の semantic 2層モデル（大文字 = 判断フレームワーク、小文字 = プロジェクト固有仕様）です。**Layer 1〜5** は別軸の 5層モデル（エージェントの文脈・制約・能力・自動化・委譲）です。Meta 層の成果物は主に Layer 1〜2 と Layer 4 に、Domain 層は主に Layer 1 にマッピングされます。Layer 3 は 5層モデル上の Capabilities 層であり、Meta 層とは別カテゴリです。
 
-対象プロジェクトに対して Cursor で「Agentic 基盤を生成して」「統一設計書から再生成して」等と依頼すると、[`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキルが 5 フェーズのワークフローを実行します。
+対象プロジェクトに対して Cursor で「Agentic 基盤を生成して」「基盤ファイルを作って/更新して」等と依頼すると、[`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキルがワークフローを実行します。
 
 ## 5層モデル（Layer 1〜5）
 
@@ -48,7 +48,7 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 | --- | --- | --- | --- | --- |
 | **1. Context** | プロジェクトの目的・判断基準・セッションプロトコルを定義 | 要件定義書 / 仕様書 / README | セッション開始時に自動 | `AGENTS.md` / `CLAUDE.md` / `docs/AGENT_RUNBOOK.md` / `docs/QUALITY_GATE.md` 等（Meta 層 + Domain 層の文脈ドキュメント） |
 | **2. Constraints** | 全セッションで守るべきルールを宣言的に定義 | コーディング規約 / lint ルール / 設計原則 | セッション開始時に自動 | `.cursor/rules/00-init.mdc` / `01-critical-constraints.mdc` / `02-agent-conduct.mdc` |
-| **3. Capabilities** | トリガー条件に応じて呼び出される専門手順 | 実装手順書 / ランブック / 再利用モジュール | トリガー条件合致時 | `session-planning` / `session-handover` / `decisions-record` スキルと `verification-gate.sh`（`agentic-session-management` が生成） |
+| **3. Capabilities** | トリガー条件に応じて呼び出される専門手順 | 実装手順書 / ランブック / 再利用モジュール | トリガー条件合致時 | `session-planning` / `session-handover` / `decisions-record` スキルと `verification-gate.sh`（`agentic-workflow-foundation` が生成） |
 | **4. Automation** | エージェントループの特定タイミングで自動実行 | CI / pre-commit hook / QA ゲート | ツール実行前後・セッション境界 | `.cursor/hooks/*` / `.cursor/hooks.json`（`guard-git-write.sh` / `session-bootstrap.sh` 等） |
 | **5. Delegation** | メインコンテキストを保護し専門タスクを委譲 | 並列ジョブ / 専門ビルドワーカー / レビューボット | 明示的に起動 | **本キットでは生成しない**。Cursor 組み込み Subagent（`explore` / `bash` / `browser`）を優先し、必要時は `.cursor/agents/` を手動追加 |
 
@@ -58,7 +58,7 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 **Layer 2（Constraints）** — 手続きではなく**宣言的な制約のみ**を記述します。ワークフロー手順は Layer 3 スキルに委譲し、ルールからは参照だけにします（Single Source of Truth）。
 
-**Layer 3（Capabilities）** — セッション管理の中核。大規模タスク検知・追跡ドキュメント作成（`session-planning`）、セッション終了時の検証ゲートと引き継ぎ（`session-handover`）、設計判断の ADR 記録（`decisions-record`）を担います。設定スキル `agentic-session-management` が親 `agentic-workflow-foundation` と分離されており、基盤再生成時に親→子の順で同期されます。
+**Layer 3（Capabilities）** — セッション管理の中核。大規模タスク検知・追跡ドキュメント作成（`session-planning`）、セッション終了時の検証ゲートと引き継ぎ（`session-handover`）、設計判断の ADR 記録（`decisions-record`）を担います。これらの生成定義は `agentic-workflow-foundation` に内包され、基盤再生成時に Meta / Domain 層と同時に同期されます。
 
 **Layer 4（Automation）** — Rules（~80% 遵守）では不十分な制約を Hooks（~100% 遵守）で強制します。例: `beforeShellExecution` で危険な Git 操作をブロック、`sessionStart` でコンテキスト注入、`stop` でセッション境界の検証を促進。
 
@@ -68,18 +68,11 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  3つの統一設計書（SoT）                                            │
-│  .cursor/docs/AI_AGENT_UNIFIED_DESIGN.md                        │
-│  .cursor/docs/AI_BUSINESS_AGENT_SUITE.md                        │
-│  .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md                │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ AI + PO レビュー（改版時）
-                           │ fingerprint 照合（drift 検知）
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  設定スキル（What）— manifest.yaml + templates/                  │
-│  ├ agentic-workflow-foundation  （Meta 層 + Domain 層）          │
-│  └ agentic-session-management   （Layer 3、親 project.* 継承）  │
+│  設定スキル（What・自己完結 SoT）— manifest.yaml + templates/    │
+│  └ agentic-workflow-foundation  （Meta 層 + Domain 層 + Layer 3）│
+│                                                                 │
+│  ＊ unified/bas の思想は manifest+templates へ内部化済み（非権威の由来メモ）│
+│  ＊ TECHNOLOGY_STACK_UNIFIED_DESIGN.md のみ実行時に取り込み（Phase 1.6）│
 └──────────────────────────┬──────────────────────────────────────┘
                            │ 100% 決定論
                            ▼
@@ -94,10 +87,10 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 **What / How の分離**が中核です。
 
-- **What（設定スキル）**: 設計書の意図を `manifest.yaml` と `templates/` に符号化する
+- **What（設定スキル）**: フレームワーク定義を `manifest.yaml` と `templates/` に保持する自己完結 SoT
 - **How（生成エンジン）**: `deterministic-generator` が `--skill-dir` 付きで決定論的に変換・監査する
 
-設計書 → manifest のマッピングは AI と PO のレビューを伴いますが、**manifest → 出力ファイルは AI を介さずバイト一致で再現**されます（BAS の「Markdown は表現・YAML は定義」パターン）。
+**manifest → 出力ファイルは AI を介さずバイト一致で再現**されます（BAS の「Markdown は表現・YAML は定義」パターン）。技術スタックは `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を実行時に決定論パースして `manifest.tech_stack` へ取り込み（実 `package.json` があれば実態優先）、`docs/tech-stack.md` を生成します。
 
 ## リポジトリ構成
 
@@ -107,27 +100,22 @@ agentic-workflow-foundation-kit/
 ├── LICENSE                            # Apache License 2.0
 │
 └── .cursor/
-    ├── docs/                          # 統一設計書（同期先・SoT）
+    ├── docs/                          # unified/bas=非権威の設計由来メモ / techstack=取り込み元ポリシー源
     │   ├── AI_AGENT_UNIFIED_DESIGN.md
     │   ├── AI_BUSINESS_AGENT_SUITE.md
     │   └── TECHNOLOGY_STACK_UNIFIED_DESIGN.md
     │
-    ├── mcp.json                       # GitHub MCP（設計書同期用）
+    ├── mcp.json                       # GitHub MCP（任意・レガシー同期用）
     │
     └── skills/
-        ├── agentic-workflow-foundation/   # 親設定スキル（Meta + Domain 層）
-        │   ├── SKILL.md                   # ワークフロー定義（5 フェーズ）
-        │   ├── manifest.yaml              # YAML 正本（framework.* / project.* / outputs）
-        │   ├── templates/                 # 出力テンプレート
-        │   ├── references/                # 設計書トレーサビリティ
+        ├── agentic-workflow-foundation/   # 設定スキル（Meta + Domain 層 + Layer 3）
+        │   ├── SKILL.md                   # ワークフロー定義
+        │   ├── manifest.yaml              # YAML 正本（framework.* / tech_stack / session.* / project.* / outputs）
+        │   ├── templates/                 # 出力テンプレート（skills/session-* も含む）
+        │   ├── references/                # SoT トレーサビリティ
         │   └── scripts/
-        │       └── check_design_drift.py  # 設計書 fingerprint 照合
-        │
-        ├── agentic-session-management/    # 子設定スキル（Layer 3）
-        │   ├── SKILL.md
-        │   ├── manifest.yaml              # inherits_project で親 project.* を継承
-        │   ├── templates/skills/          # セッション管理スキル用テンプレート
-        │   └── references/
+        │       ├── ingest_tech_stack.py            # techstack §9 → manifest.tech_stack 取り込み（Phase 1.6）
+        │       └── check_tech_stack_conformance.py # policy↔reality 整合ゲート（Phase 1.7）
         │
         ├── deterministic-generator/       # 生成/監査エンジン（How）
         │   ├── SKILL.md
@@ -146,43 +134,35 @@ agentic-workflow-foundation-kit/
 
 | スキル | 種別 | 役割 |
 | --- | --- | --- |
-| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 設定（What） | Meta 層・Domain 層の基盤一式を生成。`project.*` の共有 SoT を持つ |
-| [`agentic-session-management`](.cursor/skills/agentic-session-management/SKILL.md) | 設定（What） | セッション管理スキル群（Layer 3）を生成。親から `project.*` を継承 |
+| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 設定（What） | Meta 層・Domain 層・Layer 3 セッション管理スキル群を生成。`project.*` / `session.*` の SoT を持つ |
 | [`deterministic-generator`](.cursor/skills/deterministic-generator/SKILL.md) | エンジン（How） | `manifest.yaml` + `templates/` から出力を決定論的に生成・監査 |
 | [`sync-ai-agent-unified-design`](.cursor/skills/sync-ai-agent-unified-design/SKILL.md) | 同期 | private リポジトリから 3 つの統一設計書を `.cursor/docs/` へ取得 |
 
 ## 生成ワークフロー（概要）
 
-`agentic-workflow-foundation` は次の順序で実行します。
+`agentic-workflow-foundation` は次の順序で実行します（外部設計書の同期・drift 照合は廃止）。
 
-1. **Phase 0** — 統一設計書の同期と fingerprint 照合（`check_design_drift.py`）
-2. **Phase 1** — 設計書改版時のみ `manifest.yaml` を更新（PO 承認）
-3. **Phase 1.5** — プロジェクト設定（`project.*`）を対話で確定（`AskQuestion` / 自由入力）
-4. **Phase 2** — 生成（親 → 子の順）
-   - 2a: `agentic-workflow-foundation`（Meta + Domain 層）
-   - 2b: `agentic-session-management`（Layer 3）
-5. **Phase 3** — 監査ゲート（`audit.py`、親 → 子）
-6. **Phase 4** — 報告
+1. **Phase 1** — フレームワーク定義（`framework.*`）を変更する場合のみ `manifest.yaml` を直接編集（人手起点・PO 承認）
+2. **Phase 1.5** — プロジェクト設定（`project.*`）を対話で確定（`AskQuestion`、実質 `workflow_pattern` のみ）
+3. **Phase 1.6** — techstack 設計書を取り込み（`ingest_tech_stack.py` → `manifest.tech_stack`）
+4. **Phase 1.7** — techstack 整合ゲート（`check_tech_stack_conformance.py`、policy↔reality）
+5. **Phase 2** — 生成（`agentic-workflow-foundation`。Meta + Domain + Layer 3 を同時生成）
+6. **Phase 3** — 監査ゲート（`audit.py`）
+7. **Phase 4** — 報告
 
 ### 手動実行例
 
 ```bash
-# 設計書の改版検知
-python3 .cursor/skills/agentic-workflow-foundation/scripts/check_design_drift.py
+# techstack の取り込み（manifest.tech_stack へ書き戻し）
+python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 
-# Meta + Domain 層の生成
+# Meta + Domain + Layer 3 の生成
 python3 .cursor/skills/deterministic-generator/scripts/generate.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
-
-# Layer 3 セッション管理スキルの生成
-python3 .cursor/skills/deterministic-generator/scripts/generate.py \
-  --skill-dir .cursor/skills/agentic-session-management
 
 # 監査（冪等性 + 必須要件）
 python3 .cursor/skills/deterministic-generator/scripts/audit.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
-python3 .cursor/skills/deterministic-generator/scripts/audit.py \
-  --skill-dir .cursor/skills/agentic-session-management
 ```
 
 ## 設計上の重要な原則
@@ -191,15 +171,15 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 
 変更は必ず `manifest.yaml` または `templates/` を編集し、再生成します。生成物の直接編集は `audit.py` が drift として検出します（exit 1）。
 
-### 3 つの統一設計書
+### 3 つの統一設計書の扱い（揮発性で二分）
 
-| ID | ファイル | 主な用途 |
+| ID | ファイル | 扱い |
 | --- | --- | --- |
-| `unified` | `AI_AGENT_UNIFIED_DESIGN.md` | 5 層モデル・セッション管理・Skill/Rule/Hook 仕様 |
-| `bas` | `AI_BUSINESS_AGENT_SUITE.md` | BAS 行動規律（Humble / Cautious / Thorough / Selective） |
-| `techstack` | `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | 技術スタック方針 → `docs/tech-stack.md`（Domain 層） |
+| `unified` | `AI_AGENT_UNIFIED_DESIGN.md` | **凍結・非権威の設計由来メモ**。思想は manifest+templates に内部化済み（生成時に参照しない） |
+| `bas` | `AI_BUSINESS_AGENT_SUITE.md` | 同上（BAS 行動規律 Humble / Cautious / Thorough / Selective を内部化済み） |
+| `techstack` | `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | **プロジェクト毎に変動する実行時入力**。Phase 1.6 で `manifest.tech_stack` へ取り込み → `docs/tech-stack.md`（Domain 層）を駆動 |
 
-`techstack` は Meta 層へ焼き込まず、`framework.tech_stack` 経由で Domain 層 `docs/tech-stack.md` を駆動します。
+`unified`/`bas` は凍結前提のため自己完結 SoT（manifest+templates）へ内部化し、drift 照合・外部同期は廃止しました。`techstack` のみ変動するため実行時に決定論パースで取り込み、実 `package.json` があれば実態優先で上書きします。
 
 ### ワークフローパターン
 
@@ -215,7 +195,8 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 
 - **Python 3**（標準ライブラリのみ。PyYAML 不要）
 - **jq**（Hook 実行時を推奨。未インストール時はフェイルオープン）
-- **設計書同期**（初回）: `sync-ai-agent-unified-design` 用に GitHub 認証（Fine-grained PAT を `.env` の `GITHUB_TOKEN` に設定）と Docker（MCP 経路）
+- **techstack 設計書**: `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` をプロジェクトのポリシーに合わせて用意（Phase 1.6 の取り込み元。不在時は fail-open）
+- **（任意・レガシー）設計書同期**: `sync-ai-agent-unified-design` は基盤生成の必須経路ではなくなりました（unified/bas は内部化済み）。利用する場合のみ GitHub 認証 + Docker が必要
 
 詳細は各スキルの `SKILL.md` を参照してください。
 

@@ -1,0 +1,73 @@
+---
+name: session-handover
+description: >-
+  セッション終了・中断・文脈圧縮前に、検証ゲートを実行し、handover を作成/更新する。
+  再開時に作業状態・未解決事項・次アクションを復元できるようにする。
+disable-model-invocation: true
+---
+
+# session-handover
+
+セッション終了時の検証・要約・再開準備を扱うスキル。
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+
+## 検証ゲート
+
+セッション終了前に、可能な範囲で次を確認する。
+
+- 変更内容と未完了作業が追跡ドキュメント（`{{project.tracking_artifact}}`）に反映されている
+- 実行可能な品質ゲートを実行した
+- 実行できなかったゲートは理由を記録した
+
+既定の検証コマンド:
+
+```bash
+{{session.verification.gate_command}}
+```
+
+補助スクリプト:
+
+```bash
+.cursor/skills/session-handover/scripts/verification-gate.sh
+```
+
+## リンク衛生
+
+handover には、次セッションが参照すべき一次情報へのリンクを残す。
+
+- 追跡ドキュメント
+- 変更した主要ファイル
+- 仕様/設計/判断の根拠
+- 実行した検証コマンドと結果
+- 失敗・未実行・判断待ちの事項
+
+## 再開プロトコル
+
+再開時は以下を上から確認する。
+
+1. handover の最新状態を読む
+2. `{{project.tracking_artifact}}` の未完了タスクを確認する
+3. git status と差分を確認し、ユーザー変更を壊さない
+4. 直近の検証結果を確認し、必要なら最小ゲートを再実行する
+5. 次アクションを1つに絞って再開する
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+
+### 起票トリガー
+
+1. handover が古く再開に使えなかった
+2. 検証未実行なのに完了扱いした
+3. ユーザー変更と自分の変更を混同した
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec/runbookリンク}
+```
+
+### エントリ
+
+(現時点のエントリは無し)

@@ -1,0 +1,68 @@
+---
+name: session-planning
+description: >-
+  大規模タスク開始時に、作業をセッション単位へ分割し、追跡ドキュメント
+  （{{project.tracking_artifact}}）を作成/更新する。{{session.large_task_threshold.files}}ファイル以上、
+  または{{session.large_task_threshold.subtasks}}サブタスク以上に広がるタスクで使う。
+disable-model-invocation: true
+---
+
+# session-planning
+
+大規模タスクを開始する前に、セッション境界・追跡ドキュメント・検証方針を明確にするスキル。
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+
+## 大規模タスクの検知
+
+次のいずれかに該当する場合、このスキルを使う。
+
+- 変更対象が {{session.large_task_threshold.files}} ファイル以上に広がる
+- サブタスクが {{session.large_task_threshold.subtasks}} 個以上ある
+- 仕様確認、実装、検証、文書更新が複数セッションにまたがる見込みがある
+- 中断/再開時に文脈欠落のリスクが高い
+
+## パターン選択フロー
+
+現在の `workflow_pattern` は `{{project.workflow_pattern}}`。
+
+| workflow_pattern | 追跡ドキュメント | 用途 |
+| --- | --- | --- |
+| 開発型 | `plan.md` | 実装・テスト・リリースに向けた作業分解 |
+| パイプライン型 | `playbook.md` | データ/自動化/バッチ処理の手順と検証 |
+| ドキュメント型 | `session_plan.md` | 設計/文書作成の完了条件とレビュー観点 |
+
+`workflow_pattern` が未確定の場合は、親 `agentic-workflow-foundation` の Phase 1.5 で先に確定する。
+
+## 追跡ドキュメント
+
+既定の追跡ドキュメントは `{{project.tracking_artifact}}`。
+
+追跡ドキュメントには次を残す。
+
+- 目的と完了条件
+- スコープ内 / スコープ外
+- タスク分解
+- 検証ゲート
+- 未解決の判断事項
+- 次セッションへの引き継ぎ条件
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+
+### 起票トリガー
+
+1. セッション分割なしで文脈欠落が発生した
+2. 追跡ドキュメントと実作業が乖離した
+3. 再開時に次アクションが不明瞭だった
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec/runbookリンク}
+```
+
+### エントリ
+
+(現時点のエントリは無し)
