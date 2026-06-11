@@ -38,7 +38,7 @@
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
-閾値を変更する場合は manifest を編集し `python3 .cursor/skills/agentic-workflow-foundation/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+閾値を変更する場合は manifest を編集し `python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
 ## ユーザーが実際にやること
 

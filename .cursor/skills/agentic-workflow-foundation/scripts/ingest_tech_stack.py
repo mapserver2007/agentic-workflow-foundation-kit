@@ -11,7 +11,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SKILL_DIR)))
-GENLIB_DIR = os.path.join(ROOT, ".cursor", "skills", "deterministic-generator", "scripts")
+GENLIB_DIR = os.path.join(ROOT, ".cursor", "skills", "agentic-workflow-engine", "scripts")
 if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
 

@@ -42,7 +42,7 @@ Agentic Workflow 基盤ファイル群を、**自己完結した `manifest.yaml`
 - **`manifest.yaml` → 出力ファイル** は完全決定論（再実行でバイト一致 = 冪等）。AI は生成ループに入らない。
 - **`manifest.yaml` / `templates/` が一次 SoT**。過去の unified/bas 設計書は歴史的根拠であり、実行時の必須入力ではない。
 - **techstack は per-project パラメータ**。`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読み、`manifest.tech_stack` を更新する。実 `package.json` / `wrangler.jsonc` があれば実態を優先する。
-- **生成/監査エンジン（how）は独立スキル [`deterministic-generator`](../deterministic-generator/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
+- **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
@@ -56,7 +56,7 @@ Agentic Workflow 基盤ファイル群を、**自己完結した `manifest.yaml`
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → `manifest.tech_stack` 取り込み |
 | `scripts/check_tech_stack_conformance.py` | `manifest.tech_stack` と `package.json` の意味的整合チェック |
 
-> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`deterministic-generator`](../deterministic-generator/SKILL.md) が提供する。
+> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。
 > 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
 
 ## ワークフロー（6フェーズ）
@@ -158,7 +158,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 基盤一式と session 系3スキルを **単一の親 manifest** から生成する。
 
 ```bash
-python3 .cursor/skills/deterministic-generator/scripts/generate.py \
+python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
 ```
 
@@ -172,7 +172,7 @@ python3 .cursor/skills/deterministic-generator/scripts/generate.py \
 親 skill-dir だけを監査する。session 系出力も親 `outputs[]` に含まれる。
 
 ```bash
-python3 .cursor/skills/deterministic-generator/scripts/audit.py \
+python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation
 ```
 
@@ -183,7 +183,7 @@ python3 .cursor/skills/deterministic-generator/scripts/audit.py \
 冪等性の最終確認は次でも確認できる。
 
 ```bash
-python3 .cursor/skills/deterministic-generator/scripts/generate.py \
+python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
   --skill-dir .cursor/skills/agentic-workflow-foundation \
   --check
 ```
@@ -210,7 +210,7 @@ python3 .cursor/skills/deterministic-generator/scripts/generate.py \
 
 ## スコープ外
 
-- **生成/監査エンジン `deterministic-generator` 自体の生成**。エンジン（How）は独立スキルで、本スキルは `--skill-dir` 付きで呼び出すだけ。
+- **生成/監査エンジン `agentic-workflow-engine` 自体の生成**。エンジン（How）は独立スキルで、本スキルは `--skill-dir` 付きで呼び出すだけ。
 - プロジェクト固有の業務仕様 docs（`docs/spec.md` / `docs/api.md` / curated 目次等）の生成。
 - feature 単位の Design Doc 作成。
 - unified/bas の動的再同期・fingerprint drift 追跡。

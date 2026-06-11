@@ -1,5 +1,5 @@
 ---
-name: deterministic-generator
+name: agentic-workflow-engine
 description: >-
   Agentic Workflow 基盤の「生成/監査エンジン（How）」。設定スキル（`agentic-workflow-foundation` 等）の
   `manifest.yaml` + `templates/` から出力ファイルを
@@ -12,7 +12,7 @@ description: >-
 disable-model-invocation: true
 ---
 
-# deterministic-generator
+# agentic-workflow-engine
 
 Agentic Workflow 基盤の **生成/監査エンジン（How）** を提供する独立スキル。設定スキル（What）が持つ `manifest.yaml`（YAML 正本）と `templates/` から、出力ファイル群を **100% 決定論的**に生成・監査する。
 
@@ -63,13 +63,13 @@ Agentic Workflow 基盤の **生成/監査エンジン（How）** を提供す�
 
 ```bash
 # 生成（親 → 子の順で設定スキルごとに実行）
-python3 .cursor/skills/deterministic-generator/scripts/generate.py --skill-dir <config-skill-dir>
+python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py --skill-dir <config-skill-dir>
 
 # 冪等性ドライラン
-python3 .cursor/skills/deterministic-generator/scripts/generate.py --skill-dir <config-skill-dir> --check
+python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py --skill-dir <config-skill-dir> --check
 
 # 監査（冪等性 + 必須要件）
-python3 .cursor/skills/deterministic-generator/scripts/audit.py --skill-dir <config-skill-dir>
+python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py --skill-dir <config-skill-dir>
 ```
 
 ## exit code（QUALITY_GATE 3段階に準拠）

@@ -4,7 +4,7 @@
 >
 > `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` は per-project 入力として Phase 1.6 で `manifest.tech_stack` へ取り込む。生成対象の SoT は取り込み後の `manifest.yaml`。
 >
-> **対象外**: 生成/監査エンジン `deterministic-generator`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
+> **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
 ## 参照文書の位置づけ
 

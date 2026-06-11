@@ -40,7 +40,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 ## しきい値設定（Context Budget Protocol）
 
 しきい値の SoT は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > framework.budget_thresholds`。
-変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-foundation/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
 現行値:
 

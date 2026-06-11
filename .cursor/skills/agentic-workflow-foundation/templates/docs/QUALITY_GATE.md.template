@@ -79,7 +79,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-foundation/scripts/audit.py
+python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足
