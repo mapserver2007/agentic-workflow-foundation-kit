@@ -41,7 +41,7 @@ Agentic Workflow 基盤ファイル群を、**自己完結した `manifest.yaml`
 
 - **`manifest.yaml` → 出力ファイル** は完全決定論（再実行でバイト一致 = 冪等）。AI は生成ループに入らない。
 - **`manifest.yaml` / `templates/` が一次 SoT**。過去の unified/bas 設計書は歴史的根拠であり、実行時の必須入力ではない。
-- **techstack は per-project パラメータ**。`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読み、`manifest.tech_stack` を更新する。実 `package.json` / `wrangler.jsonc` があれば実態を優先する。
+- **techstack は per-project パラメータ**。配布時点の `manifest.tech_stack` は未取り込みのプレーン状態に保ち、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで具体値を更新する。実 `package.json` / `wrangler.jsonc` があれば実態を優先する。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
@@ -140,6 +140,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 - 設計書が無い場合は WARN でスキップし、既存 `manifest.tech_stack` を維持する。
 - `package.json` / `wrangler.jsonc` がある場合は、実固定バージョンを優先して `version_policy` を上書きする。
 - 生成前の `docs/tech-stack.md` は存在しなくてよい。ここで更新するのは生成元データ `manifest.tech_stack`。
+- 配布元の `manifest.tech_stack` には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書 + 実 `package.json`）から決まる。
 
 ### Phase 1.7: techstack 整合ゲート
 

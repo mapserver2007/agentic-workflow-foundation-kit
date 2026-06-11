@@ -47,3 +47,5 @@ secret/
 **/old/
 
 .cursor/plans/
+.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md
+.cursor/docs/AI_BUSINESS_AGENT_SUITE.md

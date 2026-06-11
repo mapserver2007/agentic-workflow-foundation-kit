@@ -107,81 +107,14 @@ framework:
 # ------------------------------------------------------------
 # (2c) tech_stack — プロジェクト・パラメータ層（per-project 入力 / Phase 1.6 取り込み）
 #   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
+#   配布時点では具体スタックを焼き込まず、プレーンな未取り込み状態を保持する。
 #   ingest_tech_stack.py が techstack 設計書 §9 表を decode し、実 package.json があれば
 #   実態優先でバージョンを上書きして本ブロック（note / items）へ書き戻す。
 #   templates/docs/tech-stack.md.template が tech_stack.note / tech_stack.items を描画する。
 # ------------------------------------------------------------
 tech_stack:
-  note: "下表は本書執筆時点（2026-06）の現行安定版を基準にした方針であり、固定バージョンの宣言ではない。実際の固定は各 package.json / wrangler.jsonc で行う。「最終リリースが古く後継がある」ライブラリは採用しない。"
+  note: "未取り込み。Phase 1.6 で .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md の §9 技術スタック表を取り込むと、プロジェクト固有の方針に置き換わる。"
   items:
-    - layer: "実行基盤"
-      technology: "Cloudflare Workers"
-      version_policy: "—"
-      note: "`workerd` ランタイム"
-    - layer: "デプロイ CLI"
-      technology: "Wrangler"
-      version_policy: "v4 系"
-      note: "OpenNext 利用時は 3.99.0 以上必須、実質 v4 推奨"
-    - layer: "Frontend"
-      technology: "Next.js"
-      version_policy: "15 / 16 系"
-      note: "14 は OpenNext 側で 2026 Q1 にサポート終了"
-    - layer: "Next.js アダプタ"
-      technology: "`@opennextjs/cloudflare`"
-      version_policy: "1.x 系（GA）"
-      note: "公式推奨。`next-on-pages` は不採用"
-    - layer: "Backend"
-      technology: "Hono"
-      version_policy: "4 系"
-      note: "Workers ネイティブ"
-    - layer: "API 定義"
-      technology: "OpenAPI"
-      version_policy: "3.1"
-      note: "JSON Schema 2020-12 準拠"
-    - layer: "OpenAPI lint"
-      technology: "Spectral"
-      version_policy: "6 系"
-      note: "ルールセットをリポジトリで管理"
-    - layer: "OpenAPI bundle/diff"
-      technology: "Redocly CLI"
-      version_policy: "1 系"
-      note: "`bundle` / `lint` / breaking diff"
-    - layer: "型生成"
-      technology: "openapi-typescript"
-      version_policy: "7 系"
-      note: "OpenAPI 3.1 対応"
-    - layer: "フロント client"
-      technology: "openapi-fetch"
-      version_policy: "0.x（安定）"
-      note: "メンテナンスモードだが本番安定"
-    - layer: "データ取得統合"
-      technology: "openapi-react-query"
-      version_policy: "0.x"
-      note: "TanStack Query 統合（任意）"
-    - layer: "自動生成 client（代替）"
-      technology: "Orval"
-      version_policy: "7 系"
-      note: "React Query/SWR フックを自動生成したい場合の代替"
-    - layer: "Mock"
-      technology: "Prism"
-      version_policy: "5 系"
-      note: "OpenAPI モックサーバー（3.1 は一部制約あり）"
-    - layer: "契約テスト"
-      technology: "Vitest + `@cloudflare/vitest-pool-workers`"
-      version_policy: "—"
-      note: "`workerd` 上でテスト実行"
-    - layer: "ランタイム言語"
-      technology: "TypeScript"
-      version_policy: "5 系"
-      note: "strict"
-    - layer: "パッケージ管理"
-      technology: "pnpm"
-      version_policy: "9 系以降"
-      note: "workspace"
-    - layer: "タスク管理"
-      technology: "Turborepo"
-      version_policy: "2 系"
-      note: "任意"
 
 # ------------------------------------------------------------
 # (2d) session — Layer 3 セッション管理（親へ内包）
@@ -395,13 +328,13 @@ project:
   # PO 記入欄ではなくプロジェクト別ポリシー源（techstack 設計書）から取り込む。
   # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
   # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）
-  # から導出する。固定スタック(pnpm/Turborepo/Vitest)の開発型は pnpm build/lint/test を既定とし、
-  # 実リポジトリ(package.json/Makefile 等)があればその実コマンドを優先(上書き)する。
+  # から導出する。実リポジトリ(package.json/Makefile 等)にコマンドがあれば、
+  # その実コマンドを優先(上書き)する。
   # 導出も実証拠も無い例外時のみ「該当なし」とし quality_gate を設定しない(推測で断定しない)。
   quality_gate:
-    build_cmd: "[要確認] 例: pnpm build"
-    lint_cmd: "[要確認] 例: pnpm lint"
-    test_cmd: "[要確認] 例: pnpm test"
+    build_cmd: "[要確認] Phase 1.5/1.6 で導出"
+    lint_cmd: "[要確認] Phase 1.5/1.6 で導出"
+    test_cmd: "[要確認] Phase 1.5/1.6 で導出"
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"
