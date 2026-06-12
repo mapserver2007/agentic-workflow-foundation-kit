@@ -11,7 +11,7 @@
 1. **冪等性 / SoT 一元化**: 出力ファイル == seed manifest から生成された root manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
 2. **required sections 準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
 3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
-4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
+4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 1.65 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
 
 > **エンジン自体は監査の生成物対象外**: `audit.py` が検査するのは設定スキルの `outputs[]`（生成された出力ファイル）である。生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）はどの設定スキルの `outputs` にも含まれないため、「出力 == 再生成結果」の冪等性検査の対象にならない。エンジンは設計符号化生成の出力ではなく、独立スキルとして工学仕様を正本に保守される。
 
@@ -45,6 +45,7 @@
 - `exit code`: 3段階（0/1/2）の定義。
 - `Hook`: §2.1 Deterministic 強制範囲。
 - `リンク衛生`: 原則5 コンテキスト保護。
+- `package script contract`: `package.json` 未生成段階でも、技術スタックから導出された G-* の内訳を復元できること。
 
 ### docs/GOTCHAS.md（原則8）
 - `起票トリガー`: 「期待と違う / 2回以上 / 想定外」の3トリガー。

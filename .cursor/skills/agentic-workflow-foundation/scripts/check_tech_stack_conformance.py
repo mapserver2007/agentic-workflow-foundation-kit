@@ -83,7 +83,7 @@ def main(argv=None) -> int:
 
     versions = ingest.load_package_versions(args.package_json)
     if versions is None:
-        _out("WARN", "package.json が無いため照合をスキップ（fail-open）。実アプリ repo で本来の照合が効く")
+        _out("PASS", "package.json 未生成の初期状態として policy↔reality 照合をスキップ（fail-open）")
         return 0
 
     failures = []

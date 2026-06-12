@@ -29,6 +29,7 @@
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
 | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
 | `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands） |
+| `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract）/ `AGENTS.md`（Quality Gate Contract） |
 | `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ） |
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
@@ -38,5 +39,5 @@
 
 1. `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、seed SoT 変更として PO 承認を得る。
 2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、スキル実行で生成される root `manifest.yaml` に保存する。
-3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.7 で実 `package.json` と整合確認する。
+3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `project.quality_gate` / `quality_gate_contract` を自動決定する。
 4. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

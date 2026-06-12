@@ -26,6 +26,8 @@ disable-model-invocation: true
 {{session.verification.gate_command}}
 ```
 
+このコマンドは `resolve_quality_gate.py` が `workflow_pattern` × `tech_stack` から生成した `session.verification.gate_command` を展開する。
+
 補助スクリプト:
 
 ```bash

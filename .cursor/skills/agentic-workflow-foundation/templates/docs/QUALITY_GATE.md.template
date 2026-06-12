@@ -29,6 +29,25 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 **実行順序の推奨**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
 
+#### package script contract
+
+`agentic-workflow-foundation` 実行時点では `package.json` は未生成であるため、G-* は技術スタックから決まる root scripts を外部インターフェースとする。将来作成する `package.json` は、以下の contract を満たすこと。
+
+**build script (`{{project.quality_gate.build_cmd}}`)**
+
+{{#each quality_gate_contract.build}}- {{this}}
+{{/each}}
+
+**lint script (`{{project.quality_gate.lint_cmd}}`)**
+
+{{#each quality_gate_contract.lint}}- {{this}}
+{{/each}}
+
+**test script (`{{project.quality_gate.test_cmd}}`)**
+
+{{#each quality_gate_contract.test}}- {{this}}
+{{/each}}
+
 ### 1.2 ドキュメントゲート（docs 変更を伴う PR）
 
 | ゲート | 内容 | 合格条件 |
@@ -79,7 +98,8 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py
+python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
+  --skill-dir .cursor/skills/agentic-workflow-foundation
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足

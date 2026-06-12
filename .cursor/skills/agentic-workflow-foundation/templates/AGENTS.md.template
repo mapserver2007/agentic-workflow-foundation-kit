@@ -53,6 +53,10 @@
 
 **exit code**: `0` = 通過 / `1` = 修正して再実行（Advisory ループ）/ `2` = 致命的エラー（ユーザー報告）。詳細は `docs/QUALITY_GATE.md`。
 
+### Quality Gate Contract
+
+`package.json` は本基盤生成後に作成されるため、G-* は技術スタック由来の root scripts を入口とする。各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たすこと。
+
 ## Session Protocol
 
 「追跡ドキュメント / 検証ゲート / 再開プロトコル」の3要素を以下の3手順として実装する。

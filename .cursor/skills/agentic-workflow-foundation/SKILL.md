@@ -24,7 +24,7 @@ Agentic Workflow 基盤ファイル群を、**スキル内に同梱された汎�
 
 > `AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` の思想は本スキル作成時に `SKILL.md` / seed `manifest.yaml` / `templates/` へ内部化済み。スキル実行時にこの2つを再入力・再同期する必要はない。
 >
-> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。
+> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
 >
 > リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。
 
@@ -36,6 +36,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
        ├─ Phase 1.5: project 設定確定 → root manifest.yaml 生成
        │
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
+       ├─ Phase 1.65: tech_stack → quality_gate / quality_gate_contract
        │
        └─ 100%決定論 generate.py ──▶ 出力ファイル群
                                       │
@@ -44,7 +45,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed**。統一設計書の入力前のテンプレートに近い位置づけで、特定リポジトリの確定値を焼き込まない。
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `tech_stack.*` / `session.verification.*` は生成後の root manifest で PO が評価する。
-- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。実 `package.json` / `wrangler.jsonc` があれば実態を優先する。
+- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
@@ -58,7 +59,8 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
-| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と `package.json` の意味的整合チェック |
+| `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定 |
+| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。
 > 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
@@ -71,6 +73,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1: manifest / templates のフレームワーク変更（必要時のみ、PO 承認）
 - [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
+- [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
@@ -115,7 +118,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - `tracking_artifact`: `workflow_pattern` から自動確定する。
 - `name`: コピー先（実行先）リポジトリのディレクトリ名から自動導出する。
 - `slug`: `name` から導出する。
-- `quality_gate.{build,lint,test}_cmd`: `workflow_pattern` × `tech_stack` と実リポジトリの `package.json` / `Makefile` 等から導出する。実コマンドがあれば実態を優先する。
+- `quality_gate.{build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
 | workflow_pattern | tracking_artifact |
 | --- | --- |
@@ -142,13 +145,26 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 ```
 
 - 設計書が無い場合は WARN でスキップし、既存 root `manifest.yaml > tech_stack` を維持する。
-- `package.json` / `wrangler.jsonc` がある場合は、実固定バージョンを優先して `version_policy` を上書きする。
 - 生成前の `docs/tech-stack.md` は存在しなくてよい。ここで更新するのは生成元データ root `manifest.yaml > tech_stack`。
-- seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書 + 実 `package.json`）から決まる。
+- seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書）から決まる。
+
+### Phase 1.65: G-* / script contract 自動決定
+
+root `manifest.yaml > tech_stack` から、開発型の `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を決定論的に導出する。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.py
+```
+
+- `package.json` はこの時点では存在しない前提。実 script の検出や優先採用は行わない。
+- 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、`G-BUILD = pnpm run build`、`G-LINT = pnpm run lint`、`G-TEST = pnpm run test` に一意決定する。
+- root `manifest.yaml > quality_gate_contract` へ、将来の `package.json` scripts が満たすべき build / lint / test の内訳を書き込む。
+- exit 0 → 決定済みまたは対象外として継続可。WARN があれば報告する。
+- exit 2 → manifest 破損など致命的エラー。中断する。
 
 ### Phase 1.7: techstack 整合ゲート
 
-root `manifest.yaml > tech_stack`（policy）と `package.json`（reality）の意味的乖離を確認する。
+root `manifest.yaml > tech_stack`（policy）を確認する。`package.json` はこの時点では未生成のため、存在しない場合は正常な初期状態として fail-open する。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py
@@ -198,6 +214,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
 以下を報告する。
 
 - Phase 1.6 / 1.7 の結果（techstack 取り込み・整合ゲート）
+- Phase 1.65 の結果（G-* / script contract 自動決定）
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
 - Phase 1.5 で確定した `project.*` 値一覧
@@ -209,7 +226,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
 - **unified/bas を実行時入力として扱わない**。この2つの思想は本スキルに内部化済み。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定する**。未確定で残った `[要確認]` は audit が WARN 扱い。
-- **`quality_gate` は `workflow_pattern` × `tech_stack` と実リポジトリ証拠から導出する**。推測でコマンドを断定しない。
+- **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
 

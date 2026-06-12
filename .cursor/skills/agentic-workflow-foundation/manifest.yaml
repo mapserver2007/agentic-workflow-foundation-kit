@@ -126,7 +126,19 @@ session:
     files: 5
     subtasks: 3
   verification:
-    gate_command: "[要確認] 例: project.quality_gate.test_cmd 等"
+    gate_command: "[要確認] Phase 1.65 で導出"
+
+# ------------------------------------------------------------
+# (2e) quality_gate_contract — root manifest 生成用の seed
+#   Phase 1.65（resolve_quality_gate.py）が workflow_pattern × tech_stack から
+#   G-* と package scripts が満たすべき contract を決定論的に書き込む。
+#   agentic-workflow-foundation 実行時点では package.json は存在しないため、
+#   実 script 検出ではなく技術スタック由来の canonical contract を生成する。
+# ------------------------------------------------------------
+quality_gate_contract:
+  build:
+  lint:
+  test:
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
@@ -243,6 +255,7 @@ outputs:
       - "exit code"
       - "Hook"
       - "リンク衛生"
+      - "package script contract"
   - path: docs/session-handoff-guide.md
     template: docs/session-handoff-guide.md.template
     mode: render
@@ -326,11 +339,12 @@ project:
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
   # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
   # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）から導出する。
-  # 実リポジトリ(package.json/Makefile 等)にコマンドがあれば、その実コマンドを優先する。
+  # agentic-workflow-foundation 実行時点では package.json は存在しないため、
+  # G-* は root scripts の canonical entrypoint として決定し、script contract を別途生成する。
   quality_gate:
-    build_cmd: "[要確認] Phase 1.5/1.6 で導出"
-    lint_cmd: "[要確認] Phase 1.5/1.6 で導出"
-    test_cmd: "[要確認] Phase 1.5/1.6 で導出"
+    build_cmd: "[要確認] Phase 1.65 で導出"
+    lint_cmd: "[要確認] Phase 1.65 で導出"
+    test_cmd: "[要確認] Phase 1.65 で導出"
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"
