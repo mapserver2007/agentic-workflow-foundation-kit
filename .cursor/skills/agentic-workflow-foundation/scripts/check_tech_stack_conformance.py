@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""manifest.tech_stack（policy）と package.json（reality）の整合ゲート（Phase 1.7）。"""
+"""生成済み root manifest.yaml の tech_stack（policy）と package.json（reality）の整合ゲート（Phase 1.7）。"""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ if HERE not in sys.path:
 import genlib  # noqa: E402
 import ingest_tech_stack as ingest  # noqa: E402
 
-DEFAULT_MANIFEST = os.path.join(SKILL_DIR, "manifest.yaml")
+DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
 OPTIONAL_MARKERS = ("任意", "代替")
 
@@ -78,7 +78,7 @@ def main(argv=None) -> int:
 
     items = (manifest.get("tech_stack") or {}).get("items") or []
     if not items:
-        _out("WARN", "manifest.tech_stack.items が空（Phase 1.6 未実行？）。照合をスキップ")
+        _out("WARN", "root manifest tech_stack.items が空（Phase 1.6 未実行？）。照合をスキップ")
         return 0
 
     versions = ingest.load_package_versions(args.package_json)

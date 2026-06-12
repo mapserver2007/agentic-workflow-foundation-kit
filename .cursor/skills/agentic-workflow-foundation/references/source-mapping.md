@@ -1,8 +1,8 @@
-# source-mapping — manifest → 出力ファイル のトレーサビリティ
+# source-mapping — seed manifest → root manifest / 出力ファイル のトレーサビリティ
 
-> 本スキルでは `manifest.yaml` + `templates/` が一次 SoT。unified / bas の思想は本スキルに内部化済みであり、実行時に fingerprint drift 追跡は行わない。
+> 本スキルでは `.cursor/skills/agentic-workflow-foundation/manifest.yaml` + `templates/` が root manifest 生成前の seed SoT。スキル実行によりリポジトリ直下 `manifest.yaml` が正式な per-project manifest として生成される。unified / bas の思想は本スキルに内部化済みであり、実行時に fingerprint drift 追跡は行わない。
 >
-> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` は per-project 入力として Phase 1.6 で `manifest.tech_stack` へ取り込む。生成対象の SoT は取り込み後の `manifest.yaml`。
+> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` は per-project 入力として Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に project manifest は作らない。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
@@ -36,7 +36,7 @@
 
 ## 変更時の運用
 
-1. `framework.*` / `outputs[]` / `templates/*` / `session.*` の変更は、本スキルの自己完結 SoT 変更として PO 承認を得る。
-2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定する。
-3. `tech_stack.*` は Phase 1.6 で techstack 設計書から取り込み、Phase 1.7 で実 `package.json` と整合確認する。
-4. `generate.py` で再生成し、`audit.py` で準拠検証する。
+1. `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、seed SoT 変更として PO 承認を得る。
+2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、スキル実行で生成される root `manifest.yaml` に保存する。
+3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.7 で実 `package.json` と整合確認する。
+4. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

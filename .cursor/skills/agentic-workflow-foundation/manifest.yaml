@@ -1,8 +1,9 @@
 # ============================================================
-# manifest.yaml — Agentic Workflow 基盤 YAML 正本（Source of Truth）
+# manifest.yaml — Agentic Workflow 基盤 seed manifest
 # ============================================================
-# このファイルが基盤ファイル群の唯一の定義元（BAS:「Markdownは表現・YAMLは定義」）。
-# scripts/generate.py が本ファイル + templates/ から出力ファイルを決定論的に生成する。
+# このファイルは agentic-workflow-foundation スキルに内包される汎用 seed。
+# スキル実行時に本 seed をもとに、リポジトリ直下 manifest.yaml が正式生成される。
+# 生成後の root manifest は PO が評価する。
 # 出力ファイルを直接編集してはならない（audit.py が drift として exit 1 にする）。
 #
 # 記法制約（同梱の最小YAMLローダのサブセット）:
@@ -19,11 +20,11 @@ version: 1
 marker_id: agentic-foundation
 
 # ------------------------------------------------------------
-# (1) 自己完結 SoT 宣言
-#     本 manifest + templates が一次 SoT。統一設計書 unified/bas は本 skill 作成時に
+# (1) seed SoT 宣言
+#     本 manifest + templates が root manifest 生成前の汎用 seed。統一設計書 unified/bas は本 skill 作成時に
 #     内部化済みの「設計由来メモ（非権威）」であり、生成時に参照しない（drift 機構は撤去）。
-#     技術スタックは techstack 設計書（プロジェクト別ポリシー源）からトップレベル
-#     tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
+#     技術スタックは techstack 設計書（プロジェクト別ポリシー源）から、スキル実行で生成される
+#     リポジトリ直下 manifest.yaml の tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
 # ------------------------------------------------------------
 
 # ------------------------------------------------------------
@@ -105,12 +106,10 @@ framework:
       prompt_count: 90
       shell_bytes: 5242880
 # ------------------------------------------------------------
-# (2c) tech_stack — プロジェクト・パラメータ層（per-project 入力 / Phase 1.6 取り込み）
+# (2c) tech_stack — root manifest 生成用の seed（per-project 入力 / Phase 1.6 取り込み）
 #   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
 #   配布時点では具体スタックを焼き込まず、プレーンな未取り込み状態を保持する。
-#   ingest_tech_stack.py が techstack 設計書 §9 表を decode し、実 package.json があれば
-#   実態優先でバージョンを上書きして本ブロック（note / items）へ書き戻す。
-#   templates/docs/tech-stack.md.template が tech_stack.note / tech_stack.items を描画する。
+#   スキル実行後は root manifest.yaml の tech_stack が正式な取り込み先になる。
 # ------------------------------------------------------------
 tech_stack:
   note: "未取り込み。Phase 1.6 で .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md の §9 技術スタック表を取り込むと、プロジェクト固有の方針に置き換わる。"
@@ -119,7 +118,8 @@ tech_stack:
 # ------------------------------------------------------------
 # (2d) session — Layer 3 セッション管理（親へ内包）
 #   session-planning / session-handover / decisions-record は本 manifest の
-#   outputs[] から生成する。project.* は同一 manifest 内の値を直接参照する。
+#   outputs[] から生成する。スキル実行後は root manifest.yaml の session.verification
+#   が正式な検証コマンドの置き場になる。
 # ------------------------------------------------------------
 session:
   large_task_threshold:
@@ -298,12 +298,12 @@ outputs:
     mode: marker
 
 # ------------------------------------------------------------
-# (3) project_overrides — プロジェクト固有値
+# (3) project_overrides — root manifest 生成用のプロジェクト固有値 seed
 #     本ツールキットは新規リポジトリにコピーして実行する配布モデル。project.* は
 #     (a) AskQuestion(workflow_pattern のみ) / (b) 自動導出(name/slug/tracking_artifact/quality_gate) /
 #     (c) 固定値(one_liner/agent_role/priorities/boundaries/doc_navigation = 本基盤の機能説明)
 #     の3分類で確定する（SKILL.md Phase 1.5 参照）。自由入力・PO 直接手入力は廃止。
-#     未確定で残った "[要確認]"（実質 workflow_pattern のみ）は audit が WARN として列挙する（FAIL ではない）。
+#     スキル実行により root manifest.yaml が生成された後、PO が正式な project manifest として評価する。
 # ------------------------------------------------------------
 project:
   # コピー先（実行先）リポジトリのディレクトリ名から自動導出する（PO には問わない）。
@@ -324,13 +324,9 @@ project:
     - "冪等性と Source of Truth 一元化（manifest → 出力）を最優先する"
     - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
-  # tech_stack はトップレベル tech_stack（per-project 入力 / Phase 1.6 取り込み）へ移管。
-  # PO 記入欄ではなくプロジェクト別ポリシー源（techstack 設計書）から取り込む。
   # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
-  # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）
-  # から導出する。実リポジトリ(package.json/Makefile 等)にコマンドがあれば、
-  # その実コマンドを優先(上書き)する。
-  # 導出も実証拠も無い例外時のみ「該当なし」とし quality_gate を設定しない(推測で断定しない)。
+  # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）から導出する。
+  # 実リポジトリ(package.json/Makefile 等)にコマンドがあれば、その実コマンドを優先する。
   quality_gate:
     build_cmd: "[要確認] Phase 1.5/1.6 で導出"
     lint_cmd: "[要確認] Phase 1.5/1.6 で導出"

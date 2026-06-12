@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""techstack 設計書 §9 を manifest.tech_stack へ取り込む（Phase 1.6）。"""
+"""techstack 設計書 §9 を生成済み root manifest.yaml の tech_stack へ取り込む（Phase 1.6）。"""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,7 @@ if GENLIB_DIR not in sys.path:
 import genlib  # noqa: E402
 
 DEFAULT_DESIGN_DOC = os.path.join(ROOT, ".cursor", "docs", "TECHNOLOGY_STACK_UNIFIED_DESIGN.md")
-DEFAULT_MANIFEST = os.path.join(SKILL_DIR, "manifest.yaml")
+DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
 
 NAME_MAP = {
@@ -213,7 +213,7 @@ def write_back(manifest_path: str, note, items):
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="techstack §9 を manifest.tech_stack へ取り込む")
+    parser = argparse.ArgumentParser(description="techstack §9 を生成済み root manifest.yaml の tech_stack へ取り込む")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--design-doc", default=DEFAULT_DESIGN_DOC)
     parser.add_argument("--package-json", default=DEFAULT_PACKAGE_JSON)
@@ -253,7 +253,7 @@ def main(argv=None) -> int:
         return 0
 
     changed = write_back(args.manifest, note, items)
-    info(f"{len(items)} 技術を manifest.tech_stack へ取り込み（{'更新あり' if changed else '更新なし=冪等'}）")
+    info(f"{len(items)} 技術を root manifest tech_stack へ取り込み（{'更新あり' if changed else '更新なし=冪等'}）")
     return 0
 
 

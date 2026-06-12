@@ -1,17 +1,17 @@
 # design-conformance — 必須要件（audit 判定基準）
 
 > `audit.py` が検証する必須セクションの **設計根拠** を説明する。
-> 機械可読な必須セクション一覧は `manifest.yaml > outputs[].required_sections` が SoT であり、
+> 機械可読な必須セクション一覧は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > outputs[].required_sections` が SoT であり、
 > 本ファイルはその各項目がなぜ必要かを人間向けに記録する（重複定義しない）。
 
 ## 監査の2軸
 
 `audit.py` は次の2軸で exit code を返す（QUALITY_GATE exit code 3段階に準拠）。
 
-1. **冪等性 / SoT 一元化**: 出力ファイル == manifest からの再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
+1. **冪等性 / SoT 一元化**: 出力ファイル == seed manifest から生成された root manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
 2. **required sections 準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
 3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
-4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / manifest 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
+4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
 
 > **エンジン自体は監査の生成物対象外**: `audit.py` が検査するのは設定スキルの `outputs[]`（生成された出力ファイル）である。生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）はどの設定スキルの `outputs` にも含まれないため、「出力 == 再生成結果」の冪等性検査の対象にならない。エンジンは設計符号化生成の出力ではなく、独立スキルとして工学仕様を正本に保守される。
 
@@ -78,7 +78,7 @@
 - `## Gotchas`: 運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/session-handover/scripts/verification-gate.sh
-- `session.verification.gate_command`: 親 manifest の検証コマンドが展開されていること。
+- `session.verification.gate_command`: 生成済み root `manifest.yaml` の検証コマンドが展開されていること。
 - `=== verification gate ===`: 実行ログでゲート実行を識別できること。
 
 ### .cursor/skills/decisions-record/SKILL.md
@@ -90,6 +90,6 @@
 ## 必須要件を増減する場合
 
 必須要件を追加する場合は:
-1. `manifest.yaml > outputs[].required_sections` に文字列を追加。
+1. `.cursor/skills/agentic-workflow-foundation/manifest.yaml > outputs[].required_sections` に文字列を追加。
 2. 本ファイルにその設計書由来を1行追記。
 3. 対応するテンプレートに当該セクションを追加。

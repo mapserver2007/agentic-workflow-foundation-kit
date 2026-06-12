@@ -2,9 +2,9 @@
 
 AI エージェント（Cursor Agent 等）を開発プロジェクトに組み込むための**基盤ファイル群を、自己完結した Source of Truth から決定論的に生成・メンテナンスする**ツールキットです。
 
-一次 SoT は [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキル配下の `manifest.yaml` + `templates/` です。Python 製の [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) が、`AGENTS.md`・Cursor Rules・Hooks・運用 docs・Layer 3 セッション管理スキルを**冪等・再現的**に出力します。旧称 `deterministic-generator` は現在の実行経路ではなく、README とスキルの正規手順では `agentic-workflow-engine` を使います。
+一次 SoT は [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキル配下の seed `manifest.yaml` + `templates/` です。スキル実行時にリポジトリ直下 `manifest.yaml` が正式な project manifest として生成され、Python 製の [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) が、`AGENTS.md`・Cursor Rules・Hooks・運用 docs・Layer 3 セッション管理スキルを**冪等・再現的**に出力します。旧称 `deterministic-generator` は現在の実行経路ではなく、README とスキルの正規手順では `agentic-workflow-engine` を使います。
 
-フレームワークの思想（`AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` 由来）は manifest + templates へ内部化済みで、生成時には参照しません。プロジェクトごとに変動する技術スタックは配布時点の manifest には焼き込まず、`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `manifest.tech_stack` へ取り込んだ結果を生成物へ反映します。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
+フレームワークの思想（`AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` 由来）は seed manifest + templates へ内部化済みで、生成時には参照しません。プロジェクトごとに変動する技術スタックは seed manifest には焼き込まず、スキル実行で生成された root `manifest.yaml > tech_stack` へ `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から取り込んだ結果を生成物へ反映します。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
 
 ## 何ができるか
 
@@ -70,10 +70,10 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  設定スキル（What・自己完結 SoT）— manifest.yaml + templates/    │
+│  設定スキル（What・seed SoT）— seed manifest + templates/        │
 │  └ agentic-workflow-foundation  （Meta 層 + Domain 層 + Layer 3）│
 │                                                                 │
-│  ＊ unified/bas の思想は manifest+templates へ内部化済み（非権威の由来メモ）│
+│  ＊ unified/bas の思想は seed manifest + templates へ内部化済み（非権威の由来メモ）│
 │  ＊ TECHNOLOGY_STACK_UNIFIED_DESIGN.md のみ実行時に取り込み（Phase 1.6）│
 └──────────────────────────┬──────────────────────────────────────┘
                            │ 100% 決定論
@@ -89,10 +89,10 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 **What / How の分離**が中核です。
 
-- **What（設定スキル）**: フレームワーク定義を `manifest.yaml` と `templates/` に保持する自己完結 SoT
+- **What（設定スキル）**: フレームワーク定義と root manifest の初期雛形を seed `manifest.yaml` と `templates/` に保持する SoT
 - **How（生成エンジン）**: `agentic-workflow-engine` が `--skill-dir` 付きで決定論的に変換・監査する
 
-**manifest → 出力ファイルは AI を介さずバイト一致で再現**されます（BAS の「Markdown は表現・YAML は定義」パターン）。出力モードは、全体を再描画する `render`、既存追記ログを守る `seed`、既存ファイルの管理ブロックだけを更新する `marker` の 3 種です。配布時点の `manifest.tech_stack` は未取り込みのプレーン状態で、Phase 1.6 が `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を決定論パースして具体スタックを取り込みます（実 `package.json` / `wrangler.jsonc` があれば実態優先）。
+**manifest → 出力ファイルは AI を介さずバイト一致で再現**されます（BAS の「Markdown は表現・YAML は定義」パターン）。出力モードは、全体を再描画する `render`、既存追記ログを守る `seed`、既存ファイルの管理ブロックだけを更新する `marker` の 3 種です。スキル実行で root `manifest.yaml` を生成した後、Phase 1.6 が `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を決定論パースして `tech_stack` へ具体スタックを取り込みます（実 `package.json` / `wrangler.jsonc` があれば実態優先）。
 
 ## リポジトリ構成
 
@@ -112,11 +112,11 @@ agentic-workflow-foundation-kit/
     └── skills/
         ├── agentic-workflow-foundation/   # 設定スキル（Meta + Domain 層 + Layer 3）
         │   ├── SKILL.md                   # ワークフロー定義
-        │   ├── manifest.yaml              # YAML 正本（framework.* / tech_stack / session.* / project.* / outputs）
+        │   ├── manifest.yaml              # seed YAML（framework.* / outputs / project.* / tech_stack.* の初期雛形）
         │   ├── templates/                 # 出力テンプレート（rules / hooks / docs / session skills）
         │   ├── references/                # SoT トレーサビリティ
         │   └── scripts/
-        │       ├── ingest_tech_stack.py            # techstack §9 → manifest.tech_stack 取り込み（Phase 1.6）
+        │       ├── ingest_tech_stack.py            # techstack §9 → 生成済み root manifest.yaml > tech_stack 取り込み（Phase 1.6）
         │       └── check_tech_stack_conformance.py # policy↔reality 整合ゲート（Phase 1.7）
         │
         ├── agentic-workflow-engine/       # 生成/監査エンジン（How・現行）
@@ -133,7 +133,7 @@ agentic-workflow-foundation-kit/
 
 | スキル | 種別 | 役割 |
 | --- | --- | --- |
-| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 設定（What） | Meta 層・Domain 層・Layer 3 セッション管理スキル群を生成。`project.*` / `session.*` の SoT を持つ |
+| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 設定（What） | Meta 層・Domain 層・Layer 3 セッション管理スキル群を生成。seed manifest から root `manifest.yaml` を生成し、PO が評価する |
 | [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) | エンジン（How） | `manifest.yaml` + `templates/` から出力を決定論的に生成・監査 |
 
 ## 生成ワークフロー（概要）
@@ -142,7 +142,7 @@ agentic-workflow-foundation-kit/
 
 1. **Phase 1** — フレームワーク定義（`framework.*`）を変更する場合のみ `manifest.yaml` を直接編集（人手起点・PO 承認）
 2. **Phase 1.5** — プロジェクト設定（`project.*`）を確定（`workflow_pattern` は AskQuestion、それ以外は自動導出 / 固定値）
-3. **Phase 1.6** — techstack 設計書を取り込み（`ingest_tech_stack.py` → `manifest.tech_stack`）
+3. **Phase 1.6** — techstack 設計書を取り込み（`ingest_tech_stack.py` → 生成済み root `manifest.yaml > tech_stack`）
 4. **Phase 1.7** — techstack 整合ゲート（`check_tech_stack_conformance.py`、policy↔reality）
 5. **Phase 2** — 生成（`agentic-workflow-foundation`。Meta + Domain + Layer 3 を同時生成）
 6. **Phase 3** — 監査ゲート（`audit.py`）
@@ -151,7 +151,7 @@ agentic-workflow-foundation-kit/
 ### 手動実行例
 
 ```bash
-# techstack の取り込み（manifest.tech_stack へ書き戻し）
+# techstack の取り込み（生成済み root manifest.yaml > tech_stack へ書き戻し）
 python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 
 # techstack policy↔reality 整合ゲート
@@ -175,7 +175,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
 
 ### 出力ファイルを直接編集しない
 
-変更は必ず `manifest.yaml` または `templates/` を編集し、再生成します。生成物の直接編集は `audit.py` が drift として検出します（exit 1）。
+変更は必ず seed `manifest.yaml` / 生成済み root `manifest.yaml` / `templates/` を編集し、再生成します。生成物の直接編集は `audit.py` が drift として検出します（exit 1）。
 
 ### 追記ログは seed モードで保護する
 
@@ -187,7 +187,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
 
 ### `[要確認]` は配布時の WARN として扱う
 
-配布元の `manifest.yaml` には、コピー先プロジェクトで確定する `workflow_pattern` / `quality_gate` / `session.verification.gate_command` が `[要確認]` として残ります。`audit.py` はこれを FAIL ではなく WARN（exit 0）として扱い、Phase 1.5 / 1.6 で具体値へ更新します。
+スキル実行で生成される root `manifest.yaml` には、コピー先プロジェクトで確定する `workflow_pattern` / `quality_gate` / `session.verification.gate_command` が `[要確認]` として残ります。`audit.py` はこれを FAIL ではなく WARN（exit 0）として扱い、Phase 1.5 / 1.6 で具体値へ更新します。
 
 ### 3 つの統一設計書の扱い（揮発性で二分）
 
@@ -195,7 +195,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
 | --- | --- | --- |
 | `unified` | `AI_AGENT_UNIFIED_DESIGN.md` | **凍結・非権威の設計由来メモ**。思想は manifest+templates に内部化済み（生成時に参照しない） |
 | `bas` | `AI_BUSINESS_AGENT_SUITE.md` | 同上（BAS 行動規律 Humble / Cautious / Thorough / Selective を内部化済み） |
-| `techstack` | `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | **プロジェクト毎に変動する実行時入力**。Phase 1.6 で `manifest.tech_stack` へ取り込み → `docs/tech-stack.md`（Domain 層）を駆動 |
+| `techstack` | `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | **プロジェクト毎に変動する実行時入力**。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込み → `docs/tech-stack.md`（Domain 層）を駆動 |
 
 `unified` / `bas` は凍結前提のため自己完結 SoT（manifest + templates）へ内部化し、drift 照合・外部同期は廃止しました。`techstack` のみ変動するため実行時に決定論パースで取り込み、実 `package.json` があれば実態優先で上書きします。
 
