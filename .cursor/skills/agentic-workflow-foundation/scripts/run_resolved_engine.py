@@ -88,9 +88,9 @@ def _normalize_accd_axis(axis: dict, base: dict | None = None) -> dict:
     if "adopted" not in axis and axis.get("impl"):
         normalized["adopted"] = axis["impl"]
     if "adopted" not in normalized:
-        normalized["adopted"] = "[要確認] 採用する軽量実装"
+        normalized["adopted"] = "軽量実装（開発型 / パイプライン型 / ドキュメント型では自動採用）"
     if "not_adopted" not in normalized:
-        normalized["not_adopted"] = "[要確認] 意図的に非採用とする重い機構"
+        normalized["not_adopted"] = "BAS 固有の重い機構（経営型で必要時のみ検討）"
     return normalized
 
 

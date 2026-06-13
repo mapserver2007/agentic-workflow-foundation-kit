@@ -74,19 +74,19 @@ framework:
   accd_axes:
     - id: A
       name: 制約の補完
-      adopted: "[要確認] AGENTS.md 参照順序 / .cursor/rules/*.mdc / 追跡ドキュメント / handoff manifest"
+      adopted: "AGENTS.md 参照順序 / .cursor/rules/*.mdc / 追跡ドキュメント / handoff manifest"
       not_adopted: "YAML 正本 + Markdown 生成 / Context Loading Table の機械検証"
     - id: B
       name: 専念の委譲
-      adopted: "[要確認] 品質ゲート / verification-gate.sh / guard-git-write.sh"
+      adopted: "品質ゲート / verification-gate.sh / guard-git-write.sh"
       not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
-      adopted: "[要確認] Task subagent 並列探索 / 自己反論 / review スキル"
+      adopted: "Task subagent 並列探索 / 自己反論 / review スキル"
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      adopted: "[要確認] templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
+      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
       not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化

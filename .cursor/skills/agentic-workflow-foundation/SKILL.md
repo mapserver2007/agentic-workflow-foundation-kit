@@ -103,14 +103,13 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 ### Phase 1.5: プロジェクト設定 / ACCD 対応確定（AskQuestion / 自動導出 / 固定値）
 
-**発火条件**: `project.*` の必須フィールド、または `framework.accd_axes[].adopted` / `framework.accd_axes[].not_adopted` に `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。
+**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型の全てで軽量実装を自動採用するため、AskQuestion の発火条件にしない。
 
-`project.*` と `framework.accd_axes` は manifest への PO 直接手入力・自由入力を原則廃止し、**AskQuestion / 自動導出 / 固定値**で確定する。
+`project.*` は manifest への PO 直接手入力・自由入力を原則廃止し、**AskQuestion / 自動導出 / 固定値**で確定する。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装へ自動導出する。
 
 **(1) AskQuestion（多肢選択）**
 
 - `workflow_pattern`: 主アウトプット / 最大リスク / 検証方法から、推奨案を添えて PO に選択してもらう。
-- `framework.accd_axes`: ACCD 5 軸それぞれについて、本リポで採用する軽量実装と、意図的に非採用とする BAS 固有の重い機構を PO に選択してもらう。
 
 | 選択肢 | 主アウトプット | 最大リスク | 検証方法 |
 | --- | --- | --- | --- |
@@ -118,21 +117,12 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-ACCD は 1 軸ずつ `AskQuestion` する。各質問は推奨案を先頭に置き、PO が必要なら Other でプロジェクト固有の文言を入力できるようにする。
-
-| ACCD 軸 | 推奨する採用候補 | 推奨する非採用候補 |
-| --- | --- | --- |
-| A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
-| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `guard-git-write.sh` | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
-| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル | engine / model resolver による異モデル強制 |
-| D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント archive 境界 | 提案書 7 ステップパイプライン |
-| E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
-
 **(2) 自動導出（質問不要）**
 
 - `tracking_artifact`: `workflow_pattern` から自動確定する。
 - `name`: コピー先（実行先）リポジトリのディレクトリ名から自動導出する。
 - `slug`: `name` から導出する。
+- `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
 - `quality_gate.{build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
 | workflow_pattern | tracking_artifact |
@@ -140,6 +130,16 @@ ACCD は 1 軸ずつ `AskQuestion` する。各質問は推奨案を先頭に置
 | 開発型 | `plan.md` |
 | パイプライン型 | `playbook.md` |
 | ドキュメント型 | `session_plan.md` |
+
+| ACCD 軸 | 自動採用する軽量実装 | 意図的に非採用とする BAS 固有の重い機構 |
+| --- | --- | --- |
+| A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
+| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `guard-git-write.sh` | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
+| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル | engine / model resolver による異モデル強制 |
+| D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント archive 境界 | 提案書 7 ステップパイプライン |
+| E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
+
+> 重量型は、上記 3 workflow pattern ではなく、経営課題分析のように入力 / 出力のバリエーションが広く、複数 PO・仮説並列生成・異モデル批判・構造化状態管理が必要な「経営型」で検討する。本プロジェクトで軽量実装だけが選ばれるのは意図した設計であり、問題ではない。
 
 **(3) 固定値**
 
@@ -149,7 +149,7 @@ ACCD は 1 軸ずつ `AskQuestion` する。各質問は推奨案を先頭に置
 **確定後**
 
 - 確定値はすべて、スキル実行で生成されるリポジトリ直下 `manifest.yaml > project.*` に記入する。
-- ACCD の確定値は、スキル実行で生成されるリポジトリ直下 `manifest.yaml > framework.accd_axes[].adopted` / `not_adopted` に記入する。
+- ACCD の自動確定値は、スキル実行で生成されるリポジトリ直下 `manifest.yaml > framework.accd_axes[].adopted` / `not_adopted` に記入する。
 - 「複合型」になりそうな場合は、ワークスペース分離判断を PO に確認してから主パターンを確定する。
 
 ### Phase 1.6: techstack 取り込み
@@ -240,7 +240,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **unified/bas を実行時入力として扱わない**。この2つの思想は本スキルに内部化済み。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の per-project 解決ロジックを追加しない。
-- **`project.*` と `framework.accd_axes` は AskQuestion / 自動導出 / 固定値の3分類で確定する**。未確定で残った `[要確認]` は audit が WARN 扱い。
+- **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定し、`framework.accd_axes` は自動導出で確定する**。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装を自動導出し、ACCD 軸ごとの AskQuestion は行わない。未確定で残った `[要確認]` は audit が WARN 扱い。
 - **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
