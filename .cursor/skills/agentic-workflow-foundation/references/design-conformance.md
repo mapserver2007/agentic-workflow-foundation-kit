@@ -67,7 +67,9 @@
 - `## 構成`: Hook スクリプトと `.cursor/.session/` 状態ファイルの責務が復元可能であること。
 - `## 各指標の更新タイミング`: elapsed / prompt_count / shell_bytes の proxy 指標がいつ更新・リセットされるかを明示すること。
 - `## チェックリスト`: 新メンバーが初回セットアップで Hook 登録・実行権限・state 生成を確認できること。
+- `## 参考リンク`: 採用根拠（DECISIONS）・Hook 技術詳細・AI 振る舞い規範への安定リンクを提示し、判断の裏取り経路を保全すること。プロジェクト固有チケットや未検証の外部引用は焼き込まない（`framework.handoff.references` が SoT）。
 - `単一 manifest 制約`: `handoff-active.md` の誤 consume と並行キャンペーン非対応を明示し、手動退避で事故を回避できること。
+- `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
 ### docs/tech-stack.md（techstack §9）
 - `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。

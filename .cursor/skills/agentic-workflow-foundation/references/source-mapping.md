@@ -28,7 +28,7 @@
 | `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
 | `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/session-handoff-guide.md` / `.cursor/hooks/README.md` |
 | `framework.upstream_design_inputs` | `docs/session-handoff-guide.md`（生成根拠の説明）/ `references/design-conformance.md`（監査根拠） |
-| `framework.handoff` | `docs/session-handoff-guide.md`（本番運用レベルのユーザー手順 / 状態ファイル / 失敗モード / manifest 必須項目） |
+| `framework.handoff` | `docs/session-handoff-guide.md`（本番運用レベルのユーザー手順 / 状態ファイル / 失敗モード / manifest 必須項目 / 非採用設計(non_goals) / 将来拡張(future_notes) / 参考リンク(references)） |
 | `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` / `.cursor/skills/session-planning/SKILL.md` / `.cursor/skills/session-handover/SKILL.md` |
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
 | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |

@@ -85,6 +85,14 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 
 閾値を変更する場合は、統一設計書または seed/root manifest の該当値を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。Hook スクリプトを直接編集すると audit で drift として検出される。
 
+### 意図的に採用しない設計（YAGNI）
+
+manifest を閾値の SoT とし、以下は観測ベースの必要性が複数回確認されるまで作らない。
+
+{{#each framework.handoff.non_goals}}
+- {{this}}
+{{/each}}
+
 ## ユーザーが実際にやること
 
 | 警告 | やること |
@@ -143,13 +151,17 @@ AI が `handoff-active.md` を作成する場合は、少なくとも以下を�
 
 ### 警告が出ない
 
-- `jq` がインストールされているか確認: `which jq`
-- `.cursor/hooks/*.sh` に実行権限があるか確認する
+- `jq` がインストールされているか確認: `which jq`（無ければ `brew install jq`）
+- `.cursor/hooks/*.sh` に実行権限があるか確認: `ls -la .cursor/hooks/`（無ければ `chmod +x .cursor/hooks/*.sh`）
 - `.cursor/hooks.json` で `stop` / `sessionStart` / `beforeSubmitPrompt` / `afterShellExecution` が登録されているか確認する
 
 ### 早すぎる警告に見える
 
-3 指標は OR 判定なので、時間以外の指標が先に到達した可能性がある。短いやり取りが多い場合は prompt_count、大量ログや探索が多い場合は shell_bytes が先に到達する。
+3 指標は OR 判定なので、時間以外の指標が先に到達した可能性がある。短いやり取りが多い場合は prompt_count、大量ログや探索が多い場合は shell_bytes が先に到達する。state ファイルの中身で原因を確認できる。
+
+```bash
+cat .cursor/.session/*.json | jq .
+```
 
 ### 新規チャットを開いたが引き継ぎされない
 
@@ -172,12 +184,26 @@ AI が `handoff-active.md` を作成する場合は、少なくとも以下を�
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
 - session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するため、上記の必須情報を manifest に残す
 
+### 将来拡張候補
+
+{{#each framework.handoff.future_notes}}
+- {{this}}
+{{/each}}
+
 ## チェックリスト
 
 新メンバーの初回セットアップ:
 
-- [ ] `jq` がインストールされている
-- [ ] `.cursor/hooks/*.sh` に実行権限がある
+- [ ] `jq` がインストールされている（`which jq`）
+- [ ] `.cursor/hooks/*.sh` に実行権限がある（`ls -la .cursor/hooks/`）
 - [ ] `.cursor/hooks.json` に session 系 Hook が登録されている
-- [ ] 数ターン会話して `.cursor/.session/{session_id}.json` が作られることを確認する
+- [ ] 数ターン会話して `.cursor/.session/{session_id}.json` が作られることを確認する（`cat .cursor/.session/*.json | jq .prompt_count`）
 - [ ] Red 通知後は Cmd+N で新規チャットを開く運用を理解する
+
+## 参考リンク
+
+| 種類 | パス |
+|---|---|
+{{#each framework.handoff.references}}
+| {{this.label}} | `{{this.path}}` |
+{{/each}}

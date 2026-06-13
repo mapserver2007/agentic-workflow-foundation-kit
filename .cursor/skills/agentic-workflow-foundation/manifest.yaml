@@ -166,6 +166,23 @@ framework:
       - "保持すべき判断"
       - "次セッションの推奨アクション"
       - "検証状況と未実行ゲート"
+    # 意図的に採用しない設計（YAGNI）。閾値は manifest が SoT であり、
+    # 外部設定機構や個人別オーバーライドは観測ベースの必要性が複数回確認されるまで作らない。
+    non_goals:
+      - "閾値の外部 JSON 設定機構（manifest を SoT とし、変更は再生成で反映する）"
+      - "個人別オーバーライド（.session-budget.local.json 等の階層化設定）"
+    # 将来拡張候補。proxy 指標の誤検知を補完する方向の設計メモ。
+    future_notes:
+      - "preCompact Hook が使えるようになれば、Cursor 側のコンパクション発動を直接検知でき、経過時間 proxy を補完できる（unified design の preCompact = コンパクション発生前の追跡ドキュメント書き込み促進が根拠）"
+    # 参考リンク。リポ内の安定リンクのみを焼き込み、プロジェクト固有チケットや
+    # 未検証の外部引用は含めない（移植性とトレーサビリティの両立）。
+    references:
+      - label: "設計判断（採用根拠）"
+        path: "docs/DECISIONS.md"
+      - label: "Hook 技術詳細"
+        path: ".cursor/hooks/README.md"
+      - label: "AI 振る舞い規範"
+        path: "AGENTS.md > Context Budget Protocol"
 # ------------------------------------------------------------
 # (2c) tech_stack — root manifest 生成用の seed（per-project 入力 / Phase 1.6 取り込み）
 #   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
@@ -330,7 +347,9 @@ outputs:
       - "## 構成"
       - "## 各指標の更新タイミング"
       - "## チェックリスト"
+      - "## 参考リンク"
       - "単一 manifest 制約"
+      - "意図的に採用しない設計"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
