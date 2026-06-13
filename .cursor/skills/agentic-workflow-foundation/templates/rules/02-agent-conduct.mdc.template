@@ -9,7 +9,7 @@ description: AI エージェントの行動規律（根拠なし同意禁止 / �
 
 > 本ルールは宣言のみを記載する。詳細な手順は [`AGENTS.md`](mdc:AGENTS.md) を参照。
 >
-> BAS Agent Conduct の4原則（Humble / Cautious / Thorough / Selective）。背景は [`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md`](mdc:.cursor/docs/AI_BUSINESS_AGENT_SUITE.md) を参照。
+> BAS Agent Conduct の4原則（Humble / Cautious / Thorough / Selective）。背景は組織内の非公開設計フレームワークに基づき、本ルールへ内部化済み。
 
 ## 必須
 

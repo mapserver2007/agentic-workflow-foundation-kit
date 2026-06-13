@@ -4,7 +4,7 @@ AI エージェント（Cursor Agent 等）を開発プロジェクトに組み�
 
 一次 SoT は [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) スキル配下の seed `manifest.yaml` + `templates/` です。スキル実行時にリポジトリ直下 `manifest.yaml` が正式な project manifest として生成され、Python 製の [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) が、`AGENTS.md`・Cursor Rules・Hooks・運用 docs・Layer 3 セッション管理スキルを**冪等・再現的**に出力します。旧称 `deterministic-generator` は現在の実行経路ではなく、README とスキルの正規手順では `agentic-workflow-engine` を使います。
 
-フレームワークの思想（`AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` 由来）は seed manifest + templates へ内部化済みで、生成時には参照しません。プロジェクトごとに変動する技術スタックは seed manifest には焼き込まず、スキル実行で生成された root `manifest.yaml > tech_stack` へ `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から取り込んだ結果を生成物へ反映します。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
+フレームワークの思想（組織内の非公開な AI エージェント設計フレームワーク由来）は seed manifest + templates へ内部化済みで、生成時には参照しません。プロジェクトごとに変動する技術スタックは seed manifest には焼き込まず、スキル実行で生成された root `manifest.yaml > tech_stack` へ `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から取り込んだ結果を生成物へ反映します。生成物を直接編集せず、正本を更新して再生成する運用を前提としています。
 
 ## 何ができるか
 
@@ -102,9 +102,8 @@ agentic-workflow-foundation-kit/
 ├── LICENSE                            # Apache License 2.0
 │
 └── .cursor/
-    ├── docs/                          # unified/bas=非権威の設計由来メモ / techstack=取り込み元ポリシー源
-    │   ├── AI_AGENT_UNIFIED_DESIGN.md
-    │   ├── AI_BUSINESS_AGENT_SUITE.md
+    ├── docs/                          # unified/bas=非権威の設計由来メモ（非公開正本・.gitignore）/ techstack=取り込み元ポリシー源
+    │   ├── （組織内 AI エージェント設計フレームワークの正本 2 点。非公開のため .gitignore で除外）
     │   └── TECHNOLOGY_STACK_UNIFIED_DESIGN.md
     │
     ├── mcp.json                       # GitHub MCP 設定（任意）
@@ -193,8 +192,8 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
 
 | ID | ファイル | 扱い |
 | --- | --- | --- |
-| `unified` | `AI_AGENT_UNIFIED_DESIGN.md` | **凍結・非権威の設計由来メモ**。思想は manifest+templates に内部化済み（生成時に参照しない） |
-| `bas` | `AI_BUSINESS_AGENT_SUITE.md` | 同上（BAS 行動規律 Humble / Cautious / Thorough / Selective を内部化済み） |
+| `unified` | 組織内設計フレームワーク（非公開正本・`.gitignore`） | **凍結・非権威の設計由来メモ**。思想は manifest+templates に内部化済み（生成時に参照しない） |
+| `bas` | 組織内設計フレームワーク（非公開正本・`.gitignore`） | 同上（BAS 行動規律 Humble / Cautious / Thorough / Selective を内部化済み） |
 | `techstack` | `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | **プロジェクト毎に変動する実行時入力**。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込み → `docs/tech-stack.md`（Domain 層）を駆動 |
 
 `unified` / `bas` は凍結前提のため自己完結 SoT（manifest + templates）へ内部化し、drift 照合・外部同期は廃止しました。`techstack` のみ変動するため実行時に決定論パースで取り込み、実 `package.json` があれば実態優先で上書きします。

@@ -62,7 +62,7 @@
 ### docs/session-handoff-guide.md（ADR Context Budget Auto-Handoff）
 - `CONTEXT_BUDGET`: Yellow/Red プロトコル。
 - `handoff-active.md`: manifest パス規約の SoT。
-- `## 生成根拠`: immutable upstream docs の入力状態と fingerprint が出力から確認でき、SKILL 内部に永続状態を持たないことを説明できること。
+- `## 生成根拠`: 設計入力の役割と入力状態が出力から確認でき（正本ファイル名・ハッシュは出力へ露出しない）、SKILL 内部に永続状態を持たないことを説明できること。
 - `## なぜ必要か`: Lost in the Middle とコンテキストドリフトの運用リスクを利用者が理解できること。
 - `## 構成`: Hook スクリプトと `.cursor/.session/` 状態ファイルの責務が復元可能であること。
 - `## 各指標の更新タイミング`: elapsed / prompt_count / shell_bytes の proxy 指標がいつ更新・リセットされるかを明示すること。

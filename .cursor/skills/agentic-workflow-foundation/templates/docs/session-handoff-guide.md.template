@@ -6,12 +6,12 @@
 
 ## 生成根拠
 
-このガイドは immutable upstream SoT と seed defaults から一時 resolved manifest を生成して出力している。SKILL 内部に前回実行状態は保存しない。
+このガイドは組織内の非公開設計フレームワーク（正本）と seed defaults から一時 resolved manifest を生成して出力している。正本はリポジトリに含めず、SKILL 内部に前回実行状態も保存しない。
 
-| 入力 | 役割 | 状態 | sha256 |
-|---|---|---|---|
+| 設計入力（役割） | 状態 |
+|---|---|
 {{#each framework.upstream_design_inputs}}
-| `{{this.path}}` | {{this.role}} | {{this.status}} | `{{this.sha256}}` |
+| {{this.role}} | {{this.status}} |
 {{/each}}
 
 ## TL;DR
