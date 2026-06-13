@@ -21,16 +21,17 @@ marker_id: agentic-foundation
 
 # ------------------------------------------------------------
 # (1) seed SoT 宣言
-#     本 manifest + templates が root manifest 生成前の汎用 seed。統一設計書 unified/bas は本 skill 作成時に
-#     内部化済みの「設計由来メモ（非権威）」であり、生成時に参照しない（drift 機構は撤去）。
+#     本 manifest + templates は root manifest 生成前の汎用 seed / schema / default。
+#     統一設計書 unified/bas は immutable upstream SoT として run_resolved_engine.py が読み取り、
+#     毎回一時 resolved manifest に展開する。seed 自体は実行結果で永続更新しない。
 #     技術スタックは techstack 設計書（プロジェクト別ポリシー源）から、スキル実行で生成される
 #     リポジトリ直下 manifest.yaml の tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
 # ------------------------------------------------------------
 
 # ------------------------------------------------------------
 # (2) framework 要件（自己完結 SoT のフレームワーク定義）
-#     unified/bas 由来の思想を内部化したもの。変更は設計書改版ではなく、本 manifest を
-#     直接編集する設計判断（PO 承認）として行う。
+#     unified/bas 由来の思想と、resolver が展開するための schema/default を保持する。
+#     変更は upstream 設計書または本 manifest/templates の設計判断として扱う。
 # ------------------------------------------------------------
 framework:
   naming:
@@ -110,6 +111,61 @@ framework:
       elapsed_min: 90
       prompt_count: 90
       shell_bytes: 5242880
+  handoff:
+    source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
+    purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
+    user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
+    active_manifest_path: ".cursor/.session/handoff-active.md"
+    consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{unix}.md"
+    state_glob: ".cursor/.session/{session_id}.json"
+    state_files:
+      - path: ".cursor/.session/{session_id}.json"
+        role: "セッションごとの累積指標"
+        lifecycle: "session-bootstrap.sh が新規作成し、tracker / evaluator が更新する"
+      - path: ".cursor/.session/handoff-active.md"
+        role: "次セッションへ渡す active handoff manifest"
+        lifecycle: "AI が Yellow / Red 受信時に書き出し、session-bootstrap.sh が次セッションで消費する"
+      - path: ".cursor/.session/handoff-consumed-{unix}.md"
+        role: "消費済み handoff manifest のアーカイブ"
+        lifecycle: "session-bootstrap.sh が active manifest をリネームして作成する"
+    user_actions:
+      - warning: "[CONTEXT_BUDGET=YELLOW]"
+        action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
+      - warning: "[CONTEXT_BUDGET=RED]"
+        action: "すぐに Cmd+N で新規チャットを開き、同セッションで新規実装を続行しない"
+    forbidden_after_red:
+      - "別の新規チャットを途中で開く"
+      - "Cursor の過去チャット履歴を開き直して再開したつもりになる"
+      - "同セッションで「もう少しだけ」と続行する"
+    failure_modes:
+      - id: "mis-consume"
+        symptom: "別チャットが handoff-active.md を先に消費し、本来の再開チャットに注入されない"
+        mitigation: "Red 後は目的の継続チャットを最初に開く。別タスクを挟む場合は active manifest を手動退避する"
+      - id: "history-reopen"
+        symptom: "過去チャット履歴を開き直しても sessionStart Hook が期待通り再発火しない場合がある"
+        mitigation: "Cmd+N で新規チャットを開き、短文を1通送って bootstrap に注入させる"
+      - id: "time-false-positive"
+        symptom: "長時間放置で経過時間だけが増え、実際のトークン劣化より先に警告される"
+        mitigation: "proxy 指標の誤検知として扱う。運用上は新規チャットへ移る方を安全側とする"
+      - id: "heavy-short-session"
+        symptom: "短時間でも大量ログや重い議論でコンテキスト劣化が先に進む"
+        mitigation: "shell_bytes と prompt_count の OR 判定で早期検知する。必要なら手動で handoff を作る"
+    metric_updates:
+      - metric: "経過時間"
+        update: "評価時に現在時刻 - started_at_unix で都度計算する"
+        reset: "新セッション起動で開始時刻をリセットする"
+      - metric: "プロンプト数"
+        update: "beforeSubmitPrompt Hook でユーザー発話ごとに +1 する"
+        reset: "新セッション起動で 0 に戻る"
+      - metric: "シェル出力バイト"
+        update: "afterShellExecution Hook で stdout / output / result の長さを加算する"
+        reset: "新セッション起動で 0 に戻る"
+    manifest_required_sections:
+      - "現在の作業状態"
+      - "直近のユーザー依頼"
+      - "保持すべき判断"
+      - "次セッションの推奨アクション"
+      - "検証状況と未実行ゲート"
 # ------------------------------------------------------------
 # (2c) tech_stack — root manifest 生成用の seed（per-project 入力 / Phase 1.6 取り込み）
 #   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
@@ -269,6 +325,12 @@ outputs:
     required_sections:
       - "CONTEXT_BUDGET"
       - "handoff-active.md"
+      - "## 生成根拠"
+      - "## なぜ必要か"
+      - "## 構成"
+      - "## 各指標の更新タイミング"
+      - "## チェックリスト"
+      - "単一 manifest 制約"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template

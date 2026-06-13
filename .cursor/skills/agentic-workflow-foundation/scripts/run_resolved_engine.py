@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""root manifest の per-project 値を解決して engine を実行する foundation 専用ラッパー。"""
+"""immutable design docs と root manifest を解決して engine を実行する foundation 専用ラッパー。"""
 from __future__ import annotations
 
 import argparse
@@ -20,6 +20,16 @@ import genlib  # noqa: E402
 
 ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract")
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
+UPSTREAM_DESIGN_INPUTS = (
+    (
+        ".cursor/docs/AI_AGENT_UNIFIED_DESIGN.md",
+        "session-management-and-layered-architecture",
+    ),
+    (
+        ".cursor/docs/AI_BUSINESS_AGENT_SUITE.md",
+        "agent-conduct-and-accd",
+    ),
+)
 
 
 def _yaml_quote(value) -> str:
@@ -146,10 +156,43 @@ def _apply_framework_overlay(merged: dict, overlay: dict) -> dict:
     return merged
 
 
+def _upstream_design_metadata() -> list[dict]:
+    """immutable upstream docs の存在と fingerprint を resolved manifest に記録する。"""
+    items = []
+    for rel_path, role in UPSTREAM_DESIGN_INPUTS:
+        abs_path = os.path.join(ROOT, rel_path)
+        item = {
+            "path": rel_path,
+            "role": role,
+            "status": "missing",
+            "sha256": "",
+        }
+        if os.path.isfile(abs_path):
+            item["status"] = "present"
+            item["sha256"] = genlib.sha256_file(abs_path)
+        items.append(item)
+    return items
+
+
+def _apply_upstream_design_inputs(merged: dict) -> dict:
+    """統一設計書を stateless input として resolved manifest にだけ反映する。"""
+    framework = dict(merged.get("framework") or {})
+    framework["upstream_design_inputs"] = _upstream_design_metadata()
+
+    handoff = dict(framework.get("handoff") or {})
+    handoff["resolved_policy"] = (
+        "immutable upstream docs + seed defaults + root manifest から、"
+        "毎回一時 resolved manifest/templates を生成して engine に渡す"
+    )
+    framework["handoff"] = handoff
+    merged["framework"] = framework
+    return merged
+
+
 def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     manifest = genlib.load_manifest(seed_manifest_path)
     if not os.path.isfile(root_manifest_path):
-        return manifest
+        return _apply_upstream_design_inputs(manifest)
 
     overlay = genlib.load_manifest(root_manifest_path)
     merged = dict(manifest)
@@ -165,6 +208,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
         else:
             merged[key] = overlay[key]
     merged = _apply_framework_overlay(merged, overlay)
+    merged = _apply_upstream_design_inputs(merged)
     return merged
 
 

@@ -8,14 +8,14 @@
 
 `audit.py` は次の2軸で exit code を返す（QUALITY_GATE exit code 3段階に準拠）。
 
-1. **冪等性 / SoT 一元化**: 出力ファイル == seed manifest に root `manifest.yaml` の per-project 値を overlay した resolved manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
+1. **冪等性 / SoT 一元化**: 出力ファイル == immutable upstream docs + seed manifest + root `manifest.yaml` の per-project 値を overlay した一時 resolved manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
 2. **required sections 準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
 3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
 4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 1.65 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
 
 > **エンジン自体は監査の生成物対象外**: `audit.py` が検査するのは設定スキルの `outputs[]`（生成された出力ファイル）である。生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）はどの設定スキルの `outputs` にも含まれないため、「出力 == 再生成結果」の冪等性検査の対象にならない。エンジンは設計符号化生成の出力ではなく、独立スキルとして工学仕様を正本に保守される。
 >
-> **resolved manifest は一時入力**: root manifest overlay は foundation 固有の `run_resolved_engine.py` が担い、engine には解決済み skill-dir を渡す。これにより engine は root `manifest.yaml` を直接読まず、How ツールとしての境界を維持する。
+> **resolved manifest は一時入力**: immutable upstream docs と root manifest overlay は foundation 固有の `run_resolved_engine.py` が担い、engine には解決済み skill-dir を渡す。これにより engine は統一設計書や root `manifest.yaml` を直接読まず、How ツールとしての境界を維持する。
 
 ## 必須要件の設計根拠
 
@@ -62,6 +62,12 @@
 ### docs/session-handoff-guide.md（ADR Context Budget Auto-Handoff）
 - `CONTEXT_BUDGET`: Yellow/Red プロトコル。
 - `handoff-active.md`: manifest パス規約の SoT。
+- `## 生成根拠`: immutable upstream docs の入力状態と fingerprint が出力から確認でき、SKILL 内部に永続状態を持たないことを説明できること。
+- `## なぜ必要か`: Lost in the Middle とコンテキストドリフトの運用リスクを利用者が理解できること。
+- `## 構成`: Hook スクリプトと `.cursor/.session/` 状態ファイルの責務が復元可能であること。
+- `## 各指標の更新タイミング`: elapsed / prompt_count / shell_bytes の proxy 指標がいつ更新・リセットされるかを明示すること。
+- `## チェックリスト`: 新メンバーが初回セットアップで Hook 登録・実行権限・state 生成を確認できること。
+- `単一 manifest 制約`: `handoff-active.md` の誤 consume と並行キャンペーン非対応を明示し、手動退避で事故を回避できること。
 
 ### docs/tech-stack.md（techstack §9）
 - `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。
@@ -97,3 +103,4 @@
 1. `.cursor/skills/agentic-workflow-foundation/manifest.yaml > outputs[].required_sections` に文字列を追加。
 2. 本ファイルにその設計書由来を1行追記。
 3. 対応するテンプレートに当該セクションを追加。
+4. upstream docs から resolver が展開する項目の場合は、`run_resolved_engine.py` が一時 resolved manifest にのみ書き込み、seed manifest/templates を実行結果で永続更新しないことを確認する。

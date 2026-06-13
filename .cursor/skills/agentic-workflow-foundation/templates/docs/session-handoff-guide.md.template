@@ -1,8 +1,18 @@
 # Cursor セッション引き継ぎガイド（Context Budget Auto-Handoff）
 
-<!-- このファイルは agentic-workflow-foundation スキルの生成物。しきい値は manifest.yaml の framework.budget_thresholds を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。統一設計書 / manifest / templates を更新して再生成する。 -->
 
 > **目的**: 長時間セッションによる AI 回答品質劣化（Lost in the Middle）を防ぐ自動引き継ぎ機構の使い方。
+
+## 生成根拠
+
+このガイドは immutable upstream SoT と seed defaults から一時 resolved manifest を生成して出力している。SKILL 内部に前回実行状態は保存しない。
+
+| 入力 | 役割 | 状態 | sha256 |
+|---|---|---|---|
+{{#each framework.upstream_design_inputs}}
+| `{{this.path}}` | {{this.role}} | {{this.status}} | `{{this.sha256}}` |
+{{/each}}
 
 ## TL;DR
 
@@ -10,7 +20,20 @@
 2. AI が `[CONTEXT_BUDGET=RED]` を出したら、**すぐに Cmd+N で新規チャット**を開く
 3. 新規チャットで**何でもいい短文を 1 通送る** → 自動的に前セッションの作業内容が引き継がれる
 
-`.cursor/.session/` のファイルや session_id をユーザーが意識する必要はない。
+{{framework.handoff.user_invisible}}。
+
+## なぜ必要か
+
+LLM には一度に参照できるコンテキスト量の上限があり、長いコンテキストでは中央付近の情報が相対的に弱く扱われる傾向がある。これが Lost in the Middle 問題で、長時間セッションでは序盤の制約、判断、方針が AI の注意から落ちやすくなる。
+
+主な症状:
+
+- 序盤に決めた方針を中盤以降で勝手に覆す
+- 同じ間違いを繰り返す
+- 重要な制約条件を忘れる
+- 直前の設計判断と整合しない実装を始める
+
+{{framework.handoff.purpose}}。
 
 ## 仕組みの全体像
 
@@ -28,9 +51,31 @@
   → AI が manifest を読み込んで作業継続
 ```
 
+## 構成
+
+### Hook スクリプト
+
+| Hook ファイル | イベント | 役割 |
+|---|---|---|
+| `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-active.md` の注入とアーカイブ |
+| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント |
+| `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
+| `session-budget-evaluator.sh` | `stop` | 閾値判定 + `followup_message` による警告発火 |
+| `guard-git-write.sh` | `beforeShellExecution` | Git / gh の危険操作ガード |
+
+### 状態管理ファイル
+
+| ファイル | 役割 | 自動管理 |
+|---|---|---|
+{{#each framework.handoff.state_files}}
+| `{{this.path}}` | {{this.role}} | {{this.lifecycle}} |
+{{/each}}
+
+> Active / Consumed manifest は `.cursor/.session/` 配下に集約する。Yellow / Red は同じ active manifest を上書き更新する。
+
 ## 閾値（OR 判定）
 
-3 つの指標のいずれかが閾値を超えると警告が発火する。SoT は `manifest.yaml > framework.budget_thresholds`。
+3 つの指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
 
 | 指標 | Yellow | Red |
 |---|---|---|
@@ -38,34 +83,101 @@
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
-閾値を変更する場合は manifest を編集し `python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+閾値を変更する場合は、統一設計書または seed/root manifest の該当値を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。Hook スクリプトを直接編集すると audit で drift として検出される。
 
 ## ユーザーが実際にやること
 
 | 警告 | やること |
 |---|---|
-| `[CONTEXT_BUDGET=YELLOW]` | 区切りを意識し、区切りが見えたら Cmd+N |
-| `[CONTEXT_BUDGET=RED]` | **すぐに Cmd+N**（同セッション継続は劣化ゾーン） |
+{{#each framework.handoff.user_actions}}
+| `{{this.warning}}` | {{this.action}} |
+{{/each}}
 
-新規チャットで短文を1通送れば、`session-bootstrap.sh` が `.cursor/.session/handoff-active.md` を自動注入する。
+新規チャットで短文を1通送れば、`session-bootstrap.sh` が `.cursor/.session/handoff-active.md` を自動注入する。例: 「続きをお願いします」「再開」「.」。
 
 ### Red 通知後にやってはいけないこと
 
-- 別の新規チャットを途中で開く → manifest が誤消費される
-- 同セッションで「もう少しだけ」と続行 → 劣化ゾーンに入る
+{{#each framework.handoff.forbidden_after_red}}
+- {{this}}
+{{/each}}
 
 ## handoff manifest パス規約（SoT）
 
-- **書き出し先**: `.cursor/.session/handoff-active.md`（Yellow / Red 共通で同一パスを上書き）
-- **消費後**: `session-bootstrap.sh` が `.cursor/.session/handoff-consumed-{unix}.md` にリネームしてアーカイブ
+- **書き出し先**: `{{framework.handoff.active_manifest_path}}`（Yellow / Red 共通で同一パスを上書き）
+- **消費後**: `session-bootstrap.sh` が `{{framework.handoff.consumed_manifest_pattern}}` にリネームしてアーカイブ
 - `.cursor/` 直下に独自ファイルを作成しない
+
+### 単一 manifest 制約
+
+`{{framework.handoff.active_manifest_path}}` は 1 ファイル管理のため、複数キャンペーンを並行で引き継ぐことはできない。最後に書いた manifest が常に有効になる。別タスクを挟む場合は、active manifest を手動で退避してから新規チャットを開く。
+
+```bash
+# 別タスクを始める前に manifest を退避
+mv .cursor/.session/handoff-active.md /tmp/handoff-{ticket}.md
+
+# 別タスク完了後、元のキャンペーンに戻る前に復元
+mv /tmp/handoff-{ticket}.md .cursor/.session/handoff-active.md
+```
+
+## handoff manifest に含める情報
+
+AI が `handoff-active.md` を作成する場合は、少なくとも以下を含める。
+
+{{#each framework.handoff.manifest_required_sections}}
+- {{this}}
+{{/each}}
+
+ユーザー向けの最終応答には詳細な作業ログを出さず、Red 到達時は新規チャットへ移る案内を短く返す。
+
+## 各指標の更新タイミング
+
+| 指標 | 更新方式 | リセット |
+|---|---|---|
+{{#each framework.handoff.metric_updates}}
+| {{this.metric}} | {{this.update}} | {{this.reset}} |
+{{/each}}
+
+新規チャット起動時に `session-bootstrap.sh` が新しい state ファイルを作成するため、過去セッションの累積は引き継がれない。
 
 ## トラブルシューティング
 
-- 警告が出ない: `which jq`（無ければ `brew install jq`）/ `.cursor/hooks/*.sh` の実行権限 / `.cursor/hooks.json` の登録を確認
-- 引き継ぎされない: `.cursor/.session/handoff-active.md` の存在を確認。consumed 済みなら手動で復元して再度 Cmd+N
+### 警告が出ない
+
+- `jq` がインストールされているか確認: `which jq`
+- `.cursor/hooks/*.sh` に実行権限があるか確認する
+- `.cursor/hooks.json` で `stop` / `sessionStart` / `beforeSubmitPrompt` / `afterShellExecution` が登録されているか確認する
+
+### 早すぎる警告に見える
+
+3 指標は OR 判定なので、時間以外の指標が先に到達した可能性がある。短いやり取りが多い場合は prompt_count、大量ログや探索が多い場合は shell_bytes が先に到達する。
+
+### 新規チャットを開いたが引き継ぎされない
+
+1. `.cursor/.session/handoff-active.md` が存在するか確認する
+2. 既に consumed 済みなら `.cursor/.session/handoff-consumed-*` を確認する
+3. 必要なら consumed manifest を `handoff-active.md` として復元し、もう一度 Cmd+N で新規チャットを開く
+
+## 失敗モード
+
+| ID | 症状 | 対応 |
+|---|---|---|
+{{#each framework.handoff.failure_modes}}
+| `{{this.id}}` | {{this.symptom}} | {{this.mitigation}} |
+{{/each}}
 
 ## 設計上の既知の制約
 
 - 経過時間は proxy 指標（トークン量は Hook から取得不可）。誤検知あり（長時間放置の軽作業 = false positive）
+- 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
+- session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するため、上記の必須情報を manifest に残す
+
+## チェックリスト
+
+新メンバーの初回セットアップ:
+
+- [ ] `jq` がインストールされている
+- [ ] `.cursor/hooks/*.sh` に実行権限がある
+- [ ] `.cursor/hooks.json` に session 系 Hook が登録されている
+- [ ] 数ターン会話して `.cursor/.session/{session_id}.json` が作られることを確認する
+- [ ] Red 通知後は Cmd+N で新規チャットを開く運用を理解する
