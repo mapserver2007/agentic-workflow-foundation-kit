@@ -62,6 +62,7 @@ session:
 project:
   workflow_pattern: 開発型
   quality_gate:
+    gen_cmd: "[要確認]"
     build_cmd: "[要確認]"
     lint_cmd: "[要確認]"
     test_cmd: "[要確認]"
@@ -86,17 +87,22 @@ def main() -> int:
             return result.returncode
         out = manifest.read_text(encoding="utf-8")
         expected = [
+            'gen_cmd: "pnpm run gen"',
             'build_cmd: "pnpm run build"',
             'lint_cmd: "pnpm run lint"',
             'test_cmd: "pnpm run test"',
             'gate_command: "pnpm run build && pnpm run lint && pnpm run test"',
             "quality_gate_contract:",
+            "  gen:",
             "OpenAPI bundle",
             "Cloudflare Workers pool",
         ]
         missing = [needle for needle in expected if needle not in out]
         if missing:
             print(f"missing expected content: {missing}", file=sys.stderr)
+            return 1
+        if 'gate_command: "pnpm run gen' in out:
+            print("G-GEN must not be included in session.verification.gate_command", file=sys.stderr)
             return 1
         second = subprocess.run(
             [sys.executable, str(RESOLVER), "--manifest", str(manifest), "--check"],

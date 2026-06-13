@@ -8,7 +8,7 @@
 
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
 
-- 主アウトプットと検証ゲート: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
+- 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 - 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）
 
 ### コンテキスト保護の原則（統一設計書 原則5）
@@ -46,6 +46,7 @@
 ## Key Commands
 
 ```bash
+{{project.quality_gate.gen_cmd}}     # OpenAPI 由来の生成
 {{project.quality_gate.build_cmd}}   # ビルド
 {{project.quality_gate.lint_cmd}}    # lint
 {{project.quality_gate.test_cmd}}    # テスト
@@ -55,7 +56,7 @@
 
 ### Quality Gate Contract
 
-`package.json` は本基盤生成後に作成されるため、G-* は技術スタック由来の root scripts を入口とする。各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たすこと。
+`package.json` は本基盤生成後に作成されるため、G-* は技術スタック由来の root scripts を入口とする。`G-GEN` は開発中の生成用、`G-BUILD` はデプロイ直前やローカル実行直前の build 用として分離し、各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たすこと。
 
 ## Session Protocol
 

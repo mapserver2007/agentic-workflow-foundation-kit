@@ -23,15 +23,25 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 | ゲート | コマンド | 合格条件 |
 | --- | --- | --- |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | exit 0（開発中の自動生成 / 生成物差分確認） |
 | G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
 | G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
 | G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
 
-**実行順序の推奨**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+**G-GEN の位置づけ**: 開発中に OpenAPI 定義から bundle / 型 / client 等を生成し、生成物の差分を確認する。デプロイ直前やローカル実行直前の build とは分離する。
+
+**標準検証の推奨順序**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+
+**開発中の生成実行**: OpenAPI 定義や生成設定を変更した場合は `{{project.quality_gate.gen_cmd}}` を実行する。
 
 #### package script contract
 
 `agentic-workflow-foundation` 実行時点では `package.json` は未生成であるため、G-* は技術スタックから決まる root scripts を外部インターフェースとする。将来作成する `package.json` は、以下の contract を満たすこと。
+
+**gen script (`{{project.quality_gate.gen_cmd}}`)**
+
+{{#each quality_gate_contract.gen}}- {{this}}
+{{/each}}
 
 **build script (`{{project.quality_gate.build_cmd}}`)**
 

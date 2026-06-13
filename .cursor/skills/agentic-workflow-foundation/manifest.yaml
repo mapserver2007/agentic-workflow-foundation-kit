@@ -141,6 +141,7 @@ session:
 #   実 script 検出ではなく技術スタック由来の canonical contract を生成する。
 # ------------------------------------------------------------
 quality_gate_contract:
+  gen:
   build:
   lint:
   test:
@@ -258,6 +259,7 @@ outputs:
     mode: render
     required_sections:
       - "exit code"
+      - "G-GEN"
       - "Hook"
       - "リンク衛生"
       - "package script contract"
@@ -347,6 +349,7 @@ project:
   # agentic-workflow-foundation 実行時点では package.json は存在しないため、
   # G-* は root scripts の canonical entrypoint として決定し、script contract を別途生成する。
   quality_gate:
+    gen_cmd: "[要確認] Phase 1.65 で導出"
     build_cmd: "[要確認] Phase 1.65 で導出"
     lint_cmd: "[要確認] Phase 1.65 で導出"
     test_cmd: "[要確認] Phase 1.65 で導出"

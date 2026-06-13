@@ -24,7 +24,7 @@ Agentic Workflow 基盤ファイル群を、**スキル内に同梱された汎�
 
 > `AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` の思想は本スキル作成時に `SKILL.md` / seed `manifest.yaml` / `templates/` へ内部化済み。スキル実行時にこの2つを再入力・再同期する必要はない。
 >
-> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
+> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
 >
 > リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。
 
@@ -62,7 +62,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
-| `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定 |
+| `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
 | `scripts/run_resolved_engine.py` | seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す前処理ラッパー |
 
@@ -123,7 +123,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - `name`: コピー先（実行先）リポジトリのディレクトリ名から自動導出する。
 - `slug`: `name` から導出する。
 - `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
-- `quality_gate.{build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
+- `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run gen` / `pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
 | workflow_pattern | tracking_artifact |
 | --- | --- |
@@ -166,15 +166,17 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 
 ### Phase 1.65: G-* / script contract 自動決定
 
-root `manifest.yaml > tech_stack` から、開発型の `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を決定論的に導出する。
+root `manifest.yaml > tech_stack` から、開発型の `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を決定論的に導出する。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.py
 ```
 
 - `package.json` はこの時点では存在しない前提。実 script の検出や優先採用は行わない。
-- 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、`G-BUILD = pnpm run build`、`G-LINT = pnpm run lint`、`G-TEST = pnpm run test` に一意決定する。
-- root `manifest.yaml > quality_gate_contract` へ、将来の `package.json` scripts が満たすべき build / lint / test の内訳を書き込む。
+- 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、`G-GEN = pnpm run gen`、`G-BUILD = pnpm run build`、`G-LINT = pnpm run lint`、`G-TEST = pnpm run test` に一意決定する。
+- `G-GEN` は開発中の OpenAPI bundle / 型・client 生成 / 生成物差分チェックを担い、`G-BUILD` は生成済み成果物を前提にデプロイ直前やローカル実行直前の build を担う。
+- root `manifest.yaml > quality_gate_contract` へ、将来の `package.json` scripts が満たすべき gen / build / lint / test の内訳を書き込む。
+- `session.verification.gate_command` は標準検証として build / lint / test のみを含め、`G-GEN` は OpenAPI 定義や生成設定を変更した開発中に個別実行する。
 - exit 0 → 決定済みまたは対象外として継続可。WARN があれば報告する。
 - exit 2 → manifest 破損など致命的エラー。中断する。
 
@@ -228,7 +230,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 以下を報告する。
 
 - Phase 1.6 / 1.7 の結果（techstack 取り込み・整合ゲート）
-- Phase 1.65 の結果（G-* / script contract 自動決定）
+- Phase 1.65 の結果（G-GEN を含む G-* / script contract 自動決定）
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
 - Phase 1.5 で確定した `project.*` 値一覧と `framework.accd_axes` の採用/非採用一覧
@@ -241,7 +243,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の per-project 解決ロジックを追加しない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定し、`framework.accd_axes` は自動導出で確定する**。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装を自動導出し、ACCD 軸ごとの AskQuestion は行わない。未確定で残った `[要確認]` は audit が WARN 扱い。
-- **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。
+- **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。OpenAPI 由来の生成は `G-GEN`、実行/デプロイ前 build は `G-BUILD` として分離する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
 

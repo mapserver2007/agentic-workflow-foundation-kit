@@ -45,6 +45,7 @@
 
 ### docs/QUALITY_GATE.md（unified §9 / exit code）
 - `exit code`: 3段階（0/1/2）の定義。
+- `G-GEN`: OpenAPI 由来の生成を `G-BUILD` から分離し、開発中の自動生成 / 生成物差分確認を独立して扱うこと。
 - `Hook`: §2.1 Deterministic 強制範囲。
 - `リンク衛生`: 原則5 コンテキスト保護。
 - `package script contract`: `package.json` 未生成段階でも、技術スタックから導出された G-* の内訳を復元できること。

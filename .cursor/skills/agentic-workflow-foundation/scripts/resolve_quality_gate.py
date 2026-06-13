@@ -18,9 +18,12 @@ import genlib  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 
-BUILD_CONTRACT = [
+GEN_CONTRACT = [
     "OpenAPI bundle を生成し、bundle 成功を検証する",
     "OpenAPI 由来の型生成、または生成物の再生成差分チェックを実行する",
+]
+
+BUILD_CONTRACT = [
     "TypeScript typecheck を実行する",
     "Next.js / OpenNext build を実行する",
     "Hono Worker build を実行する",
@@ -89,12 +92,14 @@ def _resolve(manifest: dict):
 
     return {
         "quality_gate": {
+            "gen_cmd": "pnpm run gen",
             "build_cmd": "pnpm run build",
             "lint_cmd": "pnpm run lint",
             "test_cmd": "pnpm run test",
         },
         "gate_command": "pnpm run build && pnpm run lint && pnpm run test",
         "contract": {
+            "gen": GEN_CONTRACT,
             "build": BUILD_CONTRACT,
             "lint": LINT_CONTRACT,
             "test": TEST_CONTRACT,
@@ -156,6 +161,7 @@ def _find_nested_block(lines, parent: str, child: str):
 def _quality_gate_block(values):
     return [
         "  quality_gate:",
+        f"    gen_cmd: {_yaml_quote(values['gen_cmd'])}",
         f"    build_cmd: {_yaml_quote(values['build_cmd'])}",
         f"    lint_cmd: {_yaml_quote(values['lint_cmd'])}",
         f"    test_cmd: {_yaml_quote(values['test_cmd'])}",
@@ -171,7 +177,7 @@ def _verification_block(gate_command: str):
 
 def _contract_block(contract):
     lines = ["quality_gate_contract:"]
-    for key in ("build", "lint", "test"):
+    for key in ("gen", "build", "lint", "test"):
         lines.append(f"  {key}:")
         for item in contract[key]:
             lines.append(f"    - {_yaml_quote(item)}")
