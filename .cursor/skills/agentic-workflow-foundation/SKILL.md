@@ -33,7 +33,7 @@ Agentic Workflow 基盤ファイル群を、**スキル内に同梱された汎�
 ```text
 seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
        │
-       ├─ Phase 1.5: project 設定確定 → root manifest.yaml 生成
+       ├─ Phase 1.5: project 設定 + ACCD 採用/非採用 確定 → root manifest.yaml 生成
        │
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
        ├─ Phase 1.65: tech_stack → quality_gate / quality_gate_contract
@@ -46,7 +46,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 ```
 
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed**。統一設計書の入力前のテンプレートに近い位置づけで、特定リポジトリの確定値を焼き込まない。
-- **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `tech_stack.*` / `session.verification.*` は生成後の root manifest で PO が評価する。
+- **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が seed manifest に root `manifest.yaml` の per-project 値を重ねた一時 skill-dir を作り、engine には解決済み入力だけを渡す。
@@ -57,7 +57,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 | ファイル | 役割 |
 | --- | --- |
 | `.cursor/skills/agentic-workflow-foundation/manifest.yaml` | スキル内 seed YAML（framework 要件 / outputs カタログ / `marker_id` / project / tech_stack の初期雛形） |
-| `manifest.yaml` | スキル実行で生成されるリポジトリ直下の正式 project manifest（project 設定 / tech_stack / session.verification） |
+| `manifest.yaml` | スキル実行で生成されるリポジトリ直下の正式 project manifest（project 設定 / ACCD 採用・非採用 / tech_stack / session.verification） |
 | `references/source-mapping.md` | manifest キー → 出力ファイル のトレーサビリティ |
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
@@ -101,21 +101,32 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 > `docs/DECISIONS.md` はこの基盤を利用して実アプリを作るときの判断記録であり、本ツールキット内部の変更理由を必ず ADR 化する場所ではない。
 
-### Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値）
+### Phase 1.5: プロジェクト設定 / ACCD 対応確定（AskQuestion / 自動導出 / 固定値）
 
-**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。
+**発火条件**: `project.*` の必須フィールド、または `framework.accd_axes[].adopted` / `framework.accd_axes[].not_adopted` に `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。
 
-`project.*` は manifest への PO 直接手入力・自由入力を原則廃止し、**AskQuestion / 自動導出 / 固定値**で確定する。
+`project.*` と `framework.accd_axes` は manifest への PO 直接手入力・自由入力を原則廃止し、**AskQuestion / 自動導出 / 固定値**で確定する。
 
 **(1) AskQuestion（多肢選択）**
 
 - `workflow_pattern`: 主アウトプット / 最大リスク / 検証方法から、推奨案を添えて PO に選択してもらう。
+- `framework.accd_axes`: ACCD 5 軸それぞれについて、本リポで採用する軽量実装と、意図的に非採用とする BAS 固有の重い機構を PO に選択してもらう。
 
 | 選択肢 | 主アウトプット | 最大リスク | 検証方法 |
 | --- | --- | --- | --- |
 | 開発型 | 動くアプリケーション | リグレッション | 自動テスト + ビルド + 型チェック |
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
+
+ACCD は 1 軸ずつ `AskQuestion` する。各質問は推奨案を先頭に置き、PO が必要なら Other でプロジェクト固有の文言を入力できるようにする。
+
+| ACCD 軸 | 推奨する採用候補 | 推奨する非採用候補 |
+| --- | --- | --- |
+| A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
+| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `guard-git-write.sh` | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
+| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル | engine / model resolver による異モデル強制 |
+| D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント archive 境界 | 提案書 7 ステップパイプライン |
+| E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
 
 **(2) 自動導出（質問不要）**
 
@@ -138,6 +149,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 **確定後**
 
 - 確定値はすべて、スキル実行で生成されるリポジトリ直下 `manifest.yaml > project.*` に記入する。
+- ACCD の確定値は、スキル実行で生成されるリポジトリ直下 `manifest.yaml > framework.accd_axes[].adopted` / `not_adopted` に記入する。
 - 「複合型」になりそうな場合は、ワークスペース分離判断を PO に確認してから主パターンを確定する。
 
 ### Phase 1.6: techstack 取り込み
@@ -186,7 +198,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 ```
 
-- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、root `manifest.yaml` の `project` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
+- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
 - engine は root `manifest.yaml` を直接読まない。root manifest overlay は foundation 固有の入力解決であり、engine の How 境界へ混ぜない。
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
@@ -219,7 +231,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - Phase 1.65 の結果（G-* / script contract 自動決定）
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
-- Phase 1.5 で確定した `project.*` 値一覧
+- Phase 1.5 で確定した `project.*` 値一覧と `framework.accd_axes` の採用/非採用一覧
 - 実行できなかったゲートがあれば理由
 
 ## 重要な制約
@@ -228,7 +240,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **unified/bas を実行時入力として扱わない**。この2つの思想は本スキルに内部化済み。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の per-project 解決ロジックを追加しない。
-- **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定する**。未確定で残った `[要確認]` は audit が WARN 扱い。
+- **`project.*` と `framework.accd_axes` は AskQuestion / 自動導出 / 固定値の3分類で確定する**。未確定で残った `[要確認]` は audit が WARN 扱い。
 - **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。

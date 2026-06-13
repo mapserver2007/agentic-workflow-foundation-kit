@@ -8,11 +8,11 @@
 
 ## 0. ACCD 5 軸と本リポの対応
 
-ACCD（AI Context Constraints Design）は、AI の揮発性 / 容量上限 / 断崖性を 5 軸で補完する設計フレームワーク。詳細は [`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md`](../.cursor/docs/AI_BUSINESS_AGENT_SUITE.md) を参照。
+ACCD（AI Context Constraints Design）は、AI の揮発性 / 容量上限 / 断崖性を 5 軸で補完する設計フレームワーク。詳細は [`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md`](../.cursor/docs/AI_BUSINESS_AGENT_SUITE.md) を参照。本リポでは BAS 固有の重い機構を丸移植せず、リポジトリの規模・運用パターンに合う軽量実装で各軸を担う。
 
-| ACCD 軸 | 本リポの実装 |
-|---------|-------------|
-{{#each framework.accd_axes}}| **{{this.id}} {{this.name}}** | {{this.impl}} |
+| ACCD 軸 | 本リポの実装（採用） | 非採用（意図的） |
+|---------|---------------------|------------------|
+{{#each framework.accd_axes}}| **{{this.id}} {{this.name}}** | {{this.adopted}} | {{this.not_adopted}} |
 {{/each}}
 
 判断基準: 重い機構の丸移植ではなく、各軸を本リポの規模・運用パターンに合った最小実装でカバーする。

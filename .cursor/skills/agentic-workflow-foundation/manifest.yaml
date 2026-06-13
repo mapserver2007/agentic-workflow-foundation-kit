@@ -74,19 +74,24 @@ framework:
   accd_axes:
     - id: A
       name: 制約の補完
-      impl: "[要確認] 永続化された制約の置き場（reports / AGENTS.md 参照順序 / rules）"
+      adopted: "[要確認] AGENTS.md 参照順序 / .cursor/rules/*.mdc / 追跡ドキュメント / handoff manifest"
+      not_adopted: "YAML 正本 + Markdown 生成 / Context Loading Table の機械検証"
     - id: B
       name: 専念の委譲
-      impl: "[要確認] 機械的判定（品質ゲート / guard hook）"
+      adopted: "[要確認] 品質ゲート / verification-gate.sh / guard-git-write.sh"
+      not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
-      impl: "[要確認] 自己反論 / subagent 並列探索 / 複数視点レビュー"
+      adopted: "[要確認] Task subagent 並列探索 / 自己反論 / review スキル"
+      not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      impl: "[要確認] テンプレート必須セクション / handoff manifest / Progressive Disclosure"
+      adopted: "[要確認] templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
+      not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
-      impl: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+      adopted: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+      not_adopted: "仮説シミュレーション全タスク必須化"
   agent_conduct:
     - id: Humble
       rule: 根拠なし同意の禁止。同意前にコード/docsで裏取りし根拠を1行で示す

@@ -19,6 +19,7 @@ if ENGINE_DIR not in sys.path:
 import genlib  # noqa: E402
 
 ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract")
+FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 
 
 def _yaml_quote(value) -> str:
@@ -81,6 +82,70 @@ def dump_manifest(manifest: dict) -> str:
     return "\n".join(_dump_yaml_node(manifest)) + "\n"
 
 
+def _normalize_accd_axis(axis: dict, base: dict | None = None) -> dict:
+    normalized = dict(base or {})
+    normalized.update(axis)
+    if "adopted" not in axis and axis.get("impl"):
+        normalized["adopted"] = axis["impl"]
+    if "adopted" not in normalized:
+        normalized["adopted"] = "[要確認] 採用する軽量実装"
+    if "not_adopted" not in normalized:
+        normalized["not_adopted"] = "[要確認] 意図的に非採用とする重い機構"
+    return normalized
+
+
+def _merge_accd_axes(seed_axes, overlay_axes):
+    if not isinstance(overlay_axes, list):
+        return seed_axes
+
+    seed_by_id = {
+        axis.get("id"): axis
+        for axis in seed_axes or []
+        if isinstance(axis, dict) and axis.get("id")
+    }
+    overlay_by_id = {
+        axis.get("id"): axis
+        for axis in overlay_axes
+        if isinstance(axis, dict) and axis.get("id")
+    }
+
+    merged = []
+    seen = set()
+    for axis in seed_axes or []:
+        if not isinstance(axis, dict):
+            merged.append(axis)
+            continue
+        axis_id = axis.get("id")
+        override = overlay_by_id.get(axis_id)
+        merged.append(_normalize_accd_axis(override or {}, axis))
+        seen.add(axis_id)
+
+    for axis in overlay_axes:
+        if not isinstance(axis, dict):
+            continue
+        axis_id = axis.get("id")
+        if axis_id in seen:
+            continue
+        merged.append(_normalize_accd_axis(axis, seed_by_id.get(axis_id)))
+    return merged
+
+
+def _apply_framework_overlay(merged: dict, overlay: dict) -> dict:
+    overlay_framework = overlay.get("framework")
+    if not isinstance(overlay_framework, dict):
+        return merged
+
+    framework = dict(merged.get("framework") or {})
+    for key in FRAMEWORK_OVERLAY_KEYS:
+        if key == "accd_axes" and key in overlay_framework:
+            framework[key] = _merge_accd_axes(
+                framework.get("accd_axes") or [],
+                overlay_framework.get("accd_axes"),
+            )
+    merged["framework"] = framework
+    return merged
+
+
 def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     manifest = genlib.load_manifest(seed_manifest_path)
     if not os.path.isfile(root_manifest_path):
@@ -99,6 +164,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
             merged[key] = genlib.deep_merge(merged[key], overlay[key])
         else:
             merged[key] = overlay[key]
+    merged = _apply_framework_overlay(merged, overlay)
     return merged
 
 

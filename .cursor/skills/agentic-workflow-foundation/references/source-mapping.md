@@ -4,7 +4,7 @@
 >
 > `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` は per-project 入力として Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
 >
-> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が seed manifest に root `manifest.yaml` の `project` / `tech_stack` / `session` / `quality_gate_contract` を overlay した一時 resolved skill-dir を作る。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
+> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が seed manifest に root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` を overlay した一時 resolved skill-dir を作る。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
@@ -24,7 +24,7 @@
 | `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
 | `framework.exit_codes` | `docs/QUALITY_GATE.md` |
 | `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` / `.cursor/skills/decisions-record/SKILL.md` |
-| `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0` |
+| `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（Phase 1.5 で採用/非採用を per-project 確定し、root manifest から overlay） |
 | `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
 | `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/session-handoff-guide.md` / `.cursor/hooks/README.md` |
 | `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` / `.cursor/skills/session-planning/SKILL.md` / `.cursor/skills/session-handover/SKILL.md` |
@@ -40,7 +40,7 @@
 ## 変更時の運用
 
 1. `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、seed SoT 変更として PO 承認を得る。
-2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、スキル実行で生成される root `manifest.yaml` に保存する。
+2. `project.*` と `framework.accd_axes` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、スキル実行で生成される root `manifest.yaml` に保存する。
 3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `project.quality_gate` / `quality_gate_contract` を自動決定する。
 4. Phase 2 / Phase 3 は `run_resolved_engine.py` 経由で engine を呼び、root manifest overlay を foundation 側の前処理に閉じ込める。
 5. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。
