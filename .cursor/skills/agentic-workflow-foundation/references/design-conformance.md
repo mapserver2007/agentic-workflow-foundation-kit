@@ -8,12 +8,14 @@
 
 `audit.py` は次の2軸で exit code を返す（QUALITY_GATE exit code 3段階に準拠）。
 
-1. **冪等性 / SoT 一元化**: 出力ファイル == seed manifest から生成された root manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
+1. **冪等性 / SoT 一元化**: 出力ファイル == seed manifest に root `manifest.yaml` の per-project 値を overlay した resolved manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
 2. **required sections 準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
 3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
 4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 1.65 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
 
 > **エンジン自体は監査の生成物対象外**: `audit.py` が検査するのは設定スキルの `outputs[]`（生成された出力ファイル）である。生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）はどの設定スキルの `outputs` にも含まれないため、「出力 == 再生成結果」の冪等性検査の対象にならない。エンジンは設計符号化生成の出力ではなく、独立スキルとして工学仕様を正本に保守される。
+>
+> **resolved manifest は一時入力**: root manifest overlay は foundation 固有の `run_resolved_engine.py` が担い、engine には解決済み skill-dir を渡す。これにより engine は root `manifest.yaml` を直接読まず、How ツールとしての境界を維持する。
 
 ## 必須要件の設計根拠
 

@@ -38,7 +38,9 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
        ├─ Phase 1.65: tech_stack → quality_gate / quality_gate_contract
        │
-       └─ 100%決定論 generate.py ──▶ 出力ファイル群
+      └─ run_resolved_engine.py（root manifest overlay）
+             │
+             └─ 100%決定論 engine ──▶ 出力ファイル群
                                       │
                                       └─ audit.py / conformance gate
 ```
@@ -47,6 +49,7 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `tech_stack.*` / `session.verification.*` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
+- **root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が seed manifest に root `manifest.yaml` の per-project 値を重ねた一時 skill-dir を作り、engine には解決済み入力だけを渡す。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
@@ -61,8 +64,9 @@ seed SoT(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定 |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
+| `scripts/run_resolved_engine.py` | seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す前処理ラッパー |
 
-> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。
+> 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は root `manifest.yaml` を直接読まず、渡された skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
 > 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
 
 ## ワークフロー（6フェーズ）
@@ -176,13 +180,14 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 
 ### Phase 2: 生成
 
-基盤一式と session 系3スキルを、スキル内 seed から生成された **リポジトリ直下 manifest.yaml** を正として生成する。
+基盤一式と session 系3スキルを、スキル内 seed に **リポジトリ直下 manifest.yaml** の per-project 値を重ねた resolved manifest を正として生成する。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
-  --skill-dir .cursor/skills/agentic-workflow-foundation
+python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 ```
 
+- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、root `manifest.yaml` の `project` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
+- engine は root `manifest.yaml` を直接読まない。root manifest overlay は foundation 固有の入力解決であり、engine の How 境界へ混ぜない。
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
@@ -190,11 +195,10 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
 
 ### Phase 3: 監査ゲート
 
-親 skill-dir だけを監査する。session 系出力も親 `outputs[]` に含まれる。
+resolved manifest で親 skill-dir 相当の出力だけを監査する。session 系出力も親 `outputs[]` に含まれる。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
-  --skill-dir .cursor/skills/agentic-workflow-foundation
+python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit
 ```
 
 - exit 0 → 冪等性 + required sections OK（`[要確認]` は WARN 表示だが PASS）。
@@ -204,9 +208,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
 冪等性の最終確認は次でも確認できる。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
-  --skill-dir .cursor/skills/agentic-workflow-foundation \
-  --check
+python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py check
 ```
 
 ### Phase 4: 報告
@@ -225,6 +227,7 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py \
 - **出力ファイルを直接編集しない**。変更は必ず seed `manifest.yaml` / 生成済み root `manifest.yaml` / `templates/` を編集して再生成する。
 - **unified/bas を実行時入力として扱わない**。この2つの思想は本スキルに内部化済み。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
+- **root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の per-project 解決ロジックを追加しない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定する**。未確定で残った `[要確認]` は audit が WARN 扱い。
 - **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
