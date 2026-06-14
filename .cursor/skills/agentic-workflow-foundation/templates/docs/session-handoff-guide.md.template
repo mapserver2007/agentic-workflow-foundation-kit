@@ -26,12 +26,16 @@
 
 LLM には一度に参照できるコンテキスト量の上限があり、長いコンテキストでは中央付近の情報が相対的に弱く扱われる傾向がある。これが Lost in the Middle 問題で、長時間セッションでは序盤の制約、判断、方針が AI の注意から落ちやすくなる。
 
+> {{framework.handoff.paper_citation}}
+
 主な症状:
 
 - 序盤に決めた方針を中盤以降で勝手に覆す
 - 同じ間違いを繰り返す
 - 重要な制約条件を忘れる
 - 直前の設計判断と整合しない実装を始める
+
+{{framework.handoff.degradation_example}}
 
 {{framework.handoff.purpose}}。
 
@@ -83,6 +87,14 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
+### 各指標が近似するもの（proxy の意味）
+
+3 指標はいずれもトークン量を直接測れないための proxy（近似指標）。何を近似しているかを理解すると、どの指標が先に閾値到達したかを解釈し、handoff の要否を判断しやすい。
+
+{{#each framework.handoff.proxy_notes}}
+- **{{this.metric}}**: {{this.measures}}
+{{/each}}
+
 閾値を変更する場合は、統一設計書または seed/root manifest の該当値を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。Hook スクリプトを直接編集すると audit で drift として検出される。
 
 ### 意図的に採用しない設計（YAGNI）
@@ -105,8 +117,10 @@ manifest を閾値の SoT とし、以下は観測ベースの必要性が複数
 
 ### Red 通知後にやってはいけないこと
 
+各禁止事項には理由を併記する。理由まで理解しておくと、引き継ぎ失敗と劣化ゾーンでの継続を避けやすい。
+
 {{#each framework.handoff.forbidden_after_red}}
-- {{this}}
+- **{{this.action}}** — {{this.reason}}
 {{/each}}
 
 ## handoff manifest パス規約（SoT）
@@ -117,7 +131,7 @@ manifest を閾値の SoT とし、以下は観測ベースの必要性が複数
 
 ### 単一 manifest 制約
 
-`{{framework.handoff.active_manifest_path}}` は 1 ファイル管理のため、複数キャンペーンを並行で引き継ぐことはできない。最後に書いた manifest が常に有効になる。別タスクを挟む場合は、active manifest を手動で退避してから新規チャットを開く。
+`{{framework.handoff.active_manifest_path}}` は 1 ファイル管理のため、複数キャンペーンを並行で引き継ぐことはできない。最後に書いた manifest が常に有効になる。別タスクを挟む場合は、active manifest を手動で退避してから新規チャットを開く。退避を怠ると、別タスクのチャットが先に active manifest を消費してしまう（失敗モード `mis-consume`）。退避した manifest は元のキャンペーンに戻る前に必ず復元する。
 
 ```bash
 # 別タスクを始める前に manifest を退避
@@ -162,6 +176,17 @@ AI が `handoff-active.md` を作成する場合は、少なくとも以下を�
 ```bash
 cat .cursor/.session/*.json | jq .
 ```
+
+### 席を外して時間だけ進んだ（真の劣化ではない警告）
+
+席を外していただけで経過時間だけが閾値に達した場合、トークンはほとんど蓄積しておらず、実際にはコンテキスト劣化していないことがある（経過時間は proxy 指標で、`time-false-positive` の失敗モードに相当する）。真の劣化か proxy 誤検知かは state ファイルで見分けられる。
+
+```bash
+cat .cursor/.session/*.json | jq '{prompt_count, shell_bytes}'
+```
+
+- `prompt_count` / `shell_bytes` も高い → 真の劣化の可能性が高い。指示どおり Cmd+N で新規チャットへ移る。
+- 経過時間だけが高く `prompt_count` / `shell_bytes` が低い → proxy 誤検知の可能性。ただし**運用上は安全側（Cmd+N で新規チャット）を推奨**する。劣化していない場合のやり直しコストは小さく、劣化を見逃すコストの方が大きいため。
 
 ### 新規チャットを開いたが引き継ぎされない
 

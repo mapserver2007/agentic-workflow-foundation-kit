@@ -114,6 +114,9 @@ framework:
   handoff:
     source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
+    # 劣化の自覚を促す根拠論文と具体例。論文は移植性のため汎用引用のみ（プロジェクト固有チケットは含めない）。
+    paper_citation: "根拠: Liu et al. (2023) 『Lost in the Middle: How Language Models Use Long Contexts』 (TACL)。長い文脈では入力の中央付近にある情報の利用率が相対的に下がることを実証した。"
+    degradation_example: "具体例: 序盤で「この更新処理は必ずトランザクション境界内で実行する」と決めたのに、終盤では境界外に実装してしまう。序盤の制約が AI の注意から落ちるのが典型的な劣化症状で、早期に気づけると handoff のタイミングを逃しにくい。"
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
     active_manifest_path: ".cursor/.session/handoff-active.md"
     consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{unix}.md"
@@ -133,10 +136,15 @@ framework:
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
       - warning: "[CONTEXT_BUDGET=RED]"
         action: "すぐに Cmd+N で新規チャットを開き、同セッションで新規実装を続行しない"
+    # action だけでなく理由を併記する。理由を読むことで「なぜ禁止か」が腑に落ち、
+    # 引き継ぎ失敗（mis-consume / history-reopen）と劣化ゾーンでの継続を防ぐ。
     forbidden_after_red:
-      - "別の新規チャットを途中で開く"
-      - "Cursor の過去チャット履歴を開き直して再開したつもりになる"
-      - "同セッションで「もう少しだけ」と続行する"
+      - action: "別の新規チャットを途中で開く"
+        reason: "目的の継続チャットより先に handoff-active.md を消費し、本来の再開チャットに引き継がれない（mis-consume）"
+      - action: "Cursor の過去チャット履歴を開き直して再開したつもりになる"
+        reason: "sessionStart Hook が期待通り再発火せず、handoff manifest が注入されない（history-reopen）"
+      - action: "同セッションで「もう少しだけ」と続行する"
+        reason: "Lost in the Middle の劣化ゾーンで実装を続けることになり、品質劣化の主要失敗モードに陥る"
     failure_modes:
       - id: "mis-consume"
         symptom: "別チャットが handoff-active.md を先に消費し、本来の再開チャットに注入されない"
@@ -160,6 +168,15 @@ framework:
       - metric: "シェル出力バイト"
         update: "afterShellExecution Hook で stdout / output / result の長さを加算する"
         reset: "新セッション起動で 0 に戻る"
+    # 各指標は直接トークン量を測れないための proxy（近似指標）。何を近似しているかを
+    # 明示すると、どの指標が先に閾値到達したか（OR 判定）を解釈し handoff 要否を判断しやすい。
+    proxy_notes:
+      - metric: "経過時間"
+        measures: "トークン蓄積量の proxy。Hook からトークン数は取得できないため時間で近似する。長時間放置だけでも到達するので誤検知（false positive）が起きやすい"
+      - metric: "プロンプト数"
+        measures: "対話往復数の proxy。往復が増えるほど序盤の情報が中央に埋もれて薄まる"
+      - metric: "シェル出力バイト"
+        measures: "ツール出力によるコンテキスト消費の proxy。大量ログ・広範な探索で中央埋没リスクが上がる"
     manifest_required_sections:
       - "現在の作業状態"
       - "直近のユーザー依頼"
@@ -350,6 +367,8 @@ outputs:
       - "## 参考リンク"
       - "単一 manifest 制約"
       - "意図的に採用しない設計"
+      - "各指標が近似するもの（proxy の意味）"
+      - "席を外して時間だけ進んだ"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
