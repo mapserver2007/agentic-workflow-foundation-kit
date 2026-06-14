@@ -65,9 +65,10 @@
 ### セッション開始
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
-2. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
-3. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
-4. ソースコード調査はドキュメント把握後に開始する
+2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞 / `archive/` 取り残しを確認（`docs/QUALITY_GATE.md §1.5`）
+3. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
+4. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
+5. ソースコード調査はドキュメント把握後に開始する
 
 ### セッション終了
 

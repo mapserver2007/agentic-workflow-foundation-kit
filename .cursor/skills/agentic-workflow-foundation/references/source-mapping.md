@@ -37,6 +37,7 @@
 | `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ） |
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
+| `project.tracking_artifact`（ゲート文脈） | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（検査対象）/ `docs/QUALITY_GATE.md`（§1.4 検査ID / §1.5 セッション開始ゲート / §3 フェーズ境界ゲート） |
 | `marker_id` | `.gitignore` / `.cursorignore` |
 
 ## 変更時の運用

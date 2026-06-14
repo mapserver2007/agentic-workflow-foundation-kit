@@ -6,19 +6,50 @@
 
 set -uo pipefail
 
-INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
+# JSON 出力ヘルパ。jq があれば安全にエスケープし、無ければ固定文言で最小 JSON を組む
+# （フォールバック用 reason/msg は固定文字列でエスケープ不要）。
+emit() { # $1=permission $2=reason $3=agent_message
+  if command -v jq >/dev/null 2>&1; then
+    jq -n --arg p "$1" --arg reason "$2" --arg msg "$3" \
+      '{permission:$p, reason:$reason, agent_message:$msg}'
+  else
+    printf '{"permission":"%s","reason":"%s","agent_message":"%s"}\n' "$1" "$2" "$3"
+  fi
+}
+
+# deny クラス（不可逆操作）のフェイルクローズ判定。
+# 入力を正常解析できない場合（jq 不在 / JSON 破損 / command 抽出失敗）に生入力へ適用し、
+# deny クラスにマッチしたら allow（素通り）ではなく ask を返す（二段階フェイル戦略の deny 側）。
+deny_class_failclose() {
+  local n
+  n="$(printf '%s' "$1" | tr -s '[:space:]' ' ')"
+  if [[ "$n" =~ (--force|--force-with-lease) ]] \
+     || [[ "$n" =~ git[[:space:]]+push[[:space:]].*--delete ]] \
+     || [[ "$n" =~ git[[:space:]]+push[[:space:]].*(main|master|develop|release/) ]] \
+     || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
+     || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
+     || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]]; then
+    emit "ask" "deny クラスのコマンドが疑われるが入力を正常解析できないためフェイルクローズで承認要求" \
+         "Hook が入力を解析できませんでした（jq 不在 / JSON 破損の可能性）。不可逆操作でないことを確認のうえ、ユーザー承認を得てください。"
+    exit 0
+  fi
+}
+
+INPUT="$(cat 2>/dev/null)" || INPUT=""
 if [[ -z "$INPUT" ]]; then
   echo '{}'
   exit 0
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
+  deny_class_failclose "$INPUT"
   echo '{}'
   exit 0
 fi
 
-CMD="$(jq -r '.command // empty' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }
+CMD="$(jq -r '.command // empty' <<<"$INPUT" 2>/dev/null)" || CMD=""
 if [[ -z "$CMD" ]]; then
+  deny_class_failclose "$INPUT"
   echo '{}'
   exit 0
 fi
@@ -91,6 +122,29 @@ if [[ "$CMD_N" =~ git[[:space:]]+rebase([[:space:]]|$) ]] \
    && [[ ! "$CMD_N" =~ git[[:space:]]+rebase[[:space:]]+--(abort|continue|skip|quit) ]]; then
   ask "git rebase は履歴書き換えのためユーザー承認を要求" \
       "rebase 後に push --force が必要になる場合があります。ユーザー承認を得てください。"
+fi
+
+# gh pr / issue のコメント・レビュー投稿（無断投稿防止）
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+  ask "gh pr/issue のコメント・レビュー投稿は無断投稿防止のため承認を要求" \
+      "レビュー返信・コメントは agent-code-review 等の承認ループ経由で投稿してください。"
+fi
+
+# gh api の書き込み系（--method POST|PATCH|PUT|DELETE / field 系 / --input / replies / graphql mutation）
+# 読み取り（--method GET 明示 / mutation を含まない graphql）は除外する。
+if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
+  if [[ "$CMD_N" =~ (--method|-X)[[:space:]=]+GET ]]; then
+    : # 明示 GET は読み取り。素通り
+  elif [[ "$CMD_N" =~ graphql ]] && [[ ! "$CMD_N" =~ mutation ]]; then
+    : # mutation を含まない graphql は読み取り。素通り
+  elif [[ "$CMD_N" =~ (--method|-X)[[:space:]=]+(POST|PATCH|PUT|DELETE) ]] \
+       || [[ "$CMD_N" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]] \
+       || [[ "$CMD_N" =~ /replies ]] \
+       || [[ "$CMD_N" =~ graphql.*mutation ]]; then
+    ask "gh api の書き込み系（POST/PATCH/PUT/DELETE / field / --input / replies / graphql mutation）は無断投稿防止のため承認を要求" \
+        "コメント・レビュー返信などの書き込みは agent-code-review 等の承認ループ経由で実行してください。"
+  fi
 fi
 
 # ============================================================

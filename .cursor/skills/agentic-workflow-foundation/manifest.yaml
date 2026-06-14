@@ -79,7 +79,7 @@ framework:
       not_adopted: "YAML 正本 + Markdown 生成 / Context Loading Table の機械検証"
     - id: B
       name: 専念の委譲
-      adopted: "品質ゲート / verification-gate.sh / guard-git-write.sh"
+      adopted: "品質ゲート / verification-gate.sh / session-start-gate.sh / guard-git-write.sh / 軽量検査ID"
       not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
@@ -283,6 +283,8 @@ outputs:
     required_sections:
       - "beforeShellExecution"
       - "permission"
+      - "deny_class_failclose"
+      - "gh api"
   - path: .cursor/hooks/session-bootstrap.sh
     template: hooks/session-bootstrap.sh.template
     mode: render
@@ -353,6 +355,9 @@ outputs:
       - "Hook"
       - "リンク衛生"
       - "package script contract"
+      - "検査 ID"
+      - "セッション開始ゲート"
+      - "フェーズ境界"
   - path: docs/session-handoff-guide.md
     template: docs/session-handoff-guide.md.template
     mode: render
@@ -402,6 +407,14 @@ outputs:
     required_sections:
       - "session.verification.gate_command"
       - "=== verification gate ==="
+  - path: .cursor/skills/session-handover/scripts/session-start-gate.sh
+    template: skills/session-handover/scripts/session-start-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "=== session-start gate ==="
+      - "G-SESSION-HANDOFF-001"
+      - "G-SESSION-ARCH-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render

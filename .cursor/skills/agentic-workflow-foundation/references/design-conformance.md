@@ -34,10 +34,10 @@
 - `sessionStart` / `stop`: Context Budget Auto-Handoff の最小構成イベント。
 
 ### .cursor/hooks/*.sh（unified §13.5 / ADR Context Budget）
-- `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask（Advisory→Deterministic 昇格）。
+- `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask（Advisory→Deterministic 昇格）。`gh api` 書込系・`gh pr comment`/`review` の無断投稿を ask で検知。`deny_class_failclose` で deny クラスは入力解析不能時もフェイルクローズ（`ask`）。
 - `session-bootstrap.sh`: `additional_context` で handoff manifest 注入。
 - `session-budget-evaluator.sh`: `followup_message` で `[CONTEXT_BUDGET=...]` を AI に通知。
-- フェイルオープン（`{}` 素通り）が全 hook の共通設計。
+- **二段階フェイル戦略**: `session-*` 系と `guard-git-write.sh` の deny 対象以外はフェイルオープン（`{}` 素通り）。`guard-git-write.sh` の deny クラスのみフェイルクローズ（解析不能時 `ask`）。
 
 ### docs/DECISIONS.md（DECISIONS 運用ルール）
 - `D-BOUNDARY` 〜 `D-PATTERN`: 8 つの設計次元の定義。
@@ -45,10 +45,13 @@
 
 ### docs/QUALITY_GATE.md（unified §9 / exit code）
 - `exit code`: 3段階（0/1/2）の定義。
-- `G-GEN`: OpenAPI 由来の生成を `G-BUILD` から分離し、開発中の自動生成 / 生成物差分確認を独立して扱うこと。
-- `Hook`: §2.1 Deterministic 強制範囲。
+- `G-GEN`: OpenAPI 由来の生成を `G-BUILD` から分離し、開発中の自動生成 / 生成物差分確認を独立して扱うこと（合格条件は exit 0 かつ生成物差分なし=コミット済み）。
+- `Hook`: §2.1 Deterministic 強制範囲。根拠列・`gh api` 書込/`gh pr comment` 等の ask 行・二段階フェイル戦略（deny=フェイルクローズ / それ以外=フェイルオープン）を含むこと。
 - `リンク衛生`: 原則5 コンテキスト保護。
 - `package script contract`: `package.json` 未生成段階でも、技術スタックから導出された G-* の内訳を復元できること。
+- `検査 ID`: §1.4 スクリプト実装ゲートの安定検査 ID 命名規約（`G-{GATE}-{CATEGORY}-{NNN}`）。BAS Finding Code 79 種体系は採用せず軽量 ID 運用に留めること（`framework.accd_axes[B].not_adopted` の死守）。
+- `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / `archive/` 取り残し）の定義と検査 ID を含むこと。
+- `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。専用 `gate-*.py` は持たず既存ゲート + Advisory ループで運用する軽量実装であること。
 
 ### docs/GOTCHAS.md（原則8）
 - `起票トリガー`: 「期待と違う / 2回以上 / 想定外」の3トリガー。
@@ -93,11 +96,23 @@
 - `session.verification.gate_command`: 生成済み root `manifest.yaml` の検証コマンドが展開されていること。
 - `=== verification gate ===`: 実行ログでゲート実行を識別できること。
 
+### .cursor/skills/session-handover/scripts/session-start-gate.sh
+- `=== session-start gate ===`: 実行ログでゲート実行を識別できること。
+- `G-SESSION-HANDOFF-001` / `G-SESSION-ARCH-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）と完了済み追跡ドキュメントの `archive/` 取り残し（FAIL）を機械特定できること。`verification-gate.sh` と同クラスのシェルゲート（軽量実装 / 数値判定なし）として実装すること。
+
 ### .cursor/skills/decisions-record/SKILL.md
 - `name: decisions-record`: Cursor skill としての識別子。
 - `D-BOUNDARY`: ADR 起票対象の設計次元を含むこと。
 - `Alternatives Considered`: 判断理由を復元可能にすること。
 - `## Gotchas`: ADR 運用失敗の Observe → Amend → Evolve 入口。
+
+## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
+
+QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。
+
+- **採用（adopted 枠内）**: `verification-gate.sh` と同クラスのシェルゲート（`session-start-gate.sh`）、`G-{GATE}-{CATEGORY}-{NNN}` の軽量検査 ID、追跡ドキュメントライフサイクルのフェーズ境界表（Advisory ループ運用）。
+- **非採用（not_adopted 死守）**: BAS の Finding Code 79 種体系、Deterministic Guard の数値判定基盤（スコアリング / 重み付け）。重量型の機械判定エンジンは「経営型」ワークフローでのみ検討対象とし、開発型では作らない。
+- **判断根拠**: 機構（`session-bootstrap.sh` / handoff manifest / `archive/` 境界）は既に存在し、それを検証するシェルゲートは axis B が既に adopted としているクラスと同一。重量インフラを伴わずに Advisory（~80%）の隙間を機械強制で補える。
 
 ## 必須要件を増減する場合
 

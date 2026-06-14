@@ -8,7 +8,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
-| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git/gh の不可逆操作（`--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` 等）を deny / ask | Enforcement | deny対象はfail_closed寄り |
+| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git/gh の不可逆操作（`--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）と無断投稿（`gh pr comment`/`review` / `gh api` 書込系）を ask | Enforcement | deny対象はfail_closed / それ以外はfail_open |
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-active.md` を `additional_context` 注入してアーカイブ | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメント（観測のみ） | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
@@ -18,9 +18,11 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 ## 設計原則
 
-- **Enforcement**: `guard-git-write.sh` は危険サブコマンドのみ deny / ask。正規ワークフロー（`git commit` / `git push -u origin HEAD` / `gh pr create` 等）には干渉しない。
+- **Enforcement**: `guard-git-write.sh` は危険サブコマンドのみ deny / ask。正規ワークフロー（`git commit` / `git push -u origin HEAD` / `gh pr create` / `gh api` の読み取り等）には干渉しない。
 - **観測 + 助言**: `session-*` 系は AI をブロックせず、state を蓄積してしきい値超過時のみ助言を返す。
-- **fail_open**: スクリプト障害 / JSON パース失敗 / `jq` 未インストール時は `{}` を返して exit 0。Hook の自爆でワークフロー全停止しないため。
+- **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
+  - **deny 対象はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく `ask` を返す。
+  - **deny 対象以外は fail_open**: スクリプト障害 / 入力空時は `{}` を返して exit 0。Hook の自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
 
 ## State ファイル仕様（session-* 系）
 
@@ -58,10 +60,17 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 echo '{"command":"git push --force"}' | .cursor/hooks/guard-git-write.sh   # {"permission":"deny",...}
 # ASK
 echo '{"command":"git commit --amend -m fix"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
+echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
+echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
 # ALLOW
 echo '{"command":"git push -u origin HEAD"}' | .cursor/hooks/guard-git-write.sh    # {}
-# fail_open
+echo '{"command":"gh api repos/o/r/pulls/1 --method GET"}' | .cursor/hooks/guard-git-write.sh  # {}
+# fail_open（deny クラスでない解析不能入力は素通り）
 echo 'invalid-json' | .cursor/hooks/guard-git-write.sh                            # {}
+# fail_close（jq 不在を模擬: PATH から jq だけ隠したダミー dir 経由で実行し deny クラスを ask に倒す）
+d=$(mktemp -d); for b in bash cat tr printf env; do ln -sf "$(command -v $b)" "$d/$b"; done
+echo '{"command":"git push --force"}' | PATH="$d" bash .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
+rm -rf "$d"
 
 # bootstrap
 echo '{"session_id":"test-sess-001"}' | .cursor/hooks/session-bootstrap.sh

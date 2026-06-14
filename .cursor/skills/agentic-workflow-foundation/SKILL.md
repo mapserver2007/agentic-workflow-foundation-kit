@@ -127,6 +127,12 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 **(1) AskQuestion（多肢選択）**
 
+各 AskQuestion は1ステップ＝1論点で提示する（`name` と `workflow_pattern` を1回の質問にまとめない）。
+
+- `name`: `project.name` に設定するプロジェクト名を PO に確認する。`AskQuestion` で候補を提示し、「指定なし（本プロジェクトのディレクトリ名を採用）」の選択肢を必ず含める。
+  - 「指定なし」が選ばれた場合は、コピー先（実行先）リポジトリのディレクトリ名を `project.name` に自動採用する（推奨。下表 (2) の自動導出ロジックと同一）。
+  - PO が任意の名前を入力した場合（`AskQuestion` の Other 入力を含む）は、その値を `project.name` に設定する。
+
 - `workflow_pattern`: 主アウトプット / 最大リスク / 検証方法から、推奨案を添えて PO に選択してもらう。
 
 | 選択肢 | 主アウトプット | 最大リスク | 検証方法 |
@@ -138,8 +144,8 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 **(2) 自動導出（質問不要）**
 
 - `tracking_artifact`: `workflow_pattern` から自動確定する。
-- `name`: コピー先（実行先）リポジトリのディレクトリ名から自動導出する。
-- `slug`: `name` から導出する。
+- `name`: (1) の AskQuestion で「指定なし」が選ばれた場合のフォールバックとして、コピー先（実行先）リポジトリのディレクトリ名から自動導出する。PO が名前を入力した場合は (1) の入力値を優先する。
+- `slug`: 確定した `name` から導出する。
 - `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
 - `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run gen` / `pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
@@ -152,7 +158,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 | ACCD 軸 | 自動採用する軽量実装 | 意図的に非採用とする BAS 固有の重い機構 |
 | --- | --- | --- |
 | A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
-| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `guard-git-write.sh` | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
+| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `session-start-gate.sh` / `guard-git-write.sh` / 軽量検査ID（`G-{GATE}-{CAT}-{NNN}`） | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
 | C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル | engine / model resolver による異モデル強制 |
 | D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント archive 境界 | 提案書 7 ステップパイプライン |
 | E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
