@@ -38,14 +38,16 @@ disable-model-invocation: true
 
 既定の追跡ドキュメントは `{{project.tracking_artifact}}`。
 
-追跡ドキュメントには次を残す。
+追跡ドキュメントには、計画ライフサイクルゲート（`docs/QUALITY_GATE.md §1.6` / `plan-gate.sh`）が機械検査する以下の必須セクションを必ず設ける（SoT は `manifest.yaml > framework.plan_required_sections`）。
 
-- 目的と完了条件
-- スコープ内 / スコープ外
-- タスク分解
-- 検証ゲート
-- 未解決の判断事項
-- 次セッションへの引き継ぎ条件
+{{#each framework.plan_required_sections}}- {{this}}
+{{/each}}
+
+記入上の約束（`plan-gate.sh` の検査対象）:
+
+- **完了チェック**: 各完了条件を `- [ ]` のチェックボックスで列挙し、完了したら `- [x]` にする（セッション開始ゲート `G-SESSION-ARCH-001` / 計画ゲートが参照）。
+- **レビュー完了承認**: レビュー指摘対応が完了し承認を得たら `承認状態: 承認取得済み` を記録する（`plan-gate.sh review` の `G-PLAN-REVIEW-001` が検出）。未対応・保留の指摘が残る間は `未対応` / `保留` と明記する。
+- **例外承認記録**: ゲートをスキップ・例外通過する場合は、承認内容を本節に残す（`docs/QUALITY_GATE.md §2` / `G-PLAN-EXCEPTION-001`）。記録がなければ進めない。
 
 ## Gotchas
 

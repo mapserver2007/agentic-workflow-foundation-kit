@@ -55,6 +55,17 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
+  # 追跡ドキュメント（plan.md 等）が満たすべき必須セクションの SoT。
+  # session-planning テンプレ（plan.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
+  # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
+  plan_required_sections:
+    - "目的と完了条件"
+    - "スコープ"
+    - "タスク分解"
+    - "検証ゲート"
+    - "完了チェック"
+    - "レビュー完了承認"
+    - "例外承認記録"
   design_dimensions:
     - id: D-BOUNDARY
       desc: Boundaries（Always/Ask First/Never）の追加・変更
@@ -357,6 +368,9 @@ outputs:
       - "package script contract"
       - "検査 ID"
       - "セッション開始ゲート"
+      - "計画ライフサイクルゲート"
+      - "G-PLAN-SECTION-001"
+      - "例外承認記録"
       - "フェーズ境界"
   - path: docs/session-handoff-guide.md
     template: docs/session-handoff-guide.md.template
@@ -415,6 +429,14 @@ outputs:
       - "=== session-start gate ==="
       - "G-SESSION-HANDOFF-001"
       - "G-SESSION-ARCH-001"
+  - path: .cursor/skills/session-handover/scripts/plan-gate.sh
+    template: skills/session-handover/scripts/plan-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "=== plan gate"
+      - "G-PLAN-SECTION-001"
+      - "G-PLAN-REVIEW-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render

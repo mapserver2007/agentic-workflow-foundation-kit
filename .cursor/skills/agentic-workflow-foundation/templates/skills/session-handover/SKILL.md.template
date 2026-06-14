@@ -34,6 +34,13 @@ disable-model-invocation: true
 .cursor/skills/session-handover/scripts/verification-gate.sh
 ```
 
+追跡ドキュメントのフェーズ境界（計画→実装 / レビュー→完了）は計画ライフサイクルゲートで機械検査する（`docs/QUALITY_GATE.md §1.6`）:
+
+```bash
+.cursor/skills/session-handover/scripts/plan-gate.sh report   # 計画→実装
+.cursor/skills/session-handover/scripts/plan-gate.sh review   # レビュー→完了
+```
+
 ## リンク衛生
 
 handover には、次セッションが参照すべき一次情報へのリンクを残す。

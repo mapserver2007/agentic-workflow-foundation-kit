@@ -28,11 +28,13 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
 | G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
 
-**G-GEN の位置づけ**: 開発中に OpenAPI 定義から bundle / 型 / client 等を生成し、生成物の差分を確認する。デプロイ直前やローカル実行直前の build とは分離する。
+**G-GEN の位置づけ（PR 前必須 / 条件付き）**: G-GEN は **生成物（OpenAPI bundle / 型 / client 等）に影響する変更を含む PR では前提必須**とする。再生成後に `git status --porcelain` が空であること（= 生成物のコミット漏れがないこと）を確認する。OpenAPI 定義・生成設定・生成スクリプトのいずれにも触れない変更（例: ドキュメントのみ / テストのみ）に限り G-GEN を省略してよく、その場合は PR 本文または追跡ドキュメントにその旨を1行記録する。
 
-**標準検証の推奨順序**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+**標準検証の推奨順序**:
+- 生成物に関わる変更: `{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+- 生成物に無関係な変更: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
 
-**開発中の生成実行**: OpenAPI 定義や生成設定を変更した場合は `{{project.quality_gate.gen_cmd}}` を実行する。
+**G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
 
 #### package script contract
 
@@ -64,6 +66,8 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | --- | --- | --- |
 | G-DOC-ADR | 設計次元 D-* を変更する判断が発生した場合、`docs/DECISIONS.md` に ADR 追記 | Significance / Alternatives Considered を満たす |
 | G-DOC-NAMING | 新規ドキュメント名が semantic 2層モデルに従っている | Meta 層は大文字 / Domain 層は kebab-case（`AGENTS.md > Documentation Naming Convention`） |
+
+**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「仕様反映ゲート（`docs/spec/{feature}.md`）/ Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
 
 ### 1.3 リンク衛生ゲート
 
@@ -98,18 +102,36 @@ G-{GATE}-{CATEGORY}-{NNN}
 
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
 
+### 1.6 計画ライフサイクルゲート
+
+追跡ドキュメント `{{project.tracking_artifact}}` のフェーズ境界（計画→実装 / レビュー→完了）を機械検査する軽量シェルゲート。これまで Advisory（AI 自主遵守）に留めていた「必須項目充足 / レビュー完了承認 / 未対応0件 / 例外承認証跡」を、`session-start-gate.sh` と同クラスのシェル + 軽量検査ID で機械検査に昇格する。**Finding Code 79 種体系・数値スコアリングは採用しない**（`framework.accd_axes[B].not_adopted` 死守）。
+
+実行コマンド: `.cursor/skills/session-handover/scripts/plan-gate.sh [report|review]`（実体は本基盤の生成物）。`report` が計画→実装境界（既定）、`review` がレビュー→完了境界。必須セクションの SoT は `manifest.yaml > framework.plan_required_sections`。
+
+| 検査 ID | フェーズ | 内容 | 判定 / 出力 |
+| --- | --- | --- | --- |
+| G-PLAN-SECTION-001 | report / review | `framework.plan_required_sections` が `{{project.tracking_artifact}}` に存在する | FAIL（exit 1）で欠落セクション列挙 |
+| G-PLAN-PLACEHOLDER-001 | report / review | 未確定マーカー（`要確認` プレースホルダ / `TODO`）が残存していない | WARN（exit 0）で注意喚起 |
+| G-PLAN-EXCEPTION-001 | report / review | ゲートスキップ言及時に例外承認記録（§2）が存在する | WARN（exit 0）で注意喚起 |
+| G-PLAN-REVIEW-001 | review のみ | 「レビュー完了承認」記録（`承認取得済み`）あり かつ `未対応` / `保留` マーカー0件 | FAIL（exit 1）で不足理由を表示 |
+
+WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数不正・追跡ドキュメント不在は exit 2（致命的）。
+
 ## 2. 例外承認フロー
 
-ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。
+ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。**満たさない限り、当該フェーズ境界（§3）は通過扱いにしない**。
 
-1. **ユーザーに明示的に承認を求め、承認記録を PR 本文 または `{{project.tracking_artifact}}` の「追加調査が必要な項目」に残す**
-2. 代替検証手段を提示し、ユーザーが合意している
-3. 既知の課題として `docs/DECISIONS.md` に ADR を起票し、Follow-up を明記
+1. **ユーザーに明示的に承認を求め、承認記録を追跡ドキュメント `{{project.tracking_artifact}}` の「例外承認記録」節に残す**（PR 本文にも併記可）。記録は `承認取得済み` を含む形で残し、`plan-gate.sh`（§1.6 `G-PLAN-EXCEPTION-001`）が検出できるようにする。
+2. 代替検証手段を提示し、ユーザーが合意している（合意内容も「例外承認記録」に残す）
+3. 既知の課題として `docs/DECISIONS.md` に ADR を起票し、Follow-up を明記する
+
+**証跡の置き場（SoT）**: 例外承認は `{{project.tracking_artifact}}` の「例外承認記録」節を一次置き場とし、設計次元 D-* に及ぶ判断は `docs/DECISIONS.md` の ADR を併用する。セッションをまたぐ場合もリンク衛生（§1.3）を保ち、巨大ログ全文は貼らない。
 
 **禁止事項**（AI 単独でやってはいけないこと）:
 
 - テストの一部失敗を黙って無視する
 - lint 指摘を一括抑制する
+- 例外承認記録を残さずに、ゲート失敗のままフェーズを進める
 
 ## 2.1 Hook による Deterministic 強制（Git/gh 操作）
 
@@ -138,15 +160,15 @@ WARN は exit 0 を返すため Advisory ループの対象外（再実行不要
 
 ## 3. フェーズ境界ゲート
 
-追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、専用 `gate-*.py` を持たず、既存のコードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 自己検証ゲート（§4）と Advisory ループ（AI の自主遵守）で運用する。
+追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの `archive/` 移動済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
-| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | — (Advisory: `{{project.tracking_artifact}}` の必須項目充足) |
+| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
-| **PR レビュー → 完了 / アーカイブ** | レビュー指摘対応完了 + `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンを `archive/` へ移動（AI の読み込み対象外にする） | `archive/` 移動の確認（次セッションの §1.5 `G-SESSION-ARCH-001` で取り残しを検出） |
+| **PR レビュー → 完了 / アーカイブ** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンを `archive/` へ移動（AI の読み込み対象外にする） | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ `archive/` 移動は次セッションの §1.5 `G-SESSION-ARCH-001` で検出 |
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
 
