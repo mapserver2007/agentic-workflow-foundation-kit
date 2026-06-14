@@ -119,6 +119,27 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 > `docs/DECISIONS.md` はこの基盤を利用して実アプリを作るときの判断記録であり、本ツールキット内部の変更理由を必ず ADR 化する場所ではない。
 
+#### `AGENTS.md > Context Budget Protocol` 節の取り扱い
+
+`AGENTS.md` には `## Context Budget Protocol` 独立節を持たせる。これは、複数の生成物（`docs/session-handoff-guide.md` / `.cursor/hooks/README.md` / `session-budget-evaluator.sh` / `session-bootstrap.sh` / `framework.handoff.references`）が `AGENTS.md > Context Budget Protocol` を参照しているのに、実体の `AGENTS.md` には独立節がなく Layer 1 のアンカーが欠けている drift を解消するためである。
+
+**名称の位置づけ（断定の根拠を必ず書く）**:
+
+- `Context Budget Protocol` は統一設計書（`AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md`）の正式見出しではなく、複数の上流概念を本基盤向けに束ねた **foundation 側の運用名** である。節本文にこの旨を明記し、上流に存在しない用語が無根拠に増えたと誤解されないようにする。
+- 上流の根拠概念は以下に対応づける。
+  - `AI_AGENT_UNIFIED_DESIGN.md`: 「追跡ドキュメント / 検証ゲート / 再開プロトコル」の3要素、原則4「コンテキストの即時外部化」、原則5「コンテキスト保護」、原則6「コンテキストコストの管理」、および `stop` / `preCompact` / `sessionStart` Hook。
+  - `AI_BUSINESS_AGENT_SUITE.md`: ACCD 軸 A「制約の補完」（容量上限・揮発性・断崖性への対処）、軸 D「段階的圧縮」、Context Loading、Handover、Context/Session/State SoT。
+
+**`AGENTS.md > Context Budget Protocol` 節が満たすべき最低要件**:
+
+- **目的**: LLM のコンテキストウィンドウは有限かつ揮発的であり、長時間セッションでは判断・進捗・制約が文脈から落ちる。これを防ぐため作業状態を外部化し、新規チャットで再構築する旨を書く。
+- **根拠**: 上記の統一設計書概念から派生した運用名であることを1行で示す。
+- **発火条件**: `framework.budget_thresholds` の `elapsed_min` / `prompt_count` / `shell_bytes` を proxy 指標とし、OR 判定で Yellow / Red を判定する旨を書く。
+- **AI の行動**: Yellow では追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し区切りを準備する。Red では `framework.handoff.active_manifest_path`（`.cursor/.session/handoff-active.md`）に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する。
+- **詳細委譲**: 詳細手順・閾値・失敗モードは `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する旨を書く（AGENTS には短い規範のみ置き、内容を二重管理しない）。
+
+> 重複防止: この節は新規 Meta doc（例: `docs/CONTEXT_BUDGET_PROTOCOL.md`）として切り出さない。詳細 doc の役割は既に `docs/session-handoff-guide.md` が担っており、`AGENTS.md` には Layer 1 の短い入口だけを置く方針とする。
+
 ### Phase 1.5: プロジェクト設定 / ACCD 対応確定（AskQuestion / 自動導出 / 固定値）
 
 **発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型の全てで軽量実装を自動採用するため、AskQuestion の発火条件にしない。
@@ -270,6 +291,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。`package.json` 未生成段階のため、実 script 検出ではなく canonical root scripts と script contract を決定する。OpenAPI 由来の生成は `G-GEN`、実行/デプロイ前 build は `G-BUILD` として分離する。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
+- **`AGENTS.md` 出力仕様の変更（例: `Context Budget Protocol` 節の追加）は、本来 `templates/AGENTS.md.template` と、必要なら `manifest.yaml` / `references/design-conformance.md` を更新して再生成する対象である**。ただし PO が明示的に「`SKILL.md` 内部のみの修正」を指定した場合は、生成物（`AGENTS.md` / `templates/*` / `manifest.yaml`）を変更せず、要件と手順の文書化だけに留める。その場合 `SKILL.md` の記述と実出力の間に一時的な乖離が残ることを許容し、後続の再生成タスクで解消する。
 
 ## スコープ外
 
