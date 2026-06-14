@@ -83,7 +83,7 @@ def main(argv=None) -> int:
 
     versions = ingest.load_package_versions(args.package_json)
     if versions is None:
-        _out("PASS", "package.json 未生成の初期状態として policy↔reality 照合をスキップ（fail-open）")
+        _out("PASS", "package.json（reality）が無いため policy↔reality 照合対象なしとしてスキップ（fail-open）")
         return 0
 
     failures = []

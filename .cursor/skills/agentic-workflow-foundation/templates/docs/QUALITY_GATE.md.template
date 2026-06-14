@@ -38,7 +38,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 #### package script contract
 
-`agentic-workflow-foundation` 実行時点では `package.json` は未生成であるため、G-* は技術スタックから決まる root scripts を外部インターフェースとする。将来作成する `package.json` は、以下の contract を満たすこと。
+G-* は技術スタックから決まる root scripts を外部インターフェース contract として定義する。`package.json` の各 script は、この contract を満たす責務を負う（実体が contract に追従する）。
 
 **gen script (`{{project.quality_gate.gen_cmd}}`)**
 
