@@ -1,8 +1,10 @@
 ---
 name: decisions-record
 description: >-
-  Agentic Workflow 利用先アプリケーションで、設計次元 D-* に該当する判断を
-  docs/DECISIONS.md へ ADR として記録する。
+  Session Protocol / ルール遵守 / 実装作業の中で、設計次元 D-*（Boundaries /
+  ワークフロー / 品質ゲート / アーキテクチャ / SoT 定義 / 外部依存 / 実装パターン）
+  に該当する判断を検知したとき、docs/DECISIONS.md へ ADR として記録を提案する。
+  Do NOT use for: 軽微な実装変更、コメント修正、未出荷ブランチ内の単純な作り直し。
 disable-model-invocation: true
 ---
 
@@ -11,6 +13,7 @@ disable-model-invocation: true
 設計判断を `docs/DECISIONS.md` に ADR として残すためのスキル。
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+<!-- disable-model-invocation: true — モデル任意発火を抑止し、00-init.mdc / Session Protocol による設計判断検知との責務分離を維持する。 -->
 
 ## 起票対象
 
@@ -19,7 +22,14 @@ disable-model-invocation: true
 {{#each framework.design_dimensions}}- `{{this.id}}`: {{this.desc}}
 {{/each}}
 
-軽微な実装変更、コメント修正、未出荷ブランチ内の単純な作り直しは ADR 対象外。
+## 起票しない対象
+
+以下は ADR 対象外であり、記録の必要はない。
+
+- 軽微な実装変更（変数名変更、フォーマット修正、型アノテーション追加など）
+- コメントの追加・修正・削除
+- 未出荷ブランチ内での単純な作り直し・試行錯誤
+- 既存 ADR の範囲内での実装詳細の調整
 
 ## 記録手順
 

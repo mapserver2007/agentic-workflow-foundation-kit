@@ -73,7 +73,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
-| `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver |
+| `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
 > 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
@@ -84,6 +84,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 ```text
 - [ ] Phase 1: unified design resolver / manifest / templates のフレームワーク変更（必要時のみ。PO 確定事項は再質問しない）
+- [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
 - [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
@@ -118,6 +119,19 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - 入力が同じなら同じ resolved manifest/templates と同じ出力になることを最優先する。
 
 > `docs/DECISIONS.md` はこの基盤を利用して実アプリを作るときの判断記録であり、本ツールキット内部の変更理由を必ず ADR 化する場所ではない。
+
+### Phase 1.45: root manifest framework 同期（bootstrap）
+
+root `manifest.yaml` の `framework:` ブロックは seed manifest を単一 SoT とする生成物である。生成に実際に使われる framework は seed 側であり（`run_resolved_engine.py > resolved_manifest` が seed.framework を基底にし、root からは `project` / `tech_stack` / `session` / `quality_gate_contract` / `framework.accd_axes` のみ overlay する）、root の framework は複製。手編集するとドリフト源になるため、`framework.*` を変更したら bootstrap で root へ同期する。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py bootstrap
+```
+
+- root `manifest.yaml` が**不在**なら、seed manifest をそのまま root へ新規生成する（`project.*` は Phase 1.5、`tech_stack` / `quality_gate` は Phase 1.6 / 1.65 で確定する placeholder のまま）。
+- root が**存在**するなら、`framework:` ブロックだけを seed 由来に置換する。root のファイルヘッダ（「正式 project manifest」の framing）・`project.*` / `tech_stack` / `quality_gate*` / `session` の確定値は保持する。
+- 冪等。`framework.*` 未変更なら「更新なし=冪等」を出力する。`framework:` ブロックを特定できない場合は exit 2。
+- 実行順序: Phase 1（seed/templates 編集）→ **Phase 1.45（bootstrap で root へ同期）** → Phase 1.5 以降（project / tech_stack / quality_gate 確定）→ Phase 2（generate）。
 
 #### `AGENTS.md > Context Budget Protocol` 節の取り扱い
 
@@ -284,6 +298,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 ## 重要な制約
 
 - **出力ファイルを直接編集しない**。変更は必ず immutable upstream docs / seed `manifest.yaml` / 生成済み root `manifest.yaml` / `templates/` / stateless resolver を編集して再生成する。
+- **root `manifest.yaml` の `framework:` ブロックを手編集しない**。framework の SoT は seed `manifest.yaml` であり、root へは Phase 1.45 の `run_resolved_engine.py bootstrap` で同期する。root を直接書き換えてよいのは Phase 1.5/1.6/1.65 が扱う `project.*` / `tech_stack` / `quality_gate*` / `session` の per-project 値（およびスクリプトによる自動反映）に限る。
 - **unified/bas は immutable 実行時入力として扱う**。読み取り専用で、スキル内部に前回実行状態を保存しない。seed manifest/templates を実行結果で永続更新しない。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **unified design / root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の upstream / per-project 解決ロジックを追加しない。

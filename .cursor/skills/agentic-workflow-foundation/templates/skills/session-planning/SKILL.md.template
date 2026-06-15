@@ -1,9 +1,11 @@
 ---
 name: session-planning
 description: >-
-  大規模タスク開始時に、作業をセッション単位へ分割し、追跡ドキュメント
-  （{{project.tracking_artifact}}）を作成/更新する。{{session.large_task_threshold.files}}ファイル以上、
-  または{{session.large_task_threshold.subtasks}}サブタスク以上に広がるタスクで使う。
+  大規模タスク（変更{{session.large_task_threshold.files}}ファイル以上、サブタスク{{session.large_task_threshold.subtasks}}つ以上）を
+  検知したときに、セッション分割計画と追跡ドキュメント（{{project.tracking_artifact}}）を
+  作成/更新する。追跡ドキュメントが存在しない場合は新キャンペーンと判断し、
+  パターン選択フローを実行してから新規作成する。
+  Do NOT use for: 単一ファイル修正、バグ修正など1セッションで完了する小規模タスク。
 disable-model-invocation: true
 ---
 
@@ -12,6 +14,7 @@ disable-model-invocation: true
 大規模タスクを開始する前に、セッション境界・追跡ドキュメント・検証方針を明確にするスキル。
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+<!-- disable-model-invocation: true — モデル任意発火を抑止し、Hook / gate scripts による自動管理との責務分離を維持する。 -->
 
 ## 大規模タスクの検知
 

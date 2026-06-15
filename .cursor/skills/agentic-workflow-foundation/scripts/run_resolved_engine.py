@@ -212,6 +212,75 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     return merged
 
 
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _find_top_block(lines, key: str):
+    """インデント0の `key:` 行から、その配下（インデント>0）が続く範囲を返す。"""
+    start = None
+    for idx, line in enumerate(lines):
+        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
+            start = idx
+            break
+    if start is None:
+        return None, None
+    last = start
+    j = start + 1
+    while j < len(lines):
+        if lines[j].strip() == "":
+            j += 1
+            continue
+        if _indent_of(lines[j]) > 0:
+            last = j
+            j += 1
+            continue
+        break
+    return start, last
+
+
+def bootstrap_root_manifest(seed_manifest_path: str, root_manifest_path: str) -> int:
+    """root manifest の framework ブロックを seed から単一 SoT として同期する。
+
+    生成に実際に使われる framework は seed が SoT（resolved_manifest が seed.framework を基底にし、
+    root からは ROOT_OVERLAY_KEYS / framework.accd_axes のみ overlay する）。root の framework は
+    生成に使われない複製であり、手編集はドリフト源になる。本コマンドは framework ブロックだけを
+    seed 由来に揃え、root のヘッダ・project.* / tech_stack / quality_gate などの確定値は保持する。
+    """
+    with open(seed_manifest_path, "r", encoding="utf-8") as f:
+        seed_text = f.read()
+
+    if not os.path.isfile(root_manifest_path):
+        with open(root_manifest_path, "w", encoding="utf-8") as f:
+            f.write(seed_text)
+        print("[bootstrap] PASS: root manifest を seed から新規生成（project.* は Phase 1.5 で確定）")
+        return 0
+
+    with open(root_manifest_path, "r", encoding="utf-8") as f:
+        root_text = f.read()
+
+    newline = "\r\n" if "\r\n" in root_text else "\n"
+    seed_lines = [ln.rstrip("\r") for ln in seed_text.split("\n")]
+    root_lines = [ln.rstrip("\r") for ln in root_text.split("\n")]
+
+    s_start, s_last = _find_top_block(seed_lines, "framework")
+    r_start, r_last = _find_top_block(root_lines, "framework")
+    if s_start is None or r_start is None:
+        print("[bootstrap] ERROR: framework ブロックを特定できない", file=sys.stderr)
+        return 2
+
+    framework_block = seed_lines[s_start:s_last + 1]
+    new_lines = root_lines[:r_start] + framework_block + root_lines[r_last + 1:]
+    new_text = newline.join(new_lines)
+    changed = new_text != root_text
+
+    if changed:
+        with open(root_manifest_path, "w", encoding="utf-8", newline="") as f:
+            f.write(new_text)
+    print(f"[bootstrap] PASS: framework を seed から root へ同期（{'更新あり' if changed else '更新なし=冪等'}）")
+    return 0
+
+
 def prepare_skill_dir(resolved_dir: str, manifest: dict) -> str:
     with open(os.path.join(resolved_dir, "manifest.yaml"), "w", encoding="utf-8") as f:
         f.write(dump_manifest(manifest))
@@ -246,10 +315,17 @@ def run_engine(command: str, resolved_dir: str) -> int:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="foundation の resolved manifest で engine を実行する")
-    parser.add_argument("command", choices=("generate", "audit", "check"))
+    parser.add_argument("command", choices=("generate", "audit", "check", "bootstrap"))
     parser.add_argument("--seed-manifest", default=os.path.join(SKILL_DIR, "manifest.yaml"))
     parser.add_argument("--root-manifest", default=os.path.join(ROOT, "manifest.yaml"))
     args = parser.parse_args(argv)
+
+    if args.command == "bootstrap":
+        try:
+            return bootstrap_root_manifest(args.seed_manifest, args.root_manifest)
+        except OSError as e:
+            print(f"FATAL: bootstrap 失敗: {e}", file=sys.stderr)
+            return 2
 
     try:
         manifest = resolved_manifest(args.seed_manifest, args.root_manifest)
