@@ -46,10 +46,19 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 現行値:
 
-| レベル | elapsed_min | prompt_count | shell_bytes |
-|---|---|---|---|
-| Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} |
-| Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} |
+| レベル | elapsed_min | prompt_count | shell_bytes | shell (MiB) |
+|---|---|---|---|---|
+| Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | 1 MiB |
+| Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | 5 MiB |
+
+### Yellow / Red 到達時の挙動
+
+| レベル | AI への通知 | AI が取るべきアクション |
+|---|---|---|
+| **Yellow** | `[CONTEXT_BUDGET=YELLOW]` を `followup_message` で通知 | 追跡ドキュメントの「次セッション TODO / 追加調査が必要な項目」を更新し、作業の区切りを準備する |
+| **Red** | `[CONTEXT_BUDGET=RED]` を `followup_message` で通知 | `.cursor/.session/handoff-active.md` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する |
+
+重複通知は `last_warning_level` フィールドで抑止される（`none` → `yellow` → `red` の昇格時のみ通知）。
 
 ## ローカルテスト手順
 
@@ -87,3 +96,34 @@ rm -f .cursor/.session/test-sess-001.json .cursor/.session/handoff-consumed-*.md
 1. `.cursor/hooks.json` を削除（Hook 全停止）
 2. 該当 Hook の登録ブロックのみ削除（個別停止）
 3. Cursor Settings > Hooks で個別 disable
+
+## Hook 追加チェックリスト
+
+新しい Hook を追加する際は以下を確認する。
+
+1. [ ] `.cursor/hooks.json` にイベント・パス・timeout を登録した
+2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
+3. [ ] フェイル戦略（fail_open / fail_closed）を決定し、README の一覧表に追記した
+4. [ ] ローカルテスト手順に代表的なテストケースを追加した
+5. [ ] `manifest.yaml > outputs[]` に path / template / required_sections を追加した
+6. [ ] Cursor Settings > Hooks で Hook が有効になっていることを確認した
+7. [ ] `pnpm run gen` で再生成し、`audit.py` が PASS することを確認した
+
+## Cursor 統合確認
+
+Hook が Cursor IDE で正しく認識されているかの確認手順。
+
+1. Cursor Settings (`Cmd+,`) > Features > Hooks を開く
+2. 登録済みの Hook 一覧が表示されることを確認する
+3. 各 Hook の Enabled トグルが ON であることを確認する
+4. テスト操作（例: `git push --force` のシェル入力）で Hook が発火し、期待通りの応答を返すことを確認する
+
+## 関連ドキュメントリンク
+
+| ドキュメント | 内容 |
+|---|---|
+| [`AGENTS.md > Context Budget Protocol`](../../AGENTS.md) | Layer 1 のコンテキスト予算ポリシー（Yellow/Red の AI 行動規範） |
+| [`docs/QUALITY_GATE.md §2.1`](../../docs/QUALITY_GATE.md) | Hook 強制範囲の SoT（guard-git-write.sh の deny/ask 対象定義） |
+| [`docs/session-handoff-guide.md`](../../docs/session-handoff-guide.md) | Context Budget Auto-Handoff の詳細手順・失敗モード |
+| [`docs/DECISIONS.md`](../../docs/DECISIONS.md) | Hook 設計に関する ADR 記録 |
+| [`.cursor/hooks.json`](../hooks.json) | Hook 登録設定本体（version / イベント / timeout / loop_limit） |

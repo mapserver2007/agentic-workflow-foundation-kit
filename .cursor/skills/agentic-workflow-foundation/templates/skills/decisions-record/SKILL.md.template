@@ -22,6 +22,19 @@ disable-model-invocation: true
 {{#each framework.design_dimensions}}- `{{this.id}}`: {{this.desc}}
 {{/each}}
 
+### D-* 判断例（起票する / しないの境界）
+
+| D-* | 起票する例 | 起票しない例 |
+| --- | --- | --- |
+| `D-BOUNDARY` | Never に新しい禁止操作を追加する | 既存 Never 項目の文言を微修正する |
+| `D-WORKFLOW` | Session Protocol に新フェーズを追加する | 追跡ドキュメントのチェックボックスを更新する |
+| `D-NAMING` | Meta 層に新しい公式固定ファイル名を追加する | 既存 Domain 層ファイル名を typo 修正する |
+| `D-QUALITY` | exit code の意味を変更する | テストケースを1件追加する |
+| `D-ARCH` | レイヤー間の依存方向を変更する | 既存レイヤー内でリファクタリングする |
+| `D-SOT` | あるデータの SoT を別ファイルに移動する | SoT ファイルの記述を整理する |
+| `D-DEPENDENCY` | 新しい npm パッケージを導入する | 既存パッケージのパッチバージョンを更新する |
+| `D-PATTERN` | 新しいエラーハンドリングパターンを全体導入する | 1ファイルだけの局所的な実装変更 |
+
 ## 起票しない対象
 
 以下は ADR 対象外であり、記録の必要はない。
@@ -31,13 +44,21 @@ disable-model-invocation: true
 - 未出荷ブランチ内での単純な作り直し・試行錯誤
 - 既存 ADR の範囲内での実装詳細の調整
 
+## ADR 採番ルール
+
+- 番号は `ADR-XXXX` 形式（4桁ゼロ埋め）
+- 新規 ADR は `docs/DECISIONS.md` 内の既存最大番号 + 1 を採番する
+- 欠番は埋めない（削除・取り消しされた ADR の番号を再利用しない）
+- Status が `Superseded` の ADR は後継 ADR 番号を `Superseded by: ADR-XXXX` で記録する
+
 ## 記録手順
 
 1. 判断の背景と制約を確認する
-2. 採用案を1つ明確にする
-3. Alternatives Considered を最低1つ書く
-4. 影響するファイル/境界/品質ゲートを記録する
-5. `docs/DECISIONS.md` に追記する
+2. `docs/DECISIONS.md` の既存最大番号を確認し、次の番号を採番する
+3. 採用案を1つ明確にする
+4. Alternatives Considered を最低1つ書く
+5. 影響するファイル/境界/品質ゲートを記録する
+6. `docs/DECISIONS.md` に追記する
 
 ## ADR テンプレート
 

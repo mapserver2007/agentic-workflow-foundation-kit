@@ -154,6 +154,45 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 > 重複防止: この節は新規 Meta doc（例: `docs/CONTEXT_BUDGET_PROTOCOL.md`）として切り出さない。詳細 doc の役割は既に `docs/session-handoff-guide.md` が担っており、`AGENTS.md` には Layer 1 の短い入口だけを置く方針とする。
 
+#### `01-critical-constraints.mdc` の出力仕様
+
+**評価根拠**: 評価レポート §3.4（89点）— A2 重複行 / A3 空行不足 / B2 整合性 / B4 フォーマット
+
+**`01-critical-constraints.mdc` テンプレートが満たすべき最低要件**:
+
+- **重複排除（SoT 一元化）**: `project.boundaries.always` のうち「ファイル操作」セクション（ハードコード）と意味が重複する項目を、テンプレートの `仕様確認` セクションに展開しない。重複排除は `manifest.yaml` から対象項目を除外し、`AGENTS.md` テンプレートの Boundaries Always にはハードコードで維持する方法を取る。根拠: 同一制約が `ファイル操作` と `仕様確認` の2箇所に異なる表現で存在すると、AI が矛盾と解釈するリスクがある。
+- **Markdown セクション境界**: 各 `##` 見出しの直前には空行を1行入れ、セクション境界を視覚的に明確にする。
+
+#### `.cursor/hooks/README.md` の出力仕様
+
+**評価根拠**: 評価レポート §3.7（89点）— A2 リンク集/チェックリスト/統合確認なし / B1 人間可読表記/挙動説明なし / B3 共通テスト/統合確認なし / B4 運用ガイドとしてコンパクトすぎ
+
+**`.cursor/hooks/README.md` テンプレートが満たすべき最低要件**:
+
+- **しきい値テーブルの人間可読表記**: `shell_bytes` 列に加え、`shell (MiB)` 列を追加する。バイト数だけでは運用者が直感的に把握できない。
+- **Yellow / Red 到達時の挙動**: 各レベルの通知メッセージ（`[CONTEXT_BUDGET=YELLOW]` / `[CONTEXT_BUDGET=RED]`）と AI が取るべきアクションをテーブルで明記する。`last_warning_level` による重複通知抑止（`none` → `yellow` → `red` の昇格時のみ通知）も説明する。
+- **Hook 追加チェックリスト**: 新規 Hook 追加時に確認すべき項目をチェックリスト形式で記載する。最低限の項目: hooks.json 登録 / 実行ビット付与 / フェイル戦略決定 + README 一覧表追記 / テストケース追加 / `manifest.yaml > outputs[]` 追加 / Cursor Settings 確認 / 再生成 + audit PASS。
+- **Cursor 統合確認**: Cursor Settings > Features > Hooks での有効化確認手順を記載する。
+- **関連ドキュメントリンク集**: `AGENTS.md > Context Budget Protocol` / `docs/QUALITY_GATE.md §2.1` / `docs/session-handoff-guide.md` / `docs/DECISIONS.md` / `.cursor/hooks.json` へのリンクテーブルを設ける。
+
+#### `session-planning/SKILL.md` の出力仕様
+
+**評価根拠**: 評価レポート §3.19（88点）— A1/A2 パターン選択4問省略・新キャンペーン開始フロー欠落 / B1 対話ステップ欠如
+
+**`session-planning/SKILL.md` テンプレートが満たすべき最低要件**:
+
+- **パターン選択4問**: 統一設計書 §8 準拠の対話フローをスキル内で自己完結させる。`workflow_pattern` が未確定の場合に AI が自己回答する手段を提供する。4問は以下の構成とする。
+  - Q1「主アウトプットは何か？」→ 動くアプリケーション / スクリプト・生成データ / ドキュメント群 → 各パターンへマッピング
+  - Q2「最大リスクは何か？」→ リグレッション / AI 幻覚 / 不完全・不整合 → 対応する検証方法を示す
+  - Q3「検証方法は何か？」→ 自動テスト + ビルド + 型チェック / スクリプト出力の整合性チェック / 完了基準チェックリスト → パターン確定
+  - Q4「複合型か？」→ 全問が同一パターンを指すなら単一パターン採用。2つ以上に該当するなら PO にワークスペース分離判断を確認してから主パターンを確定する
+  - フォールバック: 4問に自己回答できない場合は、親 `agentic-workflow-foundation` の Phase 1.5 で PO に AskQuestion する旨を明記する
+- **新キャンペーン開始フロー**: 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在しない場合に新キャンペーンと判断し実行する手順を4ステップで記載する。
+  - パターン選択フローで `workflow_pattern` を確認（確定済みなら省略）
+  - 追跡ドキュメントを新規作成し、`framework.plan_required_sections` の必須セクションをすべて設ける
+  - 完了キャンペーンの追跡ドキュメントが `archive/` に移動されていることを確認する
+  - `session-start-gate.sh` の `G-SESSION-ARCH-001` が PASS することを確認する
+
 ### Phase 1.5: プロジェクト設定 / ACCD 対応確定（AskQuestion / 自動導出 / 固定値）
 
 **発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型の全てで軽量実装を自動採用するため、AskQuestion の発火条件にしない。

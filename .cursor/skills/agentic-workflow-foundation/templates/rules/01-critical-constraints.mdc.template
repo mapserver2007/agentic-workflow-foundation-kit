@@ -26,6 +26,7 @@ description: 絶対に守るべき制約（違反すると致命的な問題が�
 - 仕様不明時は docs（Domain 層）で確認、またはユーザーに質問（推測禁止）
 {{#each project.boundaries.always}}- {{this}}
 {{/each}}
+
 ## プロジェクト固有制約（Ask First）
 
 {{#each project.boundaries.ask_first}}- {{this}}
