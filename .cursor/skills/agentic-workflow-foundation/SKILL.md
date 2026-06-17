@@ -73,6 +73,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
+| `scripts/resolve_coderabbit.py` | root `manifest.yaml > tech_stack` → `coderabbit`（CodeRabbit 有効/無効ツール・path_instructions・path_filters）決定 |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
@@ -88,6 +89,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review オプション）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
+- [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
@@ -215,11 +217,14 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review`（推奨スキル）: 1 問で生成有無を確定する。回答は root `manifest.yaml > code_review` に記録する。
+- `code_review` / `coderabbit`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` および `coderabbit` に記録する。
 
-  **推奨スキルインストール確認**: 「agentic-workflow-foundation-kit の推奨スキルをインストールしますか？」（推奨: Yes / No）
-     - Yes → `code_review.enabled: true` / `code_review.report.enabled: true` / `code_review.report.output_dir: "docs/agent-tasks/reports"` を固定値で一括設定し、agent-code-review スキルを生成する。レポート出力有無・出力先の個別質問は行わない
-     - No → `code_review.enabled: false` のまま → agent-code-review スキルを生成しない
+  **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
+     - Yes → 以下を固定値で一括設定する
+       - `code_review.enabled: true` / `code_review.report.enabled: true` / `code_review.report.output_dir: "docs/agent-tasks/reports"` → agent-code-review スキルを生成
+       - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
+       - レポート出力有無・出力先・CodeRabbit 個別設定の個別質問は行わない
+     - No → `code_review.enabled: false` / `coderabbit.enabled: false` のまま → agent-code-review スキルを生成しない / `.coderabbit.yaml` を生成しない
 
 **(2) 自動導出（質問不要）**
 
@@ -282,6 +287,24 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 - root `manifest.yaml > quality_gate_contract` へ、`package.json` scripts が満たすべき gen / build / lint / test の内訳（contract）を書き込む。
 - `session.verification.gate_command` は標準検証として build / lint / test のみを含め、`G-GEN` は OpenAPI 定義や生成設定を変更した開発中に個別実行する。
 - exit 0 → 決定済みまたは対象外として継続可。WARN があれば報告する。
+- exit 2 → manifest 破損など致命的エラー。中断する。
+
+### Phase 1.66: CodeRabbit 設定自動決定
+
+**発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（Phase 1.5 で No を選択）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
+
+root `manifest.yaml > tech_stack` から、CodeRabbit の有効/無効ツール・path_instructions・path_filters を決定論的に導出する。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
+```
+
+- `tech_stack.items` のテクノロジー名をカテゴリ分類（TypeScript / React / Workers / OpenAPI / Python / Go 等）し、各カテゴリに紐づく CodeRabbit ツールの有効/無効を決定する。
+- テクノロジーカテゴリに対応する path_instructions（レビュー指示）を生成する。Agentic Workflow 基盤ファイル（`.cursor/skills/**` / `.cursor/rules/**` / `.cursor/hooks/**` / `docs/**` / `manifest.yaml`）のレビュー指示は常に含まれる。
+- path_filters はロックファイル・生成物・一時ファイルの除外パターンを生成する（pnpm 検出時は `pnpm-lock.yaml` も除外）。
+- スクリプトは既存の `coderabbit.enabled` 値を保持したまま、tech_stack 由来のツール・フィルタ・指示のみを更新する。
+- 出力は root `manifest.yaml > coderabbit` セクションに書き込む。Phase 2 でテンプレートから `.coderabbit.yaml` が生成される。
+- exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
 
 ### Phase 1.7: techstack 整合ゲート

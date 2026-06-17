@@ -235,6 +235,86 @@ session:
     gate_command: "[要確認] Phase 1.65 で導出"
 
 # ------------------------------------------------------------
+# (2g) coderabbit — CodeRabbit 設定（tech_stack 従属 / Phase 1.66 自動決定）
+#   Phase 1.66（resolve_coderabbit.py）が tech_stack.items から
+#   有効/無効ツール・path_instructions・path_filters を決定論的に導出する。
+#   以下は seed default。実プロジェクトでは resolve_coderabbit.py の出力で上書きされる。
+# ------------------------------------------------------------
+coderabbit:
+  enabled: true
+  language: "ja-JP"
+  tools_enabled:
+    - name: "markdownlint"
+    - name: "yamllint"
+    - name: "shellcheck"
+    - name: "gitleaks"
+    - name: "trufflehog"
+    - name: "github-checks"
+    - name: "ast-grep"
+    - name: "skillspector"
+    - name: "osv-scanner"
+    - name: "actionlint"
+    - name: "eslint"
+    - name: "biome"
+    - name: "oxc"
+    - name: "oasdiff"
+    - name: "hadolint"
+  tools_disabled:
+    - name: "ruff"
+    - name: "pylint"
+    - name: "flake8"
+    - name: "phpstan"
+    - name: "phpmd"
+    - name: "phpcs"
+    - name: "golangci-lint"
+    - name: "detekt"
+    - name: "rubocop"
+    - name: "brakeman"
+    - name: "swiftlint"
+    - name: "clippy"
+    - name: "pmd"
+    - name: "fbinfer"
+    - name: "clang"
+    - name: "cppcheck"
+    - name: "fortitude-lint"
+    - name: "luacheck"
+  path_filters:
+    - "!**/*.lock"
+    - "!**/*.generated.*"
+    - "!**/dist/**"
+    - "!**/node_modules/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/coverage/**"
+    - "!**/__snapshots__/**"
+    - "!**/.cursor/plans/**"
+    - "!**/.cursor/.session/**"
+    - "!**/tmp/**"
+    - "!**/.DS_Store"
+    - "!**/pnpm-lock.yaml"
+  path_instructions:
+    - path: "**/*.ts"
+      instructions: "TypeScript strict モードのプロジェクトです。型安全性（any の回避、適切な型ガード）、エラーハンドリングの網羅性、null/undefined の安全な処理を重点的にレビューしてください。"
+    - path: "**/*.tsx"
+      instructions: "React コンポーネントのレビュー: アクセシビリティ（aria 属性、セマンティック HTML）、パフォーマンス（不要な再レンダリング、メモ化）、Server Component / Client Component の境界を確認してください。"
+    - path: "**/workers/**"
+      instructions: "Cloudflare Workers 環境のコードです。Node.js API ではなく Web Standard API を使用しているか、CPU 時間制限を意識した実装か、env バインディングの型安全性を確認してください。"
+    - path: "**/*.yaml"
+      instructions: "YAML ファイルのレビュー: スキーマバリデーションの整合性、OpenAPI 定義の場合は 3.1 仕様への準拠を確認してください。"
+    - path: "**/*.test.*"
+      instructions: "テストファイルのレビュー: エッジケースのカバレッジ、テスト間の独立性（shared state の排除）、アサーションが具体的かつ十分か確認してください。"
+    - path: ".cursor/skills/**"
+      instructions: "Cursor Agent Skill ファイルです。SKILL.md のフォーマット準拠とセキュリティリスクを確認してください。"
+    - path: ".cursor/rules/**"
+      instructions: "Cursor Rule ファイルです。ルール間の矛盾がないか、宣言的な制約として記述されているか確認してください。"
+    - path: ".cursor/hooks/**"
+      instructions: "Cursor Hook スクリプトです。シェルスクリプトの堅牢性と副作用のないべき等な動作を確認してください。"
+    - path: "docs/**"
+      instructions: "ドキュメントのレビュー: 他ドキュメントとの整合性と Meta 層 / Domain 層の命名規約準拠を確認してください。"
+    - path: "manifest.yaml"
+      instructions: "manifest.yaml は Agentic Workflow 基盤の Source of Truth です。変更が下流の生成物に正しく反映されるか確認してください。"
+
+# ------------------------------------------------------------
 # (2e) quality_gate_contract — root manifest 生成用の seed
 #   Phase 1.65（resolve_quality_gate.py）が workflow_pattern × tech_stack から
 #   G-* と package scripts が満たすべき contract を決定論的に書き込む。
@@ -408,6 +488,16 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
       - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
+  # coderabbit.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .coderabbit.yaml
+    template: coderabbit.yaml.template
+    mode: render
+    feature: coderabbit
+    required_sections:
+      - "coderabbit.ai/integrations/schema.v2.json"
+      - "path_instructions"
+      - "tools"
   # Layer 3 セッション管理スキル群（親 manifest に内包）。
   - path: .cursor/skills/session-planning/SKILL.md
     template: skills/session-planning/SKILL.md.template

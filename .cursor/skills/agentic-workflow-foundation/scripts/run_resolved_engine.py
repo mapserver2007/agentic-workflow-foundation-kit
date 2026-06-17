@@ -18,7 +18,7 @@ if ENGINE_DIR not in sys.path:
 
 import genlib  # noqa: E402
 
-ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract", "code_review")
+ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract", "code_review", "coderabbit")
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
     (
