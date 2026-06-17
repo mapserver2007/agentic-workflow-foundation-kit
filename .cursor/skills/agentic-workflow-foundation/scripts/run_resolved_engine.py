@@ -18,7 +18,7 @@ if ENGINE_DIR not in sys.path:
 
 import genlib  # noqa: E402
 
-ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract")
+ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract", "code_review")
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
     (
@@ -189,10 +189,31 @@ def _apply_upstream_design_inputs(merged: dict) -> dict:
     return merged
 
 
+def _filter_outputs_by_features(manifest: dict) -> dict:
+    """feature フラグが無効な outputs エントリを除外する。
+
+    outputs[].feature が指定されている場合、manifest[feature].enabled が
+    truthy でなければそのエントリを生成対象から除外する。
+    feature が未指定の outputs はそのまま通過する。
+    """
+    outputs = manifest.get("outputs") or []
+    filtered = []
+    for out in outputs:
+        feature = out.get("feature")
+        if feature is None:
+            filtered.append(out)
+            continue
+        feature_config = manifest.get(feature)
+        if isinstance(feature_config, dict) and feature_config.get("enabled"):
+            filtered.append(out)
+    manifest["outputs"] = filtered
+    return manifest
+
+
 def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     manifest = genlib.load_manifest(seed_manifest_path)
     if not os.path.isfile(root_manifest_path):
-        return _apply_upstream_design_inputs(manifest)
+        return _filter_outputs_by_features(_apply_upstream_design_inputs(manifest))
 
     overlay = genlib.load_manifest(root_manifest_path)
     merged = dict(manifest)
@@ -209,7 +230,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
             merged[key] = overlay[key]
     merged = _apply_framework_overlay(merged, overlay)
     merged = _apply_upstream_design_inputs(merged)
-    return merged
+    return _filter_outputs_by_features(merged)
 
 
 def _indent_of(line: str) -> int:

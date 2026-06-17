@@ -85,7 +85,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 ```text
 - [ ] Phase 1: unified design resolver / manifest / templates のフレームワーク変更（必要時のみ。PO 確定事項は再質問しない）
 - [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
-- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値）
+- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review オプション）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
@@ -214,6 +214,18 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | 開発型 | 動くアプリケーション | リグレッション | 自動テスト + ビルド + 型チェック |
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
+
+- `code_review`（オプション生成スキル）: 以下の 3 問を 1 ステップ＝1 論点で提示する。回答は root `manifest.yaml > code_review` に記録する。
+
+  1. **コードレビュースキル生成有無**: 「GitHub PR レビューコメントへの反証・返答スキル（agent-code-review）を生成しますか？」（推奨: No（必要になったら有効化）/ Yes）
+     - No → `code_review.enabled: false` のまま → 以降の質問スキップ
+     - Yes → `code_review.enabled: true` → 質問 2 へ
+  2. **レビューレポート出力有無**: 「レビュー完了時にレポートファイルを保存しますか？」（推奨: Yes（判定の追跡性を確保）/ No）
+     - No → `code_review.report.enabled: false`
+     - Yes → `code_review.report.enabled: true` → 質問 3 へ
+  3. **レポート出力先**: 「レポート出力先ディレクトリ」（推奨: `docs/agent-tasks/reports`（pos-necpf-service と同じ規約）/ その他（ユーザーがパスを入力））
+     - デフォルト選択 → `code_review.report.output_dir: "docs/agent-tasks/reports"`
+     - その他 → ユーザー入力値を設定
 
 **(2) 自動導出（質問不要）**
 
