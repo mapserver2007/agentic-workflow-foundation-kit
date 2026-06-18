@@ -293,19 +293,36 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 
 **発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（Phase 1.5 で No を選択）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
 
-root `manifest.yaml > tech_stack` から、CodeRabbit の有効/無効ツール・path_instructions・path_filters を決定論的に導出する。
+本フェーズは **AI ステップ（path_instructions 生成）** と **スクリプトステップ（ツール・フィルタ決定）** の 2 段階で構成される。
+
+#### Step 1: スクリプトステップ（決定論的）
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 ```
 
 - `tech_stack.items` のテクノロジー名をカテゴリ分類（TypeScript / React / Workers / OpenAPI / Python / Go 等）し、各カテゴリに紐づく CodeRabbit ツールの有効/無効を決定する。
-- テクノロジーカテゴリに対応する path_instructions（レビュー指示）を生成する。Agentic Workflow 基盤ファイル（`.cursor/skills/**` / `.cursor/rules/**` / `.cursor/hooks/**` / `docs/**` / `manifest.yaml`）のレビュー指示は常に含まれる。
 - path_filters はロックファイル・生成物・一時ファイルの除外パターンを生成する（pnpm 検出時は `pnpm-lock.yaml` も除外）。
-- スクリプトは既存の `coderabbit.enabled` 値を保持したまま、tech_stack 由来のツール・フィルタ・指示のみを更新する。
+- `path_instructions` は manifest の既存値をパススルーする（スクリプトは生成しない）。
+- `_tech_stack_hash` を計算し manifest に書き込む。hash が前回と異なる場合は `[ACTION]` で AI 再生成を促す。
+- スクリプトは既存の `coderabbit.enabled` 値を保持したまま、tech_stack 由来のツール・フィルタのみを更新する。
 - 出力は root `manifest.yaml > coderabbit` セクションに書き込む。Phase 2 でテンプレートから `.coderabbit.yaml` が生成される。
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
+
+#### Step 2: AI ステップ（path_instructions 生成 — 条件付き）
+
+**発火条件**: スクリプトが `[ACTION] path_instructions の AI 再生成が必要です` を出力した場合のみ実行する。hash 一致時（`更新なし=冪等`）はスキップする。
+
+1. `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` と root `manifest.yaml > tech_stack.items` を読む。
+2. 以下の観点で path_instructions を生成する:
+   - 検出された各テクノロジーカテゴリに対応するファイルパターンとレビュー指示
+   - テクノロジー間の組み合わせ（例: React + Workers → OpenNext 整合性確認）
+   - Agentic Workflow 基盤ファイル（`.cursor/skills/**` / `.cursor/rules/**` / `.cursor/hooks/**` / `docs/**` / `manifest.yaml` / `.github/workflows/**`）の固定レビュー指示
+3. 生成した path_instructions を root `manifest.yaml > coderabbit.path_instructions` に書き込む。
+4. 書き込み後、Step 1 のスクリプトを再実行して hash が一致し `更新なし=冪等` になることを確認する。
+
+**冪等性保証（パターン B）**: path_instructions は manifest に永続化される。`tech_stack.items` が変更されない限りスクリプトは既存値をパススルーし、AI ステップは発火しない。tech_stack 変更時のみ AI 再生成が走り、新しい hash で安定する。
 
 ### Phase 1.7: techstack 整合ゲート
 

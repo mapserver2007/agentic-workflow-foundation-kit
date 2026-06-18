@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""tech_stack から CodeRabbit 設定を決定する（Phase 1.66）。
+"""tech_stack から CodeRabbit 設定を決定する（Phase 1.66 スクリプトステップ）。
 
 tech_stack.items のテクノロジー名をカテゴリ分類し、
 - 有効化/無効化する CodeRabbit ツールリスト
-- テックスタック固有の path_instructions
 - path_filters
 を決定論的に導出して root manifest.yaml の coderabbit セクションに書き込む。
+
+path_instructions は AI ステップで生成され manifest に永続化された値を
+パススルーする。tech_stack のハッシュが変わった場合は AI 再生成が必要な旨を
+警告し、既存値を保持したまま exit 0 する。
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import sys
@@ -46,6 +51,7 @@ TECH_CATEGORIES: dict[str, list[str]] = {
     "fortran": ["fortran"],
     "lua": ["lua"],
     "pnpm": ["pnpm"],
+    "turborepo": ["turborepo", "turbo"],
     "vitest": ["vitest"],
     "docker": ["docker", "dockerfile"],
 }
@@ -72,7 +78,7 @@ TOOL_TECH_MAP: dict[str, list[str]] = {
     "fbinfer": ["java"],
     "clang": ["c_cpp"],
     "cppcheck": ["c_cpp"],
-    "fortitude-lint": ["fortran"],
+    "fortitudeLint": ["fortran"],
     "luacheck": ["lua"],
     "oasdiff": ["openapi"],
     "hadolint": ["docker"],
@@ -87,8 +93,9 @@ ALWAYS_ENABLED_TOOLS = [
     "github-checks",
     "ast-grep",
     "skillspector",
-    "osv-scanner",
+    "osvScanner",
     "actionlint",
+    "zizmor",
 ]
 
 # ── パスフィルタ ──────────────────────────────────────────────
@@ -110,73 +117,6 @@ ALWAYS_FILTERS = [
 CATEGORY_FILTERS: dict[str, list[str]] = {
     "pnpm": ["!**/pnpm-lock.yaml"],
 }
-
-# ── パス別レビュー指示 ──────────────────────────────────────
-CATEGORY_PATH_INSTRUCTIONS: dict[str, dict[str, str]] = {
-    "typescript": {
-        "path": "**/*.ts",
-        "instructions": "TypeScript strict モードのプロジェクトです。型安全性（any の回避、適切な型ガード）、エラーハンドリングの網羅性、null/undefined の安全な処理を重点的にレビューしてください。",
-    },
-    "react": {
-        "path": "**/*.tsx",
-        "instructions": "React コンポーネントのレビュー: アクセシビリティ（aria 属性、セマンティック HTML）、パフォーマンス（不要な再レンダリング、メモ化）、Server Component / Client Component の境界を確認してください。",
-    },
-    "workers": {
-        "path": "**/workers/**",
-        "instructions": "Cloudflare Workers 環境のコードです。Node.js API ではなく Web Standard API を使用しているか、CPU 時間制限を意識した実装か、env バインディングの型安全性を確認してください。",
-    },
-    "openapi": {
-        "path": "**/*.yaml",
-        "instructions": "YAML ファイルのレビュー: スキーマバリデーションの整合性、OpenAPI 定義の場合は 3.1 仕様への準拠を確認してください。",
-    },
-    "vitest": {
-        "path": "**/*.test.*",
-        "instructions": "テストファイルのレビュー: エッジケースのカバレッジ、テスト間の独立性（shared state の排除）、アサーションが具体的かつ十分か確認してください。",
-    },
-    "python": {
-        "path": "**/*.py",
-        "instructions": "Python コードのレビュー: 型ヒントの適切な使用、例外処理の網羅性、PEP 8 準拠を確認してください。",
-    },
-    "go": {
-        "path": "**/*.go",
-        "instructions": "Go コードのレビュー: エラーハンドリング（error の明示的チェック）、goroutine の安全性、インターフェース設計を確認してください。",
-    },
-    "rust": {
-        "path": "**/*.rs",
-        "instructions": "Rust コードのレビュー: 所有権とライフタイムの適切な使用、unsafe ブロックの最小化、エラーハンドリング（Result/Option）を確認してください。",
-    },
-    "ruby": {
-        "path": "**/*.rb",
-        "instructions": "Ruby コードのレビュー: メソッドの責務分離、例外処理、パフォーマンス（N+1 クエリ等）を確認してください。",
-    },
-    "php": {
-        "path": "**/*.php",
-        "instructions": "PHP コードのレビュー: 型宣言の使用、SQL インジェクション防止、入力バリデーションを確認してください。",
-    },
-}
-
-ALWAYS_PATH_INSTRUCTIONS = [
-    {
-        "path": ".cursor/skills/**",
-        "instructions": "Cursor Agent Skill ファイルです。SKILL.md のフォーマット準拠とセキュリティリスクを確認してください。",
-    },
-    {
-        "path": ".cursor/rules/**",
-        "instructions": "Cursor Rule ファイルです。ルール間の矛盾がないか、宣言的な制約として記述されているか確認してください。",
-    },
-    {
-        "path": ".cursor/hooks/**",
-        "instructions": "Cursor Hook スクリプトです。シェルスクリプトの堅牢性と副作用のないべき等な動作を確認してください。",
-    },
-    {
-        "path": "docs/**",
-        "instructions": "ドキュメントのレビュー: 他ドキュメントとの整合性と Meta 層 / Domain 層の命名規約準拠を確認してください。",
-    },
-    {
-        "path": "manifest.yaml",
-        "instructions": "manifest.yaml は Agentic Workflow 基盤の Source of Truth です。変更が下流の生成物に正しく反映されるか確認してください。",
-    },
-]
 
 
 def _out(level: str, msg: str) -> None:
@@ -213,7 +153,10 @@ def _detect_categories(manifest: dict) -> set[str]:
 
 
 def _resolve_tools(categories: set[str]):
-    """カテゴリ集合から有効/無効ツールリストを返す。"""
+    """カテゴリ集合から有効/無効ツールリストを返す。
+
+    biome と oxc は JS/TS 解析で責務が重複するため、biome が有効なら oxc を無効化する。
+    """
     enabled = []
     disabled = []
     for tool, cats in sorted(TOOL_TECH_MAP.items()):
@@ -221,6 +164,10 @@ def _resolve_tools(categories: set[str]):
             enabled.append(tool)
         else:
             disabled.append(tool)
+    if "biome" in enabled and "oxc" in enabled:
+        enabled.remove("oxc")
+        disabled.append("oxc")
+        disabled.sort()
     return enabled, disabled
 
 
@@ -232,17 +179,23 @@ def _resolve_path_filters(categories: set[str]) -> list[str]:
     return filters
 
 
-def _resolve_path_instructions(categories: set[str]):
-    instructions = []
-    for cat in sorted(CATEGORY_PATH_INSTRUCTIONS.keys()):
-        if cat in categories:
-            instructions.append(dict(CATEGORY_PATH_INSTRUCTIONS[cat]))
-    instructions.extend(ALWAYS_PATH_INSTRUCTIONS)
-    return instructions
+def _compute_tech_stack_hash(manifest: dict) -> str:
+    """tech_stack.items の安定ハッシュを計算する。
+
+    items をソート済み JSON に正規化してから SHA-256 の先頭 12 文字を返す。
+    tech_stack が変更されない限り同一値を返し、パターン B の発火条件判定に使う。
+    """
+    items = (manifest.get("tech_stack") or {}).get("items") or []
+    normalized = json.dumps(items, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
 
 def resolve(manifest: dict) -> dict:
     """tech_stack から coderabbit 設定を導出する。
+
+    ツールと path_filters は決定論的に導出する。
+    path_instructions は manifest の既存値をパススルーし、tech_stack の
+    ハッシュが変わった場合は AI 再生成が必要な旨を警告する。
 
     coderabbit.enabled は Phase 1.5 の AskQuestion で PO が決定する値であり、
     本スクリプトでは既存の enabled 値を保持する（未設定時は True をデフォルトとする）。
@@ -258,13 +211,28 @@ def resolve(manifest: dict) -> dict:
 
     enabled, disabled = _resolve_tools(categories)
     path_filters = _resolve_path_filters(categories)
-    path_instructions = _resolve_path_instructions(categories)
+
+    current_hash = _compute_tech_stack_hash(manifest)
+    stored_hash = existing.get("_tech_stack_hash", "")
+    existing_instructions = existing.get("path_instructions") or []
+
+    needs_ai_regen = False
+    if not existing_instructions:
+        _out("WARN", "path_instructions が未設定です。Phase 1.66 AI ステップで生成してください")
+        needs_ai_regen = True
+    elif current_hash != stored_hash:
+        _out("WARN", f"tech_stack が変更されました（hash: {stored_hash} → {current_hash}）。"
+             "path_instructions の AI 再生成を推奨します")
+        needs_ai_regen = True
+
+    if not needs_ai_regen:
+        _out("INFO", f"tech_stack hash 一致（{current_hash}）— path_instructions をパススルー")
 
     _out("INFO", f"enabled: {is_enabled}")
     _out("INFO", f"検出カテゴリ: {sorted(categories)}")
     _out("INFO", f"有効ツール: {enabled}")
     _out("INFO", f"無効ツール: {disabled}")
-    _out("INFO", f"path_instructions: {len(path_instructions)} 件")
+    _out("INFO", f"path_instructions: {len(existing_instructions)} 件（パススルー）")
 
     return {
         "enabled": is_enabled,
@@ -272,7 +240,9 @@ def resolve(manifest: dict) -> dict:
         "tools_enabled": [{"name": t} for t in ALWAYS_ENABLED_TOOLS + enabled],
         "tools_disabled": [{"name": t} for t in disabled],
         "path_filters": path_filters,
-        "path_instructions": path_instructions,
+        "path_instructions": existing_instructions,
+        "_tech_stack_hash": current_hash,
+        "_needs_ai_regen": needs_ai_regen,
     }
 
 
@@ -309,6 +279,7 @@ def _build_coderabbit_block(resolved: dict) -> list[str]:
     enabled_str = "true" if resolved["enabled"] else "false"
     lines.append(f"  enabled: {enabled_str}")
     lines.append(f"  language: {_yaml_quote(resolved['language'])}")
+    lines.append(f"  _tech_stack_hash: {_yaml_quote(resolved['_tech_stack_hash'])}")
 
     lines.append("  tools_enabled:")
     for tool in resolved["tools_enabled"]:
@@ -368,6 +339,7 @@ def main(argv=None) -> int:
         return 2
 
     resolved = resolve(manifest)
+    needs_ai_regen = resolved.pop("_needs_ai_regen", False)
 
     with open(args.manifest, "r", encoding="utf-8") as f:
         content = f.read()
@@ -381,6 +353,9 @@ def main(argv=None) -> int:
         with open(args.manifest, "w", encoding="utf-8", newline="") as f:
             f.write(new_content)
     _out("PASS", f"CodeRabbit 設定を root manifest へ反映（{'更新あり' if changed else '更新なし=冪等'}）")
+    if needs_ai_regen:
+        _out("ACTION", "path_instructions の AI 再生成が必要です。"
+             "SKILL.md Phase 1.66 AI ステップを実行してください")
     return 0
 
 
