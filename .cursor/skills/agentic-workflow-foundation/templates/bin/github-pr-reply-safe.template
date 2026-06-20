@@ -2,20 +2,21 @@
 set -euo pipefail
 
 # レビューコメント reply（WRITE）
-# Usage: github-pr-reply-safe <comment-id> <body-file>
+# Usage: github-pr-reply-safe <pr-number> <comment-id> <body-file>
 # Exit:  0=成功, 1=API エラー, 2=認証エラー
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_github-app-auth.sh
 source "${SCRIPT_DIR}/_github-app-auth.sh"
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: github-pr-reply-safe <comment-id> <body-file>" >&2
+if [[ $# -lt 3 ]]; then
+  echo "Usage: github-pr-reply-safe <pr-number> <comment-id> <body-file>" >&2
   exit 1
 fi
 
-COMMENT_ID="$1"
-BODY_FILE="$2"
+PR_NUMBER="$1"
+COMMENT_ID="$2"
+BODY_FILE="$3"
 
 if [[ ! -f "$BODY_FILE" ]]; then
   echo "ERROR: body file が見つかりません: $BODY_FILE" >&2
@@ -34,7 +35,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
   -H "Authorization: token ${TOKEN}" \
   -H "Accept: application/vnd.github+json" \
   -d "{\"body\":${BODY_JSON}}" \
-  "https://api.github.com/repos/${OWNER}/${REPO}/pulls/comments/${COMMENT_ID}/replies")
+  "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}/comments/${COMMENT_ID}/replies")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')

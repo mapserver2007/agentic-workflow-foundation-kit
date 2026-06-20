@@ -224,7 +224,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 | --- | --- | --- | --- |
 | `bin/github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | agent-code-review |
 | `bin/github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | agent-code-review |
-| `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | agent-code-review |
+| `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<pr-number> <comment-id> <body-file>` | agent-code-review |
 | `bin/github-pr-create-safe` | PR 作成（WRITE） | `<base-branch> <title-file> <body-file>` | agent-github-pr |
 
 > wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` で再実行する。

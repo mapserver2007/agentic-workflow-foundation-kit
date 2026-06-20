@@ -210,7 +210,7 @@ fi
 if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
    || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
   deny "gh pr/issue コメント・レビューは PAT 未設定のため実行不可。wrapper 経由で投稿する" \
-       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <comment-id> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
 fi
 
 # gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)

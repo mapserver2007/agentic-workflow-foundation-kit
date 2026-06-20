@@ -528,8 +528,9 @@ for group in [修正必須, 修正推奨, 修正不要]:
 - **修正後**: 該当ファイルの diff を `git diff -- <path>` で取得し、レポート用に記録
 - **GitHub reply 投稿**: `apply` / `reply_only` 集合に対してのみ実行（`pending` / `discuss` は投稿しない）:
   ```bash
-  bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
+  bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{comment_id}.md
   ```
+  - `{pr_number}`: 対象 PR 番号
   - `{comment_id}`: Step 3 で記録したレビューコメント ID
   - 返信内容を一時ファイルに書き出してから wrapper に渡す
 - **返信テンプレート**: [references/reply-templates.md](references/reply-templates.md)（**GitHub 返信の文体原則** + アクション別 reply 投稿可否表 + 修正必須 / 修正推奨 / 修正不要 + Ask First マーク付き項目用の追加文言）。**重要**: GitHub 返信はレビュアーが前提知識なしで読める自然な文章で記述する。判定プロセスの詳細（出典スタンプ・フィルタコード・Phase 番号・内部ドキュメントのパスやセクション番号等）はレビューレポートにのみ記録し、GitHub 返信には含めない

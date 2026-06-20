@@ -342,7 +342,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ### 共通: GitHub reply 投稿
 
-- [ ] `bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
+- [ ] `bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
 - [ ] **`apply` / `reply_only` 集合に対してのみ実行**（`pending` / `discuss` には投稿していない）
 - [ ] Ask First で「修正しない」判断に寄せた場合もその旨を返信済み
 

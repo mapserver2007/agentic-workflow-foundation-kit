@@ -64,7 +64,7 @@ GitHub API への書き込み操作は、以下の **固定 wrapper コマンド
 bin/github-pr-create-safe <base-branch> <title-file> <body-file>
 bin/github-pr-reviews-safe <owner> <repo> <pr-number>
 bin/github-pr-comment-safe <pr-number> <body-file>
-bin/github-pr-reply-safe <comment-id> <body-file>
+bin/github-pr-reply-safe <pr-number> <comment-id> <body-file>
 ```
 
 - `bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の**必須出力**としてスキル実行（Phase 2）で常に `bin/` に生成される（GitHub App のセットアップが前提。未設定時は wrapper が exit 2 で終了する）
