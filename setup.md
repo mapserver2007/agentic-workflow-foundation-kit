@@ -66,7 +66,7 @@ Hook が正しく動作しているかは、新規チャットを開いて1通�
 
 1. CodeRabbit ダッシュボードで **Add Repository** を選択
 2. 対象リポジトリを選択して接続
-3. GitHub App のインストールを承認（`Pull requests: Read and write` 権限が必要）
+3. GitHub Apps のインストールを承認（`Pull requests: Read and write` 権限が必要）
 
 ### 3.3 動作確認
 
@@ -74,75 +74,170 @@ Hook が正しく動作しているかは、新規チャットを開いて1通�
 2. CodeRabbit bot がレビューコメントを投稿することを確認
 3. `.coderabbit.yaml` の設定（言語・ツール・path_instructions）が反映されていることを確認
 
-> CodeRabbit の GitHub App と次節の agent-code-review 用 GitHub App は別物。CodeRabbit は CodeRabbit 社が提供する App、agent-code-review 用は自分で作成する App。
+> CodeRabbit の GitHub Apps と次節の agent-code-review 用 GitHub Apps は別物。CodeRabbit は CodeRabbit 社が提供する Apps、agent-code-review 用は自分で作成する Apps。
 
 ---
 
-## 4. GitHub App — agent-code-review wrapper 用（オプション）
+## 4. GitHub Apps — wrapper 用（オプション）
 
-`code_review.enabled: true` の場合に生成される `agent-code-review` スキルは、AI に GitHub token を露出しない安全な wrapper コマンド（`github-pr-reviews-safe` / `github-pr-comment-safe` / `github-pr-reply-safe`）を使用する。この wrapper は GitHub App の installation token を内部で発行する。
+`code_review.enabled: true` / `github_pr.enabled: true` の場合に生成される `agent-code-review` / `agent-github-pr` スキルは、AI に GitHub token を露出しない安全な wrapper コマンドを使用する。wrapper は GitHub Apps の **installation token** を内部で発行する（OAuth / user token は不要）。
 
-### 4.1 GitHub App の作成
+| スキル | wrapper コマンド |
+| --- | --- |
+| agent-code-review | `github-pr-reviews-safe` / `github-pr-comment-safe` / `github-pr-reply-safe` |
+| agent-github-pr | `github-pr-create-safe` |
+
+### 4.1 GitHub Apps の作成
 
 1. GitHub → **Settings** → **Developer settings** → **GitHub Apps** → **New GitHub App**
-2. 以下を設定:
+2. 作成画面の各セクションを以下のとおり設定する。
 
-| 項目 | 値 |
-| --- | --- |
-| App name | 任意（例: `my-org-pr-review-bot`） |
-| Homepage URL | リポジトリ URL 等 |
-| Webhook | **Active のチェックを外す**（不要） |
+#### Basic information
 
-3. **Repository permissions** を設定:
+| 項目 | 設定 | 備考 |
+| --- | --- | --- |
+| GitHub App name | 任意（例: `agent-github-operation`） | **必須**。同一アカウント内で一意の名前 |
+| Description | 任意 | 空欄可。Markdown 可 |
+| Homepage URL | 対象リポジトリの URL | **必須**。例: `https://github.com/{owner}/{repo}` |
 
-| Permission | Access |
-| --- | --- |
-| Pull requests | **Read and write** |
-| Metadata | **Read** |
+#### Identifying and authorizing users
 
-4. **Where can this GitHub App be installed?** → **Only on this account**（組織内のみ）
-5. **Create GitHub App** をクリック
+wrapper は installation token のみ使用するため、OAuth 関連は設定不要。
+
+| 項目 | 設定 | 備考 |
+| --- | --- | --- |
+| Callback URL | 空欄 | **Add Callback URL は不要** |
+| Expire user authorization tokens | **チェックを外す** | OAuth を使わないため不要 |
+| Request user authorization (OAuth) during installation | **チェックを外す** | インストール時のユーザー認可は不要 |
+| Enable Device Flow | **チェックを外す** | CLI 向け OAuth フローは不要 |
+
+#### Post installation
+
+| 項目 | 設定 | 備考 |
+| --- | --- | --- |
+| Setup URL | 空欄 | インストール後の追加セットアップ URL は不要 |
+| Redirect on update | **チェックを外す** | リポジトリ追加/削除時のリダイレクトは不要 |
+
+#### Webhook
+
+REST API を直接呼び出すため Webhook は不要。**Active はデフォルトで ON になっている**ので、必ず OFF にする。
+
+| 項目 | 設定 | 備考 |
+| --- | --- | --- |
+| Active | **チェックを外す** | **デフォルト ON のため要注意** |
+| Webhook URL | 空欄 | Active OFF なら入力不要 |
+| Secret | 空欄 | Active OFF なら入力不要 |
+
+#### Permissions
+
+**Repository permissions** を展開して設定する。**Organization permissions** / **Account permissions** はすべて **No access** のまま。
+
+| Permission | Access | 用途 |
+| --- | --- | --- |
+| Pull requests | **Read and write** | レビュー取得・コメント投稿・PR 作成（必須） |
+| Metadata | **Read** | リポジトリ情報の参照（他の Repository permission を設定すると自動付与されることが多い） |
+| Contents | **Read and write** | PR 作成時の head ブランチ参照（`github_pr.enabled: true` の場合のみ必要） |
+
+> `agent-code-review` のみ使う場合は **Pull requests** + **Metadata** で足りる。`agent-github-pr` も使う場合は **Contents: Read and write** を追加する。
+
+#### Where can this GitHub App be installed?
+
+| 選択肢 | 推奨 | 備考 |
+| --- | --- | --- |
+| **Only on this account** | 推奨 | 自分のアカウント / 組織内のみに限定 |
+| Any account | — | 複数 org で共有する場合のみ |
+
+3. **Create GitHub App** をクリック
 
 ### 4.2 Private Key の生成・配置
 
-1. 作成した App のページで **Generate a private key** をクリック
-2. ダウンロードされた `.pem` ファイルを安全な場所に配置
-3. AI（Cursor Agent）からはアクセスできない権限に設定する
+1. 作成した Apps のページで **Generate a private key** をクリック
+2. ダウンロードされた `.pem` ファイルを `~/.config/github-apps/` に配置する
 
 ```bash
-chmod 600 /path/to/private-key.pem
+mkdir -p ~/.config/github-apps
+mv ~/Downloads/*.private-key.pem ~/.config/github-apps/private-key.pem
+chmod 600 ~/.config/github-apps/private-key.pem
 ```
 
-> private key のパスは wrapper の実装に合わせて配置する。`.cursor/rules/03-github-security.mdc` により、AI は `.pem` / `.key` ファイルの読み取りを禁止されている。
+| ファイル | パス | 備考 |
+| --- | --- | --- |
+| `private-key.pem` | `~/.config/github-apps/private-key.pem` | GitHub Apps からダウンロードした秘密鍵（**必須**） |
 
-### 4.3 GitHub App のインストール
+> **配置の原則**: リポジトリ外（`~/.config/github-apps/`）に置き、AI（Cursor Agent）からは読み取れないようにする。`.cursor/rules/03-github-security.mdc` により、AI は `.pem` / `.key` ファイルの読み取りを禁止されている。wrapper はこのパスから private key を読み取る。
 
-1. App のページ → **Install App** → 対象リポジトリを選択
-2. **App ID** と **Installation ID** をメモしておく（wrapper の設定に使用）
+### 4.3 GitHub Apps のインストール
+
+1. Apps のページ → **Install App** → 対象リポジトリを選択
+2. 次の ID を確認する:
+   - **App ID** — Apps 設定ページの **About**（4.1 で Apps 作成直後から確認可）
+   - **Installation ID** — インストール後の URL `https://github.com/settings/installations/{Installation ID}` の数値部分
+3. wrapper 用に `~/.config/github-apps/config.env` を作成する（フォーマットは下記サンプル）
+
+> **スキルとの関係**: `agent-github-pr` / `agent-code-review` は `config.env` を直接読まない。wrapper 実装が installation token 発行に使う。**wrapper が `config.env` を参照する実装の場合のみ**作成する。
+
+#### `config.env` サンプル
+
+```bash
+# ~/.config/github-apps/config.env
+# wrapper 実装が source する環境変数ファイル（shell の KEY=VALUE 形式）
+
+# GitHub Apps の App ID（Apps 設定 → About）
+GITHUB_APP_ID=123456
+
+# Installation ID（Install App 後の URL 末尾）
+GITHUB_APP_INSTALLATION_ID=78901234
+
+# private key のパス（4.2 で配置した pem）
+GITHUB_APP_PRIVATE_KEY_PATH="${HOME}/.config/github-apps/private-key.pem"
+```
+
+作成例:
+
+```bash
+cat > ~/.config/github-apps/config.env <<'EOF'
+GITHUB_APP_ID=123456
+GITHUB_APP_INSTALLATION_ID=78901234
+GITHUB_APP_PRIVATE_KEY_PATH="${HOME}/.config/github-apps/private-key.pem"
+EOF
+chmod 600 ~/.config/github-apps/config.env
+```
+
+| 変数 | 必須 | 説明 |
+| --- | --- | --- |
+| `GITHUB_APP_ID` | Yes | JWT の `iss`。どの GitHub Apps として認証するか |
+| `GITHUB_APP_INSTALLATION_ID` | Yes | どの installation 向けに installation token を取得するか |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | Yes* | pem ファイルのパス。*wrapper が固定パス（`~/.config/github-apps/private-key.pem`）を読む実装なら省略可 |
+
+> 変数名は wrapper 実装の convention。上記以外のキー名を使う wrapper もある。その場合は各 wrapper の README に従う。
 
 ### 4.4 wrapper コマンドのインストール
 
-wrapper コマンド 3 つを `/usr/local/bin/` に配置する。
+使用するスキルに応じて wrapper を `/usr/local/bin/` に配置する。
 
 ```bash
-# インストール後の確認
+# agent-code-review 用（3 コマンド）
 which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe
+
+# agent-github-pr 用（1 コマンド追加）
+which github-pr-create-safe
 ```
 
-| wrapper | 用途 | 引数 |
-| --- | --- | --- |
-| `github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` |
-| `github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` |
-| `github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` |
+| wrapper | 用途 | 引数 | 使用スキル |
+| --- | --- | --- | --- |
+| `github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | agent-code-review |
+| `github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | agent-code-review |
+| `github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | agent-code-review |
+| `github-pr-create-safe` | PR 作成（WRITE） | `<base-branch> <title-file> <body-file>` | agent-github-pr |
 
-> wrapper の実装は本キットには含まれない。GitHub App の private key を読み取り、installation token を発行して GitHub API を呼び出すスクリプトを各環境に合わせて作成する。
+> wrapper の実装は本キットには含まれない。`~/.config/github-apps/private-key.pem` から private key を読み取り、installation token を発行して GitHub API を呼び出すスクリプトを各環境に合わせて作成する。
 
 ### 4.5 セキュリティモデル
 
 ```
 AI Agent ──→ wrapper（/usr/local/bin/github-pr-*-safe）──→ GitHub API
                │
-               ├── private key を読み取り
+               ├── ~/.config/github-apps/private-key.pem を読み取り
                ├── installation token を発行
                └── API レスポンスのうち安全な部分のみ AI に返却
 
@@ -187,12 +282,15 @@ Quality Gate の自動実行を CI で行う場合は、GitHub Actions ワーク
 - [ ] `jq` がインストール済み（Hook の JSON 処理）
 - [ ] GitHub の Branch Protection Rules を設定
 
-### オプション（agent-code-review を使う場合）
+### オプション（agent-code-review / agent-github-pr を使う場合）
 
-- [ ] GitHub App を作成・インストール
-- [ ] Private key を生成・安全に配置
-- [ ] wrapper コマンド 3 つを `/usr/local/bin/` にインストール
-- [ ] `which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe` で確認
+- [ ] GitHub Apps を作成（Webhook Active を **OFF**、OAuth 関連は未設定）
+- [ ] Repository permissions を設定（Pull requests + Metadata、必要なら Contents も）
+- [ ] GitHub Apps を対象リポジトリにインストール
+- [ ] Private key を `~/.config/github-apps/` に配置（`chmod 600`）
+- [ ] wrapper が `config.env` を参照する場合は §4.3 のサンプルに従い作成（`chmod 600`）
+- [ ] wrapper コマンドを `/usr/local/bin/` にインストール
+- [ ] `which github-pr-*-safe` で必要なコマンドがすべて見つかることを確認
 
 ### オプション（CodeRabbit を使う場合）
 
