@@ -40,8 +40,8 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 | Step | 入口条件 | 退出条件 |
 | --- | --- | --- |
-| **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 |
-| **2 PR 内容生成** | Step 1 完了 + コミット済み変更あり | タイトル・本文の草案完成 |
+| **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 + リモート push 済み |
+| **2 PR 内容生成** | Step 1 完了 + リモートにコミット済み変更あり | タイトル・本文の草案完成 |
 | **3 ユーザー承認** | Step 2 完了 | AskQuestion でユーザーが承認 |
 | **4 PR 作成** | Step 3 承認済み | PR URL 取得 + 出力 |
 
@@ -56,15 +56,27 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
    - 空の場合（デタッチド HEAD）はユーザーに確認する
    - `main` / `master` / `develop` 上にいる場合は **中断**し、feature ブランチでの作業を案内する
 
-2. コミット済みの変更があることを確認する:
+2. 未コミットファイルの有無を確認する:
 
    ```bash
    git status --porcelain
    ```
 
-   - ステージング / ワーキングツリーに未コミットの変更がある場合は **中断**し、コミットを案内する
+   - 未コミットの変更がある場合でも **コミット操作は禁止**（意図的に未コミットの場合があるため）
+   - 未コミットファイルがある旨をユーザーに通知するが、コミットは案内しない
+   - コミット済みの変更（リモートブランチに push 済みのコミット）のみを PR 対象とする
 
-3. ベースブランチを決定する:
+3. リモートブランチへの push 状態を確認する:
+
+   ```bash
+   git log origin/{head}..HEAD --oneline 2>/dev/null
+   ```
+
+   - リモートに未 push のコミットがある場合は **中断**し、`git push` を案内する
+   - リモートブランチが存在しない場合（初回 push 前）も **中断**し、`git push -u origin {head}` を案内する
+   - **AI がコミットや push を代行することは禁止**。ユーザー自身の操作を待つ
+
+4. ベースブランチを決定する:
 
    ```bash
    git log --oneline --decorate -1
@@ -75,7 +87,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
      - リリースブランチ候補: `git branch -r --list 'origin/release/v*' --sort=-version:refname | head -1`
      - Other（ユーザー指定）
 
-4. head / base ブランチを記録して Step 2 へ。
+5. head / base ブランチを記録して Step 2 へ。
 
 ### Step 2: diff 分析 + PR タイトル・本文生成
 
