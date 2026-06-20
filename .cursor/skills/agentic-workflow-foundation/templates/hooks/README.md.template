@@ -8,7 +8,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
-| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git/gh の不可逆操作（`--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）と無断投稿（`gh pr comment`/`review` / `gh api` 書込系）を ask | Enforcement | deny対象はfail_closed / それ以外はfail_open |
+| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作（`--force` push / 保護ブランチ直 push / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）を ask、**`gh` CLI 全般を deny**（PAT 未設定で認証不可 — wrapper `bin/github-pr-*-safe` を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-active.md` を `additional_context` 注入してアーカイブ | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメント（観測のみ） | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
@@ -18,7 +18,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 ## 設計原則
 
-- **Enforcement**: `guard-git-write.sh` は危険サブコマンドのみ deny / ask。正規ワークフロー（`git commit` / `git push -u origin HEAD` / `gh pr create` / `gh api` の読み取り等）には干渉しない。
+- **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。正規ワークフロー（`git commit` / `git push -u origin HEAD`）には干渉しない。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能（PAT 未設定のため `gh` 直接実行は認証不可）。
 - **観測 + 助言**: `session-*` 系は AI をブロックせず、state を蓄積してしきい値超過時のみ助言を返す。
 - **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
   - **deny 対象はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく `ask` を返す。
@@ -67,13 +67,13 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 ```bash
 # DENY
 echo '{"command":"git push --force"}' | .cursor/hooks/guard-git-write.sh   # {"permission":"deny",...}
+echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
+echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
+echo '{"command":"gh pr list"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...} (PAT 未設定)
 # ASK
 echo '{"command":"git commit --amend -m fix"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
-echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
-echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
 # ALLOW
 echo '{"command":"git push -u origin HEAD"}' | .cursor/hooks/guard-git-write.sh    # {}
-echo '{"command":"gh api repos/o/r/pulls/1 --method GET"}' | .cursor/hooks/guard-git-write.sh  # {}
 # fail_open（deny クラスでない解析不能入力は素通り）
 echo 'invalid-json' | .cursor/hooks/guard-git-write.sh                            # {}
 # fail_close（jq 不在を模擬: PATH から jq だけ隠したダミー dir 経由で実行し deny クラスを ask に倒す）

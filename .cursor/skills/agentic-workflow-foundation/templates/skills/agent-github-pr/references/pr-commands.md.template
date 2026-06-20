@@ -113,7 +113,7 @@ ls .github/pull_request_template.md 2>/dev/null || ls .github/PULL_REQUEST_TEMPL
 | exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
 | `git branch --show-current` が空 | デタッチド HEAD 状態。ユーザーにブランチのチェックアウトを案内 |
 | `git status --porcelain` に出力あり | 未コミットの変更あり。スキルを中断し、コミットを案内 |
-| Hook により `deny` / `ask` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh pr create` を直接実行しようとした場合のみ該当 |
+| Hook により `deny` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper (`bin/github-pr-create-safe`) を案内する |
 
 ---
 

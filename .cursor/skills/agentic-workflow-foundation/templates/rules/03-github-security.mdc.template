@@ -67,20 +67,22 @@ bin/github-pr-comment-safe <pr-number> <body-file>
 bin/github-pr-reply-safe <comment-id> <body-file>
 ```
 
-- wrapper はスキル実行（Phase 2）で `bin/` に自動生成される（`code_review.enabled` / `github_pr.enabled` が `true` の場合）
+- `bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の**必須出力**としてスキル実行（Phase 2）で常に `bin/` に生成される（GitHub App のセットアップが前提。未設定時は wrapper が exit 2 で終了する）
+- `bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` は `code_review.enabled: true` の場合のみ生成される
 - wrapper 内部で GitHub App installation token を発行し、GitHub API を実行する
 - AI に返却されるのはコメント URL / レビュースレッド JSON のみ
 - wrapper / helper の実装ファイル（`bin/github-pr-*-safe` / `bin/_github-app-auth.sh`）は `.cursorignore` で AI アクセスを遮断し、ユーザーが明示的に依頼した場合を除き編集禁止
 
 ### gh コマンドの扱い
 
-`gh` は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) による段階的ガードレールの下で制御される。
+`gh` CLI は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) で **全サブコマンドが deny** される。本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、`gh` CLI の直接実行は認証が通らず失敗する。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能。
 
-- **deny（Hook がブロック）**: `gh auth token` / `gh auth status --show-token` / `gh auth login --with-token` / `gh pr merge` / `gh repo delete|archive`
-- **ask（Hook がユーザー承認を強制）**: `gh pr comment|review` / `gh issue comment` / `gh api` 書き込み系 / `gh alias set` / `gh extension install|exec`
-- **素通し**: `gh pr list` / `gh pr view` / `gh api` 読み取り系（GET / non-mutation graphql）
+- **deny（不可逆操作）**: `gh pr merge` / `gh repo delete|archive`
+- **deny（token 漏洩防止）**: `gh auth token` / `gh auth status --show-token` / `gh auth login --with-token`
+- **deny（PAT 未設定で認証不可 — wrapper を案内）**: `gh pr create` → `bin/github-pr-create-safe` / `gh pr comment|review` → `bin/github-pr-comment-safe` or `bin/github-pr-reply-safe` / `gh api` → `bin/github-pr-reviews-safe` 等
+- **deny（catch-all）**: 上記以外の全 `gh` サブコマンド（PAT 未設定で認証不可。対応 wrapper がない操作は現在実行できない）
 
-> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が `bin/` に生成されていない環境ではこれらのスキルを実行できない。
+> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。`bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の必須出力として常に生成される。GitHub App が未設定の場合、wrapper は exit 2（致命的エラー）で終了する。
 
 ## 優先度
 

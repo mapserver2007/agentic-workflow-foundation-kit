@@ -165,7 +165,7 @@ if [[ "$CMD_N" =~ git[[:space:]]+config.*(--global|--system)[[:space:]]+--get[[:
 fi
 
 # ============================================================
-# ASK パターン（ユーザー承認を強制）
+# ASK パターン（ユーザー承認を強制 — git 操作のみ）
 # ============================================================
 
 if [[ "$CMD_N" =~ git[[:space:]]+commit.*--amend([[:space:]]|$) ]]; then
@@ -177,13 +177,6 @@ if [[ "$CMD_N" =~ git[[:space:]]+rebase([[:space:]]|$) ]] \
    && [[ ! "$CMD_N" =~ git[[:space:]]+rebase[[:space:]]+--(abort|continue|skip|quit) ]]; then
   ask "git rebase は履歴書き換えのためユーザー承認を要求" \
       "rebase 後に push --force が必要になる場合があります。ユーザー承認を得てください。"
-fi
-
-# gh pr / issue のコメント・レビュー投稿（無断投稿防止）
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
-   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
-  ask "gh pr/issue のコメント・レビュー投稿は無断投稿防止のため承認を要求" \
-      "レビュー返信・コメントは agent-code-review 等の承認ループ経由で投稿してください。"
 fi
 
 # 環境変数の一覧ダンプ（引数なしの env / printenv = secret 漏洩リスク）
@@ -199,31 +192,40 @@ if [[ "$CMD_N" =~ git[[:space:]]+config[[:space:]]+(--(global|system)[[:space:]]
       "Git 設定の確認が必要な場合は、特定のキーを指定してください (例: git config user.name)。"
 fi
 
-# gh alias / extension（任意コマンド実行リスク）
-if [[ "$CMD_N" =~ gh[[:space:]]+alias[[:space:]]+set([[:space:]]|$) ]] \
-   || [[ "$CMD_N" =~ gh[[:space:]]+extension[[:space:]]+(install|exec)([[:space:]]|$) ]]; then
-  ask "gh alias/extension は任意コマンド実行のリスクがあるためユーザー承認を要求" \
-      "エイリアス設定やエクステンション操作はユーザー承認を得てください。"
+# ============================================================
+# DENY パターン（gh CLI 全般 — PAT 未設定のため認証不可 / wrapper 強制）
+# 認証モデル: 本 kit は PAT / GITHUB_TOKEN を使用しない。GitHub API 操作は
+# wrapper (bin/github-pr-*-safe) 経由でのみ実行可能。gh CLI の直接実行は
+# 認証が通らず失敗するため、deny で wrapper を案内する。
+# ============================================================
+
+# gh pr create → 対応 wrapper: bin/github-pr-create-safe
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
+  deny "gh pr create は PAT 未設定のため実行不可。wrapper 経由で PR を作成する" \
+       "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
 fi
 
-# gh api の書き込み系（--method POST|PATCH|PUT|DELETE / field 系 / --input / replies / graphql mutation）
-# 読み取り（--method GET 明示 / mutation を含まない graphql）は除外する。
+# gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+  deny "gh pr/issue コメント・レビューは PAT 未設定のため実行不可。wrapper 経由で投稿する" \
+       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <comment-id> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+fi
+
+# gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)
 if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
-  if [[ "$CMD_N" =~ (--method|-X)[[:space:]=]+GET ]]; then
-    : # 明示 GET は読み取り。素通り
-  elif [[ "$CMD_N" =~ graphql ]] && [[ ! "$CMD_N" =~ mutation ]]; then
-    : # mutation を含まない graphql は読み取り。素通り
-  elif [[ "$CMD_N" =~ (--method|-X)[[:space:]=]+(POST|PATCH|PUT|DELETE) ]] \
-       || [[ "$CMD_N" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]] \
-       || [[ "$CMD_N" =~ /replies ]] \
-       || [[ "$CMD_N" =~ graphql.*mutation ]]; then
-    ask "gh api の書き込み系（POST/PATCH/PUT/DELETE / field / --input / replies / graphql mutation）は無断投稿防止のため承認を要求" \
-        "コメント・レビュー返信などの書き込みは agent-code-review 等の承認ループ経由で実行してください。"
-  fi
+  deny "gh api は PAT 未設定のため実行不可。wrapper 経由で GitHub API を操作する" \
+       "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+fi
+
+# gh catch-all（上記パターンに該当しないすべての gh コマンド）
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]] ]]; then
+  deny "gh CLI は PAT 未設定のため直接実行不可。GitHub 操作は wrapper を使用する" \
+       "本環境では PAT / GITHUB_TOKEN が設定されていないため gh CLI は認証できません。GitHub API 操作は以下の wrapper を使用してください: bin/github-pr-create-safe / bin/github-pr-reviews-safe / bin/github-pr-comment-safe / bin/github-pr-reply-safe。対応する wrapper がない操作は現在実行できません。"
 fi
 
 # ============================================================
-# どれにも該当しない -> 素通り
+# どれにも該当しない -> 素通り（git ローカル操作等）
 # ============================================================
 echo '{}'
 exit 0

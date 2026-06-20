@@ -145,10 +145,12 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 | `git reset --hard origin/*` / `upstream/*` | deny | ローカル変更の不可逆消失 |
 | `gh pr merge` | deny | 明示指示なきマージ禁止（AGENTS.md > Never） |
 | `gh repo delete` / `gh repo archive` | deny | 不可逆 |
+| `gh pr create` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-create-safe` を案内 |
+| `gh pr comment` / `gh pr review` / `gh issue comment` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` を案内 |
+| `gh api` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-reviews-safe` 等を案内 |
+| `gh`（上記以外の全サブコマンド） | deny | PAT 未設定で認証不可。wrapper 一覧を案内 |
 | `git commit --amend` | ask | 履歴改ざんのためユーザー承認 |
 | `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask | 履歴書き換えのためユーザー承認 |
-| `gh pr comment` / `gh pr review` / `gh issue comment` | ask | 無断 PR/Issue 投稿防止（承認ループ経由が原則） |
-| `gh api` の書き込み系（`--method POST\|PATCH\|PUT\|DELETE` / field 系（`-f`/`-F`/`--field`/`--raw-field`）/ `--input` / `.../replies` / `graphql` の `mutation`。`--method GET` 明示と `mutation` を含まない `graphql` は除外） | ask | レビュー返信・コメント POST の無断投稿防止 |
 
 **認証情報・secret 漏洩防止**（統一設計書外の拡張。[`.cursor/rules/03-github-security.mdc`](../.cursor/rules/03-github-security.mdc) を宣言的 SoT とし、Hook で deterministic 強制する）:
 
@@ -164,13 +166,14 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 | `git config --global`\|`--system --get credential.*` | deny | Git 認証設定の漏洩防止 |
 | `env` / `printenv`（引数なし） | ask | 全環境変数に token が含まれる可能性 |
 | `git config --list` | ask | 認証情報を含む設定の表示リスク |
-| `gh alias set` / `gh extension install`\|`exec` | ask | 任意コマンド実行リスク |
 
-**素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / `gh pr create` / `gh api`（`--method GET` 明示 / `mutation` を含まない `graphql` 等の読み取り）/ 全ての読み取り系。
+**認証モデル**: 本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、GitHub API 操作はすべて wrapper (`bin/github-pr-*-safe`) 経由で行う。wrapper のみが `~/.config/github-apps/` の認証情報（GitHub App private key）にアクセスでき、内部で installation token を発行する。AI が `gh` CLI を直接実行しても認証が通らず失敗するため、上記の deny はこの認証モデルを Hook レベルで反映したものである。
+
+**素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / 全ての git 読み取り系。
 
 **フェイル戦略（二段階）**:
-- **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive`）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
-- **deny 対象以外（読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。
+- **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
+- **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。
 
 **詳細・テスト手順**: [`.cursor/hooks/README.md`](../.cursor/hooks/README.md)
 

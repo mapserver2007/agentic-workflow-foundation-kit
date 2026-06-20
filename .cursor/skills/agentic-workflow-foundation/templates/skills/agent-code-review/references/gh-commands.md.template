@@ -207,5 +207,5 @@ bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 | `bin/github-pr-reviews-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する |
 | exit 1（API エラー） | GitHub API 側のエラー。60 秒待機してリトライ。複数回続く場合はユーザーに報告 |
 | exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
-| Hook により `deny` / `ask` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は Hook が deny / ask を返す |
+| Hook により `deny` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper を案内する |
 | API 呼び出し失敗（その他） | エラー内容をユーザーに報告し、手動対応を案内 |
