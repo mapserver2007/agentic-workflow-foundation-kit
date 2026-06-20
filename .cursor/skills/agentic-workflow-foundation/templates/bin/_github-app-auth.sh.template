@@ -69,8 +69,8 @@ _get_installation_token() {
     exit 2
   fi
 
-  token=$(echo "$body" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
-  if [[ -z "$token" ]]; then
+  token=$(echo "$body" | jq -r '.token')
+  if [[ -z "$token" || "$token" == "null" ]]; then
     echo "ERROR: レスポンスから token を抽出できませんでした" >&2
     exit 2
   fi
