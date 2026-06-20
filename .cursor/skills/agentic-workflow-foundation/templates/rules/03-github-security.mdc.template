@@ -61,6 +61,7 @@ GitHub API への書き込み操作は、以下の **固定 wrapper コマンド
 ### 許可する wrapper コマンド
 
 ```bash
+/usr/local/bin/github-pr-create-safe <base-branch> <title-file> <body-file>
 /usr/local/bin/github-pr-reviews-safe <owner> <repo> <pr-number>
 /usr/local/bin/github-pr-comment-safe <pr-number> <body-file>
 /usr/local/bin/github-pr-reply-safe <comment-id> <body-file>
@@ -78,7 +79,7 @@ GitHub API への書き込み操作は、以下の **固定 wrapper コマンド
 - **ask（Hook がユーザー承認を強制）**: `gh pr comment|review` / `gh issue comment` / `gh api` 書き込み系 / `gh alias set` / `gh extension install|exec`
 - **素通し**: `gh pr list` / `gh pr view` / `gh api` 読み取り系（GET / non-mutation graphql）
 
-> **agent-code-review スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が未インストールの環境では agent-code-review を実行できない。
+> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が未インストールの環境ではこれらのスキルを実行できない。
 
 ## 優先度
 

@@ -1,0 +1,215 @@
+---
+name: agent-github-pr
+description: >-
+  What - ローカルの diff / commit 履歴を分析して PR タイトル・本文を自動生成し、
+  ユーザー承認後に固定 wrapper（github-pr-create-safe）経由で GitHub PR を作成する。
+  AI は gh CLI / GITHUB_TOKEN を直接使用せず、wrapper 内部で GitHub App
+  installation token を発行して安全に PR を作成する。
+  Use when - 「PR 作成」「プルリクエスト作って」「PR 出して」等の指示。
+  Do NOT use for - (1) PR 作成後のレビュー対応（agent-code-review を使う）、
+  (2) PR マージ（禁止操作）、(3) issue 作成やリリースノート作成。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Agent GitHub PR
+
+ローカルの diff / commit 履歴から PR タイトル・本文を自動生成し、ユーザー承認後に `github-pr-create-safe` wrapper 経由で GitHub PR を作成するワークフロー。
+
+> **関連スキル**: PR 作成後のレビュー対応は [agent-code-review](../agent-code-review/SKILL.md) を使用する。
+
+---
+
+## 前提条件
+
+スキル起動直後に以下を自動チェックし、揃わない場合は実行を中断する。
+
+```bash
+which github-pr-create-safe || echo "GitHub wrapper not found"
+```
+
+- `github-pr-create-safe` コマンドが `/usr/local/bin/` にインストール済み
+
+> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。セットアップは [references/pr-commands.md §0](references/pr-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
+
+---
+
+## ワークフロー
+
+### Step Gate Matrix
+
+| Step | 入口条件 | 退出条件 |
+| --- | --- | --- |
+| **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 |
+| **2 PR 内容生成** | Step 1 完了 + コミット済み変更あり | タイトル・本文の草案完成 |
+| **3 ユーザー承認** | Step 2 完了 | AskQuestion でユーザーが承認 |
+| **4 PR 作成** | Step 3 承認済み | PR URL 取得 + 出力 |
+
+### Step 1: ブランチ確認 + ベースブランチ決定
+
+1. カレントブランチを取得する:
+
+   ```bash
+   git branch --show-current
+   ```
+
+   - 空の場合（デタッチド HEAD）はユーザーに確認する
+   - `main` / `master` / `develop` 上にいる場合は **中断**し、feature ブランチでの作業を案内する
+
+2. コミット済みの変更があることを確認する:
+
+   ```bash
+   git status --porcelain
+   ```
+
+   - ステージング / ワーキングツリーに未コミットの変更がある場合は **中断**し、コミットを案内する
+
+3. ベースブランチを決定する:
+
+   ```bash
+   git log --oneline --decorate -1
+   ```
+
+   - AskQuestion でベースブランチの候補を提示する:
+     - デフォルト候補: `main`（存在確認: `git rev-parse --verify origin/main`）
+     - リリースブランチ候補: `git branch -r --list 'origin/release/v*' --sort=-version:refname | head -1`
+     - Other（ユーザー指定）
+
+4. head / base ブランチを記録して Step 2 へ。
+
+### Step 2: diff 分析 + PR タイトル・本文生成
+
+1. ベースブランチとの差分を分析する:
+
+   ```bash
+   git log {base}..HEAD --format='%s%n%n%b' --reverse
+   git diff {base}...HEAD --stat
+   git diff {base}...HEAD
+   ```
+
+2. PR テンプレートの有無を確認する:
+
+   ```bash
+   ls .github/pull_request_template.md 2>/dev/null || ls .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || echo "no template"
+   ```
+
+   - テンプレートが存在すれば Read で読み込み、そのフォーマットに従って本文を生成する
+   - テンプレートが無ければ以下のデフォルト構造で生成する
+
+3. PR タイトルを生成する:
+
+   - コミット履歴から変更の本質を 1 行で要約する
+   - Conventional Commits 形式（`feat:` / `fix:` / `refactor:` 等）があればそれに従う
+   - 複数のコミットにまたがる場合は最も重要な変更を代表タイトルとする
+
+4. PR 本文を生成する（テンプレートがない場合のデフォルト構造）:
+
+   ```markdown
+   ## Summary
+   （変更の概要を 1〜3 文で説明）
+
+   ## Changes
+   （主な変更点を箇条書きで列挙）
+
+   ## Test plan
+   （テスト方法・確認事項を箇条書きで列挙）
+   ```
+
+5. タイトル・本文の草案が完成したら Step 3 へ。
+
+### Step 3: ユーザー承認
+
+1. PR タイトルと本文をチャットに提示する:
+
+   ```
+   以下の内容で PR を作成します。確認してください。
+
+   **ベースブランチ**: {base}
+   **ヘッドブランチ**: {head}
+
+   ---
+
+   **タイトル**: {title}
+
+   **本文**:
+   {body}
+   ```
+
+2. AskQuestion で承認を求める:
+   - 「この内容で PR を作成する」
+   - 「タイトル・本文を修正してから作成する」
+   - Other
+
+3. 「修正してから作成する」の場合:
+   - ユーザーの指示に従ってタイトル・本文を修正する
+   - 修正後に再度提示して承認を取る（承認されるまで繰り返す）
+
+4. 承認を得たら Step 4 へ。
+
+### Step 4: PR 作成
+
+1. タイトルと本文を一時ファイルに書き出す:
+
+   ```bash
+   cat > /tmp/pr-title.txt << 'TITLE_EOF'
+   {title}
+   TITLE_EOF
+
+   cat > /tmp/pr-body.md << 'BODY_EOF'
+   {body}
+   BODY_EOF
+   ```
+
+2. wrapper を実行する:
+
+   ```bash
+   github-pr-create-safe {base} /tmp/pr-title.txt /tmp/pr-body.md
+   ```
+
+3. 結果を処理する:
+   - exit 0: PR URL を出力し、完了メッセージを表示する
+   - exit 1: API エラーの内容をユーザーに報告する
+   - exit 2: GitHub App の認証エラー。セットアップを案内する
+
+4. 成功時の出力:
+
+   ```
+   PR を作成しました: {PR URL}
+
+   次のステップ:
+   - 自動レビューツールのレビューを待つ場合は agent-code-review（Mode A）を実行してください
+   - 人間レビュアーのレビュー後は agent-code-review（Mode B）で対応できます
+   ```
+
+---
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+>
+> `agent-github-pr` スキル運用中に発見した失敗・踏み外しの記録。
+
+### 起票トリガー
+
+1. PR タイトル・本文の自動生成が期待と大きく異なった
+2. wrapper の実行が失敗し、原因特定に時間がかかった
+3. ベースブランチの自動判定が誤っていた
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連 PR or ブランチ}
+```
+
+### エントリ
+
+（現時点のエントリは無し）
+
+---
+
+## 関連ドキュメント
+
+- [agent-code-review](../agent-code-review/SKILL.md) — PR 作成後のレビュー対応
+- [references/pr-commands.md](references/pr-commands.md) — wrapper コマンドリファレンス + git コマンド集
+- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
+- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）

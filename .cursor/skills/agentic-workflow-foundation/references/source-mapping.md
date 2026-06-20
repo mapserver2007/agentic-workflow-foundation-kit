@@ -39,7 +39,8 @@
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
 | `project.tracking_artifact`（ゲート文脈） | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（検査対象）/ `docs/QUALITY_GATE.md`（§1.4 検査ID / §1.5 セッション開始ゲート / §3 フェーズ境界ゲート） |
-| `framework.security` | `.cursor/rules/03-github-security.mdc`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（wrapper コマンドリファレンス。GitHub 操作は固定 wrapper 経由） |
+| `framework.security` | `.cursor/rules/03-github-security.mdc`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
+| `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
 | `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 
 ## 変更時の運用
