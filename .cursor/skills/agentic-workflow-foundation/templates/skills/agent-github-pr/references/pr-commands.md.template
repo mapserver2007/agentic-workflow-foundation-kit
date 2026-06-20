@@ -44,7 +44,7 @@ wrapper 内部で以下を順に実行する（AI が直接これらのコマン
 1. `git branch --show-current` で head branch を自動解決
 2. `git push -u origin HEAD` でリモートに push
 3. GitHub App の JWT を生成し、installation access token を発行
-4. `gh pr create --base {base} --head {head} --title "$(cat {title-file})" --body "$(cat {body-file})"` で PR を作成
+4. GitHub REST API（`POST /repos/{owner}/{repo}/pulls`）を `curl` で呼び出して PR を作成
 5. PR URL を標準出力に返却
 
 ### 呼び出し例

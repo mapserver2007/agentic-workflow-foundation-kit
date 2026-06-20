@@ -42,7 +42,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 ## しきい値設定（Context Budget Protocol）
 
 しきい値の SoT は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > framework.budget_thresholds`。
-変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
 現行値:
 
@@ -107,7 +107,7 @@ rm -f .cursor/.session/test-sess-001.json .cursor/.session/handoff-consumed-*.md
 4. [ ] ローカルテスト手順に代表的なテストケースを追加した
 5. [ ] `manifest.yaml > outputs[]` に path / template / required_sections を追加した
 6. [ ] Cursor Settings > Hooks で Hook が有効になっていることを確認した
-7. [ ] `pnpm run gen` で再生成し、`run_resolved_engine.py audit` が PASS することを確認した
+7. [ ] `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit` が PASS することを確認した
 
 ## Cursor 統合確認
 

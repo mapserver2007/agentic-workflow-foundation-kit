@@ -20,6 +20,17 @@ if [[ -z "$TRACKING" || "$TRACKING" == \[* ]]; then
   exit 2
 fi
 
+find_tracking_documents() {
+  if [[ "$TRACKING" == */* ]]; then
+    local candidate="$PROJECT_DIR/$TRACKING"
+    if [[ -f "$candidate" && "$candidate" != */archive/* ]]; then
+      printf '%s\n' "$candidate"
+    fi
+    return
+  fi
+  find "$PROJECT_DIR" -type f -name "$TRACKING" -not -path "*/archive/*" 2>/dev/null
+}
+
 fail=0
 
 # --- G-SESSION-HANDOFF-001: handoff manifest 未消費の残存 (WARN) ---
@@ -33,7 +44,7 @@ fi
 tracked=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && tracked+=("$f")
-done < <(find "$PROJECT_DIR" -type f -name "$TRACKING" -not -path "*/archive/*" 2>/dev/null)
+done < <(find_tracking_documents)
 
 now="$(date +%s)"
 if (( ${#tracked[@]} > 0 )); then

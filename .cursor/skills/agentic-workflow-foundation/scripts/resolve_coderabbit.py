@@ -78,7 +78,7 @@ TOOL_TECH_MAP: dict[str, list[str]] = {
     "fbinfer": ["java"],
     "clang": ["c_cpp"],
     "cppcheck": ["c_cpp"],
-    "fortitudeLint": ["fortran"],
+    "fortitude-lint": ["fortran"],
     "luacheck": ["lua"],
     "oasdiff": ["openapi"],
     "hadolint": ["docker"],
@@ -93,7 +93,7 @@ ALWAYS_ENABLED_TOOLS = [
     "github-checks",
     "ast-grep",
     "skillspector",
-    "osvScanner",
+    "osv-scanner",
     "actionlint",
     "zizmor",
 ]
@@ -135,6 +135,16 @@ def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _contains_keyword(text: str, keyword: str) -> bool:
+    """単語境界で技術キーワードを判定し、java/javascript などの誤一致を避ける。"""
+    if " " in keyword:
+        return keyword in text
+    return re.search(
+        rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])",
+        text,
+    ) is not None
+
+
 def _detect_categories(manifest: dict) -> set[str]:
     """tech_stack.items からテクノロジーカテゴリ集合を返す。"""
     items = (manifest.get("tech_stack") or {}).get("items") or []
@@ -147,7 +157,7 @@ def _detect_categories(manifest: dict) -> set[str]:
         combined = f"{layer} {tech}"
         for category, keywords in TECH_CATEGORIES.items():
             for kw in keywords:
-                if kw in combined:
+                if _contains_keyword(combined, kw):
                     detected.add(category)
     return detected
 
