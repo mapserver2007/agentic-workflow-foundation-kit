@@ -28,7 +28,8 @@ deny_class_failclose() {
      || [[ "$n" =~ git[[:space:]]+push[[:space:]].*(main|master|develop|release/) ]] \
      || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
      || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
-     || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]]; then
+     || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]] \
+     || [[ "$n" =~ gh[[:space:]] ]]; then
     emit "ask" "deny クラスのコマンドが疑われるが入力を正常解析できないためフェイルクローズで承認要求" \
          "Hook が入力を解析できませんでした（jq 不在 / JSON 破損の可能性）。不可逆操作でないことを確認のうえ、ユーザー承認を得てください。"
     exit 0
