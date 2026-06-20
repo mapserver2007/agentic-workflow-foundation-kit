@@ -54,10 +54,10 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 
 - **統一設計書は immutable upstream SoT**。実行時に読み取り、fingerprint と構造化要件を一時 resolved manifest へ展開する。読み取り専用であり、スキル実行で書き換えない。
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed / schema / default**。統一設計書から一意に抽出できない既定値を保持するが、実行結果によって永続更新しない。
-- **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` は生成後の root manifest で PO が評価する。
+- **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `coderabbit` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
-- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
+- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `code_review` / `github_pr` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
@@ -70,6 +70,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `references/source-mapping.md` | manifest キー → 出力ファイル のトレーサビリティ |
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
+| `templates/bin/*` | wrapper スクリプトのテンプレート（`code_review` / `github_pr` が有効時のみ `bin/` に生成。`.cursorignore` で AI アクセス遮断） |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
@@ -86,7 +87,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 ```text
 - [ ] Phase 1: unified design resolver / manifest / templates のフレームワーク変更（必要時のみ。PO 確定事項は再質問しない）
 - [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
-- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review オプション）
+- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review / github_pr オプション）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
@@ -217,14 +218,15 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review` / `coderabbit`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` および `coderabbit` に記録する。
+- `code_review` / `github_pr` / `coderabbit`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `coderabbit` に記録する。
 
   **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
      - Yes → 以下を固定値で一括設定する
        - `code_review.enabled: true` / `code_review.report.enabled: true` / `code_review.report.output_dir: "docs/agent-tasks/reports"` → agent-code-review スキルを生成
+       - `github_pr.enabled: true` → agent-github-pr スキルを生成
        - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
-       - レポート出力有無・出力先・CodeRabbit 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `coderabbit.enabled: false` のまま → agent-code-review スキルを生成しない / `.coderabbit.yaml` を生成しない
+       - レポート出力有無・出力先・agent-github-pr / CodeRabbit 個別設定の個別質問は行わない
+     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `coderabbit.enabled: false` のまま → agent-code-review / agent-github-pr スキルを生成しない / `.coderabbit.yaml` を生成しない
 
 **(2) 自動導出（質問不要）**
 
@@ -344,11 +346,12 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 ```
 
-- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、統一設計書メタデータと root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
+- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、統一設計書メタデータと root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` / `code_review` / `github_pr` / `coderabbit` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
 - engine は統一設計書や root `manifest.yaml` を直接読まない。unified design / root manifest overlay は foundation 固有の入力解決であり、engine の How 境界へ混ぜない。
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
+- `code_review.enabled` / `github_pr.enabled` が `true` の場合、wrapper スクリプトを `bin/` に生成し実行ビットを付与する。`.cursorignore` のマーカーブロックに `bin/` を含めて AI アクセスを遮断する。
 - `session-planning` / `session-handover` / `decisions-record` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
 
 ### Phase 3: 監査ゲート
@@ -389,6 +392,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **unified design / root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の upstream / per-project 解決ロジックを追加しない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定し、`framework.accd_axes` は自動導出で確定する**。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装を自動導出し、ACCD 軸ごとの AskQuestion は行わない。未確定で残った `[要確認]` は audit が WARN 扱い。
 - **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。導出の責務は実 script 検出ではなく canonical root scripts と script contract の決定であり、`package.json` の有無に依存しない。OpenAPI 由来の生成は `G-GEN`、実行/デプロイ前 build は `G-BUILD` として分離する。
+- **wrapper スクリプト（`bin/`）は生成物であり直接編集しない**。変更は `templates/bin/*.template` を編集して再生成する。`.cursorignore` により AI のコンテキストから除外されるが、`templates/bin/` は除外対象外であり SoT として編集可能。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
 - **`AGENTS.md` 出力仕様の変更（例: `Context Budget Protocol` 節の追加）は、本来 `templates/AGENTS.md.template` と、必要なら `manifest.yaml` / `references/design-conformance.md` を更新して再生成する対象である**。ただし PO が明示的に「`SKILL.md` 内部のみの修正」を指定した場合は、生成物（`AGENTS.md` / `templates/*` / `manifest.yaml`）を変更せず、要件と手順の文書化だけに留める。その場合 `SKILL.md` の記述と実出力の間に一時的な乖離が残ることを許容し、後続の再生成タスクで解消する。

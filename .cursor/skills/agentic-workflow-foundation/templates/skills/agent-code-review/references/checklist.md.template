@@ -24,12 +24,12 @@
 ## 0. 前提条件チェック（スキル起動直後）
 
 ```bash
-which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe || echo "GitHub wrapper not found"
+test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || echo "GitHub wrapper not found"
 ```
 
-- [ ] `github-pr-reviews-safe` が `/usr/local/bin/` にインストール済み
-- [ ] `github-pr-comment-safe` が `/usr/local/bin/` にインストール済み
-- [ ] `github-pr-reply-safe` が `/usr/local/bin/` にインストール済み
+- [ ] `bin/github-pr-reviews-safe` がスキル実行（Phase 2）で生成済み
+- [ ] `bin/github-pr-comment-safe` がスキル実行（Phase 2）で生成済み
+- [ ] `bin/github-pr-reply-safe` がスキル実行（Phase 2）で生成済み
 
 > `gh` CLI や `GITHUB_TOKEN` 環境変数は不要。wrapper が GitHub App installation token を内部で管理する。
 

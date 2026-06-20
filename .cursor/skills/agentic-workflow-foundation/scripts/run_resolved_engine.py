@@ -18,7 +18,15 @@ if ENGINE_DIR not in sys.path:
 
 import genlib  # noqa: E402
 
-ROOT_OVERLAY_KEYS = ("project", "tech_stack", "session", "quality_gate_contract", "code_review", "coderabbit")
+ROOT_OVERLAY_KEYS = (
+    "project",
+    "tech_stack",
+    "session",
+    "quality_gate_contract",
+    "code_review",
+    "github_pr",
+    "coderabbit",
+)
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
     (
@@ -195,6 +203,9 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
     outputs[].feature が指定されている場合、manifest[feature].enabled が
     truthy でなければそのエントリを生成対象から除外する。
     feature が未指定の outputs はそのまま通過する。
+
+    feature がリスト（例: [code_review, github_pr]）の場合は OR 判定:
+    いずれか1つでも enabled なら生成対象に含める。
     """
     outputs = manifest.get("outputs") or []
     filtered = []
@@ -203,8 +214,11 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
         if feature is None:
             filtered.append(out)
             continue
-        feature_config = manifest.get(feature)
-        if isinstance(feature_config, dict) and feature_config.get("enabled"):
+        features = feature if isinstance(feature, list) else [feature]
+        if any(
+            isinstance(manifest.get(f), dict) and manifest.get(f, {}).get("enabled")
+            for f in features
+        ):
             filtered.append(out)
     manifest["outputs"] = filtered
     return manifest

@@ -61,15 +61,16 @@ GitHub API への書き込み操作は、以下の **固定 wrapper コマンド
 ### 許可する wrapper コマンド
 
 ```bash
-/usr/local/bin/github-pr-create-safe <base-branch> <title-file> <body-file>
-/usr/local/bin/github-pr-reviews-safe <owner> <repo> <pr-number>
-/usr/local/bin/github-pr-comment-safe <pr-number> <body-file>
-/usr/local/bin/github-pr-reply-safe <comment-id> <body-file>
+bin/github-pr-create-safe <base-branch> <title-file> <body-file>
+bin/github-pr-reviews-safe <owner> <repo> <pr-number>
+bin/github-pr-comment-safe <pr-number> <body-file>
+bin/github-pr-reply-safe <comment-id> <body-file>
 ```
 
-- wrapper 内部で GitHub App installation token を発行し、`gh` / GitHub API を実行する
+- wrapper はスキル実行（Phase 2）で `bin/` に自動生成される（`code_review.enabled` / `github_pr.enabled` が `true` の場合）
+- wrapper 内部で GitHub App installation token を発行し、GitHub API を実行する
 - AI に返却されるのはコメント URL / レビュースレッド JSON のみ
-- wrapper / helper の実装ファイル（`/usr/local/bin/github-pr-*-safe` / `/usr/local/share/github-pr-helper/*`）は、ユーザーが明示的に依頼した場合を除き編集禁止
+- wrapper / helper の実装ファイル（`bin/github-pr-*-safe` / `bin/_github-app-auth.sh`）は `.cursorignore` で AI アクセスを遮断し、ユーザーが明示的に依頼した場合を除き編集禁止
 
 ### gh コマンドの扱い
 
@@ -79,7 +80,7 @@ GitHub API への書き込み操作は、以下の **固定 wrapper コマンド
 - **ask（Hook がユーザー承認を強制）**: `gh pr comment|review` / `gh issue comment` / `gh api` 書き込み系 / `gh alias set` / `gh extension install|exec`
 - **素通し**: `gh pr list` / `gh pr view` / `gh api` 読み取り系（GET / non-mutation graphql）
 
-> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が未インストールの環境ではこれらのスキルを実行できない。
+> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が `bin/` に生成されていない環境ではこれらのスキルを実行できない。
 
 ## 優先度
 

@@ -25,12 +25,12 @@ description: >-
 スキル起動直後に以下を自動チェックし、揃わない場合は実行を中断する。
 
 ```bash
-which github-pr-create-safe || echo "GitHub wrapper not found"
+test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 ```
 
-- `github-pr-create-safe` コマンドが `/usr/local/bin/` にインストール済み
+- `bin/github-pr-create-safe` がスキル実行（Phase 2）で生成済み
 
-> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。セットアップは [references/pr-commands.md §0](references/pr-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
+> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。GitHub Apps のセットアップは [references/pr-commands.md §0](references/pr-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
 
 ---
 

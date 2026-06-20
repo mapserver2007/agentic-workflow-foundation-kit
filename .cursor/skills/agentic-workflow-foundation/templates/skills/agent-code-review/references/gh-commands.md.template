@@ -13,16 +13,16 @@
 ### 必要なもの
 
 - GitHub App（Repository permissions: `Pull requests: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
-- wrapper 3 コマンドが `/usr/local/bin/` にインストール済み
-- GitHub App の private key が wrapper からアクセス可能な場所に配置済み（AI からは読めない権限）
+- wrapper 3 コマンドが `bin/` にスキル実行（Phase 2）で生成済み
+- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
 
 ### 起動チェック
 
 ```bash
-which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe || echo "GitHub wrapper not found"
+test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || echo "GitHub wrapper not found"
 ```
 
-3 コマンドすべてが見つからない場合はスキルを中断し、ユーザーにセットアップを案内する。
+wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する。
 
 ---
 
@@ -206,7 +206,7 @@ github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 
 | エラー | 対応 |
 | --- | --- |
-| `github-pr-reviews-safe: command not found` | wrapper がインストールされていない。§0 のセットアップ手順をユーザーに案内 |
+| `bin/github-pr-reviews-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する |
 | exit 1（API エラー） | GitHub API 側のエラー。60 秒待機してリトライ。複数回続く場合はユーザーに報告 |
 | exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
 | Hook により `deny` / `ask` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は Hook が deny / ask を返す |

@@ -636,6 +636,36 @@ outputs:
     required_sections:
       - "wrapper"
       - "github-pr-create-safe"
+  # wrapper スクリプト（feature: code_review / github_pr で条件生成）。
+  # Phase 1.5 の AskQuestion で Yes を選択した場合に bin/ へ自動生成される。
+  # .cursorignore で AI アクセスを遮断する。
+  - path: bin/_github-app-auth.sh
+    template: bin/_github-app-auth.sh.template
+    mode: render
+    feature:
+      - code_review
+      - github_pr
+    executable: true
+  - path: bin/github-pr-reviews-safe
+    template: bin/github-pr-reviews-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-comment-safe
+    template: bin/github-pr-comment-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-reply-safe
+    template: bin/github-pr-reply-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-create-safe
+    template: bin/github-pr-create-safe.template
+    mode: render
+    feature: github_pr
+    executable: true
   - path: .gitignore
     template: gitignore.block.template
     mode: marker
