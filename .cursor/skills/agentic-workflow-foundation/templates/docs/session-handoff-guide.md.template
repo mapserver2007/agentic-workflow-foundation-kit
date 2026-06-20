@@ -134,11 +134,14 @@ manifest を閾値の SoT とし、以下は観測ベースの必要性が複数
 `{{framework.handoff.active_manifest_path}}` は 1 ファイル管理のため、複数キャンペーンを並行で引き継ぐことはできない。最後に書いた manifest が常に有効になる。別タスクを挟む場合は、active manifest を手動で退避してから新規チャットを開く。退避を怠ると、別タスクのチャットが先に active manifest を消費してしまう（失敗モード `mis-consume`）。退避した manifest は元のキャンペーンに戻る前に必ず復元する。
 
 ```bash
+mkdir -p .cursor/.session/backup
+chmod 700 .cursor/.session/backup
+
 # 別タスクを始める前に manifest を退避
-mv .cursor/.session/handoff-active.md /tmp/handoff-{ticket}.md
+mv .cursor/.session/handoff-active.md .cursor/.session/backup/handoff-{ticket}.md
 
 # 別タスク完了後、元のキャンペーンに戻る前に復元
-mv /tmp/handoff-{ticket}.md .cursor/.session/handoff-active.md
+mv .cursor/.session/backup/handoff-{ticket}.md .cursor/.session/handoff-active.md
 ```
 
 ## handoff manifest に含める情報

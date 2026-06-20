@@ -19,7 +19,10 @@
 ### 起動チェック
 
 ```bash
-test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || echo "GitHub wrapper not found"
+test -x bin/github-pr-reviews-safe \
+  && test -x bin/github-pr-comment-safe \
+  && test -x bin/github-pr-reply-safe \
+  || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する。

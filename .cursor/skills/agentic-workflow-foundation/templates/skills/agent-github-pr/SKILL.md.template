@@ -163,11 +163,15 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 1. タイトルと本文を一時ファイルに書き出す:
 
    ```bash
-   cat > /tmp/pr-title.txt << 'TITLE_EOF'
+   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-title.XXXXXX.txt")"
+   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX.md")"
+   trap 'rm -f "$TITLE_FILE" "$BODY_FILE"' EXIT
+
+   cat > "$TITLE_FILE" << 'TITLE_EOF'
    {title}
    TITLE_EOF
 
-   cat > /tmp/pr-body.md << 'BODY_EOF'
+   cat > "$BODY_FILE" << 'BODY_EOF'
    {body}
    BODY_EOF
    ```
@@ -175,7 +179,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 2. wrapper を実行する:
 
    ```bash
-   bin/github-pr-create-safe {base} /tmp/pr-title.txt /tmp/pr-body.md
+   bin/github-pr-create-safe {base} "$TITLE_FILE" "$BODY_FILE"
    ```
 
 3. 結果を処理する:
