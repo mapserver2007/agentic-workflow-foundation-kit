@@ -24,7 +24,7 @@ import os
 import sys
 
 import genlib
-from generate import _read, _upsert_marker
+from generate import _read, _safe_join, _upsert_marker
 
 PENDING_MARK = "[要確認]"
 
@@ -49,10 +49,14 @@ def run(skill_dir: str) -> int:
     ok = 0
 
     for out in outputs:
-        rel = out["path"]
-        mode = out.get("mode", "render")
-        target_path = os.path.join(root, rel)
-        template_path = os.path.join(templates_dir, out["template"])
+        try:
+            rel = out["path"]
+            mode = out.get("mode", "render")
+            target_path = _safe_join(root, rel, "outputs[].path")
+            template_path = _safe_join(templates_dir, out["template"], "outputs[].template")
+        except (TypeError, KeyError, genlib.YamlError) as e:
+            print(f"FATAL: outputs[] 定義エラー: {e}", file=sys.stderr)
+            return 2
         template_text = _read(template_path)
         if template_text is None:
             print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)

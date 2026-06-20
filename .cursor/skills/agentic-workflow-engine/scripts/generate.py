@@ -65,6 +65,17 @@ def _write(path: str, content: str, executable: bool) -> None:
         os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _safe_join(base: str, rel: str, field_name: str) -> str:
+    """manifest 由来の相対パスが意図した base 配下に収まることを保証する。"""
+    base_abs = os.path.abspath(base)
+    if not isinstance(rel, str) or not rel:
+        raise genlib.YamlError(f"{field_name} は非空文字列で指定してください")
+    candidate = os.path.abspath(os.path.join(base_abs, rel))
+    if os.path.isabs(rel) or os.path.commonpath([base_abs, candidate]) != base_abs:
+        raise genlib.YamlError(f"{field_name} が許可範囲外です: {rel}")
+    return candidate
+
+
 def expected_content(out: dict, root_ctx: dict, target_path: str,
                      template_text: str, marker_id: str) -> str:
     """出力の「あるべき内容」を返す（render/seed=全展開, marker=upsert 結果）。"""
@@ -96,9 +107,13 @@ def run(skill_dir: str, check: bool) -> int:
     changed = []
     written = []
     for out in outputs:
-        rel = out["path"]
-        target_path = os.path.join(root, rel)
-        template_path = os.path.join(templates_dir, out["template"])
+        try:
+            rel = out["path"]
+            target_path = _safe_join(root, rel, "outputs[].path")
+            template_path = _safe_join(templates_dir, out["template"], "outputs[].template")
+        except (TypeError, KeyError, genlib.YamlError) as e:
+            print(f"FATAL: outputs[] 定義エラー: {e}", file=sys.stderr)
+            return 2
         template_text = _read(template_path)
         if template_text is None:
             print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
