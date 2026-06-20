@@ -380,6 +380,15 @@ outputs:
       - "Cautious"
       - "Thorough"
       - "Selective"
+  - path: .cursor/rules/03-github-security.mdc
+    template: rules/03-github-security.mdc.template
+    mode: render
+    required_sections:
+      - "alwaysApply: true"
+      - "token"
+      - "secret"
+      - "credential"
+      - "guard-git-write.sh"
   - path: .cursor/hooks/guard-git-write.sh
     template: hooks/guard-git-write.sh.template
     mode: render
@@ -389,6 +398,9 @@ outputs:
       - "permission"
       - "deny_class_failclose"
       - "gh api"
+      - "gh auth token"
+      - "secret store"
+      - "git credential"
   - path: .cursor/hooks/session-bootstrap.sh
     template: hooks/session-bootstrap.sh.template
     mode: render
@@ -462,6 +474,8 @@ outputs:
       - "検査 ID"
       - "セッション開始ゲート"
       - "計画ライフサイクルゲート"
+      - "token"
+      - "secret store"
       - "G-PLAN-SECTION-001"
       - "例外承認記録"
       - "フェーズ境界"
@@ -572,6 +586,10 @@ outputs:
     template: skills/agent-code-review/references/gh-commands.md.template
     mode: render
     feature: code_review
+    required_sections:
+      - "wrapper"
+      - "github-pr-reviews-safe"
+      - "github-pr-reply-safe"
   - path: .cursor/skills/agent-code-review/references/reply-templates.md
     template: skills/agent-code-review/references/reply-templates.md.template
     mode: render
@@ -649,6 +667,9 @@ project:
     # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）。
     never_extra:
       - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
+      - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
+      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials）を読み取る"
+      - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
   # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
   doc_navigation:
     domain:

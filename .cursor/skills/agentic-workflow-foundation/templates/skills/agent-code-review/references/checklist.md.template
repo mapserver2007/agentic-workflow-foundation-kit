@@ -24,14 +24,16 @@
 ## 0. 前提条件チェック（スキル起動直後）
 
 ```bash
-which gh && gh --version || echo "gh CLI not found"
-echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
+which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe || echo "GitHub wrapper not found"
 ```
 
-- [ ] `gh` CLI がインストール済み（未インストールなら `brew install gh`）
-- [ ] `GITHUB_TOKEN` 環境変数が設定済み（未設定なら Cursor 設定で環境変数設定 + 再起動）
+- [ ] `github-pr-reviews-safe` が `/usr/local/bin/` にインストール済み
+- [ ] `github-pr-comment-safe` が `/usr/local/bin/` にインストール済み
+- [ ] `github-pr-reply-safe` が `/usr/local/bin/` にインストール済み
 
-**両方揃わない場合はスキル実行を中断し、ユーザーに案内する。**
+> `gh` CLI や `GITHUB_TOKEN` 環境変数は不要。wrapper が GitHub App installation token を内部で管理する。
+
+**すべて揃わない場合はスキル実行を中断し、ユーザーにセットアップを案内する。**
 
 ---
 
@@ -340,8 +342,7 @@ echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
 
 ### 共通: GitHub reply 投稿
 
-- [ ] `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body='...'` を使用
-- [ ] Cursor Shell ツール呼び出し時に `required_permissions: ["all"]` を設定
+- [ ] `github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
 - [ ] **`apply` / `reply_only` 集合に対してのみ実行**（`pending` / `discuss` には投稿していない）
 - [ ] Ask First で「修正しない」判断に寄せた場合もその旨を返信済み
 
@@ -361,7 +362,7 @@ echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
 ### Step 6.7-A: 承認依頼ターン
 
 - [ ] 保留 0 件（その時点の全レビューコメント返答完了）を確認した（保留 1 件以上なら本ゲートに到達せず次セッション持ち越し）
-- [ ] 承認前に GitHub を 1 回再取得した（`gh api graphql` / Step 3 同条件 / author フィルタなし）
+- [ ] 承認前に GitHub を 1 回再取得した（`github-pr-reviews-safe` / Step 3 同条件 / author フィルタなし）
   - [ ] 新規コメントが見つかった場合は承認を求めず Step 3 へ戻った
 - [ ] `AskQuestion` で完了承認を求めた（2 択 + Other）:
   - [ ] 「承認する（docs 反映へ進む）」→ 次ターン冒頭で Step 6.7-B を実行する選択肢として提示した
@@ -406,7 +407,6 @@ echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
 ## 8. 共通原則
 
 - [ ] ローカルで CI が失敗した場合はユーザー対応（環境依存の可能性あり）
-- [ ] `gh api` 実行時は **必ず** Cursor Shell の `required_permissions: ["all"]` を設定（TLS 制約回避）
 - [ ] Mode B 突入時は SKILL.md 末尾の「Mode B リマインダ要約」セクションのみを再読込し、フル再読込はしない（コンテキストコスト管理）
 - [ ] Step 5-6 突入時は Mode A / Mode B に関わらず [approval-loop.md](approval-loop.md) を必ず全文読込した
 - [ ] Step 6.7 着手前（§5-6 Post 完了直後）に [review-completion.md](review-completion.md) を必ず全文読込した
@@ -420,7 +420,7 @@ echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
 - [review-report-format.md](review-report-format.md) — レビューレポートのフォーマット
 - [review-completion.md](review-completion.md) — Step 6.7 レビュー完了承認 / Step 7 レポート作成詳細 + docs 反映後の例外フロー
 - [approval-loop.md](approval-loop.md) — Step 5-6 承認ループ詳細
-- [gh-commands.md](gh-commands.md) — gh CLI / API コマンド集
+- [gh-commands.md](gh-commands.md) — wrapper コマンドリファレンス
 - [reply-templates.md](reply-templates.md) — GitHub 返信テンプレート
 - [QUALITY_GATE.md](../../../../docs/QUALITY_GATE.md) — 検証ゲート定義
 - [AGENTS.md](../../../../AGENTS.md) — Boundaries / Gotchas

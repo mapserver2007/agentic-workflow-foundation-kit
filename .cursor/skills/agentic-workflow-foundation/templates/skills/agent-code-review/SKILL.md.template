@@ -17,15 +17,17 @@ GitHub PR 上のレビューコメント（自動レビューツール / 人間�
 
 ## 前提条件
 
-スキル起動直後に以下を自動チェックし、両方揃わない場合は実行を中断する。
+スキル起動直後に以下を自動チェックし、すべて揃わない場合は実行を中断する。
 
 ```bash
-which gh && gh --version || echo "gh CLI not found"
-echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
+which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe || echo "GitHub wrapper not found"
 ```
 
-- `gh` CLI インストール済み（未: `brew install gh`）
-- `GITHUB_TOKEN` 環境変数設定済み（未: Cursor 設定で環境変数追加 + 再起動）
+- `github-pr-reviews-safe` コマンドが `/usr/local/bin/` にインストール済み
+- `github-pr-comment-safe` コマンドが `/usr/local/bin/` にインストール済み
+- `github-pr-reply-safe` コマンドが `/usr/local/bin/` にインストール済み
+
+> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。セットアップは [references/gh-commands.md §0](references/gh-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
 
 詳細チェックリストは [references/checklist.md §0](references/checklist.md) を参照。
 
@@ -55,7 +57,7 @@ echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+(set, length=${#GITHUB_TOKEN})}"
 
 | Step | 入口条件（これが揃うまで開始禁止） | Read 必須 | 未達 / 未読時の禁止 | 次へ進む条件（退出条件） | 戻り先 |
 | --- | --- | --- | --- | --- | --- |
-| **1 Mode 選択** | スキル起動 + `gh`/`GITHUB_TOKEN` 前提条件 OK | — | PR 未作成のまま後続へ進む | Mode（A/B）+ PR 番号確定 | 前提 NG → 中断 |
+| **1 Mode 選択** | スキル起動 + wrapper 前提条件 OK | — | PR 未作成のまま後続へ進む | Mode（A/B）+ PR 番号確定 | 前提 NG → 中断 |
 | **2 自動レビュー待機**（A のみ） | Mode A | — | タイムアウト時に Step 3 以降へ進む / **Step 7 直行** | レビュー検出 | タイムアウト → **中断・ターン終了**（再実行待ち） |
 | **3 指摘取得** | Mode 確定（B は Step 2 スキップ） | — | `author.login` フィルタ / 自動レビューツールのラベル取得 | 未解決・非 outdated・author 非依存で全件取得 + ID/種別記録 | 取得 0 件 → 完了経路でなく状況確認 |
 | **4 妥当性検証** | Step 3 取得済み | （challenge / catalog 詳細時のみ [`self-rebuttal.md`](references/self-rebuttal.md)） | `[REPO]` 出典外で判定 / Blind 省略 / 自己反論省略 / challenge を反転要請と解釈 | 全指摘で `judgment_final` 確定 + §4.3 記録完了 | — |
@@ -92,7 +94,7 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 > Mode B では本 Step を **スキップ**し、Step 3 へ直接進む。
 
-自動レビューツール（CodeRabbit 等）のレビューを `gh api graphql` でポーリング待機する。
+自動レビューツール（CodeRabbit 等）のレビューを `github-pr-reviews-safe` でポーリング待機する。
 
 - **ポーリング間隔**: 30 秒 → 60 秒 → 以降 60 秒
 - **タイムアウト**: PR 作成から最大 10 分
@@ -113,7 +115,7 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 ### Step 3: レビュー指摘の取得（レビュアー非依存）
 
-`gh api graphql` で全レビュースレッドを取得し、以下をフィルタ:
+`github-pr-reviews-safe` で全レビュースレッドを取得し、以下をフィルタ:
 
 - `isResolved: false`
 - `isOutdated: false`
@@ -526,11 +528,10 @@ for group in [修正必須, 修正推奨, 修正不要]:
 - **修正後**: 該当ファイルの diff を `git diff -- <path>` で取得し、レポート用に記録
 - **GitHub reply 投稿**: `apply` / `reply_only` 集合に対してのみ実行（`pending` / `discuss` は投稿しない）:
   ```bash
-  gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies \
-    -f body='（返信内容）'
+  github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
   ```
   - `{comment_id}`: Step 3 で記録したレビューコメント ID
-  - Cursor Shell ツール呼び出し時に `required_permissions: ["all"]` を設定（TLS 制約回避）
+  - 返信内容を一時ファイルに書き出してから wrapper に渡す
 - **返信テンプレート**: [references/reply-templates.md](references/reply-templates.md)（**GitHub 返信の文体原則** + アクション別 reply 投稿可否表 + 修正必須 / 修正推奨 / 修正不要 + Ask First マーク付き項目用の追加文言）。**重要**: GitHub 返信はレビュアーが前提知識なしで読める自然な文章で記述する。判定プロセスの詳細（出典スタンプ・フィルタコード・Phase 番号・内部ドキュメントのパスやセクション番号等）はレビューレポートにのみ記録し、GitHub 返信には含めない
 - **保留記録**: `pending` および `discuss` 中の未着地項目は、Step 7 のレビューレポート「保留中の指摘」セクションに必ず記録
 
@@ -565,7 +566,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 
 **ゲートの不変条件（SoT を Read しなくても守る）**:
 
-- **Step 6.7-A（承認依頼ターン）**: ① `gh api graphql`（Step 3 同条件 / author フィルタなし）で **1 回だけ**再取得（新規あれば承認を求めず Step 3 へ戻る）→ ② `AskQuestion` で完了承認を提示（2 択 + Other: 「承認する（レポート作成へ進む）」/「新規のレビューコメントを取得して」）→ ③ **AskQuestion 提示後は承認待ちでターンを終了**（このターンでは Step 7 に進まない / レポート作成もしない）
+- **Step 6.7-A（承認依頼ターン）**: ① `github-pr-reviews-safe`（Step 3 同条件 / author フィルタなし）で **1 回だけ**再取得（新規あれば承認を求めず Step 3 へ戻る）→ ② `AskQuestion` で完了承認を提示（2 択 + Other: 「承認する（レポート作成へ進む）」/「新規のレビューコメントを取得して」）→ ③ **AskQuestion 提示後は承認待ちでターンを終了**（このターンでは Step 7 に進まない / レポート作成もしない）
 - **Step 6.7-B（承認回答受領後の強制再開）**: ユーザーが「承認する」を選択した **次ターンの最初の処理として Step 7 を実行**する。説明だけで終了 / 追加確認を挟む / 別作業を先行 / 承認済みなのに Step 7 を保留、は禁止。Step 7 完了まで final response を返さない。「新規のレビューコメントを取得して」選択時は Step 3 へ戻る。Other が承認意図として曖昧な場合のみ未承認扱いで Step 7 へ進まない
 
 > **構造的担保**: Step 7 の前提は「Step 6.7 で承認取得済み」であり、レビューレポートの `## レビュー完了承認` セクションに承認記録が含まれることで担保する。
@@ -673,7 +674,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 
 - 返信テンプレ（**文体原則** + 修正必須 / 推奨 / 不要 + Ask First マーク付き項目用文言）: [references/reply-templates.md](references/reply-templates.md)
 - レビューレポートフォーマット（Mode メタデータ + グループ別構造）: [references/review-report-format.md](references/review-report-format.md)
-- gh コマンド集（GraphQL クエリ / reply 投稿）: [references/gh-commands.md](references/gh-commands.md)
+- wrapper コマンド集（レビュースレッド取得 / reply 投稿）: [references/gh-commands.md](references/gh-commands.md)
 - 各 Step のチェックリスト（Mode B 起動時の最小再読込手順含む）: [references/checklist.md](references/checklist.md)
 - **§4.2.5 自己反論ステップ詳細**（Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 5 ステップ全文 / 失敗パターン例）: [references/self-rebuttal.md](references/self-rebuttal.md)
 - **承認ループ詳細**（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認）: [references/approval-loop.md](references/approval-loop.md) — **Step 5-6 突入前に必ず全文 Read**
@@ -683,7 +684,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 ### Mode B 突入時のフロー（再注入後）
 
 1. このセクション末尾まで読み終えたら、**Step 3 へ直接進む**（Step 2 の自動レビュー待機はスキップ）
-2. `gh api graphql` で `isResolved=false isOutdated=false` の未解決スレッドを取得（**author.login フィルタなし**）
+2. `github-pr-reviews-safe` で `isResolved=false isOutdated=false` の未解決スレッドを取得（**author.login フィルタなし**）
 3. レビュアー種別（AutoReview / Human / OtherBot）を記録
 4. **Step 4.1.1 Blind first read を必ず実施**（指摘本文を読む前に該当ファイルを白紙で読み `[REPO blind]` 所感を 1 行記録）
 5. Step 4.1.2〜4.2 で初期判定 `judgment_initial` を出す（判定根拠は `[REPO]` 出典のみ）
@@ -705,7 +706,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 
 1. レビュー判定が期待と異なった（誤った「修正不要」/ 必要な「修正必須」の見落とし）
 2. 同じカテゴリの指摘で 2 回以上同じミスを繰り返した
-3. `gh` API / 自動レビューツールの仕様変更で手順が動作しなくなった
+3. wrapper / 自動レビューツールの仕様変更で手順が動作しなくなった
 
 ### 記録フォーマット
 
@@ -725,7 +726,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 | --- | --- |
 | [references/checklist.md](references/checklist.md) | 前提条件 + 各 Step の完了チェック項目 |
 | [references/review-report-format.md](references/review-report-format.md) | レビューレポートの完全フォーマット + Gotchas / ADR 候補ブロック |
-| [references/gh-commands.md](references/gh-commands.md) | `gh` CLI / `gh api graphql` コマンド集 + レスポンス構造 |
+| [references/gh-commands.md](references/gh-commands.md) | wrapper コマンドリファレンス（`github-pr-reviews-safe` / `github-pr-comment-safe` / `github-pr-reply-safe`） |
 | [references/reply-templates.md](references/reply-templates.md) | GitHub 返信テンプレート（**文体原則** + 修正必須 / 修正推奨 / 修正不要 + Ask First マーク付き項目用の追加文言） |
 | [references/self-rebuttal.md](references/self-rebuttal.md) | §4.2.5 自己反論ステップ詳細（Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 + 失敗パターン例） |
 | [references/approval-loop.md](references/approval-loop.md) | Step 5-6 承認ループ詳細（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認） |

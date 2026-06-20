@@ -1,0 +1,85 @@
+---
+alwaysApply: true
+description: GitHub 操作・token / secret / credential の安全ルール
+---
+
+# GitHub 操作・認証情報の安全ルール
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+> 本ルールの一部は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) で deterministic deny / ask として強制される。Hook 強制範囲の SoT: [`docs/QUALITY_GATE.md §2.1`](mdc:docs/QUALITY_GATE.md)
+
+## token / secret の表示禁止
+
+以下の情報を表示・読み取り・推測してはならない。
+
+- GitHub PAT / Fine-grained PAT / GitHub App installation token / private key
+- `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN`
+- その他 token / secret / credential 環境変数
+
+禁止コマンド例（Hook が deny）:
+
+- `echo $GH_TOKEN` / `printf` 等による token 環境変数の出力
+- `gh auth token` / `gh auth status --show-token` / `gh auth status -t`
+- `env` / `printenv`（引数なし＝全環境変数ダンプ）
+
+## 認証ファイルの読み取り禁止
+
+以下のファイル・ディレクトリを読み取ってはならない。`cat` だけでなく `less` / `more` / `head` / `tail` / `sed` / `awk` / `grep` / `rg` / `python` / `node` 等を使った読み取りも禁止する。
+
+- `~/.config/gh/**`（gh CLI 認証情報）
+- `~/.git-credentials` / `~/.netrc`
+- `~/.ssh/**`（SSH 秘密鍵）
+- `.env` / `.env.*`（環境変数ファイル）
+- `*.pem` / `*.key`（秘密鍵ファイル）
+
+## secret store への直接アクセス禁止
+
+OS credential store / パスワードマネージャー / クラウド secret manager を直接参照してはならない（Hook が deny）。
+
+- macOS Keychain: `security find-generic-password` / `security find-internet-password` / `security dump-keychain`
+- 1Password CLI: `op read` / `op item get`
+- AWS: `aws secretsmanager get-secret-value`
+- GCP: `gcloud secrets versions access`
+- HashiCorp Vault: `vault kv get`
+- pass: `pass show`
+
+## Git 認証情報の読み取り禁止
+
+認証情報や token を含む URL を表示する可能性があるコマンドを禁止する（Hook が deny / ask）。
+
+- `git config --global --list` / `git config --system --list`
+- `git config --global --get credential.helper`
+- `git credential fill` / `git credential approve` / `git credential reject`
+
+安全な Git 操作（`git status` / `git diff` / `git log` / `git branch` 等）は制限されない。
+
+## GitHub 操作の安全な実行方法
+
+GitHub API への書き込み操作は、以下の **固定 wrapper コマンド** を使用する。`gh` CLI や GitHub API を AI が直接実行してはならない。
+
+### 許可する wrapper コマンド
+
+```bash
+/usr/local/bin/github-pr-reviews-safe <owner> <repo> <pr-number>
+/usr/local/bin/github-pr-comment-safe <pr-number> <body-file>
+/usr/local/bin/github-pr-reply-safe <comment-id> <body-file>
+```
+
+- wrapper 内部で GitHub App installation token を発行し、`gh` / GitHub API を実行する
+- AI に返却されるのはコメント URL / レビュースレッド JSON のみ
+- wrapper / helper の実装ファイル（`/usr/local/bin/github-pr-*-safe` / `/usr/local/share/github-pr-helper/*`）は、ユーザーが明示的に依頼した場合を除き編集禁止
+
+### gh コマンドの扱い
+
+`gh` は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) による段階的ガードレールの下で制御される。
+
+- **deny（Hook がブロック）**: `gh auth token` / `gh auth status --show-token` / `gh auth login --with-token` / `gh pr merge` / `gh repo delete|archive`
+- **ask（Hook がユーザー承認を強制）**: `gh pr comment|review` / `gh issue comment` / `gh api` 書き込み系 / `gh alias set` / `gh extension install|exec`
+- **素通し**: `gh pr list` / `gh pr view` / `gh api` 読み取り系（GET / non-mutation graphql）
+
+> **agent-code-review スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。wrapper が未インストールの環境では agent-code-review を実行できない。
+
+## 優先度
+
+本ルールは [`01-critical-constraints.mdc`](mdc:.cursor/rules/01-critical-constraints.mdc) と並ぶ常時適用ルール。token / secret の保護は Boundaries（Never）と同等に最優先で適用する。

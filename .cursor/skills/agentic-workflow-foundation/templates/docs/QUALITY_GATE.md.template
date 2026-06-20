@@ -150,7 +150,23 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 | `gh pr comment` / `gh pr review` / `gh issue comment` | ask | 無断 PR/Issue 投稿防止（承認ループ経由が原則） |
 | `gh api` の書き込み系（`--method POST\|PATCH\|PUT\|DELETE` / field 系（`-f`/`-F`/`--field`/`--raw-field`）/ `--input` / `.../replies` / `graphql` の `mutation`。`--method GET` 明示と `mutation` を含まない `graphql` は除外） | ask | レビュー返信・コメント POST の無断投稿防止 |
 
-**素通り（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / `gh pr create` / `gh api`（`--method GET` 明示 / `mutation` を含まない `graphql` 等の読み取り）/ 全ての読み取り系。
+**認証情報・secret 漏洩防止**（統一設計書外の拡張。[`.cursor/rules/03-github-security.mdc`](../.cursor/rules/03-github-security.mdc) を宣言的 SoT とし、Hook で deterministic 強制する）:
+
+| コマンドパターン | 挙動 | 根拠 |
+|---|---|---|
+| `gh auth token` | deny | 認証トークン漏洩防止 |
+| `gh auth status --show-token` / `-t` | deny | 認証トークン漏洩防止 |
+| `gh auth login --with-token` | deny | 認証設定の無断変更防止 |
+| `echo`/`printf` による `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN` の出力 | deny | token 環境変数の漏洩防止 |
+| `security find-generic-password` / `find-internet-password` / `dump-keychain` | deny | macOS Keychain への直接アクセス防止 |
+| `op read` / `op item get` / `aws secretsmanager` / `gcloud secrets` / `vault kv get` / `pass show` | deny | secret store への直接アクセス防止 |
+| `git credential fill` / `approve` / `reject` | deny | Git 認証情報の漏洩防止 |
+| `git config --global`\|`--system --get credential.*` | deny | Git 認証設定の漏洩防止 |
+| `env` / `printenv`（引数なし） | ask | 全環境変数に token が含まれる可能性 |
+| `git config --list` | ask | 認証情報を含む設定の表示リスク |
+| `gh alias set` / `gh extension install`\|`exec` | ask | 任意コマンド実行リスク |
+
+**素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / `gh pr create` / `gh api`（`--method GET` 明示 / `mutation` を含まない `graphql` 等の読み取り）/ 全ての読み取り系。
 
 **フェイル戦略（二段階）**:
 - **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive`）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。

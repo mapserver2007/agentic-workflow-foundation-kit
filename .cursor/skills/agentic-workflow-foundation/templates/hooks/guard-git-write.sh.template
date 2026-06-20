@@ -110,6 +110,61 @@ if [[ "$CMD_N" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive)([[:space:]]|$) 
 fi
 
 # ============================================================
+# DENY パターン（token / secret / credential 漏洩防止）
+# 仕様: .cursor/rules/03-github-security.mdc
+# ============================================================
+
+# gh auth による token 取得・表示
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+token([[:space:]]|$) ]]; then
+  deny "gh auth token は認証トークン漏洩のためブロック" \
+       "認証トークンの表示は許可されていません。"
+fi
+
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+status.*(--show-token|-t)([[:space:]]|$) ]]; then
+  deny "gh auth status --show-token は認証トークン漏洩のためブロック" \
+       "認証トークンの表示は許可されていません。"
+fi
+
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+login.*--with-token ]]; then
+  deny "gh auth login --with-token はトークン操作のためブロック" \
+       "認証設定の変更はユーザーが直接実行してください。"
+fi
+
+# token 環境変数の直接出力
+if [[ "$CMD_N" =~ (echo|printf)[[:space:]].*\$\{?(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]] \
+   || [[ "$CMD_N" =~ printenv[[:space:]]+(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]]; then
+  deny "token 環境変数の出力はブロック" \
+       "トークンの値を表示することは許可されていません。"
+fi
+
+# macOS Keychain への直接アクセス
+if [[ "$CMD_N" =~ security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain)([[:space:]]|$) ]]; then
+  deny "macOS Keychain への直接アクセスはブロック" \
+       "Keychain からの credential 取得はユーザーが直接実行してください。"
+fi
+
+# パスワードマネージャー / secret store
+if [[ "$CMD_N" =~ op[[:space:]]+(read|item[[:space:]]+get)([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ aws[[:space:]]+secretsmanager[[:space:]]+get-secret-value ]] \
+   || [[ "$CMD_N" =~ gcloud[[:space:]]+secrets[[:space:]]+versions[[:space:]]+access ]] \
+   || [[ "$CMD_N" =~ vault[[:space:]]+kv[[:space:]]+get([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ pass[[:space:]]+show([[:space:]]|$) ]]; then
+  deny "secret store / パスワードマネージャーへの直接アクセスはブロック" \
+       "secret の取得はユーザーが直接実行してください。"
+fi
+
+# Git credential / config による認証情報読み取り
+if [[ "$CMD_N" =~ git[[:space:]]+credential[[:space:]]+(fill|approve|reject)([[:space:]]|$) ]]; then
+  deny "git credential fill/approve/reject は認証情報漏洩リスクのためブロック" \
+       "Git 認証設定の操作はユーザーが直接実行してください。"
+fi
+
+if [[ "$CMD_N" =~ git[[:space:]]+config.*(--global|--system)[[:space:]]+--get[[:space:]]+credential ]]; then
+  deny "git config --get credential.* は認証情報漏洩リスクのためブロック" \
+       "Git 認証設定の確認はユーザーが直接実行してください。"
+fi
+
+# ============================================================
 # ASK パターン（ユーザー承認を強制）
 # ============================================================
 
@@ -129,6 +184,26 @@ if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]
    || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
   ask "gh pr/issue のコメント・レビュー投稿は無断投稿防止のため承認を要求" \
       "レビュー返信・コメントは agent-code-review 等の承認ループ経由で投稿してください。"
+fi
+
+# 環境変数の一覧ダンプ（引数なしの env / printenv = secret 漏洩リスク）
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)env[[:space:]]*($|[;|&>]) ]] \
+   || [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)printenv[[:space:]]*($|[;|&>]) ]]; then
+  ask "引数なし env/printenv は全環境変数ダンプのため secret 漏洩リスクあり。承認を要求" \
+      "環境変数一覧にはトークンが含まれる可能性があります。特定の変数が必要な場合は変数名を指定してください。"
+fi
+
+# git config --global/--system --list（認証情報を含む可能性）
+if [[ "$CMD_N" =~ git[[:space:]]+config[[:space:]]+(--(global|system)[[:space:]]+)*--list ]]; then
+  ask "git config --list は認証情報を含む設定を表示する可能性があるため承認を要求" \
+      "Git 設定の確認が必要な場合は、特定のキーを指定してください (例: git config user.name)。"
+fi
+
+# gh alias / extension（任意コマンド実行リスク）
+if [[ "$CMD_N" =~ gh[[:space:]]+alias[[:space:]]+set([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ gh[[:space:]]+extension[[:space:]]+(install|exec)([[:space:]]|$) ]]; then
+  ask "gh alias/extension は任意コマンド実行のリスクがあるためユーザー承認を要求" \
+      "エイリアス設定やエクステンション操作はユーザー承認を得てください。"
 fi
 
 # gh api の書き込み系（--method POST|PATCH|PUT|DELETE / field 系 / --input / replies / graphql mutation）

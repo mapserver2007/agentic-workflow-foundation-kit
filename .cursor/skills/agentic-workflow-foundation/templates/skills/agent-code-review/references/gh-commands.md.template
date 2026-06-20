@@ -1,10 +1,28 @@
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
-# gh コマンドリファレンス
+# wrapper コマンドリファレンス
 
-`agent-code-review` スキルで使用する `gh` CLI / `gh api graphql` / `gh api` コマンド集。
+`agent-code-review` スキルで使用する固定 wrapper コマンド集。GitHub API へのアクセスはすべて wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
 
-**重要**: `gh api` を実行する際は Cursor Shell ツール呼び出し時に `required_permissions: ["all"]` を設定すること（TLS 証明書検証制約の回避のため。`gh api` の CLI フラグではなく Cursor ツール呼び出しパラメータ）。
+> **セキュリティルール**: [`.cursor/rules/03-github-security.mdc`](../../../../.cursor/rules/03-github-security.mdc) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+
+---
+
+## 0. 前提条件（wrapper セットアップ）
+
+### 必要なもの
+
+- GitHub App（Repository permissions: `Pull requests: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
+- wrapper 3 コマンドが `/usr/local/bin/` にインストール済み
+- GitHub App の private key が wrapper からアクセス可能な場所に配置済み（AI からは読めない権限）
+
+### 起動チェック
+
+```bash
+which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe || echo "GitHub wrapper not found"
+```
+
+3 コマンドすべてが見つからない場合はスキルを中断し、ユーザーにセットアップを案内する。
 
 ---
 
@@ -30,14 +48,6 @@ git branch -r --list 'origin/release/v*' --sort=-version:refname | head -2 | sed
 ### 1.3 PR 作成（`agent-code-review` 実行時はこの手順を**実行しない**）
 
 > **責務分離**: PR 作成は本スキルの責務外。`agent-code-review` は PR 未作成時、ユーザーへ PR 作成を案内し本スキルを中断する（[SKILL.md Step 1](../SKILL.md) 参照）。
->
-> 以下のコマンドは参考目的（手動実行時の例示）に留め、`agent-code-review` 実行中は **使用しない**。`AGENTS.md > Boundaries > Never` で「明示的指示なし `git push` / `commit` / `gh pr create` の自動実行は禁止」と定められており、本スキルからの誤実行を防ぐためのガードとして手順を分離している。
-
-```bash
-# 参考のみ（agent-code-review からは呼び出さない）
-git push -u origin HEAD
-gh pr create --base {対象ブランチ} --fill
-```
 
 ---
 
@@ -45,31 +55,15 @@ gh pr create --base {対象ブランチ} --fill
 
 > **Mode B では本 Step を完全にスキップ**する。追加コメントは既に GitHub 側に存在するため、待機せず Step 3 に直接進む。
 >
-> **本 Step は自動レビューツール（CodeRabbit 等）のレビューを待つ用途に限定**。タイムアウト時は **Step 3 以降に進まず本スキルを中断**し、自動レビューツール固有のトリガー（例: `@coderabbitai review`）での手動トリガー後（または人間レビュー投稿後）に Mode A で再実行する（SoT: [SKILL.md Step 2](../SKILL.md)）。これにより Step 7 へ到達するのを Step 6.7 で完了承認した経路のみに限定する。
+> **本 Step は自動レビューツール（CodeRabbit 等）のレビューを待つ用途に限定**。タイムアウト時は **Step 3 以降に進まず本スキルを中断**し、自動レビューツール固有のトリガー（例: `@coderabbitai review`）での手動トリガー後（または人間レビュー投稿後）に Mode A で再実行する（SoT: [SKILL.md Step 2](../SKILL.md)）。
 
 ### 2.1 レビューコメント有無のチェック（ポーリング）
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        nodes {
-          comments(first: 1) {
-            nodes {
-              author { login }
-            }
-          }
-        }
-      }
-    }
-  }
-}' -f owner='{owner}' -f repo='{repo}' -F pr={pr_number} \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.comments.nodes[0].author.login == "{auto_review_bot_login}")] | length'
+github-pr-reviews-safe {owner} {repo} {pr_number}
 ```
 
-結果が 0 より大きければレビューコメントが投稿されている。`{auto_review_bot_login}` は使用する自動レビューツールの bot ログイン名に置き換える（例: `coderabbitai`）。
+レスポンス JSON の `reviewThreads.nodes` を確認し、自動レビューツールの bot ログイン名（例: `coderabbitai`）のコメントが存在すればレビューコメントが投稿されている。
 
 - ポーリング間隔: 30 秒 → 60 秒 → 以降 60 秒
 - タイムアウト: PR 作成から最大 10 分
@@ -80,53 +74,59 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 ベースブランチが `main` / `release/*` 以外で自動レビューが走らない場合、自動レビューツール固有のトリガーを投稿する:
 
 ```bash
-gh pr comment {pr_number} --body '{auto_review_trigger_command}'
+echo '@coderabbitai review' > /tmp/auto-review-trigger.md
+github-pr-comment-safe {pr_number} /tmp/auto-review-trigger.md
 ```
-
-例（CodeRabbit の場合）: `gh pr comment {pr_number} --body '@coderabbitai review'`
 
 ---
 
 ## 3. レビュースレッド取得（Step 3 / Mode A・Mode B 共通 / レビュアー非依存）
 
-> **Mode A / Mode B でクエリは同一**。フィルタ条件 `isResolved: false isOutdated: false` により、Mode B 実行時には前回 Mode A 完了後に追加された未解決指摘のみが残るため、自然に「新規分のみ」が取得できる。前回対応分を保持する追加メタデータは不要。
+> **Mode A / Mode B でコマンドは同一**。wrapper が内部で `isResolved: false isOutdated: false` フィルタを適用し、未解決のレビュースレッドのみを返す。
 >
 > **author.login によるフィルタは行わない**（自動レビューツール / 人間 / その他 bot を区別せず全て取得し、SKILL.md §3 のレビュアー種別分岐で扱いを分ける）。
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        nodes {
-          isResolved
-          isOutdated
-          isCollapsed
-          comments(first: 100) {
-            nodes {
-              body
-              path
-              line
-              url
-              author {
-                login
-                __typename
+github-pr-reviews-safe {owner} {repo} {pr_number}
+```
+
+### レスポンス JSON 構造
+
+wrapper は以下の構造の JSON を標準出力に返す:
+
+```json
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": false,
+              "isOutdated": false,
+              "isCollapsed": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "指摘本文 + Prompt for AI Agents セクション",
+                    "path": "ファイルパス",
+                    "line": 42,
+                    "url": "コメントURL（discussion_r{ID} から REST API 用 ID を抽出）",
+                    "author": {
+                      "login": "coderabbitai",
+                      "__typename": "Bot"
+                    }
+                  }
+                ]
               }
             }
-          }
+          ]
         }
       }
     }
   }
-}' -f owner='{owner}' -f repo='{repo}' -F pr={pr_number}
+}
 ```
-
-### フィルタ条件
-
-- `isResolved: false`（未解決）
-- `isOutdated: false`（コード変更で古くなっていない）
-- **author.login によるフィルタは行わない**
 
 ### レビュアー種別の判定（SKILL.md §3 と連動）
 
@@ -161,65 +161,44 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 
 ## 4. レビュースレッド reply 投稿（Step 5-6 グループループ内）
 
+返信内容を一時ファイルに書き出し、wrapper に渡す:
+
 ```bash
-gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies \
-  -f body='（返信内容）'
+# 返信内容をファイルに書き出す
+cat > /tmp/reply-{comment_id}.md << 'REPLY_EOF'
+（返信内容）
+REPLY_EOF
+
+# wrapper で投稿
+github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 ```
 
 - `{comment_id}`: Step 3 で記録したレビューコメント ID（REST API 用）
-- `required_permissions: ["all"]` の設定を忘れない（サンドボックス制限の緩和を試みる Cursor Shell ツールパラメータ。完全な回避策ではない点は [`SKILL.md ## Gotchas`](../SKILL.md) を参照）
+- wrapper は投稿成功時に reply URL を標準出力に返す
 
 ---
 
-## 5. コマンド早見表
+## 5. wrapper インターフェース仕様
+
+| wrapper | 用途 | 引数 | 標準出力 | exit code |
+| --- | --- | --- | --- | --- |
+| `github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | レビュースレッド JSON | 0=成功, 1=API エラー, 2=認証エラー |
+| `github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | コメント URL | 0=成功, 1=API エラー, 2=認証エラー |
+| `github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | reply URL | 0=成功, 1=API エラー, 2=認証エラー |
+
+> wrapper 内部で `owner`/`repo` を自動解決する実装の場合、引数を省略可能にしてもよい（実装側の裁量）。
+
+---
+
+## 6. コマンド早見表
 
 | 用途 | コマンド |
 | --- | --- |
 | カレントブランチ取得 | `git branch --show-current` |
 | リリースブランチ検索 | `git branch -r --list 'origin/release/v*' --sort=-version:refname \| head -2 \| sed 's\| *origin/\|\|'` |
-| PR 作成 | `gh pr create --base {branch} --fill` |
-| レビューコメント取得 | `gh api graphql -f query='...'`（上記 §3） |
-| 自動レビュー手動トリガー | `gh pr comment {pr} --body '{trigger_command}'` |
-| スレッド reply 投稿 | `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies -f body='...'` |
-
----
-
-## 6. 取得データ構造（参考）
-
-`gh api graphql` のレスポンス構造:
-
-```json
-{
-  "data": {
-    "repository": {
-      "pullRequest": {
-        "reviewThreads": {
-          "nodes": [
-            {
-              "isResolved": false,
-              "isOutdated": false,
-              "isCollapsed": false,
-              "comments": {
-                "nodes": [
-                  {
-                    "body": "指摘本文 + Prompt for AI Agents セクション",
-                    "path": "ファイルパス",
-                    "line": 42,
-                    "url": "コメントURL（discussion_r{ID} から REST API 用 ID を抽出）",
-                    "author": {
-                      "login": "coderabbitai"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      }
-    }
-  }
-}
-```
+| レビュースレッド取得 | `github-pr-reviews-safe {owner} {repo} {pr_number}` |
+| 自動レビュー手動トリガー | `github-pr-comment-safe {pr_number} /tmp/trigger.md` |
+| スレッド reply 投稿 | `github-pr-reply-safe {comment_id} /tmp/reply-{id}.md` |
 
 ---
 
@@ -227,9 +206,8 @@ gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies \
 
 | エラー | 対応 |
 | --- | --- |
-| `gh: command not found` | `brew install gh` をユーザーに案内（前提条件セクション） |
-| `HTTP 401 Unauthorized` | `GITHUB_TOKEN` 未設定。ユーザーに Cursor 設定を案内 |
-| `HTTP 403 rate limit` | 60 秒待機してリトライ。複数回続く場合はトークンのレート制限を調査 |
-| `gh api` のサンドボックスエラー | Cursor Shell 呼び出し時に `required_permissions: ["all"]` を設定しているか再確認 |
-| Hook により `deny` / `ask` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。対象は `--force` プッシュ / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` / `git commit --amend` / `git rebase` 等。詳細パターンと対処は `QUALITY_GATE.md` を参照。素通り対象（`git commit` / `git push -u origin HEAD` / `gh pr create` 等）には影響しない |
+| `github-pr-reviews-safe: command not found` | wrapper がインストールされていない。§0 のセットアップ手順をユーザーに案内 |
+| exit 1（API エラー） | GitHub API 側のエラー。60 秒待機してリトライ。複数回続く場合はユーザーに報告 |
+| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| Hook により `deny` / `ask` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は Hook が deny / ask を返す |
 | API 呼び出し失敗（その他） | エラー内容をユーザーに報告し、手動対応を案内 |

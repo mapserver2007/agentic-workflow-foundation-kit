@@ -1,2 +1,7 @@
 # agentic-workflow-foundation: セッション state を AI コンテキストから除外
 .cursor/.session/
+# agentic-workflow-foundation: 認証情報・秘密鍵をコンテキストから除外
+.env
+.env.*
+*.pem
+*.key

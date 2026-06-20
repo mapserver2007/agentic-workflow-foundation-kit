@@ -194,6 +194,8 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 - 必要に応じて `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`
 - Optional: CodeRabbit / GitHub review 運用を使う場合は、対象プロジェクト側の GitHub / CodeRabbit 設定
 
+外部サービス・Cursor 設定を含む詳細なセットアップ手順は **[SETUP.md](SETUP.md)** を参照。
+
 ## このリポジトリと生成先
 
 本リポジトリはジェネレータ・ツールキット本体です。対象プロジェクトにこのキットの `.cursor/skills/agentic-workflow-foundation` と `.cursor/skills/agentic-workflow-engine` を配置し、Cursor から `agentic-workflow-foundation` を起動すると、対象プロジェクトのルートに基盤ファイル群が生成されます。
