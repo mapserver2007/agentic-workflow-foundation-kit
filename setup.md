@@ -211,37 +211,35 @@ chmod 600 ~/.config/github-apps/config.env
 
 > 変数名は wrapper 実装の convention。上記以外のキー名を使う wrapper もある。その場合は各 wrapper の README に従う。
 
-### 4.4 wrapper コマンドのインストール
+### 4.4 wrapper コマンドの生成
 
-使用するスキルに応じて wrapper を `/usr/local/bin/` に配置する。
+wrapper コマンドは `agentic-workflow-foundation` スキルの Phase 1.5 で「推奨スキル・ツール設定をインストールしますか？」に **Yes** を選択すると、Phase 2 でプロジェクトルートの `bin/` に自動生成される。手動インストールは不要。
 
 ```bash
-# agent-code-review 用（3 コマンド）
-which github-pr-reviews-safe && which github-pr-comment-safe && which github-pr-reply-safe
-
-# agent-github-pr 用（1 コマンド追加）
-which github-pr-create-safe
+# 生成確認（agent-code-review 用 3 コマンド + agent-github-pr 用 1 コマンド）
+test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe && test -x bin/github-pr-create-safe
 ```
 
 | wrapper | 用途 | 引数 | 使用スキル |
 | --- | --- | --- | --- |
-| `github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | agent-code-review |
-| `github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | agent-code-review |
-| `github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | agent-code-review |
-| `github-pr-create-safe` | PR 作成（WRITE） | `<base-branch> <title-file> <body-file>` | agent-github-pr |
+| `bin/github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | agent-code-review |
+| `bin/github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | agent-code-review |
+| `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | agent-code-review |
+| `bin/github-pr-create-safe` | PR 作成（WRITE） | `<base-branch> <title-file> <body-file>` | agent-github-pr |
 
-> wrapper の実装は本キットには含まれない。`~/.config/github-apps/private-key.pem` から private key を読み取り、installation token を発行して GitHub API を呼び出すスクリプトを各環境に合わせて作成する。
+> wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` で再実行する。
 
 ### 4.5 セキュリティモデル
 
 ```
-AI Agent ──→ wrapper（/usr/local/bin/github-pr-*-safe）──→ GitHub API
+AI Agent ──→ wrapper（bin/github-pr-*-safe）──→ GitHub API
                │
                ├── ~/.config/github-apps/private-key.pem を読み取り
                ├── installation token を発行
                └── API レスポンスのうち安全な部分のみ AI に返却
 
 AI Agent は token / private key に直接アクセスできない
+  └── .cursorignore が bin/ を AI コンテキストから除外（サンドボックス遮断）
   └── guard-git-write.sh が gh auth token / .pem 読み取りをブロック
   └── 03-github-security.mdc が認証ファイル読み取りを禁止
 ```
@@ -288,9 +286,8 @@ Quality Gate の自動実行を CI で行う場合は、GitHub Actions ワーク
 - [ ] Repository permissions を設定（Pull requests + Metadata、必要なら Contents も）
 - [ ] GitHub Apps を対象リポジトリにインストール
 - [ ] Private key を `~/.config/github-apps/` に配置（`chmod 600`）
-- [ ] wrapper が `config.env` を参照する場合は §4.3 のサンプルに従い作成（`chmod 600`）
-- [ ] wrapper コマンドを `/usr/local/bin/` にインストール
-- [ ] `which github-pr-*-safe` で必要なコマンドがすべて見つかることを確認
+- [ ] §4.3 のサンプルに従い `config.env` を作成（`chmod 600`）
+- [ ] スキル実行後に `bin/github-pr-*-safe` が生成されていることを確認（`test -x bin/github-pr-reviews-safe`）
 
 ### オプション（CodeRabbit を使う場合）
 
