@@ -60,10 +60,8 @@ git branch -r --list 'origin/release/v*' --sort=-version:refname | head -2 | sed
 ### 2.1 レビューコメント有無のチェック（ポーリング）
 
 ```bash
-github-pr-reviews-safe {owner} {repo} {pr_number}
-```
-
-レスポンス JSON の `reviewThreads.nodes` を確認し、自動レビューツールの bot ログイン名（例: `coderabbitai`）のコメントが存在すればレビューコメントが投稿されている。
+bin/github-pr-reviews-safe {owner} {repo} {pr_number}
+```、自動レビューツールの bot ログイン名（例: `coderabbitai`）のコメントが存在すればレビューコメントが投稿されている。
 
 - ポーリング間隔: 30 秒 → 60 秒 → 以降 60 秒
 - タイムアウト: PR 作成から最大 10 分
@@ -75,7 +73,7 @@ github-pr-reviews-safe {owner} {repo} {pr_number}
 
 ```bash
 echo '@coderabbitai review' > /tmp/auto-review-trigger.md
-github-pr-comment-safe {pr_number} /tmp/auto-review-trigger.md
+bin/github-pr-comment-safe {pr_number} /tmp/auto-review-trigger.md
 ```
 
 ---
@@ -87,7 +85,7 @@ github-pr-comment-safe {pr_number} /tmp/auto-review-trigger.md
 > **author.login によるフィルタは行わない**（自動レビューツール / 人間 / その他 bot を区別せず全て取得し、SKILL.md §3 のレビュアー種別分岐で扱いを分ける）。
 
 ```bash
-github-pr-reviews-safe {owner} {repo} {pr_number}
+bin/github-pr-reviews-safe {owner} {repo} {pr_number}
 ```
 
 ### レスポンス JSON 構造
@@ -170,7 +168,7 @@ cat > /tmp/reply-{comment_id}.md << 'REPLY_EOF'
 REPLY_EOF
 
 # wrapper で投稿
-github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
+bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 ```
 
 - `{comment_id}`: Step 3 で記録したレビューコメント ID（REST API 用）
@@ -182,9 +180,9 @@ github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 
 | wrapper | 用途 | 引数 | 標準出力 | exit code |
 | --- | --- | --- | --- | --- |
-| `github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | レビュースレッド JSON | 0=成功, 1=API エラー, 2=認証エラー |
-| `github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | コメント URL | 0=成功, 1=API エラー, 2=認証エラー |
-| `github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | reply URL | 0=成功, 1=API エラー, 2=認証エラー |
+| `bin/github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | レビュースレッド JSON | 0=成功, 1=API エラー, 2=認証エラー |
+| `bin/github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | コメント URL | 0=成功, 1=API エラー, 2=認証エラー |
+| `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<comment-id> <body-file>` | reply URL | 0=成功, 1=API エラー, 2=認証エラー |
 
 > wrapper 内部で `owner`/`repo` を自動解決する実装の場合、引数を省略可能にしてもよい（実装側の裁量）。
 
@@ -196,9 +194,9 @@ github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
 | --- | --- |
 | カレントブランチ取得 | `git branch --show-current` |
 | リリースブランチ検索 | `git branch -r --list 'origin/release/v*' --sort=-version:refname \| head -2 \| sed 's\| *origin/\|\|'` |
-| レビュースレッド取得 | `github-pr-reviews-safe {owner} {repo} {pr_number}` |
-| 自動レビュー手動トリガー | `github-pr-comment-safe {pr_number} /tmp/trigger.md` |
-| スレッド reply 投稿 | `github-pr-reply-safe {comment_id} /tmp/reply-{id}.md` |
+| レビュースレッド取得 | `bin/github-pr-reviews-safe {owner} {repo} {pr_number}` |
+| 自動レビュー手動トリガー | `bin/github-pr-comment-safe {pr_number} /tmp/trigger.md` |
+| スレッド reply 投稿 | `bin/github-pr-reply-safe {comment_id} /tmp/reply-{id}.md` |
 
 ---
 

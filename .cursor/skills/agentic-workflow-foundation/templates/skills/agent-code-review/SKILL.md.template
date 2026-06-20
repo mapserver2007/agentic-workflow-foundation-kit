@@ -94,7 +94,7 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 > Mode B では本 Step を **スキップ**し、Step 3 へ直接進む。
 
-自動レビューツール（CodeRabbit 等）のレビューを `github-pr-reviews-safe` でポーリング待機する。
+自動レビューツール（CodeRabbit 等）のレビューを `bin/github-pr-reviews-safe` でポーリング待機する。
 
 - **ポーリング間隔**: 30 秒 → 60 秒 → 以降 60 秒
 - **タイムアウト**: PR 作成から最大 10 分
@@ -115,7 +115,7 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 ### Step 3: レビュー指摘の取得（レビュアー非依存）
 
-`github-pr-reviews-safe` で全レビュースレッドを取得し、以下をフィルタ:
+`bin/github-pr-reviews-safe` で全レビュースレッドを取得し、以下をフィルタ:
 
 - `isResolved: false`
 - `isOutdated: false`
@@ -528,7 +528,7 @@ for group in [修正必須, 修正推奨, 修正不要]:
 - **修正後**: 該当ファイルの diff を `git diff -- <path>` で取得し、レポート用に記録
 - **GitHub reply 投稿**: `apply` / `reply_only` 集合に対してのみ実行（`pending` / `discuss` は投稿しない）:
   ```bash
-  github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
+  bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md
   ```
   - `{comment_id}`: Step 3 で記録したレビューコメント ID
   - 返信内容を一時ファイルに書き出してから wrapper に渡す
@@ -566,7 +566,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 
 **ゲートの不変条件（SoT を Read しなくても守る）**:
 
-- **Step 6.7-A（承認依頼ターン）**: ① `github-pr-reviews-safe`（Step 3 同条件 / author フィルタなし）で **1 回だけ**再取得（新規あれば承認を求めず Step 3 へ戻る）→ ② `AskQuestion` で完了承認を提示（2 択 + Other: 「承認する（レポート作成へ進む）」/「新規のレビューコメントを取得して」）→ ③ **AskQuestion 提示後は承認待ちでターンを終了**（このターンでは Step 7 に進まない / レポート作成もしない）
+- **Step 6.7-A（承認依頼ターン）**: ① `bin/github-pr-reviews-safe`（Step 3 同条件 / author フィルタなし）で **1 回だけ**再取得（新規あれば承認を求めず Step 3 へ戻る）→ ② `AskQuestion` で完了承認を提示（2 択 + Other: 「承認する（レポート作成へ進む）」/「新規のレビューコメントを取得して」）→ ③ **AskQuestion 提示後は承認待ちでターンを終了**（このターンでは Step 7 に進まない / レポート作成もしない）
 - **Step 6.7-B（承認回答受領後の強制再開）**: ユーザーが「承認する」を選択した **次ターンの最初の処理として Step 7 を実行**する。説明だけで終了 / 追加確認を挟む / 別作業を先行 / 承認済みなのに Step 7 を保留、は禁止。Step 7 完了まで final response を返さない。「新規のレビューコメントを取得して」選択時は Step 3 へ戻る。Other が承認意図として曖昧な場合のみ未承認扱いで Step 7 へ進まない
 
 > **構造的担保**: Step 7 の前提は「Step 6.7 で承認取得済み」であり、レビューレポートの `## レビュー完了承認` セクションに承認記録が含まれることで担保する。
@@ -684,7 +684,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 ### Mode B 突入時のフロー（再注入後）
 
 1. このセクション末尾まで読み終えたら、**Step 3 へ直接進む**（Step 2 の自動レビュー待機はスキップ）
-2. `github-pr-reviews-safe` で `isResolved=false isOutdated=false` の未解決スレッドを取得（**author.login フィルタなし**）
+2. `bin/github-pr-reviews-safe` で `isResolved=false isOutdated=false` の未解決スレッドを取得（**author.login フィルタなし**）
 3. レビュアー種別（AutoReview / Human / OtherBot）を記録
 4. **Step 4.1.1 Blind first read を必ず実施**（指摘本文を読む前に該当ファイルを白紙で読み `[REPO blind]` 所感を 1 行記録）
 5. Step 4.1.2〜4.2 で初期判定 `judgment_initial` を出す（判定根拠は `[REPO]` 出典のみ）
@@ -726,7 +726,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 | --- | --- |
 | [references/checklist.md](references/checklist.md) | 前提条件 + 各 Step の完了チェック項目 |
 | [references/review-report-format.md](references/review-report-format.md) | レビューレポートの完全フォーマット + Gotchas / ADR 候補ブロック |
-| [references/gh-commands.md](references/gh-commands.md) | wrapper コマンドリファレンス（`github-pr-reviews-safe` / `github-pr-comment-safe` / `github-pr-reply-safe`） |
+| [references/gh-commands.md](references/gh-commands.md) | wrapper コマンドリファレンス（`bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe`） |
 | [references/reply-templates.md](references/reply-templates.md) | GitHub 返信テンプレート（**文体原則** + 修正必須 / 修正推奨 / 修正不要 + Ask First マーク付き項目用の追加文言） |
 | [references/self-rebuttal.md](references/self-rebuttal.md) | §4.2.5 自己反論ステップ詳細（Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 + 失敗パターン例） |
 | [references/approval-loop.md](references/approval-loop.md) | Step 5-6 承認ループ詳細（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認） |

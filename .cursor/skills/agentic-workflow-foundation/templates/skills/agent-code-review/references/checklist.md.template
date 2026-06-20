@@ -342,7 +342,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ### 共通: GitHub reply 投稿
 
-- [ ] `github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
+- [ ] `bin/github-pr-reply-safe {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
 - [ ] **`apply` / `reply_only` 集合に対してのみ実行**（`pending` / `discuss` には投稿していない）
 - [ ] Ask First で「修正しない」判断に寄せた場合もその旨を返信済み
 
@@ -362,7 +362,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 ### Step 6.7-A: 承認依頼ターン
 
 - [ ] 保留 0 件（その時点の全レビューコメント返答完了）を確認した（保留 1 件以上なら本ゲートに到達せず次セッション持ち越し）
-- [ ] 承認前に GitHub を 1 回再取得した（`github-pr-reviews-safe` / Step 3 同条件 / author フィルタなし）
+- [ ] 承認前に GitHub を 1 回再取得した（`bin/github-pr-reviews-safe` / Step 3 同条件 / author フィルタなし）
   - [ ] 新規コメントが見つかった場合は承認を求めず Step 3 へ戻った
 - [ ] `AskQuestion` で完了承認を求めた（2 択 + Other）:
   - [ ] 「承認する（docs 反映へ進む）」→ 次ターン冒頭で Step 6.7-B を実行する選択肢として提示した

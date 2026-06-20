@@ -14,7 +14,7 @@ description: >-
 
 # Agent GitHub PR
 
-ローカルの diff / commit 履歴から PR タイトル・本文を自動生成し、ユーザー承認後に `github-pr-create-safe` wrapper 経由で GitHub PR を作成するワークフロー。
+ローカルの diff / commit 履歴から PR タイトル・本文を自動生成し、ユーザー承認後に `bin/github-pr-create-safe` wrapper 経由で GitHub PR を作成するワークフロー。
 
 > **関連スキル**: PR 作成後のレビュー対応は [agent-code-review](../agent-code-review/SKILL.md) を使用する。
 
@@ -163,7 +163,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 2. wrapper を実行する:
 
    ```bash
-   github-pr-create-safe {base} /tmp/pr-title.txt /tmp/pr-body.md
+   bin/github-pr-create-safe {base} /tmp/pr-title.txt /tmp/pr-body.md
    ```
 
 3. 結果を処理する:

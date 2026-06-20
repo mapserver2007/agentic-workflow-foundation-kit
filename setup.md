@@ -84,8 +84,8 @@ Hook が正しく動作しているかは、新規チャットを開いて1通�
 
 | スキル | wrapper コマンド |
 | --- | --- |
-| agent-code-review | `github-pr-reviews-safe` / `github-pr-comment-safe` / `github-pr-reply-safe` |
-| agent-github-pr | `github-pr-create-safe` |
+| agent-code-review | `bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` |
+| agent-github-pr | `bin/github-pr-create-safe` |
 
 ### 4.1 GitHub Apps の作成
 

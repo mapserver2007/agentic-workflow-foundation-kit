@@ -50,7 +50,7 @@ wrapper 内部で以下を順に実行する（AI が直接これらのコマン
 ### 呼び出し例
 
 ```bash
-github-pr-create-safe main /tmp/pr-title.txt /tmp/pr-body.md
+bin/github-pr-create-safe main /tmp/pr-title.txt /tmp/pr-body.md
 ```
 
 ---
