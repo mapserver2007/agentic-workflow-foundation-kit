@@ -107,7 +107,7 @@ rm -f .cursor/.session/test-sess-001.json .cursor/.session/handoff-consumed-*.md
 4. [ ] ローカルテスト手順に代表的なテストケースを追加した
 5. [ ] `manifest.yaml > outputs[]` に path / template / required_sections を追加した
 6. [ ] Cursor Settings > Hooks で Hook が有効になっていることを確認した
-7. [ ] `pnpm run gen` で再生成し、`audit.py` が PASS することを確認した
+7. [ ] `pnpm run gen` で再生成し、`run_resolved_engine.py audit` が PASS することを確認した
 
 ## Cursor 統合確認
 
