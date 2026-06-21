@@ -348,6 +348,14 @@ github_pr:
   enabled: false
 
 # ------------------------------------------------------------
+# (2h) github_issue — agent-github-issue スキル（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: github_issue エントリが生成対象になる。
+# ------------------------------------------------------------
+github_issue:
+  enabled: true
+
+# ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
 #   mode: render = テンプレート全展開 / marker = マーカーブロックを既存ファイルへ upsert
 #   required_sections: 生成結果に必ず含まれるべき文字列（設計書準拠の機械検査）
@@ -636,6 +644,44 @@ outputs:
     required_sections:
       - "wrapper"
       - "github-pr-create-safe"
+  # agent-github-issue スキル（feature: github_issue で条件生成）。
+  # github_issue.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .cursor/skills/agent-github-issue/SKILL.md
+    template: skills/agent-github-issue/SKILL.md.template
+    mode: render
+    feature: github_issue
+    required_sections:
+      - "name: agent-github-issue"
+      - "## 前提条件"
+      - "github-issue-create-safe"
+      - "github-issue-read-safe"
+      - "## Gotchas"
+  - path: .cursor/skills/agent-github-issue/references/issue-format.md
+    template: skills/agent-github-issue/references/issue-format.md.template
+    mode: render
+    feature: github_issue
+    required_sections:
+      - "## Context"
+      - "## Objective"
+      - "## Acceptance Criteria"
+  - path: .cursor/skills/agent-github-issue/references/issue-commands.md
+    template: skills/agent-github-issue/references/issue-commands.md.template
+    mode: render
+    feature: github_issue
+    required_sections:
+      - "wrapper"
+      - "github-issue-create-safe"
+      - "github-issue-read-safe"
+  - path: bin/github-issue-create-safe
+    template: bin/github-issue-create-safe.template
+    mode: render
+    feature: github_issue
+    executable: true
+  - path: bin/github-issue-read-safe
+    template: bin/github-issue-read-safe.template
+    mode: render
+    feature: github_issue
+    executable: true
   # GitHub App 認証 helper と PR 作成 wrapper は基盤必須出力として常時生成する。
   # レビュー用 wrapper は feature: code_review で条件生成される。
   # .cursorignore で AI アクセスを遮断する。

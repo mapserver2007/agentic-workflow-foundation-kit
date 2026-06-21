@@ -1,0 +1,228 @@
+---
+name: agent-github-issue
+description: >-
+  What - GitHub Issue の作成（create）と読み取り（read）を行う。
+  create モードではフリーテキストまたは plan ファイルから AI agent が理解しやすい
+  固定フォーマットで issue を作成する。read モードでは issue 本文・コメント・
+  リンク先リポジトリ内ファイルを取得して表示または他スキルへ返却する。
+  wrapper（github-issue-create-safe / github-issue-read-safe）経由で
+  GitHub App installation token を発行し、AI に token を露出しない。
+  Use when - 「issue 作成」「issue 読み取り」「issue 化して」「issue の内容を確認」等の指示。
+  他スキルからモードと引数を指定して呼び出される場合もある。
+  Do NOT use for - (1) PR 作成（agent-github-pr を使う）、
+  (2) PR レビュー対応（agent-code-review を使う）、(3) issue のクローズやマージ。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Agent GitHub Issue
+
+GitHub Issue の作成と読み取りを行うワークフロー。2つの内部モード（create / read）を持ち、ユーザー直接実行と他スキルからの呼び出しの両方に対応する。
+
+> **関連スキル**: PR 作成は [agent-github-pr](../agent-github-pr/SKILL.md)、PR レビュー対応は [agent-code-review](../agent-code-review/SKILL.md) を使用する。
+
+---
+
+## 前提条件
+
+スキル起動直後に以下を自動チェックし、揃わない場合は実行を中断する。
+
+```bash
+test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || echo "GitHub wrapper not found"
+```
+
+- `bin/github-issue-create-safe` がスキル実行（Phase 2）で生成済み
+- `bin/github-issue-read-safe` がスキル実行（Phase 2）で生成済み
+
+> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。GitHub Apps のセットアップは [references/issue-commands.md §0](references/issue-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
+
+---
+
+## ワークフロー
+
+### Step Gate Matrix
+
+| Step | 入口条件 | 退出条件 |
+| --- | --- | --- |
+| **1 Mode 選択** | wrapper 前提条件 OK | Mode (create/read) 確定 |
+| **2-C 入力取得** | Mode=create | 入力テキスト or plan ファイル内容取得済み |
+| **3-C フォーマット整形** | Step 2-C 完了 | 固定フォーマットで issue タイトル・本文生成済み |
+| **4-C ユーザー承認** | Step 3-C 完了 | AskQuestion で承認済み |
+| **5-C Issue 作成** | Step 4-C 承認済み | Issue URL 取得 + 出力 |
+| **2-R Issue 読み取り** | Mode=read + Issue 番号確定 | 本文 + コメント + リンクファイル取得済み |
+| **3-R 結果出力** | Step 2-R 完了 | 結果表示 or 他スキルへ返却 |
+
+### Step 1: Mode 選択
+
+#### ユーザー直接実行の場合
+
+AskQuestion で 2 つのモードを提示する:
+
+| Mode | 用途 | 後続 Step |
+| --- | --- | --- |
+| **create** | フリーテキストまたは plan ファイルから issue を作成する | Step 2-C → 3-C → 4-C → 5-C |
+| **read** | 既存 issue の本文・コメント・リンクファイルを読み取る | Step 2-R → 3-R |
+
+#### 他スキルからの呼び出しの場合
+
+呼び出し元がモードとパラメータを事前指定している場合は **AskQuestion をスキップ**し、指定されたモードの後続 Step へ直接進む。
+
+- **create 呼び出し**: 入力テキストまたはファイルパスが提供される → Step 2-C へ
+- **read 呼び出し**: issue 番号が提供される → Step 2-R へ
+
+---
+
+### Create モード
+
+#### Step 2-C: 入力取得
+
+入力方式を確認する:
+
+1. **フリーテキスト入力**: ユーザーがチャットで issue 化したい内容を直接記述する
+2. **plan ファイル指定**: ユーザーが plan ファイルのパスを指定する
+
+plan ファイルが指定された場合は Read ツールで全体を読み込む。
+
+他スキルからの呼び出し時は、呼び出し元が提供した入力テキストまたはファイルパスをそのまま使用する。
+
+#### Step 3-C: 固定フォーマットへの整形
+
+入力内容を [references/issue-format.md](references/issue-format.md) の固定フォーマットに従って整形する。
+
+1. 入力テキスト / plan ファイルから以下の要素を抽出する:
+   - Context（背景・目的）
+   - Objective（達成すべきゴール）
+   - Requirements（具体的な要件）
+   - Acceptance Criteria（完了条件）
+   - Constraints（制約事項）
+   - References（関連リンク）
+
+2. Issue タイトルを生成する:
+   - Objective から 1 行で要約する
+   - 具体的かつ簡潔に（50文字以内を推奨）
+
+3. Issue 本文を固定フォーマットで生成する（テンプレートは [references/issue-format.md](references/issue-format.md) を参照）
+
+#### Step 4-C: ユーザー承認
+
+1. Issue タイトルと本文をチャットに提示する:
+
+   ```
+   以下の内容で Issue を作成します。確認してください。
+
+   **タイトル**: {title}
+
+   **本文**:
+   {body}
+
+   **ラベル**（任意）: {labels}
+   ```
+
+2. AskQuestion で承認を求める:
+   - 「この内容で Issue を作成する」
+   - 「タイトル・本文を修正してから作成する」
+   - Other
+
+3. 「修正してから作成する」の場合:
+   - ユーザーの指示に従ってタイトル・本文を修正する
+   - 修正後に再度提示して承認を取る（承認されるまで繰り返す）
+
+4. 承認を得たら Step 5-C へ。
+
+#### Step 5-C: Issue 作成
+
+1. タイトルと本文を一時ファイルに書き出す:
+
+   ```bash
+   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-title.XXXXXX.txt")"
+   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-body.XXXXXX.md")"
+
+   cat > "$TITLE_FILE" << 'TITLE_EOF'
+   {title}
+   TITLE_EOF
+
+   cat > "$BODY_FILE" << 'BODY_EOF'
+   {body}
+   BODY_EOF
+   ```
+
+2. wrapper を実行する:
+
+   ```bash
+   bin/github-issue-create-safe "$TITLE_FILE" "$BODY_FILE" [label1 label2 ...]
+   ```
+
+3. 結果を処理する:
+   - exit 0: Issue URL を出力し、完了メッセージを表示する
+   - exit 1: API エラーの内容をユーザーに報告する
+   - exit 2: GitHub App の認証エラー。セットアップを案内する
+
+4. 成功時の出力:
+
+   ```
+   Issue を作成しました: {Issue URL}
+   ```
+
+---
+
+### Read モード
+
+#### Step 2-R: Issue 読み取り
+
+1. Issue 番号を確認する:
+   - ユーザーが番号を指定済みの場合はそのまま使用する
+   - 未指定の場合は AskQuestion またはチャットで確認する
+   - URL が提供された場合は番号を抽出する（`https://github.com/{owner}/{repo}/issues/{number}` パターン）
+
+2. wrapper を実行する:
+
+   ```bash
+   bin/github-issue-read-safe {issue-number}
+   ```
+
+3. 結果を取得する（Markdown 構造化形式で標準出力に返される）
+
+4. 本文中にリポジトリ内ファイルへのリンクがある場合:
+   - リンクパターンを検出する（相対パス / GitHub blob URL）
+   - ローカルリポジトリにファイルが存在する場合は Read ツールで取得する
+   - ローカルに存在しない場合はリンク情報のみ記録する
+
+#### Step 3-R: 結果出力
+
+1. **ユーザー直接実行の場合**: 取得した内容をチャットに表示する
+2. **他スキルからの呼び出しの場合**: 取得した内容をそのまま返却する（表示せず呼び出し元へ渡す）
+
+---
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+>
+> `agent-github-issue` スキル運用中に発見した失敗・踏み外しの記録。
+
+### 起票トリガー
+
+1. Issue の固定フォーマット整形が期待と大きく異なった
+2. wrapper の実行が失敗し、原因特定に時間がかかった
+3. read モードでリンクファイルの取得に失敗した
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連 Issue or URL}
+```
+
+### エントリ
+
+（現時点のエントリは無し）
+
+---
+
+## 関連ドキュメント
+
+- [agent-github-pr](../agent-github-pr/SKILL.md) — PR 作成
+- [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー対応
+- [references/issue-format.md](references/issue-format.md) — AI agent 向け固定 issue フォーマット
+- [references/issue-commands.md](references/issue-commands.md) — wrapper コマンドリファレンス
+- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
+- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）

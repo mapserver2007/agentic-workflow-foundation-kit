@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Issue 読み取り（READ）
+# Usage: github-issue-read-safe <issue-number>
+# Exit:  0=成功, 1=API エラー, 2=認証エラー
+# Output: Issue 本文 + コメントを Markdown 構造化形式で標準出力に返す
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-app-auth.sh
+source "${SCRIPT_DIR}/_github-app-auth.sh"
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: github-issue-read-safe <issue-number>" >&2
+  exit 1
+fi
+
+ISSUE_NUMBER="$1"
+
+if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Issue 番号は数値で指定してください: $ISSUE_NUMBER" >&2
+  exit 1
+fi
+
+_detect_owner_repo
+TOKEN=$(_get_installation_token)
+
+# Issue 本体を取得
+ISSUE_RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}")
+
+ISSUE_HTTP=$(echo "$ISSUE_RESPONSE" | tail -1)
+ISSUE_BODY=$(echo "$ISSUE_RESPONSE" | sed '$d')
+
+if [[ "$ISSUE_HTTP" != "200" ]]; then
+  echo "ERROR: Issue の取得に失敗しました (HTTP $ISSUE_HTTP)" >&2
+  echo "$ISSUE_BODY" >&2
+  exit 1
+fi
+
+# コメントを取得（最大 100 件）
+COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}/comments?per_page=100")
+
+COMMENTS_HTTP=$(echo "$COMMENTS_RESPONSE" | tail -1)
+COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | sed '$d')
+
+if [[ "$COMMENTS_HTTP" != "200" ]]; then
+  echo "ERROR: コメントの取得に失敗しました (HTTP $COMMENTS_HTTP)" >&2
+  echo "$COMMENTS_BODY" >&2
+  exit 1
+fi
+
+# 構造化 Markdown 形式で出力
+python3 -c '
+import json, sys
+
+issue = json.loads(sys.argv[1])
+comments = json.loads(sys.argv[2])
+
+labels = ", ".join(l["name"] for l in issue.get("labels", []))
+author = issue.get("user", {}).get("login", "unknown")
+
+print("---")
+print(f"issue: #{issue[\"number\"]}")
+print(f"title: {issue[\"title\"]}")
+print(f"state: {issue[\"state\"]}")
+print(f"labels: [{labels}]")
+print(f"created_at: {issue[\"created_at\"]}")
+print(f"updated_at: {issue[\"updated_at\"]}")
+print(f"author: @{author}")
+print("---")
+print()
+print("## Body")
+print()
+body = issue.get("body") or "(本文なし)"
+print(body)
+print()
+print("## Comments")
+print()
+
+if not comments:
+    print("(コメントなし)")
+else:
+    for i, c in enumerate(comments, 1):
+        c_author = c.get("user", {}).get("login", "unknown")
+        c_date = c.get("created_at", "")
+        c_body = c.get("body", "")
+        print(f"### Comment #{i} (by @{c_author}, {c_date})")
+        print()
+        print(c_body)
+        print()
+' "$ISSUE_BODY" "$COMMENTS_BODY"
