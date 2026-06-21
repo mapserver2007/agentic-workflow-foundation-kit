@@ -2,20 +2,22 @@
 
 AI エージェント（Cursor Agent など）を開発プロジェクトに組み込むための基盤ファイル群を、**統一設計書 + seed manifest + templates + project manifest** から決定論的に生成・監査するツールキットです。
 
-このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、セッション管理スキル、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
+このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル、GitHub 連携スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
 
 ## できること
 
 | 領域 | 生成・管理するもの |
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
-| Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review` |
+| Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
+| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks |
-| Project Docs | `docs/tech-stack.md`、`docs/session-handoff-guide.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Project Docs (Meta) | `docs/tech-stack.md`、`docs/session-handoff-guide.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
+| GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
 
-`docs/DECISIONS.md` と `docs/GOTCHAS.md` は追記ログなので、存在しない場合だけ初期生成する `seed` モードです。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
+`docs/DECISIONS.md`、`docs/GOTCHAS.md` および Domain 層ドキュメント群（`docs/spec.md` 等）は追記ログまたは PO 充実用のため、存在しない場合だけ初期生成する `seed` モードです。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
 
 ## 現行アーキテクチャ
 
@@ -30,7 +32,7 @@ agentic-workflow-foundation（What）
         │
         ├─ bootstrap: root manifest.yaml を生成 / framework 同期
         ├─ ingest: tech_stack を root manifest.yaml へ取り込み
-        ├─ resolve: quality gate / CodeRabbit 設定を導出
+        ├─ resolve: quality gate / CodeRabbit / domain docs 設定を導出
         ▼
 run_resolved_engine.py
   seed + upstream metadata + root manifest overlay から
@@ -46,7 +48,7 @@ agentic-workflow-engine（How）
 
 中核は **What / How の分離**です。
 
-`agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack 取り込み、quality gate / CodeRabbit 解決を担当します。
+`agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack 取り込み、quality gate / CodeRabbit / domain docs 解決を担当します。
 
 `agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。
 
@@ -55,6 +57,7 @@ agentic-workflow-engine（How）
 ```text
 agentic-workflow-foundation-kit/
 ├── README.md
+├── setup.md
 ├── LICENSE
 └── .cursor/
     ├── docs/
@@ -66,13 +69,34 @@ agentic-workflow-foundation-kit/
         │   ├── SKILL.md
         │   ├── manifest.yaml
         │   ├── templates/
+        │   │   ├── AGENTS.md.template
+        │   │   ├── CLAUDE.md.template
+        │   │   ├── coderabbit.yaml.template
+        │   │   ├── hooks.json.template
+        │   │   ├── gitignore.block.template
+        │   │   ├── cursorignore.block.template
+        │   │   ├── rules/           # 00-init 〜 03-github-security
+        │   │   ├── hooks/           # guard-git-write, session-*, budget-*
+        │   │   ├── docs/            # AGENT_RUNBOOK, QUALITY_GATE, tech-stack,
+        │   │   │                    # session-handoff-guide, DECISIONS, GOTCHAS,
+        │   │   │                    # spec, spec/README, architecture, api,
+        │   │   │                    # data-models, coding-standards, workflows
+        │   │   ├── skills/          # session-planning, session-handover,
+        │   │   │                    # decisions-record, agent-code-review,
+        │   │   │                    # agent-github-pr, agent-github-issue
+        │   │   └── bin/             # _github-app-auth.sh, github-pr-*-safe,
+        │   │                        # github-issue-*-safe
         │   ├── references/
+        │   │   ├── source-mapping.md
+        │   │   └── design-conformance.md
         │   └── scripts/
         │       ├── run_resolved_engine.py
         │       ├── ingest_tech_stack.py
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
-        │       └── check_tech_stack_conformance.py
+        │       ├── resolve_domain_docs.py
+        │       ├── check_tech_stack_conformance.py
+        │       └── test_resolve_quality_gate.py
         └── agentic-workflow-engine/
             ├── SKILL.md
             └── scripts/
@@ -98,10 +122,11 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 4. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
 5. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
 6. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
-7. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする
-8. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-9. **Phase 3**: 冪等性と required sections を監査する
-10. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+7. **Phase 1.67**: `tech_stack` から Domain 層ドキュメント用の tech-stack 固有セクションリストを解決する
+8. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする
+9. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
+10. **Phase 3**: 冪等性と required sections を監査する
+11. **Phase 4**: 確定値、生成物、ゲート結果を報告する
 
 ## 手動実行
 
@@ -119,6 +144,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 
 # CodeRabbit 設定を tech_stack から導出（coderabbit.enabled: true の場合）
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
+
+# Domain 層ドキュメント用の tech-stack 固有セクションを導出
+python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
 
 # tech stack policy と実リポジトリの整合確認
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py
@@ -142,14 +170,25 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | 種別 | ファイル |
 | --- | --- |
 | Context | `AGENTS.md`、`CLAUDE.md` |
-| Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
+| Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
-| Docs | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/session-handoff-guide.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/session-handoff-guide.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Docs (Domain) | `docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`verification-gate.sh`、`session-start-gate.sh`、`plan-gate.sh`、`.cursor/skills/decisions-record/SKILL.md` |
-| Optional Review | `.cursor/skills/agent-code-review/**`、`.coderabbit.yaml` |
+| GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |
+| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
+| Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
+| Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
-`.cursor/skills/agent-code-review/**` は `code_review.enabled: true` の場合のみ、`.coderabbit.yaml` は `coderabbit.enabled: true` の場合のみ生成されます。
+各オプション出力の条件:
+
+- `.cursor/skills/agent-code-review/**` と `bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
+- `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
+- `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
+- `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
+
+Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。
 
 ## 5層モデル
 
@@ -169,11 +208,11 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### 生成物を直接編集しない
 
-`AGENTS.md`、Rules、Hooks、生成 docs、生成スキルは出力です。変更は upstream docs、seed `manifest.yaml`、`templates/`、resolver scripts、または root `manifest.yaml` の project 値を更新して再生成します。直接編集は `audit` が drift として検出します。
+`AGENTS.md`、Rules、Hooks、生成 docs、生成スキル、`bin/` wrapper は出力です。変更は upstream docs、seed `manifest.yaml`、`templates/`、resolver scripts、または root `manifest.yaml` の project 値を更新して再生成します。直接編集は `audit` が drift として検出します。
 
 ### root manifest の責務を分ける
 
-root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。手編集してよいのは、Phase 1.5 / 1.6 / 1.65 / 1.66 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`code_review`、`github_pr`、`github_issue`、`coderabbit` などの per-project 値です。
+root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。手編集してよいのは、Phase 1.5 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit` などの per-project 値です。
 
 ### upstream docs は immutable input
 
@@ -181,7 +220,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### tech stack は project input
 
-`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` はプロジェクトごとに変わる入力です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定の元データになります。
+`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` はプロジェクトごとに変わる入力です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
 
 ### Context Budget は Hook で観測する
 
@@ -194,7 +233,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 - 必要に応じて `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`
 - Optional: CodeRabbit / GitHub review 運用を使う場合は、対象プロジェクト側の GitHub / CodeRabbit 設定
 
-外部サービス・Cursor 設定を含む詳細なセットアップ手順は **[SETUP.md](SETUP.md)** を参照。
+外部サービス・Cursor 設定を含む詳細なセットアップ手順は **[setup.md](setup.md)** を参照。
 
 ## このリポジトリと生成先
 
