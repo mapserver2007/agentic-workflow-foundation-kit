@@ -55,12 +55,21 @@ if [[ "$COMMENTS_HTTP" != "200" ]]; then
   exit 1
 fi
 
+# JSON を一時ファイル経由で渡す（ARG_MAX 超過防止）
+ISSUE_JSON_FILE=$(mktemp)
+COMMENTS_JSON_FILE=$(mktemp)
+trap 'rm -f "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE"' EXIT
+printf '%s' "$ISSUE_BODY" > "$ISSUE_JSON_FILE"
+printf '%s' "$COMMENTS_BODY" > "$COMMENTS_JSON_FILE"
+
 # 構造化 Markdown 形式で出力
 python3 -c '
 import json, sys
 
-issue = json.loads(sys.argv[1])
-comments = json.loads(sys.argv[2])
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    issue = json.load(f)
+with open(sys.argv[2], "r", encoding="utf-8") as f:
+    comments = json.load(f)
 
 labels = ", ".join(l["name"] for l in issue.get("labels", []))
 author = issue.get("user", {}).get("login", "unknown")
@@ -99,15 +108,17 @@ else:
         print()
         print(c_body)
         print()
-' "$ISSUE_BODY" "$COMMENTS_BODY"
+' "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE"
 
 # テキスト添付ファイルの自動取得
 # Issue 本文 + コメントから user-attachments URL を抽出し、テキスト系は中身を取得
 ATTACHMENT_URLS=$(python3 -c '
 import json, sys, re
 
-issue = json.loads(sys.argv[1])
-comments = json.loads(sys.argv[2])
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    issue = json.load(f)
+with open(sys.argv[2], "r", encoding="utf-8") as f:
+    comments = json.load(f)
 
 texts = [issue.get("body") or ""]
 for c in comments:
@@ -121,7 +132,7 @@ for m in re.finditer(pattern, all_text):
     if url not in seen:
         seen.add(url)
         print(f"{m.group(1)}\t{url}")
-' "$ISSUE_BODY" "$COMMENTS_BODY")
+' "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE")
 
 if [[ -n "$ATTACHMENT_URLS" ]]; then
   echo ""
