@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Issue 読み取り（READ）
+# Usage: github-issue-read-safe <issue-number>
+# Exit:  0=成功, 1=API エラー, 2=認証エラー
+# Output: Issue 本文 + コメントを Markdown 構造化形式で標準出力に返す
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-app-auth.sh
+source "${SCRIPT_DIR}/_github-app-auth.sh"
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: github-issue-read-safe <issue-number>" >&2
+  exit 1
+fi
+
+ISSUE_NUMBER="$1"
+
+if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Issue 番号は数値で指定してください: $ISSUE_NUMBER" >&2
+  exit 1
+fi
+
+_detect_owner_repo
+TOKEN=$(_get_installation_token)
+
+# Issue 本体を取得
+ISSUE_RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}")
+
+ISSUE_HTTP=$(echo "$ISSUE_RESPONSE" | tail -1)
+ISSUE_BODY=$(echo "$ISSUE_RESPONSE" | sed '$d')
+
+if [[ "$ISSUE_HTTP" != "200" ]]; then
+  echo "ERROR: Issue の取得に失敗しました (HTTP $ISSUE_HTTP)" >&2
+  echo "$ISSUE_BODY" >&2
+  exit 1
+fi
+
+# コメントを取得（最大 100 件）
+COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}/comments?per_page=100")
+
+COMMENTS_HTTP=$(echo "$COMMENTS_RESPONSE" | tail -1)
+COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | sed '$d')
+
+if [[ "$COMMENTS_HTTP" != "200" ]]; then
+  echo "ERROR: コメントの取得に失敗しました (HTTP $COMMENTS_HTTP)" >&2
+  echo "$COMMENTS_BODY" >&2
+  exit 1
+fi
+
+# JSON を一時ファイル経由で渡す（ARG_MAX 超過防止）
+ISSUE_JSON_FILE=$(mktemp)
+COMMENTS_JSON_FILE=$(mktemp)
+trap 'rm -f "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE"' EXIT
+printf '%s' "$ISSUE_BODY" > "$ISSUE_JSON_FILE"
+printf '%s' "$COMMENTS_BODY" > "$COMMENTS_JSON_FILE"
+
+# 構造化 Markdown 形式で出力
+python3 -c '
+import json, sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    issue = json.load(f)
+with open(sys.argv[2], "r", encoding="utf-8") as f:
+    comments = json.load(f)
+
+labels = ", ".join(l["name"] for l in issue.get("labels", []))
+author = issue.get("user", {}).get("login", "unknown")
+number = issue["number"]
+title = issue["title"]
+state = issue["state"]
+created_at = issue["created_at"]
+updated_at = issue["updated_at"]
+
+print("---")
+print(f"issue: #{number}")
+print(f"title: {title}")
+print(f"state: {state}")
+print(f"labels: [{labels}]")
+print(f"created_at: {created_at}")
+print(f"updated_at: {updated_at}")
+print(f"author: @{author}")
+print("---")
+print()
+print("## Body")
+print()
+body = issue.get("body") or "(本文なし)"
+print(body)
+print()
+print("## Comments")
+print()
+
+if not comments:
+    print("(コメントなし)")
+else:
+    for i, c in enumerate(comments, 1):
+        c_author = c.get("user", {}).get("login", "unknown")
+        c_date = c.get("created_at", "")
+        c_body = c.get("body", "")
+        print(f"### Comment #{i} (by @{c_author}, {c_date})")
+        print()
+        print(c_body)
+        print()
+' "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE"
+
+# テキスト添付ファイルの自動取得
+# Issue 本文 + コメントから user-attachments URL を抽出し、テキスト系は中身を取得
+ATTACHMENT_URLS=$(python3 -c '
+import json, sys, re
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    issue = json.load(f)
+with open(sys.argv[2], "r", encoding="utf-8") as f:
+    comments = json.load(f)
+
+texts = [issue.get("body") or ""]
+for c in comments:
+    texts.append(c.get("body") or "")
+
+all_text = "\n".join(texts)
+pattern = r"\[([^\]]*)\]\((https://github\.com/user-attachments/files/[^\)]+)\)"
+seen = set()
+for m in re.finditer(pattern, all_text):
+    url = m.group(2)
+    if url not in seen:
+        seen.add(url)
+        print(f"{m.group(1)}\t{url}")
+' "$ISSUE_JSON_FILE" "$COMMENTS_JSON_FILE")
+
+if [[ -n "$ATTACHMENT_URLS" ]]; then
+  echo ""
+  echo "## Attachments"
+  echo ""
+
+  TEXT_EXTS="md|txt|json|yaml|yml|csv|log|sh|py|js|ts|tsx|jsx|html|css|xml|toml|ini|cfg|conf|plan"
+  MAX_SIZE=1048576  # 1 MB
+
+  while IFS=$'\t' read -r att_name att_url; do
+    ext="${att_name##*.}"
+    ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+
+    if echo "$ext_lower" | grep -qE "^($TEXT_EXTS)$"; then
+      # public repo: curl -sL で直接取得
+      att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_url" 2>/dev/null || true)
+      if [[ -z "$att_content" ]]; then
+        # private repo fallback: token 付きで 302 先を解決し、S3 URL を token なしで取得
+        att_redirect=$(curl -s -o /dev/null -w "%{redirect_url}" \
+          -H "Authorization: token ${TOKEN}" "$att_url" 2>/dev/null || true)
+        if [[ -n "$att_redirect" ]]; then
+          att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_redirect" 2>/dev/null || true)
+        fi
+      fi
+
+      echo "### ${att_name}"
+      echo ""
+      if [[ -n "$att_content" ]]; then
+        echo '```'
+        echo "$att_content"
+        echo '```'
+      else
+        echo "(取得失敗: ${att_url})"
+      fi
+      echo ""
+    else
+      echo "### ${att_name}"
+      echo ""
+      echo "(バイナリファイル — URL のみ: ${att_url})"
+      echo ""
+    fi
+  done <<< "$ATTACHMENT_URLS"
+fi

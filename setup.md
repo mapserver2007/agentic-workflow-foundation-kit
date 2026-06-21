@@ -80,12 +80,13 @@ Hook が正しく動作しているかは、新規チャットを開いて1通�
 
 ## 4. GitHub Apps — wrapper 用（オプション）
 
-`code_review.enabled: true` / `github_pr.enabled: true` の場合に生成される `agent-code-review` / `agent-github-pr` スキルは、AI に GitHub token を露出しない安全な wrapper コマンドを使用する。wrapper は GitHub Apps の **installation token** を内部で発行する（OAuth / user token は不要）。
+`code_review.enabled: true` / `github_pr.enabled: true` / `github_issue.enabled: true` の場合に生成される `agent-code-review` / `agent-github-pr` / `agent-github-issue` スキルは、AI に GitHub token を露出しない安全な wrapper コマンドを使用する。wrapper は GitHub Apps の **installation token** を内部で発行する（OAuth / user token は不要）。
 
 | スキル | wrapper コマンド |
 | --- | --- |
 | agent-code-review | `bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` |
 | agent-github-pr | `bin/github-pr-create-safe` |
+| agent-github-issue | `bin/github-issue-create-safe` / `bin/github-issue-read-safe` |
 
 ### 4.1 GitHub Apps の作成
 
@@ -135,10 +136,11 @@ REST API を直接呼び出すため Webhook は不要。**Active はデフォ�
 | Permission | Access | 用途 |
 | --- | --- | --- |
 | Pull requests | **Read and write** | レビュー取得・コメント投稿・PR 作成（必須） |
+| Issues | **Read and write** | Issue 作成・取得（`github_issue.enabled: true` の場合のみ必要） |
 | Metadata | **Read** | リポジトリ情報の参照（他の Repository permission を設定すると自動付与されることが多い） |
 | Contents | **Read and write** | PR 作成時の head ブランチ参照（`github_pr.enabled: true` の場合のみ必要） |
 
-> `agent-code-review` のみ使う場合は **Pull requests** + **Metadata** で足りる。`agent-github-pr` も使う場合は **Contents: Read and write** を追加する。
+> `agent-code-review` のみ使う場合は **Pull requests** + **Metadata** で足りる。`agent-github-pr` も使う場合は **Contents: Read and write** を追加する。`agent-github-issue` も使う場合は **Issues: Read and write** を追加する。
 
 #### Where can this GitHub App be installed?
 
@@ -174,7 +176,7 @@ chmod 600 ~/.config/github-apps/private-key.pem
    - **Installation ID** — インストール後の URL `https://github.com/settings/installations/{Installation ID}` の数値部分
 3. wrapper 用に `~/.config/github-apps/config.env` を作成する（フォーマットは下記サンプル）
 
-> **スキルとの関係**: `agent-github-pr` / `agent-code-review` は `config.env` を直接読まない。wrapper 実装が installation token 発行に使う。**wrapper が `config.env` を参照する実装の場合のみ**作成する。
+> **スキルとの関係**: `agent-github-pr` / `agent-github-issue` / `agent-code-review` は `config.env` を直接読まない。wrapper 実装が installation token 発行に使う。**wrapper が `config.env` を参照する実装の場合のみ**作成する。
 
 #### `config.env` サンプル
 
@@ -216,8 +218,8 @@ chmod 600 ~/.config/github-apps/config.env
 wrapper コマンドは `agentic-workflow-foundation` スキルの Phase 1.5 で「推奨スキル・ツール設定をインストールしますか？」に **Yes** を選択すると、Phase 2 でプロジェクトルートの `bin/` に自動生成される。手動インストールは不要。
 
 ```bash
-# 生成確認（agent-code-review 用 3 コマンド + agent-github-pr 用 1 コマンド）
-test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe && test -x bin/github-pr-create-safe
+# 生成確認（agent-code-review 用 3 コマンド + agent-github-pr 用 1 コマンド + agent-github-issue 用 2 コマンド）
+test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe && test -x bin/github-pr-create-safe && test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe
 ```
 
 | wrapper | 用途 | 引数 | 使用スキル |
@@ -226,8 +228,10 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 | `bin/github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | agent-code-review |
 | `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<pr-number> <comment-id> <body-file>` | agent-code-review |
 | `bin/github-pr-create-safe` | PR 作成（WRITE） | `<base-branch> <title-file> <body-file>` | agent-github-pr |
+| `bin/github-issue-create-safe` | Issue 作成（WRITE） | `<title-file> <body-file>` | agent-github-issue |
+| `bin/github-issue-read-safe` | Issue 取得（READ） | `<issue-number>` | agent-github-issue |
 
-> wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` で再実行する。
+> wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` / `github_issue.enabled: true` で再実行する。
 
 ### 4.5 セキュリティモデル
 

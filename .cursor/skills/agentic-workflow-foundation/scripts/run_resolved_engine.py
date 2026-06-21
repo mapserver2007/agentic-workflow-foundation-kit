@@ -25,6 +25,7 @@ ROOT_OVERLAY_KEYS = (
     "quality_gate_contract",
     "code_review",
     "github_pr",
+    "github_issue",
     "coderabbit",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)

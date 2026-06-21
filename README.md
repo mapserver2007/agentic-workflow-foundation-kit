@@ -94,7 +94,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 
 1. **Phase 1**: seed manifest / templates / resolver を変更する必要がある場合だけ更新する
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
-3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review スキル生成有無を確定する
+3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review / GitHub PR / GitHub Issue スキル生成有無を確定する
 4. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
 5. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
 6. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
@@ -173,7 +173,7 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### root manifest の責務を分ける
 
-root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。手編集してよいのは、Phase 1.5 / 1.6 / 1.65 / 1.66 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`code_review`、`coderabbit` などの per-project 値です。
+root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。手編集してよいのは、Phase 1.5 / 1.6 / 1.65 / 1.66 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`code_review`、`github_pr`、`github_issue`、`coderabbit` などの per-project 値です。
 
 ### upstream docs は immutable input
 

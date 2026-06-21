@@ -1,0 +1,152 @@
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# wrapper コマンドリファレンス（Issue 操作）
+
+`agent-github-issue` スキルで使用する固定 wrapper コマンドと関連コマンド集。GitHub API へのアクセスは wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
+
+> **セキュリティルール**: [`.cursor/rules/03-github-security.mdc`](../../../../.cursor/rules/03-github-security.mdc) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+
+---
+
+## 0. 前提条件（wrapper セットアップ）
+
+### 必要なもの
+
+- GitHub App（Repository permissions: `Issues: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
+- `bin/github-issue-create-safe` がスキル実行（Phase 2）で生成済み
+- `bin/github-issue-read-safe` がスキル実行（Phase 2）で生成済み
+- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
+
+### 起動チェック
+
+```bash
+test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || echo "GitHub wrapper not found"
+```
+
+wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `github_issue.enabled: true` で再実行する。
+
+---
+
+## 1. wrapper インターフェース仕様
+
+### 1.1 github-issue-create-safe（Issue 作成）
+
+| 項目 | 仕様 |
+| --- | --- |
+| コマンド | `bin/github-issue-create-safe` |
+| 引数 | `<title-file> <body-file> [label1 label2 ...]` |
+| 標準出力 | Issue URL（例: `https://github.com/owner/repo/issues/42`） |
+| exit code | 0=成功, 1=API エラー, 2=認証エラー |
+
+#### 内部動作
+
+wrapper 内部で以下を順に実行する（AI が直接これらのコマンドを実行する必要はない）:
+
+1. `_detect_owner_repo` で origin URL から owner/repo を自動解決
+2. `_get_installation_token` で GitHub App installation token を発行
+3. GitHub REST API（`POST /repos/{owner}/{repo}/issues`）を `curl` で呼び出して Issue を作成
+4. Issue URL を標準出力に返却
+
+#### 呼び出し例
+
+```bash
+bin/github-issue-create-safe /tmp/issue-title.txt /tmp/issue-body.md enhancement documentation
+```
+
+### 1.2 github-issue-read-safe（Issue 読み取り）
+
+| 項目 | 仕様 |
+| --- | --- |
+| コマンド | `bin/github-issue-read-safe` |
+| 引数 | `<issue-number>` |
+| 標準出力 | Issue 本文 + コメント + 添付ファイル（Markdown 構造化形式） |
+| exit code | 0=成功, 1=API エラー, 2=認証エラー |
+
+#### 内部動作
+
+1. `_detect_owner_repo` で origin URL から owner/repo を自動解決
+2. `_get_installation_token` で GitHub App installation token を発行
+3. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}`）で Issue 本体を取得
+4. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}/comments`）でコメントを取得
+5. 構造化 Markdown 形式で標準出力に返却
+6. 本文 + コメントから `user-attachments` URL を検出し、テキスト系ファイルは中身を取得して `## Attachments` セクションに追記
+
+#### 出力形式
+
+```markdown
+---
+issue: #{number}
+title: {title}
+state: {open|closed}
+labels: [label1, label2]
+created_at: {ISO 8601}
+updated_at: {ISO 8601}
+author: @{login}
+---
+
+## Body
+
+{issue body content}
+
+## Comments
+
+### Comment #1 (by @{login}, {ISO 8601})
+
+{comment body}
+
+### Comment #2 (by @{login}, {ISO 8601})
+
+{comment body}
+
+## Attachments
+
+### {filename.md}
+
+\```
+{テキスト添付ファイルの中身}
+\```
+
+### {image.png}
+
+(バイナリファイル — URL のみ: https://github.com/user-attachments/files/...)
+```
+
+> `## Attachments` セクションは添付ファイルが存在する場合のみ出力される。テキスト系拡張子（`.md` `.txt` `.json` `.yaml` `.yml` `.csv` `.log` `.sh` `.py` `.js` `.ts` `.tsx` `.jsx` `.html` `.css` `.xml` `.toml` `.ini` `.cfg` `.conf` `.plan`）は中身を取得し、それ以外はバイナリとして URL のみ出力する。ファイルサイズ上限は 1 MB。
+
+#### 呼び出し例
+
+```bash
+bin/github-issue-read-safe 42
+```
+
+---
+
+## 2. エラーハンドリング
+
+| エラー | 対応 |
+| --- | --- |
+| `bin/github-issue-*-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `github_issue.enabled: true` で再実行する |
+| exit 1（API エラー） | GitHub API 側のエラー。考えられる原因: リポジトリが存在しない / Issue 番号が不正 / ラベルが未定義。エラーメッセージをユーザーに報告 |
+| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| Hook により `deny` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh` を直接実行しようとした場合は deny を返し wrapper を案内する |
+
+---
+
+## 3. Issue 番号の抽出ルール
+
+ユーザーが Issue を指定する方式と、番号の抽出方法:
+
+| 入力形式 | 抽出パターン |
+| --- | --- |
+| `#42` | `#` の後の数字 |
+| `42` | 数字そのもの |
+| `https://github.com/owner/repo/issues/42` | URL 末尾の数字 |
+| `owner/repo#42` | `#` の後の数字 |
+
+---
+
+## 関連ドキュメント
+
+- [SKILL.md](../SKILL.md) — スキル本体
+- [issue-format.md](issue-format.md) — AI agent 向け固定 issue フォーマット
+- [agent-github-pr/references/pr-commands.md](../../agent-github-pr/references/pr-commands.md) — PR 用 wrapper コマンドリファレンス

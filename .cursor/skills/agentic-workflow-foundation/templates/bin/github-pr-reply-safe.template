@@ -46,4 +46,4 @@ if [[ "$HTTP_CODE" != "201" ]]; then
   exit 1
 fi
 
-echo "$BODY" | grep -o '"html_url":"[^"]*"' | head -1 | cut -d'"' -f4
+echo "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["html_url"])'
