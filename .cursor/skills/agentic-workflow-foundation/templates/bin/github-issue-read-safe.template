@@ -64,14 +64,19 @@ comments = json.loads(sys.argv[2])
 
 labels = ", ".join(l["name"] for l in issue.get("labels", []))
 author = issue.get("user", {}).get("login", "unknown")
+number = issue["number"]
+title = issue["title"]
+state = issue["state"]
+created_at = issue["created_at"]
+updated_at = issue["updated_at"]
 
 print("---")
-print(f"issue: #{issue['number']}")
-print(f"title: {issue['title']}")
-print(f"state: {issue['state']}")
+print(f"issue: #{number}")
+print(f"title: {title}")
+print(f"state: {state}")
 print(f"labels: [{labels}]")
-print(f"created_at: {issue['created_at']}")
-print(f"updated_at: {issue['updated_at']}")
+print(f"created_at: {created_at}")
+print(f"updated_at: {updated_at}")
 print(f"author: @{author}")
 print("---")
 print()
