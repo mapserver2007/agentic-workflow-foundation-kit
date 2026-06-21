@@ -1,14 +1,16 @@
 # 技術スタック（Domain 層サマリ）
 
-<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（framework.tech_stack）を更新して再生成する。SoT は .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（tech_stack）を更新して再生成する。 -->
 
-> 本ファイルは Meta 層 SoT [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](../.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md) から符号化された Domain 層サマリ。下流の Design Doc（`create-design-doc`）/ AI レポート生成は本一覧を技術制約として参照する。詳細な根拠・トレードオフは SoT 設計書を参照。
+> 本ファイルは `manifest.yaml > tech_stack` から生成された Domain 層サマリ。`tech_stack` は Phase 1.6 で [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](../.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md) を取り込んだ結果であり、下流の Design Doc / AI レポート生成は本一覧を技術制約として参照する。
 
 ## 技術スタック一覧とバージョン方針
 
-> {{framework.tech_stack_note}}
+> {{tech_stack.note}}
+>
+> 各技術が対応する品質ゲート（G-GEN / G-BUILD / G-LINT / G-TEST）の内訳は [`docs/QUALITY_GATE.md §1.1 package script contract`](QUALITY_GATE.md) を参照。
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |
-{{#each framework.tech_stack}}| {{this.layer}} | {{this.technology}} | {{this.version_policy}} | {{this.note}} |
+{{#each tech_stack.items}}| {{this.layer}} | {{this.technology}} | {{this.version_policy}} | {{this.note}} |
 {{/each}}

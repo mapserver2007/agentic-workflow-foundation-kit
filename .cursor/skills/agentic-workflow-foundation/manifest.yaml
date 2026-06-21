@@ -1,8 +1,9 @@
 # ============================================================
-# manifest.yaml — Agentic Workflow 基盤 YAML 正本（Source of Truth）
+# manifest.yaml — Agentic Workflow 基盤 seed manifest
 # ============================================================
-# このファイルが基盤ファイル群の唯一の定義元（BAS:「Markdownは表現・YAMLは定義」）。
-# scripts/generate.py が本ファイル + templates/ から出力ファイルを決定論的に生成する。
+# このファイルは agentic-workflow-foundation スキルに内包される汎用 seed。
+# スキル実行時に本 seed をもとに、リポジトリ直下 manifest.yaml が正式生成される。
+# 生成後の root manifest は PO が評価する。
 # 出力ファイルを直接編集してはならない（audit.py が drift として exit 1 にする）。
 #
 # 記法制約（同梱の最小YAMLローダのサブセット）:
@@ -13,36 +14,24 @@
 
 version: 1
 
-# 生成エンジン（manifest-generator）の marker モードで使うマーカー識別子。
+# 生成エンジン（agentic-workflow-engine）の marker モードで使うマーカー識別子。
 # 既定値は移設前のハードコード値と一致し、既存 .gitignore / .cursorignore の
 # 管理ブロックとの後方互換を保つ。
 marker_id: agentic-foundation
 
 # ------------------------------------------------------------
-# (1) 設計書 fingerprint — 改版検知の基準（check_design_drift.py が照合）
-#     sha256 は空のままでよい。drift 検知 → PO 承認後に drift スクリプトが書き戻す。
+# (1) seed SoT 宣言
+#     本 manifest + templates は root manifest 生成前の汎用 seed / schema / default。
+#     統一設計書 unified/bas は immutable upstream SoT として run_resolved_engine.py が読み取り、
+#     毎回一時 resolved manifest に展開する。seed 自体は実行結果で永続更新しない。
+#     技術スタックは techstack 設計書（プロジェクト別ポリシー源）から、スキル実行で生成される
+#     リポジトリ直下 manifest.yaml の tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
 # ------------------------------------------------------------
-design_docs:
-  - id: unified
-    path: .cursor/docs/AI_AGENT_UNIFIED_DESIGN.md
-    title: AI Agent 基盤 統一設計書（開発責任者版）
-    doc_version: "3.0"
-    sha256: "2cd3c8b4d71e2993a9311f559a236b7d2f639db1e27b0a49dd3ef9e44032a721"
-  - id: bas
-    path: .cursor/docs/AI_BUSINESS_AGENT_SUITE.md
-    title: AI Business Agent Suite (BAS) 設計体系統合ドキュメント
-    doc_version: "1.0"
-    sha256: "c0d64622f24b638c9e98ce5e0a0b34fd44833368a1c8b743be4a5f73b6ef4222"
-  # techstack は他2種と性質が異なる: Meta 層基盤(AGENTS.md 等)へは焼き込まず、
-  # framework.tech_stack 経由で Domain 層 docs/tech-stack.md を生成する SoT。
-  - id: techstack
-    path: .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md
-    title: Web アプリケーション技術スタック 統一設計書
-    doc_version: "1.0"
-    sha256: "b8681bf8635ff14173b937e60891ea0545aa6bf3ff24a9e13eaf89f7491df55b"
 
 # ------------------------------------------------------------
-# (2) 設計書由来の framework 要件（設計書改版時のみ変更する）
+# (2) framework 要件（自己完結 SoT のフレームワーク定義）
+#     unified/bas 由来の思想と、resolver が展開するための schema/default を保持する。
+#     変更は upstream 設計書または本 manifest/templates の設計判断として扱う。
 # ------------------------------------------------------------
 framework:
   naming:
@@ -66,6 +55,17 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
+  # 追跡ドキュメント（plan.md 等）が満たすべき必須セクションの SoT。
+  # session-planning テンプレ（plan.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
+  # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
+  plan_required_sections:
+    - "目的と完了条件"
+    - "スコープ"
+    - "タスク分解"
+    - "検証ゲート"
+    - "完了チェック"
+    - "レビュー完了承認"
+    - "例外承認記録"
   design_dimensions:
     - id: D-BOUNDARY
       desc: Boundaries（Always/Ask First/Never）の追加・変更
@@ -86,19 +86,24 @@ framework:
   accd_axes:
     - id: A
       name: 制約の補完
-      impl: "[要確認] 永続化された制約の置き場（reports / AGENTS.md 参照順序 / rules）"
+      adopted: "AGENTS.md 参照順序 / .cursor/rules/*.mdc / 追跡ドキュメント / handoff manifest"
+      not_adopted: "YAML 正本 + Markdown 生成 / Context Loading Table の機械検証"
     - id: B
       name: 専念の委譲
-      impl: "[要確認] 機械的判定（品質ゲート / guard hook）"
+      adopted: "品質ゲート / verification-gate.sh / session-start-gate.sh / guard-git-write.sh / 軽量検査ID"
+      not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
-      impl: "[要確認] 自己反論 / subagent 並列探索 / 複数視点レビュー"
+      adopted: "Task subagent 並列探索 / 自己反論 / review スキル"
+      not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      impl: "[要確認] テンプレート必須セクション / handoff manifest / Progressive Disclosure"
+      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
+      not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
-      impl: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+      adopted: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+      not_adopted: "仮説シミュレーション全タスク必須化"
   agent_conduct:
     - id: Humble
       rule: 根拠なし同意の禁止。同意前にコード/docsで裏取りし根拠を1行で示す
@@ -117,78 +122,230 @@ framework:
       elapsed_min: 90
       prompt_count: 90
       shell_bytes: 5242880
-  # techstack 設計書 §9 由来。Meta 層には焼き込まず Domain 層 docs/tech-stack.md を駆動する。
-  # 別の技術スタックへ差し替える場合は本リストを設計書に合わせて更新し再生成する。
-  tech_stack_note: "下表は技術スタック統一設計書 執筆時点（2026-06）の現行安定版を基準にした方針であり、固定バージョンの宣言ではない。実際の固定は各 package.json / wrangler.jsonc で行う。最終リリースが古く後継があるライブラリは採用しない。"
-  tech_stack:
-    - layer: "実行基盤"
-      technology: "Cloudflare Workers"
-      version_policy: "—"
-      note: "`workerd` ランタイム"
-    - layer: "デプロイ CLI"
-      technology: "Wrangler"
-      version_policy: "v4 系"
-      note: "OpenNext 利用時は 3.99.0 以上必須、実質 v4 推奨"
-    - layer: "Frontend"
-      technology: "Next.js"
-      version_policy: "15 / 16 系"
-      note: "14 は OpenNext 側で 2026 Q1 にサポート終了"
-    - layer: "Next.js アダプタ"
-      technology: "`@opennextjs/cloudflare`"
-      version_policy: "1.x 系（GA）"
-      note: "公式推奨。`next-on-pages` は不採用"
-    - layer: "Backend"
-      technology: "Hono"
-      version_policy: "4 系"
-      note: "Workers ネイティブ"
-    - layer: "API 定義"
-      technology: "OpenAPI"
-      version_policy: "3.1"
-      note: "JSON Schema 2020-12 準拠"
-    - layer: "OpenAPI lint"
-      technology: "Spectral"
-      version_policy: "6 系"
-      note: "ルールセットをリポジトリで管理"
-    - layer: "OpenAPI bundle/diff"
-      technology: "Redocly CLI"
-      version_policy: "1 系"
-      note: "`bundle` / `lint` / breaking diff"
-    - layer: "型生成"
-      technology: "openapi-typescript"
-      version_policy: "7 系"
-      note: "OpenAPI 3.1 対応"
-    - layer: "フロント client"
-      technology: "openapi-fetch"
-      version_policy: "0.x（安定）"
-      note: "メンテナンスモードだが本番安定"
-    - layer: "データ取得統合"
-      technology: "openapi-react-query"
-      version_policy: "0.x"
-      note: "TanStack Query 統合（任意）"
-    - layer: "自動生成 client（代替）"
-      technology: "Orval"
-      version_policy: "7 系"
-      note: "React Query/SWR フックを自動生成したい場合の代替"
-    - layer: "Mock"
-      technology: "Prism"
-      version_policy: "5 系"
-      note: "OpenAPI モックサーバー（3.1 は一部制約あり）"
-    - layer: "契約テスト"
-      technology: "Vitest + `@cloudflare/vitest-pool-workers`"
-      version_policy: "—"
-      note: "`workerd` 上でテスト実行"
-    - layer: "ランタイム言語"
-      technology: "TypeScript"
-      version_policy: "5 系"
-      note: "strict"
-    - layer: "パッケージ管理"
-      technology: "pnpm"
-      version_policy: "9 系以降"
-      note: "workspace"
-    - layer: "タスク管理"
-      technology: "Turborepo"
-      version_policy: "2 系"
-      note: "任意"
+  handoff:
+    source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
+    purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
+    # 劣化の自覚を促す根拠論文と具体例。論文は移植性のため汎用引用のみ（プロジェクト固有チケットは含めない）。
+    paper_citation: "根拠: Liu et al. (2023) 『Lost in the Middle: How Language Models Use Long Contexts』 (TACL)。長い文脈では入力の中央付近にある情報の利用率が相対的に下がることを実証した。"
+    degradation_example: "具体例: 序盤で「この更新処理は必ずトランザクション境界内で実行する」と決めたのに、終盤では境界外に実装してしまう。序盤の制約が AI の注意から落ちるのが典型的な劣化症状で、早期に気づけると handoff のタイミングを逃しにくい。"
+    user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
+    active_manifest_path: ".cursor/.session/handoff-active.md"
+    consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{unix}.md"
+    state_glob: ".cursor/.session/{session_id}.json"
+    state_files:
+      - path: ".cursor/.session/{session_id}.json"
+        role: "セッションごとの累積指標"
+        lifecycle: "session-bootstrap.sh が新規作成し、tracker / evaluator が更新する"
+      - path: ".cursor/.session/handoff-active.md"
+        role: "次セッションへ渡す active handoff manifest"
+        lifecycle: "AI が Yellow / Red 受信時に書き出し、session-bootstrap.sh が次セッションで消費する"
+      - path: ".cursor/.session/handoff-consumed-{unix}.md"
+        role: "消費済み handoff manifest のアーカイブ"
+        lifecycle: "session-bootstrap.sh が active manifest をリネームして作成する"
+    user_actions:
+      - warning: "[CONTEXT_BUDGET=YELLOW]"
+        action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
+      - warning: "[CONTEXT_BUDGET=RED]"
+        action: "すぐに Cmd+N で新規チャットを開き、同セッションで新規実装を続行しない"
+    # action だけでなく理由を併記する。理由を読むことで「なぜ禁止か」が腑に落ち、
+    # 引き継ぎ失敗（mis-consume / history-reopen）と劣化ゾーンでの継続を防ぐ。
+    forbidden_after_red:
+      - action: "別の新規チャットを途中で開く"
+        reason: "目的の継続チャットより先に handoff-active.md を消費し、本来の再開チャットに引き継がれない（mis-consume）"
+      - action: "Cursor の過去チャット履歴を開き直して再開したつもりになる"
+        reason: "sessionStart Hook が期待通り再発火せず、handoff manifest が注入されない（history-reopen）"
+      - action: "同セッションで「もう少しだけ」と続行する"
+        reason: "Lost in the Middle の劣化ゾーンで実装を続けることになり、品質劣化の主要失敗モードに陥る"
+    failure_modes:
+      - id: "mis-consume"
+        symptom: "別チャットが handoff-active.md を先に消費し、本来の再開チャットに注入されない"
+        mitigation: "Red 後は目的の継続チャットを最初に開く。別タスクを挟む場合は active manifest を手動退避する"
+      - id: "history-reopen"
+        symptom: "過去チャット履歴を開き直しても sessionStart Hook が期待通り再発火しない場合がある"
+        mitigation: "Cmd+N で新規チャットを開き、短文を1通送って bootstrap に注入させる"
+      - id: "time-false-positive"
+        symptom: "長時間放置で経過時間だけが増え、実際のトークン劣化より先に警告される"
+        mitigation: "proxy 指標の誤検知として扱う。運用上は新規チャットへ移る方を安全側とする"
+      - id: "heavy-short-session"
+        symptom: "短時間でも大量ログや重い議論でコンテキスト劣化が先に進む"
+        mitigation: "shell_bytes と prompt_count の OR 判定で早期検知する。必要なら手動で handoff を作る"
+    metric_updates:
+      - metric: "経過時間"
+        update: "評価時に現在時刻 - started_at_unix で都度計算する"
+        reset: "新セッション起動で開始時刻をリセットする"
+      - metric: "プロンプト数"
+        update: "beforeSubmitPrompt Hook でユーザー発話ごとに +1 する"
+        reset: "新セッション起動で 0 に戻る"
+      - metric: "シェル出力バイト"
+        update: "afterShellExecution Hook で stdout / output / result の長さを加算する"
+        reset: "新セッション起動で 0 に戻る"
+    # 各指標は直接トークン量を測れないための proxy（近似指標）。何を近似しているかを
+    # 明示すると、どの指標が先に閾値到達したか（OR 判定）を解釈し handoff 要否を判断しやすい。
+    proxy_notes:
+      - metric: "経過時間"
+        measures: "トークン蓄積量の proxy。Hook からトークン数は取得できないため時間で近似する。長時間放置だけでも到達するので誤検知（false positive）が起きやすい"
+      - metric: "プロンプト数"
+        measures: "対話往復数の proxy。往復が増えるほど序盤の情報が中央に埋もれて薄まる"
+      - metric: "シェル出力バイト"
+        measures: "ツール出力によるコンテキスト消費の proxy。大量ログ・広範な探索で中央埋没リスクが上がる"
+    manifest_required_sections:
+      - "現在の作業状態"
+      - "直近のユーザー依頼"
+      - "保持すべき判断"
+      - "次セッションの推奨アクション"
+      - "検証状況と未実行ゲート"
+    # 意図的に採用しない設計（YAGNI）。閾値は manifest が SoT であり、
+    # 外部設定機構や個人別オーバーライドは観測ベースの必要性が複数回確認されるまで作らない。
+    non_goals:
+      - "閾値の外部 JSON 設定機構（manifest を SoT とし、変更は再生成で反映する）"
+      - "個人別オーバーライド（.session-budget.local.json 等の階層化設定）"
+    # 将来拡張候補。proxy 指標の誤検知を補完する方向の設計メモ。
+    future_notes:
+      - "preCompact Hook が使えるようになれば、Cursor 側のコンパクション発動を直接検知でき、経過時間 proxy を補完できる（unified design の preCompact = コンパクション発生前の追跡ドキュメント書き込み促進が根拠）"
+    # 参考リンク。リポ内の安定リンクのみを焼き込み、プロジェクト固有チケットや
+    # 未検証の外部引用は含めない（移植性とトレーサビリティの両立）。
+    references:
+      - label: "設計判断（採用根拠）"
+        path: "docs/DECISIONS.md"
+      - label: "Hook 技術詳細"
+        path: ".cursor/hooks/README.md"
+      - label: "AI 振る舞い規範"
+        path: "AGENTS.md > Context Budget Protocol"
+# ------------------------------------------------------------
+# (2c) tech_stack — root manifest 生成用の seed（per-project 入力 / Phase 1.6 取り込み）
+#   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
+#   配布時点では具体スタックを焼き込まず、プレーンな未取り込み状態を保持する。
+#   スキル実行後は root manifest.yaml の tech_stack が正式な取り込み先になる。
+# ------------------------------------------------------------
+tech_stack:
+  note: "未取り込み。Phase 1.6 で .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md の §9 技術スタック表を取り込むと、プロジェクト固有の方針に置き換わる。"
+  items:
+
+# ------------------------------------------------------------
+# (2d) session — Layer 3 セッション管理（親へ内包）
+#   session-planning / session-handover / decisions-record は本 manifest の
+#   outputs[] から生成する。スキル実行後は root manifest.yaml の session.verification
+#   が正式な検証コマンドの置き場になる。
+# ------------------------------------------------------------
+session:
+  large_task_threshold:
+    files: 5
+    subtasks: 3
+  verification:
+    gate_command: "[要確認] Phase 1.65 で導出"
+
+# ------------------------------------------------------------
+# (2g) coderabbit — CodeRabbit 設定（tech_stack 従属 / Phase 1.66 自動決定）
+#   Phase 1.66（resolve_coderabbit.py）が tech_stack.items から
+#   有効/無効ツール・path_instructions・path_filters を決定論的に導出する。
+#   以下は seed default。実プロジェクトでは resolve_coderabbit.py の出力で上書きされる。
+# ------------------------------------------------------------
+coderabbit:
+  enabled: true
+  language: "ja-JP"
+  tools_enabled:
+    - name: "markdownlint"
+    - name: "yamllint"
+    - name: "shellcheck"
+    - name: "gitleaks"
+    - name: "trufflehog"
+    - name: "github-checks"
+    - name: "ast-grep"
+    - name: "skillspector"
+    - name: "osv-scanner"
+    - name: "actionlint"
+    - name: "eslint"
+    - name: "biome"
+    - name: "oxc"
+    - name: "oasdiff"
+    - name: "hadolint"
+  tools_disabled:
+    - name: "ruff"
+    - name: "pylint"
+    - name: "flake8"
+    - name: "phpstan"
+    - name: "phpmd"
+    - name: "phpcs"
+    - name: "golangci-lint"
+    - name: "detekt"
+    - name: "rubocop"
+    - name: "brakeman"
+    - name: "swiftlint"
+    - name: "clippy"
+    - name: "pmd"
+    - name: "fbinfer"
+    - name: "clang"
+    - name: "cppcheck"
+    - name: "fortitude-lint"
+    - name: "luacheck"
+  path_filters:
+    - "!**/*.lock"
+    - "!**/*.generated.*"
+    - "!**/dist/**"
+    - "!**/node_modules/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/coverage/**"
+    - "!**/__snapshots__/**"
+    - "!**/.cursor/plans/**"
+    - "!**/.cursor/.session/**"
+    - "!**/tmp/**"
+    - "!**/.DS_Store"
+    - "!**/pnpm-lock.yaml"
+  path_instructions:
+    - path: "**/*.ts"
+      instructions: "TypeScript strict モードのプロジェクトです。型安全性（any の回避、適切な型ガード）、エラーハンドリングの網羅性、null/undefined の安全な処理を重点的にレビューしてください。"
+    - path: "**/*.tsx"
+      instructions: "React コンポーネントのレビュー: アクセシビリティ（aria 属性、セマンティック HTML）、パフォーマンス（不要な再レンダリング、メモ化）、Server Component / Client Component の境界を確認してください。"
+    - path: "**/workers/**"
+      instructions: "Cloudflare Workers 環境のコードです。Node.js API ではなく Web Standard API を使用しているか、CPU 時間制限を意識した実装か、env バインディングの型安全性を確認してください。"
+    - path: "**/*.yaml"
+      instructions: "YAML ファイルのレビュー: スキーマバリデーションの整合性、OpenAPI 定義の場合は 3.1 仕様への準拠を確認してください。"
+    - path: "**/*.test.*"
+      instructions: "テストファイルのレビュー: エッジケースのカバレッジ、テスト間の独立性（shared state の排除）、アサーションが具体的かつ十分か確認してください。"
+    - path: ".cursor/skills/**"
+      instructions: "Cursor Agent Skill ファイルです。SKILL.md のフォーマット準拠とセキュリティリスクを確認してください。"
+    - path: ".cursor/rules/**"
+      instructions: "Cursor Rule ファイルです。ルール間の矛盾がないか、宣言的な制約として記述されているか確認してください。"
+    - path: ".cursor/hooks/**"
+      instructions: "Cursor Hook スクリプトです。シェルスクリプトの堅牢性と副作用のないべき等な動作を確認してください。"
+    - path: "docs/**"
+      instructions: "ドキュメントのレビュー: 他ドキュメントとの整合性と Meta 層 / Domain 層の命名規約準拠を確認してください。"
+    - path: "manifest.yaml"
+      instructions: "manifest.yaml は Agentic Workflow 基盤の Source of Truth です。変更が下流の生成物に正しく反映されるか確認してください。"
+
+# ------------------------------------------------------------
+# (2e) quality_gate_contract — root manifest 生成用の seed
+#   Phase 1.65（resolve_quality_gate.py）が workflow_pattern × tech_stack から
+#   G-* と package scripts が満たすべき contract を決定論的に書き込む。
+#   ここでの責務は実 script 検出ではなく技術スタック由来の canonical contract の生成であり、
+#   結果は package.json の有無に依存しない（実体は contract に追従する）。
+# ------------------------------------------------------------
+quality_gate_contract:
+  gen:
+  build:
+  lint:
+  test:
+
+# ------------------------------------------------------------
+# (2f) code_review — agent-code-review スキル（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: code_review エントリが生成対象になる。
+#   run_resolved_engine.py の _filter_outputs_by_features() が outputs[] をフィルタする。
+# ------------------------------------------------------------
+code_review:
+  enabled: false
+  report:
+    enabled: false
+    output_dir: "docs/agent-tasks/reports"
+
+# ------------------------------------------------------------
+# (2g) github_pr — agent-github-pr スキル（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: github_pr エントリが生成対象になる。
+# ------------------------------------------------------------
+github_pr:
+  enabled: false
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
@@ -205,6 +362,7 @@ outputs:
       - "## Documentation Naming Convention"
       - "## Agent Role"
       - "## Session Protocol"
+      - "## Context Budget Protocol"
       - "## Boundaries"
       - "## Gotchas"
   - path: CLAUDE.md
@@ -230,6 +388,15 @@ outputs:
       - "Cautious"
       - "Thorough"
       - "Selective"
+  - path: .cursor/rules/03-github-security.mdc
+    template: rules/03-github-security.mdc.template
+    mode: render
+    required_sections:
+      - "alwaysApply: true"
+      - "token"
+      - "secret"
+      - "credential"
+      - "guard-git-write.sh"
   - path: .cursor/hooks/guard-git-write.sh
     template: hooks/guard-git-write.sh.template
     mode: render
@@ -237,6 +404,11 @@ outputs:
     required_sections:
       - "beforeShellExecution"
       - "permission"
+      - "deny_class_failclose"
+      - "gh api"
+      - "gh auth token"
+      - "secret store"
+      - "git credential"
   - path: .cursor/hooks/session-bootstrap.sh
     template: hooks/session-bootstrap.sh.template
     mode: render
@@ -303,14 +475,34 @@ outputs:
     mode: render
     required_sections:
       - "exit code"
+      - "G-GEN"
       - "Hook"
       - "リンク衛生"
+      - "package script contract"
+      - "検査 ID"
+      - "セッション開始ゲート"
+      - "計画ライフサイクルゲート"
+      - "token"
+      - "secret store"
+      - "G-PLAN-SECTION-001"
+      - "例外承認記録"
+      - "フェーズ境界"
   - path: docs/session-handoff-guide.md
     template: docs/session-handoff-guide.md.template
     mode: render
     required_sections:
       - "CONTEXT_BUDGET"
       - "handoff-active.md"
+      - "## 生成根拠"
+      - "## なぜ必要か"
+      - "## 構成"
+      - "## 各指標の更新タイミング"
+      - "## チェックリスト"
+      - "## 参考リンク"
+      - "単一 manifest 制約"
+      - "意図的に採用しない設計"
+      - "各指標が近似するもの（proxy の意味）"
+      - "席を外して時間だけ進んだ"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
@@ -318,6 +510,158 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
       - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
+  # coderabbit.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .coderabbit.yaml
+    template: coderabbit.yaml.template
+    mode: render
+    feature: coderabbit
+    required_sections:
+      - "coderabbit.ai/integrations/schema.v2.json"
+      - "path_instructions"
+      - "tools"
+  # Layer 3 セッション管理スキル群（親 manifest に内包）。
+  - path: .cursor/skills/session-planning/SKILL.md
+    template: skills/session-planning/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-planning"
+      - "## 大規模タスクの検知"
+      - "## パターン選択フロー"
+      - "## 追跡ドキュメント"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/SKILL.md
+    template: skills/session-handover/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: session-handover"
+      - "## 検証ゲート"
+      - "## リンク衛生"
+      - "## 再開プロトコル"
+      - "## Gotchas"
+  - path: .cursor/skills/session-handover/scripts/verification-gate.sh
+    template: skills/session-handover/scripts/verification-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "session.verification.gate_command"
+      - "=== verification gate ==="
+  - path: .cursor/skills/session-handover/scripts/session-start-gate.sh
+    template: skills/session-handover/scripts/session-start-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "=== session-start gate ==="
+      - "G-SESSION-HANDOFF-001"
+      - "G-SESSION-ARCH-001"
+  - path: .cursor/skills/session-handover/scripts/plan-gate.sh
+    template: skills/session-handover/scripts/plan-gate.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "=== plan gate"
+      - "G-PLAN-SECTION-001"
+      - "G-PLAN-REVIEW-001"
+  - path: .cursor/skills/decisions-record/SKILL.md
+    template: skills/decisions-record/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: decisions-record"
+      - "D-BOUNDARY"
+      - "Alternatives Considered"
+      - "## Gotchas"
+  # agent-code-review スキル（feature: code_review で条件生成）。
+  # code_review.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .cursor/skills/agent-code-review/SKILL.md
+    template: skills/agent-code-review/SKILL.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "name: agent-code-review"
+      - "## 前提条件"
+      - "## ワークフロー"
+      - "Step Gate Matrix"
+      - "## Gotchas"
+  - path: .cursor/skills/agent-code-review/references/self-rebuttal.md
+    template: skills/agent-code-review/references/self-rebuttal.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/approval-loop.md
+    template: skills/agent-code-review/references/approval-loop.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/gh-commands.md
+    template: skills/agent-code-review/references/gh-commands.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "wrapper"
+      - "github-pr-reviews-safe"
+      - "github-pr-reply-safe"
+  - path: .cursor/skills/agent-code-review/references/reply-templates.md
+    template: skills/agent-code-review/references/reply-templates.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/group-presentation-templates.md
+    template: skills/agent-code-review/references/group-presentation-templates.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/review-completion.md
+    template: skills/agent-code-review/references/review-completion.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/review-report-format.md
+    template: skills/agent-code-review/references/review-report-format.md.template
+    mode: render
+    feature: code_review
+  - path: .cursor/skills/agent-code-review/references/checklist.md
+    template: skills/agent-code-review/references/checklist.md.template
+    mode: render
+    feature: code_review
+  # agent-github-pr スキル（feature: github_pr で条件生成）。
+  # github_pr.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .cursor/skills/agent-github-pr/SKILL.md
+    template: skills/agent-github-pr/SKILL.md.template
+    mode: render
+    feature: github_pr
+    required_sections:
+      - "name: agent-github-pr"
+      - "## 前提条件"
+      - "github-pr-create-safe"
+      - "## Gotchas"
+  - path: .cursor/skills/agent-github-pr/references/pr-commands.md
+    template: skills/agent-github-pr/references/pr-commands.md.template
+    mode: render
+    feature: github_pr
+    required_sections:
+      - "wrapper"
+      - "github-pr-create-safe"
+  # GitHub App 認証 helper と PR 作成 wrapper は基盤必須出力として常時生成する。
+  # レビュー用 wrapper は feature: code_review で条件生成される。
+  # .cursorignore で AI アクセスを遮断する。
+  - path: bin/_github-app-auth.sh
+    template: bin/_github-app-auth.sh.template
+    mode: render
+    executable: true
+  - path: bin/github-pr-reviews-safe
+    template: bin/github-pr-reviews-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-comment-safe
+    template: bin/github-pr-comment-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-reply-safe
+    template: bin/github-pr-reply-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+  - path: bin/github-pr-create-safe
+    template: bin/github-pr-create-safe.template
+    mode: render
+    executable: true
   - path: .gitignore
     template: gitignore.block.template
     mode: marker
@@ -326,36 +670,60 @@ outputs:
     mode: marker
 
 # ------------------------------------------------------------
-# (3) project_overrides — プロジェクト固有値（PO が記入）
-#     未記入の "[要確認]" は audit が WARN として列挙する（FAIL ではない）。
+# (3) project_overrides — root manifest 生成用のプロジェクト固有値 seed
+#     本ツールキットは新規リポジトリにコピーして実行する配布モデル。project.* は
+#     (a) AskQuestion(workflow_pattern のみ) / (b) 自動導出(name/slug/tracking_artifact/quality_gate) /
+#     (c) 固定値(one_liner/agent_role/priorities/boundaries/doc_navigation = 本基盤の機能説明)
+#     の3分類で確定する（SKILL.md Phase 1.5 参照）。自由入力・PO 直接手入力は廃止。
+#     スキル実行により root manifest.yaml が生成された後、PO が正式な project manifest として評価する。
 # ------------------------------------------------------------
 project:
-  name: aiportfolio
-  slug: aiportfolio
-  one_liner: ポートフォリオ管理(アプリ、サービス)などを総合的に管理するプロジェクト。
-  # 開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
-  workflow_pattern: "開発型"
-  tracking_artifact: "plan.md"
-  agent_role: "[要確認] エージェントが振る舞う専門ロール"
+  # コピー先（実行先）リポジトリのディレクトリ名から自動導出する（PO には問わない）。
+  # 本ツールキットは新規リポジトリにコピーして実行する配布モデルのため、固定文字列を焼き込まない。
+  name: "[自動導出] コピー先リポジトリのディレクトリ名"
+  # name から自動導出（小文字化・空白をハイフン化）。PO には問わない
+  slug: "[自動導出] name から導出"
+  # 固定値（本基盤が表す機能の説明。PO には問わない）。
+  one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
+  # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
+  workflow_pattern: "[要確認]"
+  # workflow_pattern から決定論マッピングで自動確定
+  tracking_artifact: "[要確認]"
+  # 固定値（本基盤が表す機能の説明。PO には問わない）。
+  agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
+  # 固定値（PO には問わない）。
   priorities:
-    - "[要確認] トレードオフ時の優先順位1"
-  # tech_stack は framework.tech_stack（techstack 設計書 §9 由来）へ移管。
-  # PO 記入欄ではなく設計書 SoT を符号化したものとして framework 側で管理する。
+    - "冪等性と Source of Truth 一元化（manifest → 出力）を最優先する"
+    - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
+    - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
+  # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
+  # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）から導出する。
+  # G-* は root scripts の canonical entrypoint として決定し、script contract を別途生成する責務を持つ。
+  # 実 script 検出ではなく contract 決定であり、package.json の有無に依存しない。
   quality_gate:
-    build_cmd: "[要確認] 例: make build"
-    lint_cmd: "[要確認] 例: make lint"
-    test_cmd: "[要確認] 例: make test"
+    gen_cmd: "[要確認] Phase 1.65 で導出"
+    build_cmd: "[要確認] Phase 1.65 で導出"
+    lint_cmd: "[要確認] Phase 1.65 で導出"
+    test_cmd: "[要確認] Phase 1.65 で導出"
+    # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"
+  # 固定値（本基盤の運用制約。PO には問わない）。
   boundaries:
     always:
-      - "[要確認] 常に守る制約"
+      - "出力ファイルを直接編集しない（manifest.yaml / templates を編集して再生成する）"
+      - "変更前に関連ファイルを全体読み込みする"
     ask_first:
-      - "[要確認] 事前承認が必要な操作"
-    # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）
+      - "framework.* の変更（Meta 層の設計判断）"
+      - "git commit / push などの履歴操作"
+    # never の git 不可逆操作は framework 固定（guard-git-write.sh で deterministic deny）。
     never_extra:
-      - "[要確認] プロジェクト固有の禁止操作（任意）"
+      - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
+      - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
+      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials）を読み取る"
+      - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
+  # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
   doc_navigation:
     domain:
-      - path: "[要確認] docs/spec.md"
-        desc: "[要確認] 仕様サマリ"
+      - path: "docs/tech-stack.md"
+        desc: "技術スタック方針（tech_stack 由来の Domain 層サマリ・生成物）"

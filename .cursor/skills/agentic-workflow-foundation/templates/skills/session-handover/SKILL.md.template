@@ -1,0 +1,99 @@
+---
+name: session-handover
+description: >-
+  セッション終了・中断・Context Budget Yellow/Red 到達時に、検証ゲートを実行し
+  handover を作成/更新する。stop / session-budget 系 Hook と Session Protocol が
+  終了・中断を検知したとき、または追跡ドキュメントの全 Phase 完了時に発火する。
+  再開時に作業状態・未解決事項・次アクションを復元できるようにする。
+  Do NOT use for: セッション途中の軽微なメモ、追跡ドキュメントの通常更新。
+disable-model-invocation: true
+---
+
+# session-handover
+
+セッション終了時の検証・要約・再開準備を扱うスキル。
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
+<!-- disable-model-invocation: true — モデル任意発火を抑止し、Hook / Session Protocol による自動管理との責務分離を維持する。 -->
+
+## 発火条件
+
+以下のいずれかを検知したとき、本スキルの手順に従ってセッション終了処理を行う。
+
+- **Session Protocol 上の終了**: AGENTS.md Session Protocol「セッション終了」の手順に到達した
+- **Context Budget Yellow**: `session-budget-evaluator.sh` が `[CONTEXT_BUDGET=YELLOW]` を通知した（区切り準備）
+- **Context Budget Red**: `session-budget-evaluator.sh` が `[CONTEXT_BUDGET=RED]` を通知した（handoff manifest 書き出し＋新規チャット誘導）
+- **明示的な中断要求**: ユーザーが「一旦ここまで」「終わり」等の中断を指示した
+
+## 検証ゲート
+
+セッション終了前に、可能な範囲で次を確認する。
+
+- 変更内容と未完了作業が追跡ドキュメント（`{{project.tracking_artifact}}`）に反映されている
+- 実行可能な品質ゲートを実行した
+- 実行できなかったゲートは理由を記録した
+
+既定の検証コマンド:
+
+```bash
+{{session.verification.gate_command}}
+```
+
+このコマンドは `resolve_quality_gate.py` が `workflow_pattern` × `tech_stack` から生成した `session.verification.gate_command` を展開する。
+
+補助スクリプト:
+
+```bash
+.cursor/skills/session-handover/scripts/verification-gate.sh
+```
+
+追跡ドキュメントのフェーズ境界（計画→実装 / レビュー→完了）は計画ライフサイクルゲートで機械検査する（`docs/QUALITY_GATE.md §1.6`）:
+
+```bash
+.cursor/skills/session-handover/scripts/plan-gate.sh report   # 計画→実装
+.cursor/skills/session-handover/scripts/plan-gate.sh review   # レビュー→完了
+```
+
+## リンク衛生
+
+handover には、次セッションが参照すべき一次情報へのリンクを残す。
+
+- 追跡ドキュメント
+- 変更した主要ファイル
+- 仕様/設計/判断の根拠
+- 実行した検証コマンドと結果
+- 失敗・未実行・判断待ちの事項
+
+## 再開プロトコル
+
+再開時は以下を上から確認する。
+
+1. handover の最新状態を読む
+2. `{{project.tracking_artifact}}` の未完了タスクを確認する
+3. git status と差分を確認し、ユーザー変更を壊さない
+4. 直近の検証結果を確認し、必要なら最小ゲートを再実行する
+5. 次アクションを1つに絞って再開する
+
+## アーカイブ
+
+追跡ドキュメント（`{{project.tracking_artifact}}`）の完了チェックが全て `[x]` になり、キャンペーンが完了した場合は `archive/` への移動を提案する。アーカイブにより AI の読み込み対象外となり、次セッション以降のコンテキストコストを削減する（SoT 原則5「コンテキスト保護」）。
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+
+### 起票トリガー
+
+1. handover が古く再開に使えなかった
+2. 検証未実行なのに完了扱いした
+3. ユーザー変更と自分の変更を混同した
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec/runbookリンク}
+```
+
+### エントリ
+
+(現時点のエントリは無し)

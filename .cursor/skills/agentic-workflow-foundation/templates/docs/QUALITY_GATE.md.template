@@ -23,11 +23,42 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 | ゲート | コマンド | 合格条件 |
 | --- | --- | --- |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | exit 0 かつ **差分なし（生成物がコミット済み）** — 再生成後に `git status --porcelain` が空 |
 | G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
 | G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
 | G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
 
-**実行順序の推奨**: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+**G-GEN の位置づけ（PR 前必須 / 条件付き）**: G-GEN は **生成物（OpenAPI bundle / 型 / client 等）に影響する変更を含む PR では前提必須**とする。再生成後に `git status --porcelain` が空であること（= 生成物のコミット漏れがないこと）を確認する。OpenAPI 定義・生成設定・生成スクリプトのいずれにも触れない変更（例: ドキュメントのみ / テストのみ）に限り G-GEN を省略してよく、その場合は PR 本文または追跡ドキュメントにその旨を1行記録する。
+
+**標準検証の推奨順序**:
+- 生成物に関わる変更: `{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+- 生成物に無関係な変更: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+
+**G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
+
+#### package script contract
+
+G-* は技術スタックから決まる root scripts を外部インターフェース contract として定義する。`package.json` の各 script は、この contract を満たす責務を負う（実体が contract に追従する）。
+
+**gen script (`{{project.quality_gate.gen_cmd}}`)**
+
+{{#each quality_gate_contract.gen}}- {{this}}
+{{/each}}
+
+**build script (`{{project.quality_gate.build_cmd}}`)**
+
+{{#each quality_gate_contract.build}}- {{this}}
+{{/each}}
+
+**lint script (`{{project.quality_gate.lint_cmd}}`)**
+
+{{#each quality_gate_contract.lint}}- {{this}}
+{{/each}}
+
+**test script (`{{project.quality_gate.test_cmd}}`)**
+
+{{#each quality_gate_contract.test}}- {{this}}
+{{/each}}
 
 ### 1.2 ドキュメントゲート（docs 変更を伴う PR）
 
@@ -36,57 +67,143 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-DOC-ADR | 設計次元 D-* を変更する判断が発生した場合、`docs/DECISIONS.md` に ADR 追記 | Significance / Alternatives Considered を満たす |
 | G-DOC-NAMING | 新規ドキュメント名が semantic 2層モデルに従っている | Meta 層は大文字 / Domain 層は kebab-case（`AGENTS.md > Documentation Naming Convention`） |
 
+**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「仕様反映ゲート（`docs/spec/{feature}.md`）/ Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
+
 ### 1.3 リンク衛生ゲート
 
 | ゲート | 内容 | 合格条件 |
 | --- | --- | --- |
 | G-LINK | 追跡ドキュメントにセッションID・大規模ログ全文を含めない | 本文が自己完結で読み切れる |
 
+### 1.4 検査 ID 命名規約
+
+スクリプトで実装するゲート（§1.5 / §4）の各検査には安定検査 ID を付与する。CI / ログ集計 / 失敗種別の機械特定のため。**BAS の Finding Code 79 種体系は採用せず、本リポでは必要最小限の軽量 ID 運用とする**（`framework.accd_axes[B].not_adopted` の死守）。
+
+```
+G-{GATE}-{CATEGORY}-{NNN}
+```
+
+- `G-`: Gate Identifier prefix（固定）
+- `{GATE}`: ゲート名（例: `SESSION`）
+- `{CATEGORY}`: 検査カテゴリ（短い大文字略号。例: `HANDOFF` / `STALE` / `ARCH`）
+- `{NNN}`: 同カテゴリ内の連番（001 起点）
+
+判定種別は FAIL（exit 1 / Advisory ループ対象）と WARN（exit 0 / 注意喚起のみ）の 2 種。数値スコアリングや重み付けは行わない（軽量運用）。
+
+### 1.5 セッション開始ゲート
+
+新セッション起動時に [`.cursor/skills/session-handover/scripts/session-start-gate.sh`](../.cursor/skills/session-handover/scripts/session-start-gate.sh) を実行し、Cursor セッションをまたいだ整合性違反を検出する。`session-bootstrap.sh`（handoff 注入・消費）と handoff manifest 機構を持つ本リポで、その消費漏れ・取り残しを検査する。
+
+| 検査 ID | 内容 | 判定 / 出力 |
+| --- | --- | --- |
+| G-SESSION-HANDOFF-001 | `.cursor/.session/handoff-active.md` が残存していない | WARN（exit 0）で残存パス表示（新規チャットの sessionStart Hook が consume すべき） |
+| G-SESSION-STALE-001 | `{{project.tracking_artifact}}` が `git log -1` 基準で 24 時間以上未更新でない | WARN（exit 0）で停滞ファイル列挙（注意喚起のみ） |
+| G-SESSION-ARCH-001 | 完了チェックがすべて `[x]` の追跡ドキュメントが `archive/` 外に残存していない | FAIL（exit 1）で残存ファイル列挙 → `archive/` へ移動 |
+
+WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
+
+### 1.6 計画ライフサイクルゲート
+
+追跡ドキュメント `{{project.tracking_artifact}}` のフェーズ境界（計画→実装 / レビュー→完了）を機械検査する軽量シェルゲート。これまで Advisory（AI 自主遵守）に留めていた「必須項目充足 / レビュー完了承認 / 未対応0件 / 例外承認証跡」を、`session-start-gate.sh` と同クラスのシェル + 軽量検査ID で機械検査に昇格する。**Finding Code 79 種体系・数値スコアリングは採用しない**（`framework.accd_axes[B].not_adopted` 死守）。
+
+実行コマンド: `.cursor/skills/session-handover/scripts/plan-gate.sh [report|review]`（実体は本基盤の生成物）。`report` が計画→実装境界（既定）、`review` がレビュー→完了境界。必須セクションの SoT は `manifest.yaml > framework.plan_required_sections`。
+
+| 検査 ID | フェーズ | 内容 | 判定 / 出力 |
+| --- | --- | --- | --- |
+| G-PLAN-SECTION-001 | report / review | `framework.plan_required_sections` が `{{project.tracking_artifact}}` に存在する | FAIL（exit 1）で欠落セクション列挙 |
+| G-PLAN-PLACEHOLDER-001 | report / review | 未確定マーカー（`要確認` プレースホルダ / `TODO`）が残存していない | WARN（exit 0）で注意喚起 |
+| G-PLAN-EXCEPTION-001 | report / review | ゲートスキップ言及時に例外承認記録（§2）が存在する | WARN（exit 0）で注意喚起 |
+| G-PLAN-REVIEW-001 | review のみ | 「レビュー完了承認」記録（`承認取得済み`）あり かつ `未対応` / `保留` マーカー0件 | FAIL（exit 1）で不足理由を表示 |
+
+WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数不正・追跡ドキュメント不在は exit 2（致命的）。
+
 ## 2. 例外承認フロー
 
-ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。
+ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。**満たさない限り、当該フェーズ境界（§3）は通過扱いにしない**。
 
-1. **ユーザーに明示的に承認を求め、承認記録を残す**
-2. 代替検証手段を提示し、ユーザーが合意している
-3. 既知の課題として `docs/DECISIONS.md` に ADR を起票し、Follow-up を明記
+1. **ユーザーに明示的に承認を求め、承認記録を追跡ドキュメント `{{project.tracking_artifact}}` の「例外承認記録」節に残す**（PR 本文にも併記可）。記録は `承認取得済み` を含む形で残し、`plan-gate.sh`（§1.6 `G-PLAN-EXCEPTION-001`）が検出できるようにする。
+2. 代替検証手段を提示し、ユーザーが合意している（合意内容も「例外承認記録」に残す）
+3. 既知の課題として `docs/DECISIONS.md` に ADR を起票し、Follow-up を明記する
+
+**証跡の置き場（SoT）**: 例外承認は `{{project.tracking_artifact}}` の「例外承認記録」節を一次置き場とし、設計次元 D-* に及ぶ判断は `docs/DECISIONS.md` の ADR を併用する。セッションをまたぐ場合もリンク衛生（§1.3）を保ち、巨大ログ全文は貼らない。
 
 **禁止事項**（AI 単独でやってはいけないこと）:
 
 - テストの一部失敗を黙って無視する
 - lint 指摘を一括抑制する
+- 例外承認記録を残さずに、ゲート失敗のままフェーズを進める
 
 ## 2.1 Hook による Deterministic 強制（Git/gh 操作）
 
 以下のコマンドは [`.cursor/hooks/guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) で deterministic にブロック / 確認される（**Hook 強制** layer）。`AGENTS.md > Boundaries > Never` の Advisory（~80%）から Deterministic（~100%）への昇格適用。
 
-| コマンドパターン | 挙動 |
-|---|---|
-| `git push --force` / `-f` / `--force-with-lease` | deny |
-| `git push --delete` | deny |
-| `git push origin <main\|master\|develop\|release/*>` | deny |
-| `git reset --hard origin/*` / `upstream/*` | deny |
-| `gh pr merge` | deny |
-| `gh repo delete` / `gh repo archive` | deny |
-| `git commit --amend` | ask |
-| `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask |
+| コマンドパターン | 挙動 | 根拠 |
+|---|---|---|
+| `git push --force` / `-f` / `--force-with-lease` | deny | 履歴破壊リスク（AGENTS.md > Never） |
+| `git push --delete` | deny | リモート参照削除（不可逆） |
+| `git push origin <main\|master\|develop\|release/*>` | deny | PR 経由原則（保護ブランチ直 push 禁止） |
+| `git reset --hard origin/*` / `upstream/*` | deny | ローカル変更の不可逆消失 |
+| `gh pr merge` | deny | 明示指示なきマージ禁止（AGENTS.md > Never） |
+| `gh repo delete` / `gh repo archive` | deny | 不可逆 |
+| `gh pr create` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-create-safe` を案内 |
+| `gh pr comment` / `gh pr review` / `gh issue comment` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` を案内 |
+| `gh api` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-reviews-safe` 等を案内 |
+| `gh`（上記以外の全サブコマンド） | deny | PAT 未設定で認証不可。wrapper 一覧を案内 |
+| `git commit --amend` | ask | 履歴改ざんのためユーザー承認 |
+| `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask | 履歴書き換えのためユーザー承認 |
 
-**素通り（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / `gh pr create` / 全ての読み取り系。
+**認証情報・secret 漏洩防止**（統一設計書外の拡張。[`.cursor/rules/03-github-security.mdc`](../.cursor/rules/03-github-security.mdc) を宣言的 SoT とし、Hook で deterministic 強制する）:
+
+| コマンドパターン | 挙動 | 根拠 |
+|---|---|---|
+| `gh auth token` | deny | 認証トークン漏洩防止 |
+| `gh auth status --show-token` / `-t` | deny | 認証トークン漏洩防止 |
+| `gh auth login --with-token` | deny | 認証設定の無断変更防止 |
+| `echo`/`printf` による `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN` の出力 | deny | token 環境変数の漏洩防止 |
+| `security find-generic-password` / `find-internet-password` / `dump-keychain` | deny | macOS Keychain への直接アクセス防止 |
+| `op read` / `op item get` / `aws secretsmanager` / `gcloud secrets` / `vault kv get` / `pass show` | deny | secret store への直接アクセス防止 |
+| `git credential fill` / `approve` / `reject` | deny | Git 認証情報の漏洩防止 |
+| `git config --global`\|`--system --get credential.*` | deny | Git 認証設定の漏洩防止 |
+| `env` / `printenv`（引数なし） | ask | 全環境変数に token が含まれる可能性 |
+| `git config --list` | ask | 認証情報を含む設定の表示リスク |
+
+**認証モデル**: 本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、GitHub API 操作はすべて wrapper (`bin/github-pr-*-safe`) 経由で行う。wrapper のみが `~/.config/github-apps/` の認証情報（GitHub App private key）にアクセスでき、内部で installation token を発行する。AI が `gh` CLI を直接実行しても認証が通らず失敗するため、上記の deny はこの認証モデルを Hook レベルで反映したものである。
+
+**素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / 全ての git 読み取り系。
+
+**フェイル戦略（二段階）**:
+- **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
+- **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。
 
 **詳細・テスト手順**: [`.cursor/hooks/README.md`](../.cursor/hooks/README.md)
 
-## 3. 基盤ファイルの自己検証ゲート
+## 3. フェーズ境界ゲート
+
+追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+
+| フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
+| --- | --- | --- | --- |
+| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの `archive/` 移動済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
+| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
+| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
+| **PR レビュー → 完了 / アーカイブ** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンを `archive/` へ移動（AI の読み込み対象外にする） | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ `archive/` 移動は次セッションの §1.5 `G-SESSION-ARCH-001` で検出 |
+
+> 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
+
+## 4. 基盤ファイルの自己検証ゲート
 
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-foundation/scripts/audit.py
+python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足
 - exit 1 = 出力ファイルが直接編集された（drift）または必須要件欠落 → 再生成または manifest 修正
 - exit 2 = テンプレート不在 / manifest 破損
 
-## 4. 参考
+## 5. 参考
 
 - `AGENTS.md > Session Protocol`（本ゲートの実行タイミング）
 - `docs/AGENT_RUNBOOK.md`（5層モデルでのアーティファクト配置）

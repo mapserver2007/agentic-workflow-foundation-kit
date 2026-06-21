@@ -1,0 +1,215 @@
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# wrapper コマンドリファレンス
+
+`agent-code-review` スキルで使用する固定 wrapper コマンド集。GitHub API へのアクセスはすべて wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
+
+> **セキュリティルール**: [`.cursor/rules/03-github-security.mdc`](../../../../.cursor/rules/03-github-security.mdc) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+
+---
+
+## 0. 前提条件（wrapper セットアップ）
+
+### 必要なもの
+
+- GitHub App（Repository permissions: `Pull requests: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
+- wrapper 3 コマンドが `bin/` にスキル実行（Phase 2）で生成済み
+- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
+
+### 起動チェック
+
+```bash
+test -x bin/github-pr-reviews-safe \
+  && test -x bin/github-pr-comment-safe \
+  && test -x bin/github-pr-reply-safe \
+  || { echo "GitHub wrapper not found" >&2; exit 1; }
+```
+
+wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する。
+
+---
+
+## 1. PR 情報の確認（Step 1）
+
+> **Mode A / Mode B 共通**: PR 番号 / URL の受領は両 Mode で必要。本スキルは PR 作成依頼を扱わないため、PR 未作成時は中断し、ユーザーに PR 作成を案内する。
+
+### 1.1 カレントブランチ取得
+
+```bash
+git branch --show-current
+```
+
+空の場合（デタッチド HEAD）はユーザーに直接入力してもらう。
+
+### 1.2 リリースブランチ取得（マージ先候補）
+
+```bash
+git fetch --prune
+git branch -r --list 'origin/release/v*' --sort=-version:refname | head -2 | sed 's| *origin/||'
+```
+
+### 1.3 PR 作成（`agent-code-review` 実行時はこの手順を**実行しない**）
+
+> **責務分離**: PR 作成は本スキルの責務外。`agent-code-review` は PR 未作成時、ユーザーへ PR 作成を案内し本スキルを中断する（[SKILL.md Step 1](../SKILL.md) 参照）。
+
+---
+
+## 2. 自動レビューツール待機（Step 2 / Mode A のみ）
+
+> **Mode B では本 Step を完全にスキップ**する。追加コメントは既に GitHub 側に存在するため、待機せず Step 3 に直接進む。
+>
+> **本 Step は自動レビューツール（CodeRabbit 等）のレビューを待つ用途に限定**。タイムアウト時は **Step 3 以降に進まず本スキルを中断**し、自動レビューツール固有のトリガー（例: `@coderabbitai review`）での手動トリガー後（または人間レビュー投稿後）に Mode A で再実行する（SoT: [SKILL.md Step 2](../SKILL.md)）。
+
+### 2.1 レビューコメント有無のチェック（ポーリング）
+
+```bash
+bin/github-pr-reviews-safe {owner} {repo} {pr_number}
+```、自動レビューツールの bot ログイン名（例: `coderabbitai`）のコメントが存在すればレビューコメントが投稿されている。
+
+- ポーリング間隔: 30 秒 → 60 秒 → 以降 60 秒
+- タイムアウト: PR 作成から最大 10 分
+- タイムアウト時: **Step 3 に進まず中断・ターン終了**。手動トリガー後に Mode A で再実行する
+
+### 2.2 自動レビューツール手動トリガー
+
+ベースブランチが `main` / `release/*` 以外で自動レビューが走らない場合、自動レビューツール固有のトリガーを投稿する:
+
+```bash
+echo '@coderabbitai review' > /tmp/auto-review-trigger.md
+bin/github-pr-comment-safe {pr_number} /tmp/auto-review-trigger.md
+```
+
+---
+
+## 3. レビュースレッド取得（Step 3 / Mode A・Mode B 共通 / レビュアー非依存）
+
+> **Mode A / Mode B でコマンドは同一**。wrapper が内部で `isResolved: false isOutdated: false` フィルタを適用し、未解決のレビュースレッドのみを返す。
+>
+> **author.login によるフィルタは行わない**（自動レビューツール / 人間 / その他 bot を区別せず全て取得し、SKILL.md §3 のレビュアー種別分岐で扱いを分ける）。
+
+```bash
+bin/github-pr-reviews-safe {owner} {repo} {pr_number}
+```
+
+### レスポンス JSON 構造
+
+wrapper は以下の構造の JSON を標準出力に返す:
+
+```json
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": false,
+              "isOutdated": false,
+              "isCollapsed": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "指摘本文 + Prompt for AI Agents セクション",
+                    "path": "ファイルパス",
+                    "line": 42,
+                    "url": "コメントURL（discussion_r{ID} から REST API 用 ID を抽出）",
+                    "author": {
+                      "login": "coderabbitai",
+                      "__typename": "Bot"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+### レビュアー種別の判定（SKILL.md §3 と連動）
+
+各スレッドの `comments.nodes[0].author` を以下の優先順で分類:
+
+| 判定 | 条件 |
+| --- | --- |
+| `AutoReviewTool` | `author.login` が自動レビューツールの bot ログイン名に一致（例: `coderabbitai`） |
+| `Human` | `author.__typename == "User"` かつ自動レビューツールの bot ではない |
+| `OtherBot` | 上記いずれにも該当しない（`__typename == "Bot"` 等） |
+
+### パース対象
+
+各コメントの `body` から以下のセクションを抽出（**自動レビューツールのみ存在 / Human・OtherBot は不在で空欄**）:
+
+```
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+（この中のテキストを抽出）
+</details>
+```
+
+人間レビュアー / その他 bot の指摘は「Prompt for AI Agents」が無いため、**指摘本文そのもの**を §4.1 検証起点として扱う（SKILL.md §3 のレビュアー種別による検証起点分岐表を参照）。
+
+### レビューコメント ID の抽出
+
+`comments.nodes[].url` の `discussion_r{数値}` から数値部分が REST API のコメント ID。
+
+例: `https://github.com/.../pull/553#discussion_r2820905938` → コメント ID: `2820905938`
+
+---
+
+## 4. レビュースレッド reply 投稿（Step 5-6 グループループ内）
+
+返信内容を一時ファイルに書き出し、wrapper に渡す:
+
+```bash
+# 返信内容をファイルに書き出す
+cat > /tmp/reply-{comment_id}.md << 'REPLY_EOF'
+（返信内容）
+REPLY_EOF
+
+# wrapper で投稿
+bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{comment_id}.md
+```
+
+- `{pr_number}`: 対象 PR 番号
+- `{comment_id}`: Step 3 で記録したレビューコメント ID（REST API 用）
+- wrapper は投稿成功時に reply URL を標準出力に返す
+
+---
+
+## 5. wrapper インターフェース仕様
+
+| wrapper | 用途 | 引数 | 標準出力 | exit code |
+| --- | --- | --- | --- | --- |
+| `bin/github-pr-reviews-safe` | レビュースレッド取得（READ） | `<owner> <repo> <pr-number>` | レビュースレッド JSON | 0=成功, 1=API エラー, 2=認証エラー |
+| `bin/github-pr-comment-safe` | PR コメント投稿（WRITE） | `<pr-number> <body-file>` | コメント URL | 0=成功, 1=API エラー, 2=認証エラー |
+| `bin/github-pr-reply-safe` | レビューコメント reply（WRITE） | `<pr-number> <comment-id> <body-file>` | reply URL | 0=成功, 1=API エラー, 2=認証エラー |
+
+> wrapper 内部で `owner`/`repo` を自動解決する実装の場合、引数を省略可能にしてもよい（実装側の裁量）。
+
+---
+
+## 6. コマンド早見表
+
+| 用途 | コマンド |
+| --- | --- |
+| カレントブランチ取得 | `git branch --show-current` |
+| リリースブランチ検索 | `git branch -r --list 'origin/release/v*' --sort=-version:refname \| head -2 \| sed 's\| *origin/\|\|'` |
+| レビュースレッド取得 | `bin/github-pr-reviews-safe {owner} {repo} {pr_number}` |
+| 自動レビュー手動トリガー | `bin/github-pr-comment-safe {pr_number} /tmp/trigger.md` |
+| スレッド reply 投稿 | `bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{id}.md` |
+
+---
+
+## 7. エラーハンドリング
+
+| エラー | 対応 |
+| --- | --- |
+| `bin/github-pr-reviews-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する |
+| exit 1（API エラー） | GitHub API 側のエラー。60 秒待機してリトライ。複数回続く場合はユーザーに報告 |
+| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| Hook により `deny` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper を案内する |
+| API 呼び出し失敗（その他） | エラー内容をユーザーに報告し、手動対応を案内 |

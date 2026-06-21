@@ -6,19 +6,51 @@
 
 set -uo pipefail
 
-INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
+# JSON 出力ヘルパ。jq があれば安全にエスケープし、無ければ固定文言で最小 JSON を組む
+# （フォールバック用 reason/msg は固定文字列でエスケープ不要）。
+emit() { # $1=permission $2=reason $3=agent_message
+  if command -v jq >/dev/null 2>&1; then
+    jq -n --arg p "$1" --arg reason "$2" --arg msg "$3" \
+      '{permission:$p, reason:$reason, agent_message:$msg}'
+  else
+    printf '{"permission":"%s","reason":"%s","agent_message":"%s"}\n' "$1" "$2" "$3"
+  fi
+}
+
+# deny クラス（不可逆操作）のフェイルクローズ判定。
+# 入力を正常解析できない場合（jq 不在 / JSON 破損 / command 抽出失敗）に生入力へ適用し、
+# deny クラスにマッチしたら allow（素通り）ではなく ask を返す（二段階フェイル戦略の deny 側）。
+deny_class_failclose() {
+  local n
+  n="$(printf '%s' "$1" | tr -s '[:space:]' ' ')"
+  if [[ "$n" =~ (--force|--force-with-lease) ]] \
+     || [[ "$n" =~ git[[:space:]]+push[[:space:]].*--delete ]] \
+     || [[ "$n" =~ git[[:space:]]+push[[:space:]].*(main|master|develop|release/) ]] \
+     || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
+     || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
+     || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]] \
+     || [[ "$n" =~ gh[[:space:]] ]]; then
+    emit "ask" "deny クラスのコマンドが疑われるが入力を正常解析できないためフェイルクローズで承認要求" \
+         "Hook が入力を解析できませんでした（jq 不在 / JSON 破損の可能性）。不可逆操作でないことを確認のうえ、ユーザー承認を得てください。"
+    exit 0
+  fi
+}
+
+INPUT="$(cat 2>/dev/null)" || INPUT=""
 if [[ -z "$INPUT" ]]; then
   echo '{}'
   exit 0
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
+  deny_class_failclose "$INPUT"
   echo '{}'
   exit 0
 fi
 
-CMD="$(jq -r '.command // empty' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }
+CMD="$(jq -r '.command // empty' <<<"$INPUT" 2>/dev/null)" || CMD=""
 if [[ -z "$CMD" ]]; then
+  deny_class_failclose "$INPUT"
   echo '{}'
   exit 0
 fi
@@ -79,7 +111,62 @@ if [[ "$CMD_N" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive)([[:space:]]|$) 
 fi
 
 # ============================================================
-# ASK パターン（ユーザー承認を強制）
+# DENY パターン（token / secret / credential 漏洩防止）
+# 仕様: .cursor/rules/03-github-security.mdc
+# ============================================================
+
+# gh auth による token 取得・表示
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+token([[:space:]]|$) ]]; then
+  deny "gh auth token は認証トークン漏洩のためブロック" \
+       "認証トークンの表示は許可されていません。"
+fi
+
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+status.*(--show-token|-t)([[:space:]]|$) ]]; then
+  deny "gh auth status --show-token は認証トークン漏洩のためブロック" \
+       "認証トークンの表示は許可されていません。"
+fi
+
+if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+login.*--with-token ]]; then
+  deny "gh auth login --with-token はトークン操作のためブロック" \
+       "認証設定の変更はユーザーが直接実行してください。"
+fi
+
+# token 環境変数の直接出力
+if [[ "$CMD_N" =~ (echo|printf)[[:space:]].*\$\{?(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]] \
+   || [[ "$CMD_N" =~ printenv[[:space:]]+(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]]; then
+  deny "token 環境変数の出力はブロック" \
+       "トークンの値を表示することは許可されていません。"
+fi
+
+# macOS Keychain への直接アクセス
+if [[ "$CMD_N" =~ security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain)([[:space:]]|$) ]]; then
+  deny "macOS Keychain への直接アクセスはブロック" \
+       "Keychain からの credential 取得はユーザーが直接実行してください。"
+fi
+
+# パスワードマネージャー / secret store
+if [[ "$CMD_N" =~ op[[:space:]]+(read|item[[:space:]]+get)([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ aws[[:space:]]+secretsmanager[[:space:]]+get-secret-value ]] \
+   || [[ "$CMD_N" =~ gcloud[[:space:]]+secrets[[:space:]]+versions[[:space:]]+access ]] \
+   || [[ "$CMD_N" =~ vault[[:space:]]+kv[[:space:]]+get([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ pass[[:space:]]+show([[:space:]]|$) ]]; then
+  deny "secret store / パスワードマネージャーへの直接アクセスはブロック" \
+       "secret の取得はユーザーが直接実行してください。"
+fi
+
+# Git credential / config による認証情報読み取り
+if [[ "$CMD_N" =~ git[[:space:]]+credential[[:space:]]+(fill|approve|reject)([[:space:]]|$) ]]; then
+  deny "git credential fill/approve/reject は認証情報漏洩リスクのためブロック" \
+       "Git 認証設定の操作はユーザーが直接実行してください。"
+fi
+
+if [[ "$CMD_N" =~ git[[:space:]]+config.*(--global|--system)[[:space:]]+--get[[:space:]]+credential ]]; then
+  deny "git config --get credential.* は認証情報漏洩リスクのためブロック" \
+       "Git 認証設定の確認はユーザーが直接実行してください。"
+fi
+
+# ============================================================
+# ASK パターン（ユーザー承認を強制 — git 操作のみ）
 # ============================================================
 
 if [[ "$CMD_N" =~ git[[:space:]]+commit.*--amend([[:space:]]|$) ]]; then
@@ -93,8 +180,53 @@ if [[ "$CMD_N" =~ git[[:space:]]+rebase([[:space:]]|$) ]] \
       "rebase 後に push --force が必要になる場合があります。ユーザー承認を得てください。"
 fi
 
+# 環境変数の一覧ダンプ（引数なしの env / printenv = secret 漏洩リスク）
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)env[[:space:]]*($|[;|&>]) ]] \
+   || [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)printenv[[:space:]]*($|[;|&>]) ]]; then
+  ask "引数なし env/printenv は全環境変数ダンプのため secret 漏洩リスクあり。承認を要求" \
+      "環境変数一覧にはトークンが含まれる可能性があります。特定の変数が必要な場合は変数名を指定してください。"
+fi
+
+# git config --global/--system --list（認証情報を含む可能性）
+if [[ "$CMD_N" =~ git[[:space:]]+config[[:space:]]+(--(global|system)[[:space:]]+)*--list ]]; then
+  ask "git config --list は認証情報を含む設定を表示する可能性があるため承認を要求" \
+      "Git 設定の確認が必要な場合は、特定のキーを指定してください (例: git config user.name)。"
+fi
+
 # ============================================================
-# どれにも該当しない -> 素通り
+# DENY パターン（gh CLI 全般 — PAT 未設定のため認証不可 / wrapper 強制）
+# 認証モデル: 本 kit は PAT / GITHUB_TOKEN を使用しない。GitHub API 操作は
+# wrapper (bin/github-pr-*-safe) 経由でのみ実行可能。gh CLI の直接実行は
+# 認証が通らず失敗するため、deny で wrapper を案内する。
+# ============================================================
+
+# gh pr create → 対応 wrapper: bin/github-pr-create-safe
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
+  deny "gh pr create は PAT 未設定のため実行不可。wrapper 経由で PR を作成する" \
+       "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+fi
+
+# gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
+   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+  deny "gh pr/issue コメント・レビューは PAT 未設定のため実行不可。wrapper 経由で投稿する" \
+       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+fi
+
+# gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)
+if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
+  deny "gh api は PAT 未設定のため実行不可。wrapper 経由で GitHub API を操作する" \
+       "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+fi
+
+# gh catch-all（上記パターンに該当しないすべての gh コマンド）
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]] ]]; then
+  deny "gh CLI は PAT 未設定のため直接実行不可。GitHub 操作は wrapper を使用する" \
+       "本環境では PAT / GITHUB_TOKEN が設定されていないため gh CLI は認証できません。GitHub API 操作は以下の wrapper を使用してください: bin/github-pr-create-safe / bin/github-pr-reviews-safe / bin/github-pr-comment-safe / bin/github-pr-reply-safe。対応する wrapper がない操作は現在実行できません。"
+fi
+
+# ============================================================
+# どれにも該当しない -> 素通り（git ローカル操作等）
 # ============================================================
 echo '{}'
 exit 0

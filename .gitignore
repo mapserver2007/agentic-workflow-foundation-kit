@@ -47,8 +47,8 @@ secret/
 **/old/
 
 .cursor/plans/
+.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md
+.cursor/docs/AI_BUSINESS_AGENT_SUITE.md
 
-# >>> agentic-foundation managed >>>
-# agentic-workflow-foundation: Context Budget セッション state（コミットしない）
-.cursor/.session/
-# <<< agentic-foundation managed <<<
+# Evaluation-only skill (foundation-kit に同梱しない / 評価専用)
+.cursor/skills/evaluate-agentic-workflow/

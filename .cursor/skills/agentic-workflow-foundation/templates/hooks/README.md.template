@@ -8,7 +8,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
-| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git/gh の不可逆操作（`--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` 等）を deny / ask | Enforcement | deny対象はfail_closed寄り |
+| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作（`--force` push / 保護ブランチ直 push / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）を ask、**`gh` CLI 全般を deny**（PAT 未設定で認証不可 — wrapper `bin/github-pr-*-safe` を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-active.md` を `additional_context` 注入してアーカイブ | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメント（観測のみ） | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
@@ -18,9 +18,11 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 ## 設計原則
 
-- **Enforcement**: `guard-git-write.sh` は危険サブコマンドのみ deny / ask。正規ワークフロー（`git commit` / `git push -u origin HEAD` / `gh pr create` 等）には干渉しない。
+- **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。正規ワークフロー（`git commit` / `git push -u origin HEAD`）には干渉しない。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能（PAT 未設定のため `gh` 直接実行は認証不可）。
 - **観測 + 助言**: `session-*` 系は AI をブロックせず、state を蓄積してしきい値超過時のみ助言を返す。
-- **fail_open**: スクリプト障害 / JSON パース失敗 / `jq` 未インストール時は `{}` を返して exit 0。Hook の自爆でワークフロー全停止しないため。
+- **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
+  - **deny 対象はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく `ask` を返す。
+  - **deny 対象以外は fail_open**: スクリプト障害 / 入力空時は `{}` を返して exit 0。Hook の自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
 
 ## State ファイル仕様（session-* 系）
 
@@ -40,14 +42,23 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 ## しきい値設定（Context Budget Protocol）
 
 しきい値の SoT は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > framework.budget_thresholds`。
-変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-foundation/scripts/generate.py` で再生成する（スクリプト直接編集は audit で drift 検出される）。
+変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
 現行値:
 
-| レベル | elapsed_min | prompt_count | shell_bytes |
-|---|---|---|---|
-| Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} |
-| Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} |
+| レベル | elapsed_min | prompt_count | shell_bytes | shell (MiB) |
+|---|---|---|---|---|
+| Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | 1 MiB |
+| Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | 5 MiB |
+
+### Yellow / Red 到達時の挙動
+
+| レベル | AI への通知 | AI が取るべきアクション |
+|---|---|---|
+| **Yellow** | `[CONTEXT_BUDGET=YELLOW]` を `followup_message` で通知 | 追跡ドキュメントの「次セッション TODO / 追加調査が必要な項目」を更新し、作業の区切りを準備する |
+| **Red** | `[CONTEXT_BUDGET=RED]` を `followup_message` で通知 | `.cursor/.session/handoff-active.md` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する |
+
+重複通知は `last_warning_level` フィールドで抑止される（`none` → `yellow` → `red` の昇格時のみ通知）。
 
 ## ローカルテスト手順
 
@@ -56,12 +67,19 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 ```bash
 # DENY
 echo '{"command":"git push --force"}' | .cursor/hooks/guard-git-write.sh   # {"permission":"deny",...}
+echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
+echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
+echo '{"command":"gh pr list"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...} (PAT 未設定)
 # ASK
 echo '{"command":"git commit --amend -m fix"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
 # ALLOW
 echo '{"command":"git push -u origin HEAD"}' | .cursor/hooks/guard-git-write.sh    # {}
-# fail_open
+# fail_open（deny クラスでない解析不能入力は素通り）
 echo 'invalid-json' | .cursor/hooks/guard-git-write.sh                            # {}
+# fail_close（jq 不在を模擬: PATH から jq だけ隠したダミー dir 経由で実行し deny クラスを ask に倒す）
+d=$(mktemp -d); for b in bash cat tr printf env; do ln -sf "$(command -v $b)" "$d/$b"; done
+echo '{"command":"git push --force"}' | PATH="$d" bash .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
+rm -rf "$d"
 
 # bootstrap
 echo '{"session_id":"test-sess-001"}' | .cursor/hooks/session-bootstrap.sh
@@ -78,3 +96,34 @@ rm -f .cursor/.session/test-sess-001.json .cursor/.session/handoff-consumed-*.md
 1. `.cursor/hooks.json` を削除（Hook 全停止）
 2. 該当 Hook の登録ブロックのみ削除（個別停止）
 3. Cursor Settings > Hooks で個別 disable
+
+## Hook 追加チェックリスト
+
+新しい Hook を追加する際は以下を確認する。
+
+1. [ ] `.cursor/hooks.json` にイベント・パス・timeout を登録した
+2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
+3. [ ] フェイル戦略（fail_open / fail_closed）を決定し、README の一覧表に追記した
+4. [ ] ローカルテスト手順に代表的なテストケースを追加した
+5. [ ] `manifest.yaml > outputs[]` に path / template / required_sections を追加した
+6. [ ] Cursor Settings > Hooks で Hook が有効になっていることを確認した
+7. [ ] `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit` が PASS することを確認した
+
+## Cursor 統合確認
+
+Hook が Cursor IDE で正しく認識されているかの確認手順。
+
+1. Cursor Settings (`Cmd+,`) > Features > Hooks を開く
+2. 登録済みの Hook 一覧が表示されることを確認する
+3. 各 Hook の Enabled トグルが ON であることを確認する
+4. テスト操作（例: `git push --force` のシェル入力）で Hook が発火し、期待通りの応答を返すことを確認する
+
+## 関連ドキュメントリンク
+
+| ドキュメント | 内容 |
+|---|---|
+| [`AGENTS.md > Context Budget Protocol`](../../AGENTS.md) | Layer 1 のコンテキスト予算ポリシー（Yellow/Red の AI 行動規範） |
+| [`docs/QUALITY_GATE.md §2.1`](../../docs/QUALITY_GATE.md) | Hook 強制範囲の SoT（guard-git-write.sh の deny/ask 対象定義） |
+| [`docs/session-handoff-guide.md`](../../docs/session-handoff-guide.md) | Context Budget Auto-Handoff の詳細手順・失敗モード |
+| [`docs/DECISIONS.md`](../../docs/DECISIONS.md) | Hook 設計に関する ADR 記録 |
+| [`.cursor/hooks.json`](../hooks.json) | Hook 登録設定本体（version / イベント / timeout / loop_limit） |

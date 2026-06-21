@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# GitHub App installation token を発行する共通ヘルパー。
+# 各 wrapper スクリプトが source して使用する。
+# credentials は ~/.config/github-apps/config.env から読み込む。
+
+CONFIG_ENV="${HOME}/.config/github-apps/config.env"
+
+if [[ ! -f "$CONFIG_ENV" ]]; then
+  echo "ERROR: $CONFIG_ENV が見つかりません。setup.md §4.3 を参照してください。" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$CONFIG_ENV"
+
+for var in GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID; do
+  if [[ -z "${!var:-}" ]]; then
+    echo "ERROR: $var が config.env に設定されていません。" >&2
+    exit 2
+  fi
+done
+
+PRIVATE_KEY_PATH="${GITHUB_APP_PRIVATE_KEY_PATH:-${HOME}/.config/github-apps/private-key.pem}"
+
+if [[ ! -f "$PRIVATE_KEY_PATH" ]]; then
+  echo "ERROR: private key が見つかりません: $PRIVATE_KEY_PATH" >&2
+  exit 2
+fi
+
+_base64url() {
+  openssl base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+_generate_jwt() {
+  local now header payload header_payload signature
+  now=$(date +%s)
+
+  header=$(printf '{"alg":"RS256","typ":"JWT"}' | _base64url)
+  payload=$(printf '{"iss":"%s","iat":%d,"exp":%d}' \
+    "$GITHUB_APP_ID" "$((now - 60))" "$((now + 540))" | _base64url)
+
+  header_payload="${header}.${payload}"
+  signature=$(printf '%s' "$header_payload" \
+    | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" -binary \
+    | _base64url)
+
+  printf '%s.%s' "$header_payload" "$signature"
+}
+
+_get_installation_token() {
+  local jwt response token
+  jwt=$(_generate_jwt)
+
+  response=$(curl -s -w "\n%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer ${jwt}" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/app/installations/${GITHUB_APP_INSTALLATION_ID}/access_tokens")
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [[ "$http_code" != "201" ]]; then
+    echo "ERROR: installation token の発行に失敗しました (HTTP $http_code)" >&2
+    echo "$body" >&2
+    exit 2
+  fi
+
+  token=$(echo "$body" | jq -r '.token')
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    echo "ERROR: レスポンスから token を抽出できませんでした" >&2
+    exit 2
+  fi
+
+  echo "$token"
+}
+
+_detect_owner_repo() {
+  local remote_url
+  remote_url=$(git remote get-url origin 2>/dev/null || true)
+
+  if [[ -z "$remote_url" ]]; then
+    echo "ERROR: git remote origin が設定されていません" >&2
+    exit 1
+  fi
+
+  if [[ "$remote_url" =~ github\.com[:/]([^/]+)/([^/.]+) ]]; then
+    OWNER="${BASH_REMATCH[1]}"
+    REPO="${BASH_REMATCH[2]}"
+  else
+    echo "ERROR: origin URL から owner/repo を抽出できません: $remote_url" >&2
+    exit 1
+  fi
+}

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# PR 作成（WRITE）
+# Usage: github-pr-create-safe <base-branch> <title-file> <body-file>
+# Exit:  0=成功, 1=API エラー, 2=認証エラー
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-app-auth.sh
+source "${SCRIPT_DIR}/_github-app-auth.sh"
+
+if [[ $# -lt 3 ]]; then
+  echo "Usage: github-pr-create-safe <base-branch> <title-file> <body-file>" >&2
+  exit 1
+fi
+
+BASE_BRANCH="$1"
+TITLE_FILE="$2"
+BODY_FILE="$3"
+
+for f in "$TITLE_FILE" "$BODY_FILE"; do
+  if [[ ! -f "$f" ]]; then
+    echo "ERROR: ファイルが見つかりません: $f" >&2
+    exit 1
+  fi
+done
+
+HEAD_BRANCH=$(git branch --show-current)
+if [[ -z "$HEAD_BRANCH" ]]; then
+  echo "ERROR: デタッチド HEAD 状態です。ブランチをチェックアウトしてください。" >&2
+  exit 1
+fi
+
+_detect_owner_repo
+TOKEN=$(_get_installation_token)
+
+# push (wrapper 内部で実行)
+git push -u origin HEAD 2>&1 || {
+  echo "ERROR: git push に失敗しました" >&2
+  exit 1
+}
+
+TITLE=$(cat "$TITLE_FILE")
+BODY_CONTENT=$(cat "$BODY_FILE")
+
+TITLE_JSON=$(printf '%s' "$TITLE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+BODY_JSON=$(python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' < "$BODY_FILE")
+
+RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -X POST \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  -d "{\"title\":${TITLE_JSON},\"body\":${BODY_JSON},\"head\":\"${HEAD_BRANCH}\",\"base\":\"${BASE_BRANCH}\"}" \
+  "https://api.github.com/repos/${OWNER}/${REPO}/pulls")
+
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+RESP_BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [[ "$HTTP_CODE" != "201" ]]; then
+  echo "ERROR: PR 作成に失敗しました (HTTP $HTTP_CODE)" >&2
+  echo "$RESP_BODY" >&2
+  exit 1
+fi
+
+echo "$RESP_BODY" | grep -o '"html_url":"[^"]*pull[^"]*"' | head -1 | cut -d'"' -f4

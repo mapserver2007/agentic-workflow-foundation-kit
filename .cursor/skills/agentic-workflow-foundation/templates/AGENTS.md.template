@@ -8,7 +8,7 @@
 
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
 
-- 主アウトプットと検証ゲート: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
+- 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 - 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）
 
 ### コンテキスト保護の原則（統一設計書 原則5）
@@ -46,12 +46,17 @@
 ## Key Commands
 
 ```bash
+{{project.quality_gate.gen_cmd}}     # OpenAPI 由来の生成
 {{project.quality_gate.build_cmd}}   # ビルド
 {{project.quality_gate.lint_cmd}}    # lint
 {{project.quality_gate.test_cmd}}    # テスト
 ```
 
 **exit code**: `0` = 通過 / `1` = 修正して再実行（Advisory ループ）/ `2` = 致命的エラー（ユーザー報告）。詳細は `docs/QUALITY_GATE.md`。
+
+### Quality Gate Contract
+
+G-* は技術スタック由来の root scripts を外部インターフェース contract とする。`G-GEN` は開発中の生成用、`G-BUILD` はデプロイ直前やローカル実行直前の build 用として責務を分離し、`package.json` の各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たす責務を負う。
 
 ## Session Protocol
 
@@ -60,9 +65,10 @@
 ### セッション開始
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
-2. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
-3. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
-4. ソースコード調査はドキュメント把握後に開始する
+2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞 / `archive/` 取り残しを確認（`docs/QUALITY_GATE.md §1.5`）
+3. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
+4. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
+5. ソースコード調査はドキュメント把握後に開始する
 
 ### セッション終了
 
@@ -78,13 +84,24 @@
 2. 「次セッションTODO」「追加調査が必要な項目」を優先処理
 3. 前セッションの Gotchas / DECISIONS 追記を読み直して文脈を復元
 
+## Context Budget Protocol
+
+`Context Budget Protocol` は統一設計書の正式見出しではなく、「追跡ドキュメント / 検証ゲート / 再開プロトコル」、コンテキストの即時外部化、コンテキスト保護、Context/Session/State SoT を本基盤向けに束ねた運用名である。
+
+`stop` Hook は経過時間 / プロンプト数 / シェル出力バイトを proxy 指標として OR 判定し、Yellow / Red 到達時に `[CONTEXT_BUDGET=...]` を通知する。閾値は `framework.budget_thresholds` を SoT とし、Yellow は `{{framework.budget_thresholds.yellow.elapsed_min}}` 分 / `{{framework.budget_thresholds.yellow.prompt_count}}` prompts / `{{framework.budget_thresholds.yellow.shell_bytes}}` bytes、Red は `{{framework.budget_thresholds.red.elapsed_min}}` 分 / `{{framework.budget_thresholds.red.prompt_count}}` prompts / `{{framework.budget_thresholds.red.shell_bytes}}` bytes とする。
+
+- Yellow: 追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し、作業の区切りを準備する
+- Red: `{{framework.handoff.active_manifest_path}}` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
+
+詳細手順・失敗モード・ユーザー操作は `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
+
 ## Boundaries
 
 > Git 不可逆操作（強制 push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*`）は [`.cursor/hooks/guard-git-write.sh`](.cursor/hooks/guard-git-write.sh) で deterministic deny。Hook 強制範囲の SoT は [`docs/QUALITY_GATE.md §2.1`](docs/QUALITY_GATE.md)。
 
 ### Always
 {{#each project.boundaries.always}}- {{this}}
-{{/each}}
+{{/each}}- 変更前に関連ファイルを全体読み込みする
 
 ### Ask First
 {{#each project.boundaries.ask_first}}- {{this}}

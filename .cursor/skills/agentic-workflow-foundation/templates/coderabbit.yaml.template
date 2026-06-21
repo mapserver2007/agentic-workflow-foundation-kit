@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# このファイルは agentic-workflow-foundation スキルの生成物。
+# 直接編集せず manifest.yaml（tech_stack）を更新して再生成する。
+
+language: "{{coderabbit.language}}"
+
+tone_instructions: >
+  簡潔かつ具体的に。修正案がある場合はコード例を添えてください。
+
+early_access: true
+focus: balanced
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  auto_title_placeholder: "@coderabbitai"
+  review_status: true
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  poem: false
+  abort_on_close: true
+  request_changes_workflow: false
+  commit_status: true
+  fail_commit_status: false
+
+  path_filters:
+{{#each coderabbit.path_filters}}
+    - "{{this}}"
+{{/each}}
+
+  path_instructions:
+{{#each coderabbit.path_instructions}}
+    - path: "{{this.path}}"
+      instructions: |
+        {{this.instructions}}
+{{/each}}
+
+  auto_review:
+    enabled: true
+    drafts: false
+    incremental: true
+    auto_pause_after_reviewed_commits: 5
+    base_branches: []
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+      - "wip"
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+
+  tools:
+{{#each coderabbit.tools_enabled}}
+    {{this.name}}:
+      enabled: true
+{{/each}}
+{{#each coderabbit.tools_disabled}}
+    {{this.name}}:
+      enabled: false
+{{/each}}
+
+chat:
+  auto_reply: true
+  integrations:
+    jira:
+      usage: auto
+    linear:
+      usage: auto
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
+  code_guidelines:
+    enabled: true

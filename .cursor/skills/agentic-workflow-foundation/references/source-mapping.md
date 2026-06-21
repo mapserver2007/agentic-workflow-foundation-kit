@@ -1,39 +1,51 @@
-# source-mapping — 設計書 → manifest → 出力ファイル のトレーサビリティ
+# source-mapping — unified design → resolved manifest/templates → 出力ファイル のトレーサビリティ
 
-> 統一設計書のどのセクションが manifest のどのキーに対応し、どの出力ファイルに反映されるかを一覧化する。
-> 設計書改版時、`check_design_drift.py` が変更を検知したら本表で影響範囲（manifest キー / 出力ファイル）を特定する。
+> 本スキルでは `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` / `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` を immutable upstream SoT として読み取り、`.cursor/skills/agentic-workflow-foundation/manifest.yaml` + `templates/` を schema/default として使う。スキル実行時に `scripts/run_resolved_engine.py` が一時 resolved skill-dir を作成し、既存 engine に渡す。
+>
+> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` は per-project 入力として Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
+>
+> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest に overlay した一時 resolved skill-dir を作る。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
+>
+> **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
-## 設計書 ID
+## 参照文書の位置づけ
 
-| ID | パス | 役割 |
-| --- | --- | --- |
-| `unified` | `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` | 5層モデル / 3パターン / Skill・Rule・Subagent・Hook 設計仕様 / semantic 2層命名 / ドキュメントリスト |
-| `bas` | `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` | ACCD 5軸 / Agent Conduct 4原則 / 提案→推奨→承認 / YAML正本+Gate |
-| `techstack` | `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | 技術スタック一覧 / バージョン方針（§9）。他2種と性質が異なり Meta 層へは焼き込まず、Domain 層 `docs/tech-stack.md` の生成元になる |
+| 文書 | 位置づけ |
+| --- | --- |
+| `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` | immutable upstream SoT。セッション管理、Lost in the Middle、レイヤー構造、Hook 配置の設計入力。 |
+| `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` | immutable upstream SoT。ACCD / Agent Conduct / YAML正本+Gate の設計入力。 |
+| `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` | per-project 技術ポリシー源。Phase 1.6 で `tech_stack` へ取り込む任意入力。 |
 
 ## マッピング表
 
-| 設計書セクション | manifest キー | 出力ファイル |
-| --- | --- | --- |
-| unified §12 Layer1「ドキュメント命名規約 semantic 2層」 | `framework.naming` | `AGENTS.md`（Documentation Naming Convention）/ `QUALITY_GATE.md`（G-DOC-NAMING） |
-| unified §12 Layer4 / §13.5.2 Hook イベント表 | `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
-| unified §13.5.2 / QUALITY_GATE exit code 3段階 | `framework.exit_codes` | `docs/QUALITY_GATE.md` |
-| DECISIONS 運用ルール 設計次元 D-\* | `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` |
-| bas ACCD 5軸 | `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0` |
-| bas Agent Conduct 4原則 / Anti-Sycophancy | `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
-| unified ADR Context Budget / session-handoff | `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/session-handoff-guide.md` / `.cursor/hooks/README.md` |
-| unified §3 パターン選択 / §9-11 セットアップ | `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` |
-| unified §12 Layer1 CLAUDE/AGENTS 統合 | `project.name` / `project.one_liner` / `project.tech_stack` | `AGENTS.md` / `CLAUDE.md` |
-| unified §13.3 / Boundaries | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
-| unified §9 品質ゲート / 技術スタック別カスタマイズ | `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands） |
-| unified §13.5 guard hook（git 不可逆操作） | （framework 固定 / manifest 非依存） | `.cursor/hooks/guard-git-write.sh` |
-| unified 原則8 自己改善サイクル | （framework 固定） | `docs/GOTCHAS.md` |
-| techstack §9 技術スタック一覧とバージョン方針 | `framework.tech_stack` / `framework.tech_stack_note` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ） |
+| manifest キー | 出力ファイル |
+| --- | --- |
+| `framework.naming` | `AGENTS.md`（Documentation Naming Convention）/ `docs/QUALITY_GATE.md`（G-DOC-NAMING） |
+| `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
+| `framework.exit_codes` | `docs/QUALITY_GATE.md` |
+| `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` / `.cursor/skills/decisions-record/SKILL.md` |
+| `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（Phase 1.5 で軽量実装を自動確定し、root manifest から overlay） |
+| `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
+| `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/session-handoff-guide.md` / `.cursor/hooks/README.md` |
+| `framework.upstream_design_inputs` | `docs/session-handoff-guide.md`（生成根拠の説明）/ `references/design-conformance.md`（監査根拠） |
+| `framework.handoff` | `docs/session-handoff-guide.md`（本番運用レベルのユーザー手順 / 状態ファイル / 失敗モード / manifest 必須項目 / 非採用設計(non_goals) / 将来拡張(future_notes) / 参考リンク(references)） |
+| `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` / `.cursor/skills/session-planning/SKILL.md` / `.cursor/skills/session-handover/SKILL.md`。ゲート文脈は `.cursor/skills/session-handover/scripts/session-start-gate.sh`（検査対象）/ `docs/QUALITY_GATE.md`（§1.4 検査ID / §1.5 セッション開始ゲート / §3 フェーズ境界ゲート）で補足 |
+| `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
+| `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` / `.cursor/rules/03-github-security.mdc`（token / secret / credential 保護） |
+| `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands。`G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST`） |
+| `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract。gen / build / lint / test）/ `AGENTS.md`（Quality Gate Contract） |
+| `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ）/ `.coderabbit.yaml`（`coderabbit` 経由で tech_stack に従属） |
+| `coderabbit.language` / `coderabbit.tools_*` / `coderabbit.path_*` | `.coderabbit.yaml`（CodeRabbit レビュー設定。Phase 1.66 で tech_stack から自動導出） |
+| `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
+| `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
+| `framework.security` | `.cursor/rules/03-github-security.mdc`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
+| `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
+| `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 
-## 改版時の運用
+## 変更時の運用
 
-1. `check_design_drift.py` が `design_docs[].sha256` の不一致を検知。
-2. 本表で変更セクション → 影響 manifest キー → 影響出力ファイルを特定。
-3. `framework.*` の変更なら manifest を更新（Meta 層変更につき PO 承認）。`project.*` のみなら PO 記入のみ。
-4. `generate.py` で再生成 → `audit.py` で準拠検証。
-5. drift スクリプトが新しい sha256 を manifest に書き戻す。
+1. immutable upstream docs / stateless resolver / `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、基盤定義変更として扱う。PO 確定済み事項は再質問せず、未確定事項のみ PO 承認を得る。
+2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装として自動導出する。確定値はスキル実行で生成される root `manifest.yaml` に保存する。
+3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `G-GEN` を含む `project.quality_gate` / `quality_gate_contract` を自動決定し、Phase 1.66 で `coderabbit`（CodeRabbit 設定）を自動決定する。
+4. Phase 2 / Phase 3 は `run_resolved_engine.py` 経由で engine を呼び、unified design / root manifest overlay を foundation 側の stateless 前処理に閉じ込める。
+5. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

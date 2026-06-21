@@ -1,0 +1,142 @@
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# wrapper コマンドリファレンス（PR 作成）
+
+`agent-github-pr` スキルで使用する固定 wrapper コマンドと git コマンド集。GitHub API へのアクセスは wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
+
+> **セキュリティルール**: [`.cursor/rules/03-github-security.mdc`](../../../../.cursor/rules/03-github-security.mdc) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+
+---
+
+## 0. 前提条件（wrapper セットアップ）
+
+### 必要なもの
+
+- GitHub App（Repository permissions: `Pull requests: Read and write` + `Contents: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
+- `bin/github-pr-create-safe` がスキル実行（Phase 2）で生成済み
+- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
+
+> `Contents: Read and write` は wrapper 内部で `git push` を実行するために必要。
+
+### 起動チェック
+
+```bash
+test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
+```
+
+wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` で再実行する。
+
+---
+
+## 1. wrapper インターフェース仕様
+
+| 項目 | 仕様 |
+| --- | --- |
+| コマンド | `bin/github-pr-create-safe` |
+| 引数 | `<base-branch> <title-file> <body-file>` |
+| 標準出力 | PR URL（例: `https://github.com/owner/repo/pull/123`） |
+| exit code | 0=成功, 1=API エラー, 2=認証エラー |
+
+### 内部動作
+
+wrapper 内部で以下を順に実行する（AI が直接これらのコマンドを実行する必要はない）:
+
+1. `git branch --show-current` で head branch を自動解決
+2. `git push -u origin HEAD` でリモートに push
+3. GitHub App の JWT を生成し、installation access token を発行
+4. GitHub REST API（`POST /repos/{owner}/{repo}/pulls`）を `curl` で呼び出して PR を作成
+5. PR URL を標準出力に返却
+
+### 呼び出し例
+
+```bash
+bin/github-pr-create-safe main /tmp/pr-title.txt /tmp/pr-body.md
+```
+
+---
+
+## 2. git コマンド集（ローカル操作 / AI が直接実行する）
+
+以下のコマンドは wrapper を介さず AI が直接実行する。いずれもローカルの読み取り操作であり、セキュリティ上のリスクはない。
+
+### 2.1 カレントブランチ取得
+
+```bash
+git branch --show-current
+```
+
+### 2.2 未コミット変更の確認
+
+```bash
+git status --porcelain
+```
+
+出力がある場合は未コミットの変更が残っている。
+
+### 2.3 ベースブランチ候補の確認
+
+```bash
+git rev-parse --verify origin/main 2>/dev/null && echo "main exists"
+git branch -r --list 'origin/release/v*' --sort=-version:refname | head -1 | sed 's| *origin/||'
+```
+
+### 2.4 コミット履歴の取得
+
+```bash
+git log {base}..HEAD --format='%s%n%n%b' --reverse
+git log {base}..HEAD --oneline
+```
+
+### 2.5 diff の取得
+
+```bash
+git diff {base}...HEAD --stat
+git diff {base}...HEAD
+```
+
+### 2.6 PR テンプレートの検出
+
+```bash
+ls .github/pull_request_template.md 2>/dev/null || ls .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || echo "no template"
+```
+
+テンプレートが存在する場合は Read ツールで読み込み、そのフォーマットに従って PR 本文を生成する。
+
+---
+
+## 3. エラーハンドリング
+
+| エラー | 対応 |
+| --- | --- |
+| `bin/github-pr-create-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `github_pr.enabled: true` で再実行する |
+| exit 1（API エラー） | GitHub API 側のエラー。考えられる原因: 同名ブランチの PR が既に存在 / ベースブランチが不正 / push 先が保護ブランチ。エラーメッセージをユーザーに報告 |
+| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| `git branch --show-current` が空 | デタッチド HEAD 状態。ユーザーにブランチのチェックアウトを案内 |
+| `git status --porcelain` に出力あり | 未コミットの変更あり。スキルを中断し、コミットを案内 |
+| Hook により `deny` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper (`bin/github-pr-create-safe`) を案内する |
+
+---
+
+## 4. PR 本文のデフォルト構造
+
+PR テンプレート（`.github/pull_request_template.md`）が無い場合に使用するデフォルト構造:
+
+```markdown
+## Summary
+（変更の概要を 1〜3 文で説明）
+
+## Changes
+（主な変更点を箇条書きで列挙）
+
+## Test plan
+（テスト方法・確認事項を箇条書きで列挙）
+```
+
+PR テンプレートが存在する場合は、テンプレートのセクション構成に従い、diff / commit 履歴の内容で各セクションを埋める。
+
+---
+
+## 関連ドキュメント
+
+- [SKILL.md](../SKILL.md) — スキル本体
+- [agent-code-review/references/gh-commands.md](../../agent-code-review/references/gh-commands.md) — レビュー用 wrapper コマンドリファレンス

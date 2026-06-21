@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# レビュースレッド取得（READ）
+# Usage: github-pr-reviews-safe <owner> <repo> <pr-number>
+# Exit:  0=成功, 1=API エラー, 2=認証エラー
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-app-auth.sh
+source "${SCRIPT_DIR}/_github-app-auth.sh"
+
+if [[ $# -lt 3 ]]; then
+  echo "Usage: github-pr-reviews-safe <owner> <repo> <pr-number>" >&2
+  exit 1
+fi
+
+OWNER="$1"
+REPO="$2"
+PR_NUMBER="$3"
+
+TOKEN=$(_get_installation_token)
+
+QUERY='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated isCollapsed comments(first:50){nodes{body path line url author{login __typename}}}}}}}}'
+
+VARIABLES=$(printf '{"owner":"%s","repo":"%s","number":%s}' "$OWNER" "$REPO" "$PR_NUMBER")
+
+RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -X POST \
+  -H "Authorization: token ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\":$(printf '%s' "$QUERY" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),\"variables\":${VARIABLES}}" \
+  "https://api.github.com/graphql")
+
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo "ERROR: GitHub API エラー (HTTP $HTTP_CODE)" >&2
+  echo "$BODY" >&2
+  exit 1
+fi
+
+echo "$BODY"
