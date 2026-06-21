@@ -3,8 +3,8 @@ name: agent-github-issue
 description: >-
   What - GitHub Issue の作成（create）と読み取り（read）を行う。
   create モードではフリーテキストまたは plan ファイルから AI agent が理解しやすい
-  固定フォーマットで issue を作成する。read モードでは issue 本文・コメント・
-  リンク先リポジトリ内ファイルを取得して表示または他スキルへ返却する。
+  固定フォーマットで issue を作成する。  read モードでは issue 本文・コメント・
+  リンク先リポジトリ内ファイル・テキスト添付ファイルの中身を取得して表示または他スキルへ返却する。
   wrapper（github-issue-create-safe / github-issue-read-safe）経由で
   GitHub App installation token を発行し、AI に token を露出しない。
   Use when - 「issue 作成」「issue 読み取り」「issue 化して」「issue の内容を確認」等の指示。
@@ -49,7 +49,7 @@ test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || ec
 | **3-C フォーマット整形** | Step 2-C 完了 | 固定フォーマットで issue タイトル・本文生成済み |
 | **4-C ユーザー承認** | Step 3-C 完了 | AskQuestion で承認済み |
 | **5-C Issue 作成** | Step 4-C 承認済み | Issue URL 取得 + 出力 |
-| **2-R Issue 読み取り** | Mode=read + Issue 番号確定 | 本文 + コメント + リンクファイル取得済み |
+| **2-R Issue 読み取り** | Mode=read + Issue 番号確定 | 本文 + コメント + リンクファイル + 添付ファイル取得済み |
 | **3-R 結果出力** | Step 2-R 完了 | 結果表示 or 他スキルへ返却 |
 
 ### Step 1: Mode 選択
@@ -61,7 +61,7 @@ AskQuestion で 2 つのモードを提示する:
 | Mode | 用途 | 後続 Step |
 | --- | --- | --- |
 | **create** | フリーテキストまたは plan ファイルから issue を作成する | Step 2-C → 3-C → 4-C → 5-C |
-| **read** | 既存 issue の本文・コメント・リンクファイルを読み取る | Step 2-R → 3-R |
+| **read** | 既存 issue の本文・コメント・リンクファイル・添付ファイルを読み取る | Step 2-R → 3-R |
 
 #### 他スキルからの呼び出しの場合
 
@@ -186,6 +186,13 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
    - リンクパターンを検出する（相対パス / GitHub blob URL）
    - ローカルリポジトリにファイルが存在する場合は Read ツールで取得する
    - ローカルに存在しない場合はリンク情報のみ記録する
+
+5. GitHub 添付ファイル（`user-attachments`）の自動取得:
+   - wrapper が Issue 本文 + コメントから `https://github.com/user-attachments/files/...` URL を検出する
+   - テキスト系拡張子（`.md` `.txt` `.json` `.yaml` `.csv` `.log` `.sh` `.py` `.js` `.ts` 等）は中身を取得し `## Attachments` セクションとして出力に含める
+   - バイナリファイル（`.png` `.jpg` `.pdf` 等）は URL のみを出力する
+   - ファイルサイズ上限: 1 MB（超過時は取得スキップ）
+   - public repo は認証なしで取得。private repo は GitHub App token で 302 を解決し S3 presigned URL 経由で取得する
 
 #### Step 3-R: 結果出力
 

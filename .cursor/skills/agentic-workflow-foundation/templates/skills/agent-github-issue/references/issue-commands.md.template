@@ -59,7 +59,7 @@ bin/github-issue-create-safe /tmp/issue-title.txt /tmp/issue-body.md enhancement
 | --- | --- |
 | コマンド | `bin/github-issue-read-safe` |
 | 引数 | `<issue-number>` |
-| 標準出力 | Issue 本文 + コメント（Markdown 構造化形式） |
+| 標準出力 | Issue 本文 + コメント + 添付ファイル（Markdown 構造化形式） |
 | exit code | 0=成功, 1=API エラー, 2=認証エラー |
 
 #### 内部動作
@@ -69,6 +69,7 @@ bin/github-issue-create-safe /tmp/issue-title.txt /tmp/issue-body.md enhancement
 3. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}`）で Issue 本体を取得
 4. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}/comments`）でコメントを取得
 5. 構造化 Markdown 形式で標準出力に返却
+6. 本文 + コメントから `user-attachments` URL を検出し、テキスト系ファイルは中身を取得して `## Attachments` セクションに追記
 
 #### 出力形式
 
@@ -96,7 +97,21 @@ author: @{login}
 ### Comment #2 (by @{login}, {ISO 8601})
 
 {comment body}
+
+## Attachments
+
+### {filename.md}
+
+\```
+{テキスト添付ファイルの中身}
+\```
+
+### {image.png}
+
+(バイナリファイル — URL のみ: https://github.com/user-attachments/files/...)
 ```
+
+> `## Attachments` セクションは添付ファイルが存在する場合のみ出力される。テキスト系拡張子（`.md` `.txt` `.json` `.yaml` `.yml` `.csv` `.log` `.sh` `.py` `.js` `.ts` `.tsx` `.jsx` `.html` `.css` `.xml` `.toml` `.ini` `.cfg` `.conf` `.plan`）は中身を取得し、それ以外はバイナリとして URL のみ出力する。ファイルサイズ上限は 1 MB。
 
 #### 呼び出し例
 

@@ -100,3 +100,68 @@ else:
         print(c_body)
         print()
 ' "$ISSUE_BODY" "$COMMENTS_BODY"
+
+# テキスト添付ファイルの自動取得
+# Issue 本文 + コメントから user-attachments URL を抽出し、テキスト系は中身を取得
+ATTACHMENT_URLS=$(python3 -c '
+import json, sys, re
+
+issue = json.loads(sys.argv[1])
+comments = json.loads(sys.argv[2])
+
+texts = [issue.get("body") or ""]
+for c in comments:
+    texts.append(c.get("body") or "")
+
+all_text = "\n".join(texts)
+pattern = r"\[([^\]]*)\]\((https://github\.com/user-attachments/files/[^\)]+)\)"
+seen = set()
+for m in re.finditer(pattern, all_text):
+    url = m.group(2)
+    if url not in seen:
+        seen.add(url)
+        print(f"{m.group(1)}\t{url}")
+' "$ISSUE_BODY" "$COMMENTS_BODY")
+
+if [[ -n "$ATTACHMENT_URLS" ]]; then
+  echo ""
+  echo "## Attachments"
+  echo ""
+
+  TEXT_EXTS="md|txt|json|yaml|yml|csv|log|sh|py|js|ts|tsx|jsx|html|css|xml|toml|ini|cfg|conf|plan"
+  MAX_SIZE=1048576  # 1 MB
+
+  while IFS=$'\t' read -r att_name att_url; do
+    ext="${att_name##*.}"
+    ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+
+    if echo "$ext_lower" | grep -qE "^($TEXT_EXTS)$"; then
+      # public repo: curl -sL で直接取得
+      att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_url" 2>/dev/null || true)
+      if [[ -z "$att_content" ]]; then
+        # private repo fallback: token 付きで 302 先を解決し、S3 URL を token なしで取得
+        att_redirect=$(curl -s -o /dev/null -w "%{redirect_url}" \
+          -H "Authorization: token ${TOKEN}" "$att_url" 2>/dev/null || true)
+        if [[ -n "$att_redirect" ]]; then
+          att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_redirect" 2>/dev/null || true)
+        fi
+      fi
+
+      echo "### ${att_name}"
+      echo ""
+      if [[ -n "$att_content" ]]; then
+        echo '```'
+        echo "$att_content"
+        echo '```'
+      else
+        echo "(取得失敗: ${att_url})"
+      fi
+      echo ""
+    else
+      echo "### ${att_name}"
+      echo ""
+      echo "(バイナリファイル — URL のみ: ${att_url})"
+      echo ""
+    fi
+  done <<< "$ATTACHMENT_URLS"
+fi
