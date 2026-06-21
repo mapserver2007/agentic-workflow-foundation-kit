@@ -353,7 +353,7 @@ github_pr:
 #   enabled: true の場合のみ outputs[] の feature: github_issue エントリが生成対象になる。
 # ------------------------------------------------------------
 github_issue:
-  enabled: true
+  enabled: false
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
