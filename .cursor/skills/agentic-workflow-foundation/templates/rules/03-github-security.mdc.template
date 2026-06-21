@@ -71,7 +71,7 @@ bin/github-pr-reply-safe <pr-number> <comment-id> <body-file>
 - `bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` は `code_review.enabled: true` の場合のみ生成される
 - wrapper 内部で GitHub App installation token を発行し、GitHub API を実行する
 - AI に返却されるのはコメント URL / レビュースレッド JSON のみ
-- 認証ヘルパー `bin/_github-app-auth.sh` は `.cursorignore` で AI アクセスを遮断する。wrapper スクリプト（`bin/github-pr-*-safe`）は AI から読み取り可能だが、ユーザーが明示的に依頼した場合を除き編集禁止
+- 認証ヘルパー `bin/_github-app-auth.sh` および wrapper スクリプト（`bin/github-pr-*-safe`）は AI から読み取り可能だが、ユーザーが明示的に依頼した場合を除き編集禁止
 
 ### gh コマンドの扱い
 
