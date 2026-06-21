@@ -23,6 +23,7 @@ ROOT_OVERLAY_KEYS = (
     "tech_stack",
     "session",
     "quality_gate_contract",
+    "domain_docs",
     "code_review",
     "github_pr",
     "github_issue",

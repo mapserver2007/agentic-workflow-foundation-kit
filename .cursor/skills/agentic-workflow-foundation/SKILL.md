@@ -57,7 +57,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
-- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
+- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
@@ -75,6 +75,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
 | `scripts/resolve_coderabbit.py` | root `manifest.yaml > tech_stack` → `coderabbit`（CodeRabbit 有効/無効ツール・path_instructions・path_filters）決定 |
+| `scripts/resolve_domain_docs.py` | root `manifest.yaml > tech_stack` → `domain_docs`（Domain 層ドキュメント用の tech-stack 固有セクションリスト）決定 |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
@@ -91,6 +92,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
+- [ ] Phase 1.67: Domain 層ドキュメント変数自動決定（resolve_domain_docs.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
@@ -327,6 +329,21 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 4. 書き込み後、Step 1 のスクリプトを再実行して hash が一致し `更新なし=冪等` になることを確認する。
 
 **冪等性保証（パターン B）**: path_instructions は manifest に永続化される。`tech_stack.items` が変更されない限りスクリプトは既存値をパススルーし、AI ステップは発火しない。tech_stack 変更時のみ AI 再生成が走り、新しい hash で安定する。
+
+### Phase 1.67: Domain 層ドキュメント変数自動決定
+
+root `manifest.yaml > tech_stack` から、Domain 層ドキュメント（spec.md / architecture.md / api.md / data-models.md / coding-standards.md / workflows.md）のテンプレートで使用する変数（`domain_docs.*`）を決定論的に導出する。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
+```
+
+- `tech_stack.items` の `layer` / `technology` フィールドを分析し、主要言語・API スタイル・DB・フレームワーク・テストフレームワーク・パッケージマネージャを検出する。
+- 検出結果に基づき、各ドキュメントの tech-stack 固有セクションリスト（`spec_sections` / `architecture_sections` / `api_sections` / `data_model_sections` / `coding_standards_sections` / `workflow_sections`）を組み立てる。
+- テンプレート DSL の `#if` 制約を回避し、resolve スクリプト側で条件分岐を解決する。テンプレートは `{{#each domain_docs.xxx_sections}}` でセクションを展開する。
+- root `manifest.yaml > domain_docs` へ書き込む。`run_resolved_engine.py` の `ROOT_OVERLAY_KEYS` に `domain_docs` が含まれており、resolved manifest に overlay される。
+- exit 0 → 決定済みとして継続可。
+- exit 2 → manifest 破損など致命的エラー。中断する。
 
 ### Phase 1.7: techstack 整合ゲート
 

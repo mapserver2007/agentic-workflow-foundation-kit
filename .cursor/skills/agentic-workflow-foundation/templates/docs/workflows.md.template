@@ -1,0 +1,56 @@
+# ワークフロー
+
+<!-- このファイルは agentic-workflow-foundation スキルの seed 生成物（初回のみ生成）。
+     PO / 開発者がプロジェクト固有の処理フローで充実させる。再生成では上書きしない。 -->
+
+> フレームワーク: {{domain_docs.framework}}
+> API スタイル: {{domain_docs.api_style}}
+
+## 主要ユースケースの処理フロー
+
+[TODO] 主要な業務フローを記述する（Mermaid シーケンス図推奨）。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Service
+    Client->>API: リクエスト
+    API->>Service: 処理委譲
+    Service-->>API: 結果
+    API-->>Client: レスポンス
+```
+
+## エラーハンドリング・リトライパターン
+
+[TODO] 外部 API 呼び出しのリトライ・タイムアウト方針を記述する。
+
+## 状態管理・状態遷移
+
+[TODO] 主要エンティティの状態遷移を図示する（Mermaid 推奨）。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created
+    Created --> Processing
+    Processing --> Completed
+    Processing --> Failed
+    Failed --> [*]
+    Completed --> [*]
+```
+
+{{#each domain_docs.workflow_sections}}
+## {{this.title}}
+
+> {{this.guidance}}
+
+[TODO]
+
+{{/each}}
+
+## 参照
+
+- [仕様概要](spec.md)
+- [API 仕様](api.md)
+- [データモデル](data-models.md)
+- [アーキテクチャ設計](architecture.md)

@@ -518,6 +518,46 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
       - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
+  # resolve_domain_docs.py（Phase 1.67）が tech_stack から domain_docs.* を決定し、
+  # テンプレート内の {{#each}} で tech-stack 固有セクションを展開する。
+  - path: docs/spec.md
+    template: docs/spec.md.template
+    mode: seed
+    required_sections:
+      - "## 目的と背景"
+      - "## ドメイン用語集"
+  - path: docs/spec/README.md
+    template: docs/spec/README.md.template
+    mode: seed
+    required_sections:
+      - "## 命名規約"
+      - "## テンプレート"
+  - path: docs/architecture.md
+    template: docs/architecture.md.template
+    mode: seed
+    required_sections:
+      - "## システム全体構成"
+  - path: docs/api.md
+    template: docs/api.md.template
+    mode: seed
+    required_sections:
+      - "## API設計概要"
+  - path: docs/data-models.md
+    template: docs/data-models.md.template
+    mode: seed
+    required_sections:
+      - "## データベース設計思想"
+  - path: docs/coding-standards.md
+    template: docs/coding-standards.md.template
+    mode: seed
+    required_sections:
+      - "## 基本方針"
+  - path: docs/workflows.md
+    template: docs/workflows.md.template
+    mode: seed
+    required_sections:
+      - "## 主要ユースケースの処理フロー"
   # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
   # coderabbit.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .coderabbit.yaml
@@ -768,8 +808,22 @@ project:
       - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
       - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials）を読み取る"
       - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
-  # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
+  # 固定値（生成物 docs/tech-stack.md + Domain 層ドキュメント群を指す。PO には問わない）。
   doc_navigation:
     domain:
       - path: "docs/tech-stack.md"
         desc: "技術スタック方針（tech_stack 由来の Domain 層サマリ・生成物）"
+      - path: "docs/spec.md"
+        desc: "仕様概要 — ドメインコンテキスト + 機能インデックス。各機能の詳細は docs/spec/*.md（seed 生成物）"
+      - path: "docs/spec/"
+        desc: "機能別詳細仕様 — 各機能の SoT。README.md に命名規約とテンプレート（seed 生成物）"
+      - path: "docs/architecture.md"
+        desc: "アーキテクチャ設計 — システム構成・コンポーネント責務・依存関係方針（seed 生成物）"
+      - path: "docs/api.md"
+        desc: "API 仕様 — エンドポイント一覧・リクエスト/レスポンス・エラーハンドリング（seed 生成物）"
+      - path: "docs/data-models.md"
+        desc: "データモデル — DB スキーマ・ER 関係・マイグレーション規約（seed 生成物）"
+      - path: "docs/coding-standards.md"
+        desc: "コーディング規約 — 言語規約・アーキテクチャ規約・テスト規約（seed 生成物）"
+      - path: "docs/workflows.md"
+        desc: "ワークフロー — 主要ユースケースの処理フロー・状態遷移・エラーハンドリング（seed 生成物）"
