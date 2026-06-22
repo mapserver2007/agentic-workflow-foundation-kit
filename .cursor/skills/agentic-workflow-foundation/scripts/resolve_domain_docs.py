@@ -51,11 +51,12 @@ DATA_MODEL_SECTIONS_COMMON = [
 ]
 
 CODING_STANDARDS_SECTIONS_COMMON = [
-    {"title": "基本方針", "guidance": "コーディング規約の基本方針・準拠規約を記述する"},
-    {"title": "命名規約", "guidance": "変数・関数・ファイル・ディレクトリの命名規約を記述する"},
-    {"title": "エラーハンドリング規約", "guidance": "エラー処理の統一パターンを記述する"},
-    {"title": "テスト規約", "guidance": "テストの種類・命名・構成・カバレッジ方針を記述する"},
-    {"title": "コメント・ドキュメント", "guidance": "コメント方針・JSDoc/GoDoc 等のルールを記述する"},
+    {"title": "基本方針"},
+    {"title": "命名規約"},
+    {"title": "エラーハンドリング規約"},
+    {"title": "テスト規約"},
+    {"title": "コメント・ドキュメント"},
+    {"title": "静的解析・Lint"},
 ]
 
 WORKFLOW_SECTIONS_COMMON = [
@@ -84,11 +85,7 @@ DATA_MODEL_SECTIONS_MIGRATION = [
 ]
 
 CODING_STANDARDS_SECTIONS_ARCH = [
-    {"title": "アーキテクチャ規約", "guidance": "レイヤー間の依存ルール・責務分離の原則を記述する"},
-]
-
-CODING_STANDARDS_SECTIONS_LINT = [
-    {"title": "静的解析・Lint", "guidance": "lint ツール・設定ファイル・CI での実行方法を記述する"},
+    {"title": "アーキテクチャ規約"},
 ]
 
 WORKFLOW_SECTIONS_ASYNC = [
@@ -192,6 +189,164 @@ def _detect_package_manager(manifest: dict) -> str:
     return _find_value(manifest, ["パッケージ管理", "package"])
 
 
+def _resolve_coding_standards_content(manifest: dict) -> list[dict]:
+    """tech_stack からコーディング規約の各セクション content を決定論的に導出する。"""
+    names = _tech_names(manifest)
+    lang = _detect_primary_language(manifest).lower()
+    test_fw = _detect_test_framework(manifest)
+    framework = _detect_framework(manifest)
+    pkg_mgr = _detect_package_manager(manifest)
+
+    is_ts = "typescript" in lang
+    is_go = lang == "go"
+    is_python = "python" in lang
+    has_openapi = _has(names, "openapi")
+    has_hono = _has(names, "hono")
+    has_nextjs = "next" in framework.lower() if framework else False
+    has_workers = _has(names, "cloudflare workers") or _has(names, "workerd")
+    has_vitest = "vitest" in (test_fw or "").lower()
+    has_biome = _has(names, "biome")
+
+    sections: list[dict] = []
+
+    # -- 基本方針 --
+    basic_lines: list[str] = []
+    if is_ts:
+        basic_lines.append("- TypeScript strict モード必須（`noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess` 有効）")
+        basic_lines.append("- `any` 型の使用禁止 — `unknown` + 型ガード / Discriminated Union で安全に絞り込む")
+        basic_lines.append("- immutable-first: `const` / `readonly` / `as const` をデフォルトとし、可変が必要な箇所のみ `let` を使用")
+    if is_go:
+        basic_lines.append("- Effective Go / Go Code Review Comments に準拠する")
+        basic_lines.append("- エラーは値として扱い、`if err != nil` を省略しない")
+    if is_python:
+        basic_lines.append("- PEP 8 / PEP 484 (type hints) に準拠する")
+        basic_lines.append("- `mypy --strict` を通す")
+    basic_lines.append("- 早期 return で正常系パスのネストを浅く保つ")
+    if has_openapi:
+        basic_lines.append("- Contract-First: OpenAPI 定義が API の唯一の正本。実装がスキーマに追従する")
+    if has_workers:
+        basic_lines.append("- Cloudflare Workers ランタイム制約: Web Standard API のみ使用、Node.js globals（`process`, `Buffer`, `__dirname` 等）禁止")
+    sections.append({"title": "基本方針", "content": "\n".join(basic_lines)})
+
+    # -- 命名規約 --
+    naming_lines: list[str] = []
+    if is_ts:
+        naming_lines.append("| 対象 | 規約 | 例 |")
+        naming_lines.append("|------|------|-----|")
+        naming_lines.append("| 変数・関数 | camelCase | `getUserById`, `isActive` |")
+        naming_lines.append("| 型・interface・class | PascalCase | `UserProfile`, `ApiResponse` |")
+        if has_nextjs:
+            naming_lines.append("| React Component | PascalCase（ファイル名も同様） | `UserCard.tsx` |")
+        naming_lines.append("| 定数（環境非依存） | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |")
+        naming_lines.append("| ファイル・ディレクトリ | kebab-case | `user-profile/`, `api-client.ts` |")
+        naming_lines.append("| テストファイル | `{対象}.test.ts` | `user-service.test.ts` |")
+        naming_lines.append("| 型定義ファイル | `{対象}.types.ts` | `api-response.types.ts` |")
+        if has_openapi:
+            naming_lines.append("| OpenAPI 生成型 | そのまま使用（リネーム禁止） | `components[\"schemas\"][\"User\"]` |")
+    elif is_go:
+        naming_lines.append("| 対象 | 規約 | 例 |")
+        naming_lines.append("|------|------|-----|")
+        naming_lines.append("| エクスポート | PascalCase | `GetUserByID` |")
+        naming_lines.append("| 非エクスポート | camelCase | `getUserByID` |")
+        naming_lines.append("| パッケージ | 小文字・単語1つ | `user`, `auth` |")
+        naming_lines.append("| ファイル | snake_case | `user_service.go` |")
+        naming_lines.append("| テストファイル | `{対象}_test.go` | `user_service_test.go` |")
+    elif is_python:
+        naming_lines.append("| 対象 | 規約 | 例 |")
+        naming_lines.append("|------|------|-----|")
+        naming_lines.append("| 変数・関数 | snake_case | `get_user_by_id` |")
+        naming_lines.append("| クラス | PascalCase | `UserProfile` |")
+        naming_lines.append("| 定数 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |")
+        naming_lines.append("| モジュール | snake_case | `user_service.py` |")
+        naming_lines.append("| テストファイル | `test_{対象}.py` | `test_user_service.py` |")
+    sections.append({"title": "命名規約", "content": "\n".join(naming_lines)})
+
+    # -- エラーハンドリング規約 --
+    error_lines: list[str] = []
+    if has_hono:
+        error_lines.append("- Hono: `HTTPException` をスローし `app.onError` で統一的にキャッチ → 構造化エラーレスポンスを返す")
+        error_lines.append("- エラーレスポンス形式は RFC 9457 (Problem Details) に準拠する")
+    if is_ts:
+        error_lines.append("- 想定内エラー（バリデーション失敗等）と想定外エラー（インフラ障害等）を型レベルで区別する")
+    error_lines.append("- エラーを握りつぶさない — `catch` した場合は必ずログ出力 or 再スロー")
+    if has_workers:
+        error_lines.append("- Workers 環境: `console.error()` + 構造化ログ。未ハンドル例外は Workers ランタイムが 500 として返す")
+    sections.append({"title": "エラーハンドリング規約", "content": "\n".join(error_lines)})
+
+    # -- テスト規約 --
+    test_lines: list[str] = []
+    if has_vitest:
+        test_lines.append("| テスト種類 | ディレクトリ | 命名規約 | ツール |")
+        test_lines.append("|-----------|------------|---------|--------|")
+        test_lines.append("| Unit | コロケーション（対象の隣） | `*.test.ts` | Vitest |")
+        if has_workers:
+            test_lines.append("| Integration | `tests/integration/` | `*.integration.test.ts` | Vitest + pool-workers |")
+        else:
+            test_lines.append("| Integration | `tests/integration/` | `*.integration.test.ts` | Vitest |")
+        if has_openapi:
+            test_lines.append("| Contract | `tests/contract/` | `*.contract.test.ts` | Vitest + OpenAPI validator |")
+        test_lines.append("| E2E | `tests/e2e/` | `*.e2e.test.ts` | Playwright |")
+        test_lines.append("")
+        test_lines.append("- describe/it 構造、AAA (Arrange-Act-Assert) パターンを統一する")
+        if has_workers:
+            test_lines.append("- `workerd` 上で実行する前提（Node.js 固有 API をテストコードで使わない）")
+        test_lines.append("- テストの skip は原因仮説をコメントで併記すること（対症療法禁止）")
+        if has_openapi:
+            test_lines.append("- `openapi-typescript` 生成型を import してレスポンスの型整合を検証する")
+    elif is_go:
+        test_lines.append("- `testing` 標準パッケージ + testify (任意) を使用する")
+        test_lines.append("- Table-Driven Tests パターンを推奨する")
+        test_lines.append("- テストの skip は原因仮説をコメントで併記すること")
+    elif is_python:
+        test_lines.append("- pytest を使用する")
+        test_lines.append("- テストの skip は原因仮説をコメントで併記すること")
+    sections.append({"title": "テスト規約", "content": "\n".join(test_lines)})
+
+    # -- コメント・ドキュメント --
+    doc_lines: list[str] = []
+    if is_ts:
+        doc_lines.append("- 公開 API（export された関数・クラス）には TSDoc コメントを付ける")
+    elif is_go:
+        doc_lines.append("- エクスポートされたシンボルには GoDoc コメントを付ける")
+    elif is_python:
+        doc_lines.append("- 公開 API には docstring (Google style) を付ける")
+    doc_lines.append("- 自明なコードにコメントを付けない（コードが語る）")
+    doc_lines.append("- 「なぜ」を説明するコメントのみ有効（「何を」はコード自体が表現する）")
+    doc_lines.append("- TODO コメントは Issue 番号を併記: `// TODO(#123): ...`")
+    if has_openapi:
+        doc_lines.append("- OpenAPI 定義の `description` フィールドがドキュメントの SoT（コード側に重複転記しない）")
+    sections.append({"title": "コメント・ドキュメント", "content": "\n".join(doc_lines)})
+
+    # -- 静的解析・Lint --
+    lint_lines: list[str] = []
+    if is_ts:
+        if has_biome:
+            lint_lines.append("- Biome による静的解析・フォーマット統一")
+        else:
+            lint_lines.append("- Biome（推奨）または ESLint flat config による静的解析・フォーマット統一")
+    elif is_go:
+        lint_lines.append("- golangci-lint による静的解析")
+        lint_lines.append("- gofmt / goimports によるフォーマット統一")
+    elif is_python:
+        lint_lines.append("- Ruff による lint + フォーマット統一")
+        lint_lines.append("- mypy による型検査")
+    if has_openapi:
+        lint_lines.append("- Spectral: OpenAPI lint（ルールセットはリポジトリ管理）")
+        lint_lines.append("- Redocly CLI: OpenAPI bundle 検証 + breaking change 検出")
+    lint_lines.append("- CI で G-LINT ゲートとして必ず実行する")
+    lint_lines.append("- pre-commit hook は任意（CI での保証を優先）")
+    sections.append({"title": "静的解析・Lint", "content": "\n".join(lint_lines)})
+
+    # -- アーキテクチャ規約（条件付き追加） --
+    if _detect_architecture(manifest):
+        arch_lines: list[str] = []
+        arch_lines.append("- レイヤー間の依存方向を厳守する（内側 → 外側への依存禁止）")
+        arch_lines.append("- interface を境界に配置し、実装の差し替え可能性を担保する")
+        sections.append({"title": "アーキテクチャ規約", "content": "\n".join(arch_lines)})
+
+    return sections
+
+
 def _resolve(manifest: dict) -> dict:
     names = _tech_names(manifest)
 
@@ -207,10 +362,7 @@ def _resolve(manifest: dict) -> dict:
     if _detect_database(manifest):
         data_model_sections.extend(DATA_MODEL_SECTIONS_MIGRATION)
 
-    coding_standards_sections = list(CODING_STANDARDS_SECTIONS_COMMON)
-    if _detect_architecture(manifest):
-        coding_standards_sections.extend(CODING_STANDARDS_SECTIONS_ARCH)
-    coding_standards_sections.extend(CODING_STANDARDS_SECTIONS_LINT)
+    coding_standards_sections = _resolve_coding_standards_content(manifest)
 
     workflow_sections = list(WORKFLOW_SECTIONS_COMMON)
     workflow_sections.extend(WORKFLOW_SECTIONS_ASYNC)
@@ -276,7 +428,12 @@ def _domain_docs_block(resolved: dict) -> list[str]:
         lines.append(f"  {section_key}:")
         for item in resolved[section_key]:
             lines.append(f"    - title: {_yaml_quote(item['title'])}")
-            lines.append(f"      guidance: {_yaml_quote(item['guidance'])}")
+            if "content" in item:
+                lines.append("      content: |")
+                for content_line in item["content"].split("\n"):
+                    lines.append(f"        {content_line}")
+            elif "guidance" in item:
+                lines.append(f"      guidance: {_yaml_quote(item['guidance'])}")
     return lines
 
 

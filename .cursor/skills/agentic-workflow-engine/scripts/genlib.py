@@ -130,15 +130,59 @@ def _strip_inline_comment(line: str) -> str:
 
 
 def _tokenize(text: str):
-    """(indent, content) のリストへ。空行・コメントのみの行は捨てる。"""
+    """(indent, content) のリストへ。空行・コメントのみの行は捨てる。
+    `|` ブロックリテラルは後続のインデントされた行群を結合してスカラー値に変換する。
+    """
+    raw_lines = text.split("\n")
     tokens = []
-    for raw in text.split("\n"):
-        line = _strip_inline_comment(raw)
+    i = 0
+    while i < len(raw_lines):
+        line = _strip_inline_comment(raw_lines[i])
         if line.strip() == "":
+            i += 1
             continue
         indent = len(line) - len(line.lstrip(" "))
-        tokens.append((indent, line.strip()))
+        content = line.strip()
+        # `|` ブロックリテラル検出: "key: |" パターン
+        if content.endswith(": |") or content == "|":
+            block_indent = None
+            block_lines = []
+            j = i + 1
+            while j < len(raw_lines):
+                bline = raw_lines[j]
+                # 空行はブロック内の改行として保持
+                if bline.strip() == "":
+                    block_lines.append("")
+                    j += 1
+                    continue
+                b_indent = len(bline) - len(bline.lstrip(" "))
+                if block_indent is None:
+                    if b_indent <= indent:
+                        break
+                    block_indent = b_indent
+                if b_indent < block_indent:
+                    break
+                block_lines.append(bline[block_indent:])
+                j += 1
+            # 末尾の空行を除去
+            while block_lines and block_lines[-1] == "":
+                block_lines.pop()
+            block_text = "\n".join(block_lines)
+            if content.endswith(": |"):
+                key_part = content[:-2].strip()
+                tokens.append((indent, f"{key_part}: {_block_quote(block_text)}"))
+            else:
+                tokens.append((indent, _block_quote(block_text)))
+            i = j
+        else:
+            tokens.append((indent, content))
+            i += 1
     return tokens
+
+
+def _block_quote(text: str) -> str:
+    """ブロックリテラルテキストを内部表現（ダブルクォート付き）に変換する。"""
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _unquote(s: str) -> str:

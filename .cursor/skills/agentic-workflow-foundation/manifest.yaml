@@ -550,9 +550,13 @@ outputs:
       - "## データベース設計思想"
   - path: docs/coding-standards.md
     template: docs/coding-standards.md.template
-    mode: seed
+    mode: render
     required_sections:
       - "## 基本方針"
+      - "## 命名規約"
+      - "## エラーハンドリング規約"
+      - "## テスト規約"
+      - "## 静的解析・Lint"
   - path: docs/workflows.md
     template: docs/workflows.md.template
     mode: seed
@@ -824,6 +828,6 @@ project:
       - path: "docs/data-models.md"
         desc: "データモデル — DB スキーマ・ER 関係・マイグレーション規約（seed 生成物）"
       - path: "docs/coding-standards.md"
-        desc: "コーディング規約 — 言語規約・アーキテクチャ規約・テスト規約（seed 生成物）"
+        desc: "コーディング規約 — tech-stack から自動導出されたベストプラクティス（render 生成物）"
       - path: "docs/workflows.md"
         desc: "ワークフロー — 主要ユースケースの処理フロー・状態遷移・エラーハンドリング（seed 生成物）"
