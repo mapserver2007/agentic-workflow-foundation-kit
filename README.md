@@ -14,6 +14,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks |
 | Project Docs (Meta) | `docs/tech-stack.md`、`docs/session-handoff-guide.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
+| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（7ステップ + index + best-practices）、`docs/agent-tasks/reports/`、`agent-maintenance-docs` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
 
@@ -83,7 +84,8 @@ agentic-workflow-foundation-kit/
         │   │   │                    # data-models, coding-standards, workflows
         │   │   ├── skills/          # session-planning, session-handover,
         │   │   │                    # decisions-record, agent-code-review,
-        │   │   │                    # agent-github-pr, agent-github-issue
+        │   │   │                    # agent-github-pr, agent-github-issue,
+        │   │   │                    # agent-maintenance-docs
         │   │   └── bin/             # _github-app-auth.sh, github-pr-*-safe,
         │   │                        # github-issue-*-safe
         │   ├── references/
@@ -179,6 +181,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
+| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
 各オプション出力の条件:
@@ -187,6 +190,8 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
+- `docs/agent-tasks/agent-workflow/**` と `docs/agent-tasks/reports/` — `agent_workflow.enabled: true` の場合のみ
+- `.cursor/skills/agent-maintenance-docs/SKILL.md` — `agent_workflow.maintenance_docs.enabled: true` の場合のみ
 
 Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。
 
@@ -198,7 +203,7 @@ Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初�
 | --- | --- | --- |
 | 1. Context | 目的・判断基準・運用入口 | `AGENTS.md`、`CLAUDE.md`、`docs/*` |
 | 2. Constraints | 常時適用される制約 | `.cursor/rules/*.mdc` |
-| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`agent-code-review` |
+| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`agent-code-review`、`agent-maintenance-docs` |
 | 4. Automation | ツール実行前後・セッション境界の自動処理 | `.cursor/hooks/*`、`.cursor/hooks.json` |
 | 5. Delegation | 子エージェントへの委譲 | 本キットでは生成しない。Cursor 組み込み Subagent を利用する |
 
