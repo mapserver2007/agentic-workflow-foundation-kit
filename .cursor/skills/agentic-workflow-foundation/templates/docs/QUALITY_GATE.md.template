@@ -67,7 +67,30 @@ G-* は技術スタックから決まる root scripts を外部インターフ�
 | G-DOC-ADR | 設計次元 D-* を変更する判断が発生した場合、`docs/DECISIONS.md` に ADR 追記 | Significance / Alternatives Considered を満たす |
 | G-DOC-NAMING | 新規ドキュメント名が semantic 2層モデルに従っている | Meta 層は大文字 / Domain 層は kebab-case（`AGENTS.md > Documentation Naming Convention`） |
 
-**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「仕様反映ゲート（`docs/spec/{feature}.md`）/ Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
+{{#if agent_workflow.enabled}}
+### 1.2.1 タスク完了ゲート（agent_workflow feature 有効時）
+
+| ゲート | 内容 | 合格条件 |
+| --- | --- | --- |
+| G-DOC-SPEC | Domain 層ドキュメントへの仕様反映 | `project.doc_navigation.domain` に列挙された docs への反映完了（または「コードから判断可能なため反映不要」と判定） |
+| G-ARCHIVE | 完了レポートの archives 移動 | タスクレポート完了チェック 6 項目すべて `[x]` かつ `docs/agent-tasks/reports/archives/` への移動完了 |
+
+**G-DOC-SPEC の対象スコープ**:
+
+対象（`project.doc_navigation.domain` に列挙された Domain 層 md ファイル）:
+{{#each project.doc_navigation.domain}}- `{{this.path}}` — {{this.desc}}
+{{/each}}
+
+除外:
+- Meta 層（`DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`）
+- 証跡系（`docs/agent-tasks/reports/` / `docs/agent-tasks/reviews/`）
+- gen 系（`docs/gen/`）
+- 調査系（`docs/investigations/`）
+
+**G-ARCHIVE の動作**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）がすべて `[x]` であることを確認し、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行する。archives 移動でキャンペーン完了を表現する。
+{{/if}}
+
+**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。{{#if agent_workflow.enabled}}タスク完了ゲート（G-DOC-SPEC / G-ARCHIVE）は上記 §1.2.1 で定義済み。{{/if}}Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
 
 ### 1.3 リンク衛生ゲート
 

@@ -1,0 +1,42 @@
+# AIエージェント向けタスク指示書
+
+このディレクトリには、AIエージェントが各種タスク（バグ修正、パフォーマンス改善、リファクタリング、新機能開発など）を実行するための指示書とプロセスガイドを配置します。
+
+> **1キャンペーン = 1 reports = 1 PR**: 1つのタスクに対して、1つの `reports/{report}.md` を作成し、1つの PR で完結させる運用とする。
+
+## ファイル構成
+
+- **agent-workflow.md**: AI エージェント向けタスク実行ワークフロー（最重要）
+- **reports/**: タスクレポートの格納ディレクトリ
+  - **{report}.md**: 進行中の具体的なタスク指示書
+  - **archives/**: 完了済みタスクレポートのアーカイブ
+{{#if code_review.enabled}}- **reviews/**: PRレビュー検証レポートの格納ディレクトリ
+{{/if}}
+
+## 命名規則（タスクレポート）
+
+- 格納場所: `reports/`（進行中） / `reports/archives/`（完了済み）
+- 命名規則: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
+- 例: `reports/2026-06-22-cancel-order-error-handling.md`
+
+## クイックスタート
+
+### AIエージェントがタスク実行を依頼された場合
+1. **AGENTS.md** を最初に参照（Session Protocol / Boundaries / Documentation Navigation を確認）
+2. **agent-workflow.md** を参照
+3. ワークフローに従ってタスクの調査・分析を実施
+4. タスクレポートを作成し `reports/` に保存
+5. 作成したタスクレポートに従って実装を実行
+6. テスト実装後、PR レビュー検証を実行
+7. レビュー完了後、docs に仕様反映 + `reports/{report}.md` を `reports/archives/` に移動（archives 移動でキャンペーン完了を表現）
+
+### AIエージェントが既存のタスクレポートから実装を実行する場合
+1. **reports/{report}.md** を最初に参照
+2. AGENTS.md の参照順序に従って関連ドキュメントを確認
+3. 実装時の制約事項を遵守して実行
+
+## 実装時の制約事項
+
+- **ファイル全体を読み込む** — 部分読み込みでの変更は禁止
+- **推測禁止** — 仕様不明時は docs で確認するか、ユーザーに質問
+- **AGENTS.md > Boundaries の遵守** — Always / Ask First / Never を必ず確認

@@ -1,0 +1,142 @@
+# ⑦ 完了報告
+
+[← agent-workflow.md（index）に戻る](../agent-workflow.md)
+
+実装・テスト・レビューが完了した後、docs への仕様反映と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
+
+**前提条件**: ⑥ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
+
+---
+
+## 7.1 docs への仕様反映
+
+{{#if agent_workflow.maintenance_docs.enabled}}
+PR レビュー完了後、`.cursor/skills/maintenance-docs/SKILL.md` を読み込み実行する。
+{{else}}
+PR レビュー完了後、以下の原則に従い Domain 層ドキュメントへの仕様反映を行う。
+{{/if}}
+
+**最重要原則**: **LLM がコードから判断できる情報は反映不要**。
+
+### 反映が必要な情報
+- ビジネス上の意思決定・設計意図（「なぜそうしたか」）
+- 外部システムとの暗黙の契約（コードだけではわからない挙動）
+- 運用上の制約・注意点
+- PR レビューで合意した仕様変更
+
+### 反映が不要な情報
+- コードを読めば明らかな実装詳細
+- 技術的な動作の説明（関数名・変数名から明らか）
+- バグ修正（仕様通りの動作に戻しただけ）
+- リファクタリング（外部仕様に影響しない）
+
+### 反映対象ドキュメント（G-DOC-SPEC スコープ）
+
+対象（`project.doc_navigation.domain` に列挙された Domain 層 md ファイル）:
+{{#each project.doc_navigation.domain}}
+- [`{{this.path}}`](../../{{this.path}}) — {{this.desc}}
+{{/each}}
+
+除外:
+- Meta 層（`DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`）
+- 証跡系（`docs/agent-tasks/reports/` / `docs/agent-tasks/reviews/`）
+- gen 系（`docs/gen/`）
+- 調査系（`docs/investigations/`）
+
+反映完了後、タスクレポートの「docs への仕様反映」チェックボックスを `[x]` に更新する。
+
+## 7.2 完了条件の確認（QUALITY_GATE 6項目）
+
+タスクレポートの完了チェック 6 項目が全て `[x]` になっているか確認する。
+
+- [ ] 実装完了
+- [ ] テスト完了（G-TEST / `{{project.quality_gate.test_cmd}}` PASS）
+- [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN / `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}}`）
+- [ ] PRレビュー検証完了
+- [ ] docs への仕様反映（G-DOC-SPEC）
+- [ ] ADR 起票判定（設計次元 D-* 該当なら [docs/DECISIONS.md](../../DECISIONS.md) へ追記）
+
+## 7.3 archives 移動
+
+{{#if agent_workflow.maintenance_docs.enabled}}
+`maintenance-docs` スキルは **docs 反映だけでなく archives 移動までを責任範囲**に持つ。完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
+{{else}}
+完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
+{{/if}}
+
+### 実行ステップ
+
+{{#if agent_workflow.gate_scripts}}
+1. **事前検査**: `make gate-archive TICKET={ticket}` を実行
+   - 完了チェック 6 項目すべて `[x]` であるか
+   - FAIL 項目が出れば修正して再実行。**exit 0 を確認するまで次に進まない**（Advisory ループ）
+{{else}}
+1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する
+{{/if}}
+2. **ファイル移動**: `git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
+   - archives 移動完了をもってキャンペーン完了とする（進行中キャンペーンの SoT は `reports/` 直下のファイル存在）
+3. 次の pending レポートへ（複数レポート処理時）
+
+この手順により [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3「完了報告 → アーカイブ」フェーズ境界の出口条件を満たす。
+
+**exit code の意味**: 0 = 通過 / 1 = FAIL 項目を修正して再実行 / 2 = 致命的エラー（当該レポートを skip してユーザー報告）。詳細は `docs/QUALITY_GATE.md §1` を参照。
+
+### 実質完了の定義
+
+archives 移動済み時点でタスクは**実質完了**とみなす。以降の工程（PR マージ / 本番反映）で発生した問題は元 reports を再編集せず、新規レポートとして起票する。
+
+## 7.4 ユーザーへの報告
+
+```markdown
+タスク実装が完了しました：
+- タスクレポート: {archives 移動後のファイルパス}
+- 実装内容: {概要}
+- テスト: {実装したテストの概要}
+{{#if code_review.enabled}}- レビュー: {レビューレポートのファイルパス}
+{{/if}}- docs 反映: {反映したドキュメント or「コードから判断可能なため反映不要」}
+- ADR: {採用した設計判断のトピック名（詳細は docs/DECISIONS.md を参照）or「該当なし」}
+- 確認事項: {ユーザーに確認してほしい内容}
+```
+
+## 7.5 例外: docs 反映後に追加コメントが付いた場合
+
+{{#if code_review.enabled}}
+Step 6.7 で承認を取得して docs 反映まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
+
+1. ユーザーが `agent-code-review` を **Mode B で再起動**する
+2. タスクレポートの `[x] PRレビュー検証完了` と `[x] docsへの仕様反映` を **`[ ]` に戻す**（再承認・再反映を強制）
+3. レビューレポートの承認状態を「未承認（新規コメント取得待ち）」に戻す
+4. `agent-code-review` の指摘取得ステップから再実行 → 検証 → 承認
+5. 承認後に docs を再反映し、チェックボックスを再び `[x]` に更新する
+{{else}}
+docs 反映後に PR へ新規レビューコメントが付いた場合:
+
+1. タスクレポートの `[x] PRレビュー検証完了` と `[x] docsへの仕様反映` を **`[ ]` に戻す**
+2. 新規コメントに対応し、レビュー完了後に再度 docs 反映を行う
+3. チェックボックスを再び `[x]` に更新する
+{{/if}}
+
+## 7.6 Gotchas 起票判定
+
+セッション中に以下のいずれかが発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) に運用ログを追記する。
+
+**起票トリガー**（`AGENTS.md > ## Gotchas > 起票トリガー` と同一）:
+1. 開発者から「期待と違う」等の不一致指摘を受けた
+2. 同じ問題で 2 回以上の修正が必要になった
+3. 既存スキル・ドキュメント通りに作業したのに想定外の結果になった
+
+記録フォーマット:
+```
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
+```
+
+---
+
+## 関連ドキュメント
+
+- [06-pr-review.md](06-pr-review.md) — 前ステップ（PR レビュー検証）
+{{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/maintenance-docs/SKILL.md](../../../.cursor/skills/maintenance-docs/SKILL.md) — docs 仕様反映スキル
+{{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
+- [docs/GOTCHAS.md](../../GOTCHAS.md) — Gotchas 集約版
+- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — PR レビュー → 完了報告 → アーカイブのフェーズ境界
+- [AGENTS.md > Session Protocol](../../../AGENTS.md) — セッション終了手順

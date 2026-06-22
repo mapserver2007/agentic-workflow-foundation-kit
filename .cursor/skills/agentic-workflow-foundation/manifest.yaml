@@ -356,6 +356,23 @@ github_issue:
   enabled: false
 
 # ------------------------------------------------------------
+# (2i) agent_workflow — タスク実行ワークフロー docs（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
+#   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+#   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
+# ------------------------------------------------------------
+agent_workflow:
+  enabled: false
+  report_slug_format: "yyyy-mm-dd-slug"
+  # 将来 feature 予約キー（現時点では false。テンプレート内の条件分岐で
+  # 未定義キーがエンジンエラーにならないよう明示的に false を宣言する）
+  maintenance_docs:
+    enabled: false
+  gate_scripts: false
+  execute_skill: false
+
+# ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
 #   mode: render = テンプレート全展開 / marker = マーカーブロックを既存ファイルへ upsert
 #   required_sections: 生成結果に必ず含まれるべき文字列（設計書準拠の機械検査）
@@ -752,6 +769,95 @@ outputs:
     template: bin/github-pr-create-safe.template
     mode: render
     executable: true
+  # agent-workflow docs（feature: agent_workflow で条件生成）。
+  # docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+  # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
+  - path: docs/agent-tasks/reports/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow
+  - path: docs/agent-tasks/reports/archives/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow
+  - path: docs/agent-tasks/agent-workflow.md
+    template: docs/agent-tasks/agent-workflow.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "基本フロー"
+      - "ステップ別詳細"
+      - "reports/"
+  - path: docs/agent-tasks/README.md
+    template: docs/agent-tasks/README.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "1キャンペーン"
+      - "reports/"
+  - path: docs/agent-tasks/agent-workflow/01-investigation.md
+    template: docs/agent-tasks/agent-workflow/01-investigation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "ドキュメントの参照"
+      - "コードの調査"
+      - "ADR 起票判定"
+  - path: docs/agent-tasks/agent-workflow/02-task-decision.md
+    template: docs/agent-tasks/agent-workflow/02-task-decision.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "判定チェックリスト"
+      - "タスク確定ではない場合"
+  - path: docs/agent-tasks/agent-workflow/03-report-creation.md
+    template: docs/agent-tasks/agent-workflow/03-report-creation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "必須セクション"
+      - "プレースホルダ禁止"
+      - "進行中キャンペーン"
+  - path: docs/agent-tasks/agent-workflow/04-implementation.md
+    template: docs/agent-tasks/agent-workflow/04-implementation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "既存実装の踏襲"
+      - "設計判断が発生した場合"
+  - path: docs/agent-tasks/agent-workflow/05-testing.md
+    template: docs/agent-tasks/agent-workflow/05-testing.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "コードゲート"
+      - "合格条件"
+      - "禁止事項"
+  - path: docs/agent-tasks/agent-workflow/06-pr-review.md
+    template: docs/agent-tasks/agent-workflow/06-pr-review.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "PR 作成"
+      - "指摘の検証"
+      - "レビュー完了承認"
+  - path: docs/agent-tasks/agent-workflow/07-completion.md
+    template: docs/agent-tasks/agent-workflow/07-completion.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "docs への仕様反映"
+      - "完了条件の確認"
+      - "archives 移動"
+      - "G-DOC-SPEC"
+  - path: docs/agent-tasks/agent-workflow/best-practices.md
+    template: docs/agent-tasks/agent-workflow/best-practices.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "推測禁止"
+      - "既存実装の踏襲"
+      - "archives 移動"
   - path: .gitignore
     template: gitignore.block.template
     mode: marker

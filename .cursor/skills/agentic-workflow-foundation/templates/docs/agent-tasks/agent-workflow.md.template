@@ -1,0 +1,87 @@
+# AI エージェント向けタスク実行ワークフロー
+
+Cursor 内で AI エージェントが各種タスク（バグ修正、パフォーマンス改善、リファクタリング、新機能開発など）を依頼された際の**標準ワークフロー index**。
+
+**Progressive Disclosure** に従い、本ファイルは概要とステップ index のみを担い、詳細手順は `agent-workflow/` 配下の step 別ファイル（L3）に分割している。
+
+{{#if agent_workflow.execute_skill}}
+> **関連スキル**: [`execute-agent-workflow`](../../.cursor/skills/execute-agent-workflow/SKILL.md){{#if code_review.enabled}} / [`agent-code-review`](../../.cursor/skills/agent-code-review/SKILL.md){{/if}}{{#if agent_workflow.maintenance_docs.enabled}} / [`maintenance-docs`](../../.cursor/skills/maintenance-docs/SKILL.md){{/if}}
+{{/if}}
+
+---
+
+## 基本フロー
+
+```
+（セッション開始: session-start-gate.sh で整合性確認）
+ ↓
+ユーザーからタスク実行依頼
+ ↓
+① タスクの調査・分析
+ ↓
+② タスク確定の判定
+ ↓
+③ タスクレポートの作成（docs/agent-tasks/reports/ 直下のファイル存在 = 進行中キャンペーンの SoT。archives/ は除く）
+ ↓
+④ 実装の実行
+ ↓
+⑤ テスト実装（＋コードゲート通過）
+ ↓
+⑥ PR レビュー検証
+ ↓
+⑦ 完了報告（docs 反映 + アーカイブ）
+```
+
+各ステップは [docs/QUALITY_GATE.md](../QUALITY_GATE.md) §3 のフェーズ境界と対応しており、境界ごとに出入口条件を満たすこと。
+
+---
+
+## ステップ別詳細（L3 リンク）
+
+| ステップ | 詳細ファイル | 主要成果物 | 対応フェーズ境界 |
+| --- | --- | --- | --- |
+| ① 調査・分析 | [agent-workflow/01-investigation.md](agent-workflow/01-investigation.md) | 調査結果の整理 | — |
+| ② タスク確定の判定 | [agent-workflow/02-task-decision.md](agent-workflow/02-task-decision.md) | （判定結果のみ） | 一次調査 → タスクレポート作成 |
+| ③ タスクレポートの作成 | [agent-workflow/03-report-creation.md](agent-workflow/03-report-creation.md) | `docs/agent-tasks/reports/{report}.md` | タスクレポート → 実装 |
+| ④ 実装の実行 | [agent-workflow/04-implementation.md](agent-workflow/04-implementation.md) | コード変更 + reports 完了チェック更新 | — |
+| ⑤ テスト実装 | [agent-workflow/05-testing.md](agent-workflow/05-testing.md) | テストコード + コードゲート PASS | 実装 → PR レビュー |
+| ⑥ PR レビュー検証 | [agent-workflow/06-pr-review.md](agent-workflow/06-pr-review.md) | レビュー対応完了 | PR レビュー → 完了報告 |
+| ⑦ 完了報告 + archives 移動 | [agent-workflow/07-completion.md](agent-workflow/07-completion.md) | `docs/agent-tasks/reports/archives/` への移動 + Domain 層 docs 更新 | 完了報告 → アーカイブ |
+
+---
+
+## 横断ドキュメント
+
+- [agent-workflow/best-practices.md](agent-workflow/best-practices.md) — 各段階で守るべき運用ベストプラクティス
+
+---
+
+## reports/ の必須セクション
+
+`docs/agent-tasks/reports/{report}.md`（命名規約: `{{agent_workflow.report_slug_format}}`）は、以下のセクションを必ず含む。
+
+1. タスクの概要（タスクタイプ / 発見日 / 優先度）
+2. 問題・要件の詳細
+3. 原因・背景
+4. 影響範囲
+5. 実装方針
+6. コード変更の詳細
+7. テスト計画
+8. 関連する既存コード
+9. 追加調査が必要な項目
+10. 完了チェック（6 項目: 実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）
+
+---
+
+## 参考資料
+
+### 関連ドキュメント
+- [AGENTS.md](../../AGENTS.md) — AI エージェントガイド全体 / Session Protocol / Gotchas / Boundaries
+- [docs/DECISIONS.md](../DECISIONS.md) — ADR 起票フォーマットとトリガー
+- [docs/QUALITY_GATE.md](../QUALITY_GATE.md) — フェーズ境界別ゲート / 例外承認フロー
+- [docs/GOTCHAS.md](../GOTCHAS.md) — スキル横断の失敗事例集約
+- [docs/AGENT_RUNBOOK.md](../AGENT_RUNBOOK.md) — AI エージェント運用フレームワーク
+- [README.md](README.md) — クイックスタートガイド
+
+### 命名規約
+- [AGENTS.md > Documentation Naming Convention](../../AGENTS.md) — Meta/Domain semantic 2層モデル

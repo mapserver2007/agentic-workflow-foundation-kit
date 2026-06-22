@@ -1,0 +1,54 @@
+# ④ 実装の実行
+
+[← agent-workflow.md（index）に戻る](../agent-workflow.md)
+
+タスクレポートの実装方針に従ってコード実装するフェーズ。`AGENTS.md > Boundaries` に準拠する。
+
+---
+
+## 4.1 実装方針の確認
+
+- **既存実装の踏襲**: 実装前に必ず既存コードを調査し、既存パターンを採用する。異なる実装パターンを使う場合は必ずユーザーに確認を取る
+- **アーキテクチャの原則**: アーキテクチャ層の責務境界を守る
+- **エラーハンドリング**: 無視禁止。適切なドメインエラーを使い分ける
+
+## 4.2 コード実装
+
+- 変更前にファイル全体を読み込み、内容を確認する（AGENTS.md > Boundaries）
+- 変更範囲を特定し、影響範囲を把握してから実行する
+- 関連する全てのファイルを確認し、影響範囲を把握する
+
+## 4.3 制約事項の遵守（AGENTS.md > Boundaries）
+
+### Always
+{{#each project.boundaries.always}}
+- {{this}}
+{{/each}}
+
+### Ask First（ユーザー承認が必要）
+{{#each project.boundaries.ask_first}}
+- {{this}}
+{{/each}}
+
+### Never
+{{#each project.boundaries.never_extra}}
+- {{this}}
+{{/each}}
+
+## 4.4 設計判断が発生した場合（設計次元 D-*）
+
+実装中に [docs/DECISIONS.md](../../DECISIONS.md) の **設計次元 D-* のいずれかを変更する判断** が発生した場合:
+
+1. `docs/DECISIONS.md` に新規 ADR エントリを追記（Significance セクション + Alternatives Considered 2 件以上必須）
+2. `reports/{report}.md` には**判断トピック名**を記載し、詳細は `docs/DECISIONS.md` への参照リンクで参照する（判断本文は埋め込まない）
+3. タスクレポートの「完了チェック」の「ADR 起票判定」を `[x]` に更新
+
+D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 / 値チューニングの選択 / リネーム / docs 整理 等）は ADR 起票せず PR 説明で完結。
+
+---
+
+## 関連ドキュメント
+
+- [03-report-creation.md](03-report-creation.md) — 前ステップ（レポート作成）
+- [05-testing.md](05-testing.md) — 次ステップ（テスト）
+- [AGENTS.md > Boundaries](../../../AGENTS.md) — Always / Ask First / Never
