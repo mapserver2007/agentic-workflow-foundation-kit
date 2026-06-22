@@ -28,6 +28,7 @@ ROOT_OVERLAY_KEYS = (
     "github_pr",
     "github_issue",
     "coderabbit",
+    "agent_workflow",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
