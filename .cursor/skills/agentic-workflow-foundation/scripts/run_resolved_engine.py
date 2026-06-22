@@ -200,10 +200,34 @@ def _apply_upstream_design_inputs(merged: dict) -> dict:
     return merged
 
 
+def _is_feature_enabled(manifest: dict, feature: str) -> bool:
+    """feature トグルを評価する。
+
+    トップレベル（code_review / agent_workflow）と dot パス
+    （agent_workflow.execute_skill / agent_workflow.maintenance_docs）に対応する。
+    末端が dict で enabled キーを持つ場合はその値を、それ以外は truthiness を返す。
+    """
+    if not feature:
+        return False
+    node: object = manifest
+    parts = feature.split(".")
+    for i, part in enumerate(parts):
+        if not isinstance(node, dict):
+            return False
+        node = node.get(part)
+        if node is None:
+            return False
+        if i == len(parts) - 1:
+            if isinstance(node, dict) and "enabled" in node:
+                return bool(node.get("enabled"))
+            return bool(node)
+    return False
+
+
 def _filter_outputs_by_features(manifest: dict) -> dict:
     """feature フラグが無効な outputs エントリを除外する。
 
-    outputs[].feature が指定されている場合、manifest[feature].enabled が
+    outputs[].feature が指定されている場合、対応する feature トグルが
     truthy でなければそのエントリを生成対象から除外する。
     feature が未指定の outputs はそのまま通過する。
 
@@ -218,10 +242,7 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
             filtered.append(out)
             continue
         features = feature if isinstance(feature, list) else [feature]
-        if any(
-            isinstance(manifest.get(f), dict) and manifest.get(f, {}).get("enabled")
-            for f in features
-        ):
+        if any(_is_feature_enabled(manifest, f) for f in features):
             filtered.append(out)
     manifest["outputs"] = filtered
     return manifest

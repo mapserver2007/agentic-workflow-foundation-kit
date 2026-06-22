@@ -220,7 +220,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review` / `github_pr` / `github_issue` / `coderabbit`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。
+- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。
 
   **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
      - Yes → 以下を固定値で一括設定する
@@ -229,9 +229,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
        - `github_issue.enabled: true` → agent-github-issue スキルと `bin/github-issue-{create,read}-safe` を生成
        - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
        - `agent_workflow.enabled: true` → agent-workflow docs（7ステップ + index + best-practices）を生成
-       - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs を生成
+       - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
        - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.maintenance_docs.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / agent-maintenance-docs を生成しない
+     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.maintenance_docs.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / agent-maintenance-docs スキルを生成しない
      - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
 
 **(2) 自動導出（質問不要）**

@@ -3,7 +3,7 @@
 
 責務（How エンジンの土台）:
   - 最小 YAML サブセットのローダ（`load_manifest`）— PyYAML 非依存（標準ライブラリのみ）
-  - テンプレート描画（`render`）— `{{path}}` スカラ展開と `{{#each}}…{{/each}}` ブロック反復
+  - テンプレート描画（`render`）— `{{path}}` スカラ展開、`{{#if}}…{{else}}…{{/if}}` 条件分岐、`{{#each}}…{{/each}}` ブロック反復
   - fingerprint（`sha256_file`）/ スキル・リポジトリルートのパス解決
   - 例外（`YamlError` / `RenderError`）
 
@@ -20,6 +20,9 @@
 
 テンプレート構文:
   - `{{ dotted.path }}`           : マニフェスト上のスカラを文字列展開
+  - `{{#if dotted.path}} … {{else}} … {{/if}}` : 条件分岐（ネスト可）。
+        パスの値が truthy（非 None / 非 False / 非空リスト / 非空文字列）なら
+        if ブロックを、そうでなければ else ブロック（省略可）を展開する
   - `{{#each dotted.path}} … {{/each}}` : リストを反復（ネスト不可）。本体で
         `{{this}}`（スカラ要素） / `{{this.field}}`（マップ要素のフィールド） /
         `{{@index}}`（1始まりの連番）が使える
@@ -313,11 +316,16 @@ def load_manifest(path: str) -> dict:
 # --------------------------------------------------------------------------
 _EACH_RE = re.compile(r"\{\{#each\s+([^\}]+?)\}\}(.*?)\{\{/each\}\}", re.DOTALL)
 _VAR_RE = re.compile(r"\{\{\s*([^\}]+?)\s*\}\}")
-# ブロックトークン（{{#each}} / {{/each}}）が行内で単独（前後が空白のみ）の場合、
-# その行の空白と改行を畳む（Handlebars の standalone 規則）。テンプレートはこの挙動を
-# 前提に記述されている（例: `{{/each}}- 次の項目` のように非単独行は畳まれない）。
+_IF_OPEN_RE = re.compile(r"\{\{#if\s+([^\}]+?)\}\}")
+# ブロックトークン（{{#if}} / {{else}} / {{/if}} / {{#each}} / {{/each}}）が
+# 行内で単独（前後が空白のみ）の場合、その行の空白と改行を畳む
+# （Handlebars の standalone 規則）。テンプレートはこの挙動を前提に記述されている
+# （例: `{{/each}}- 次の項目` のように非単独行は畳まれない）。
 _STANDALONE_RE = re.compile(
-    r"(?m)^[ \t]*(\{\{#each\s+[^\}]+?\}\}|\{\{/each\}\})[ \t]*\r?\n"
+    r"(?m)^[ \t]*("
+    r"\{\{#each\s+[^\}]+?\}\}|\{\{/each\}\}"
+    r"|\{\{#if\s+[^\}]+?\}\}|\{\{else\}\}|\{\{/if\}\}"
+    r")[ \t]*\r?\n"
 )
 
 
@@ -337,6 +345,70 @@ def _resolve_path(root: dict, path: str):
         else:
             raise RenderError(f"未解決の参照: {path}")
     return cur
+
+
+def _is_truthy(value) -> bool:
+    """Handlebars 互換の truthiness 判定。"""
+    if value is None or value is False:
+        return False
+    if isinstance(value, list):
+        return len(value) > 0
+    if isinstance(value, str):
+        return len(value) > 0
+    return True
+
+
+def _process_ifs(text: str, root: dict) -> str:
+    """{{#if path}}…{{else}}…{{/if}} ブロックを再帰的に展開する（ネスト対応）。"""
+    while True:
+        m = _IF_OPEN_RE.search(text)
+        if not m:
+            break
+        path = m.group(1).strip()
+        start = m.start()
+        body_start = m.end()
+
+        depth = 1
+        pos = body_start
+        else_pos = None
+        endif_end = None
+        while depth > 0 and pos < len(text):
+            next_if = text.find("{{#if ", pos)
+            next_endif = text.find("{{/if}}", pos)
+            if next_endif == -1:
+                raise RenderError(f"{{{{#if {path}}}}} に対応する {{{{/if}}}} がない")
+            if next_if != -1 and next_if < next_endif:
+                depth += 1
+                pos = next_if + 6
+                continue
+            if depth == 1:
+                next_else = text.find("{{else}}", pos)
+                if else_pos is None and next_else != -1 and next_else < next_endif:
+                    else_pos = next_else
+            depth -= 1
+            if depth == 0:
+                endif_end = next_endif + len("{{/if}}")
+            else:
+                pos = next_endif + len("{{/if}}")
+
+        if endif_end is None:
+            raise RenderError(f"{{{{#if {path}}}}} に対応する {{{{/if}}}} がない")
+
+        try:
+            value = _resolve_path(root, path)
+            truthy = _is_truthy(value)
+        except RenderError:
+            truthy = False
+
+        if else_pos is not None:
+            if_body = text[body_start:else_pos]
+            else_body = text[else_pos + len("{{else}}"):next_endif]
+        else:
+            if_body = text[body_start:next_endif]
+            else_body = ""
+
+        text = text[:start] + (if_body if truthy else else_body) + text[endif_end:]
+    return text
 
 
 def _render_scalars(text: str, root: dict, item=None, index=None) -> str:
@@ -379,5 +451,6 @@ def render(text: str, root: dict) -> str:
         )
 
     normalized = _STANDALONE_RE.sub(lambda m: m.group(1), text)
-    expanded = _EACH_RE.sub(each_sub, normalized)
+    conditionals_resolved = _process_ifs(normalized, root)
+    expanded = _EACH_RE.sub(each_sub, conditionals_resolved)
     return _render_scalars(expanded, root, item=None, index=None)

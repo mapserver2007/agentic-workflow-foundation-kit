@@ -361,14 +361,18 @@ github_issue:
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
 #   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
+#
+#   agent_workflow.maintenance_docs.enabled: true の場合、
+#   .cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
+#   注意: pos-necpf-service の execute-agent-workflow / maintenance-docs と同名の
+#   Cursor スキルは kit では生成しない。kit 固有名は agent-maintenance-docs。
 # ------------------------------------------------------------
 agent_workflow:
   enabled: false
   report_slug_format: "yyyy-mm-dd-slug"
-  # 将来 feature 予約キー（現時点では false。テンプレート内の条件分岐で
-  # 未定義キーがエンジンエラーにならないよう明示的に false を宣言する）
   maintenance_docs:
     enabled: false
+  # 予約キー（kit では常に false）
   gate_scripts: false
   execute_skill: false
 
@@ -858,6 +862,19 @@ outputs:
       - "推測禁止"
       - "既存実装の踏襲"
       - "archives 移動"
+  # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
+  # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
+  # 推奨インストール Yes で有効化。pos-necpf の maintenance-docs とは別名。
+  - path: .cursor/skills/agent-maintenance-docs/SKILL.md
+    template: skills/agent-maintenance-docs/SKILL.md.template
+    mode: render
+    feature: agent_workflow.maintenance_docs
+    required_sections:
+      - "name: agent-maintenance-docs"
+      - "## 責務範囲"
+      - "G-DOC-SPEC"
+      - "責務境界テーブル"
+      - "## Gotchas"
   - path: .gitignore
     template: gitignore.block.template
     mode: marker

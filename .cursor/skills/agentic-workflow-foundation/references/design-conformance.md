@@ -106,6 +106,13 @@
 - `Alternatives Considered`: 判断理由を復元可能にすること。
 - `## Gotchas`: ADR 運用失敗の Observe → Amend → Evolve 入口。
 
+### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
+- `name: agent-maintenance-docs`: Cursor skill としての識別子。pos-necpf の `maintenance-docs` とは別名。
+- `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。
+- `G-DOC-SPEC`: Domain 層ドキュメント仕様反映ゲートのスコープ定義。
+- `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
+- `## Gotchas`: 反映判定 / archives 移動の運用失敗の Observe → Amend → Evolve 入口。
+
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
 
 QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。

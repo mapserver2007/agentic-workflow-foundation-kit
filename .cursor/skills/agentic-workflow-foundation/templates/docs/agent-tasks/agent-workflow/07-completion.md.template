@@ -11,7 +11,7 @@
 ## 7.1 docs への仕様反映
 
 {{#if agent_workflow.maintenance_docs.enabled}}
-PR レビュー完了後、`.cursor/skills/maintenance-docs/SKILL.md` を読み込み実行する。
+PR レビュー完了後、`.cursor/skills/agent-maintenance-docs/SKILL.md` を読み込み実行する。
 {{else}}
 PR レビュー完了後、以下の原則に従い Domain 層ドキュメントへの仕様反映を行う。
 {{/if}}
@@ -59,7 +59,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 ## 7.3 archives 移動
 
 {{#if agent_workflow.maintenance_docs.enabled}}
-`maintenance-docs` スキルは **docs 反映だけでなく archives 移動までを責任範囲**に持つ。完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
+`agent-maintenance-docs` スキルは **docs 反映だけでなく archives 移動までを責任範囲**に持つ。完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{else}}
 完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{/if}}
@@ -135,7 +135,7 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 ## 関連ドキュメント
 
 - [06-pr-review.md](06-pr-review.md) — 前ステップ（PR レビュー検証）
-{{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/maintenance-docs/SKILL.md](../../../.cursor/skills/maintenance-docs/SKILL.md) — docs 仕様反映スキル
+{{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
 - [docs/GOTCHAS.md](../../GOTCHAS.md) — Gotchas 集約版
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — PR レビュー → 完了報告 → アーカイブのフェーズ境界
