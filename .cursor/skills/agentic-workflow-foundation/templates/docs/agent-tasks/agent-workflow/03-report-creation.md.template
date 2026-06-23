@@ -40,6 +40,16 @@
 
 調査で判明した事実を具体的に記載する。`{XXX}` のまま残すのは禁止（調査未達の項目は「追加調査が必要な項目」に明記）。
 
+{{#if cross_repo_knowledge.enabled}}
+### 関連リポジトリ参照の記録
+
+調査フェーズ（①）で [`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) を発動した場合、参照したリポジトリ情報をレポートの「関連する既存コード」セクションに以下の書式で記録する:
+
+```markdown
+- [cross-repo] {name}@{branch} ({commit_short}): {読み取った主要ファイル or 得た知見の 1 行要約}
+```
+{{/if}}
+
 ## 3.3 タスクレポートの保存
 
 `docs/agent-tasks/reports/{report}.md` に書き出す。

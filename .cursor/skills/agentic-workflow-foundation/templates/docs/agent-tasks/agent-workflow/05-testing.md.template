@@ -19,9 +19,15 @@
 
 [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の全ゲートを通す。
 
+{{#if agent_workflow.gate_scripts}}
+```bash
+.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+```
+{{else}}
 ```bash
 {{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}
 ```
+{{/if}}
 
 ### 合格条件
 

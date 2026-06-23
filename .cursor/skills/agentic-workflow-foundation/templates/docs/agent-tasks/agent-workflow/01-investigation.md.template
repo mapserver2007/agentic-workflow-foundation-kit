@@ -36,6 +36,8 @@
 - エラー発生箇所の特定
 - 関連する処理フローの確認
 - データモデル・スキーマの確認
+{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（③）に `[cross-repo]` 行として 1 行追記する
+{{/if}}
 
 **重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
 

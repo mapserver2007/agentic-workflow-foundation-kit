@@ -67,8 +67,8 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 ### 実行ステップ
 
 {{#if agent_workflow.gate_scripts}}
-1. **事前検査**: `make gate-archive TICKET={ticket}` を実行
-   - 完了チェック 6 項目すべて `[x]` であるか
+1. **事前検査**: `.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/{report}.md` を実行
+   - 完了チェック 6 項目すべて `[x]` であるか（G-ARCHIVE-CHECK-001）
    - FAIL 項目が出れば修正して再実行。**exit 0 を確認するまで次に進まない**（Advisory ループ）
 {{else}}
 1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する

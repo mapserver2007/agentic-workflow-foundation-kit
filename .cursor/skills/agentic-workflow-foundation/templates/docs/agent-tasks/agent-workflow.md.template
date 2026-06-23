@@ -36,6 +36,10 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 ```
 
 各ステップは [docs/QUALITY_GATE.md](../QUALITY_GATE.md) §3 のフェーズ境界と対応しており、境界ごとに出入口条件を満たすこと。
+{{#if agent_workflow.gate_scripts}}
+
+**フェーズ境界ゲート**: `.cursor/skills/session-handover/scripts/workflow-gate.sh <step>` で統一実行する（§1.7）。
+{{/if}}
 
 ---
 

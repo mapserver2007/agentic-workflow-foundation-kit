@@ -140,6 +140,30 @@ WARN は exit 0 を返すため Advisory ループの対象外（再実行不要
 
 WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数不正・追跡ドキュメント不在は exit 2（致命的）。
 
+{{#if agent_workflow.gate_scripts}}
+### 1.7 ワークフローゲートディスパッチャー
+
+agent-workflow のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
+
+実行コマンド: `.cursor/skills/session-handover/scripts/workflow-gate.sh <step>`
+
+| ステップ | 対応境界 | 内部で実行されるゲート |
+| --- | --- | --- |
+{{#each agent_workflow.step_gates}}| `{{this.id}}` | {{this.desc}} | `{{this.cmd}}` |
+{{/each}}
+
+```bash
+# 使用例
+.cursor/skills/session-handover/scripts/workflow-gate.sh step3
+.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
+```
+
+**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（`{{project.quality_gate.build_cmd}}` 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
+
+**archive ゲート（G-ARCHIVE-CHECK-001）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）がすべて `[x]` であることを機械検査する。FAIL 時は未完了項目を列挙し exit 1 を返す。
+{{/if}}
+
 ## 2. 例外承認フロー
 
 ゲートを通過できない場合、以下のいずれかを満たさなければ作業を進めてはならない。**満たさない限り、当該フェーズ境界（§3）は通過扱いにしない**。
@@ -202,8 +226,21 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 
 ## 3. フェーズ境界ゲート
 
-追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 
+{{#if agent_workflow.gate_scripts}}
+**統一ディスパッチャー**: フェーズ境界ゲートは `workflow-gate.sh <step>` で統一実行できる（§1.7）。個別スクリプトの直接実行も引き続き有効。
+{{/if}}
+
+{{#if agent_workflow.gate_scripts}}
+| フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
+| --- | --- | --- | --- |
+| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの `archive/` 移動済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
+| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step3`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step5`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
+| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step6`（`session.verification.gate_command` 実行） |
+| **PR レビュー → 完了 / アーカイブ** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンを `archive/` へ移動（AI の読み込み対象外にする） | `workflow-gate.sh step7` + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+{{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの `archive/` 移動済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
@@ -211,6 +248,7 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了 / アーカイブ** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンを `archive/` へ移動（AI の読み込み対象外にする） | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ `archive/` 移動は次セッションの §1.5 `G-SESSION-ARCH-001` で検出 |
+{{/if}}
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
 

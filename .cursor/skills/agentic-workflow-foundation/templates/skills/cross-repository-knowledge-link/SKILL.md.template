@@ -1,0 +1,338 @@
+---
+name: cross-repository-knowledge-link
+description: >
+  What: `config.json` の `clone_base_path` に関連リポジトリを wrapper（bin/cross-repo-sync-safe）経由で
+  clone/pull して最新化し、`AGENTS.md → CLAUDE.md → コードサーチ` の 3 段参照戦略で Meta/Domain 2層の
+  docs を読み、本リポジトリの理解に必要な関連リポの仕様・実装を取得する独立スキル。
+  Use when: 「関連リポの実装を確認」「連携先の仕様を知りたい」「関連リポジトリの API 定義を参照したい」
+  「連携先がどう動くか調査したい」等、config.json に登録された関連リポジトリの
+  ドキュメント/コードに触れる必要が発生した時。ユーザー確認不要の暗黙発動スキル。
+  また「関連リポジトリを追加したい」「無効化したい」等の管理操作指示時にも使用。
+  Do NOT use for: (1) 本リポジトリ自身の調査（通常のコードサーチや docs 参照で対応）、
+  (2) config.json に未登録の外部リポジトリの調査（追加承認フロー未実施のものには触れない）、
+  (3) 関連リポジトリへのコミット・プッシュ等の書き込み操作（本スキルは読み取り専用）、
+  (4) 関連リポジトリの CI / テスト実行・ビルド（clone 先は参照専用、ビルド環境として使わない）。
+---
+
+# クロスリポジトリ知識リンクスキル
+
+本リポジトリに関連するリポジトリの知識が必要になったとき、エージェントが**暗黙的に発動**するスキル。
+
+ユーザーが直接「知識を同期して」と指示するものではない。エージェントがドキュメントを読み進める中で関連リポジトリの情報が必要と判断したとき、自動的にこのスキルのワークフローを実行して知識に到達する。
+
+**重要**: git 操作（clone / fetch / checkout / pull）はすべて `bin/cross-repo-sync-safe` wrapper 経由で実行する。AI が直接 git コマンドを実行してはならない。
+
+## 対象リポジトリ
+
+**SoT は `config.json` の `repositories` 配列**。config.json にリポジトリの名前・説明・関係性が記載されている。
+
+## 発動条件
+
+以下のいずれかに該当するとき、エージェントはこのスキルを自動的に発動する:
+
+1. ドキュメント（`docs/spec/*.md`、`docs/workflows.md`、`docs/architecture.md` 等）やコードを読み進める中で、関連リポジトリの仕様・実装の理解が必要になった
+2. ユーザーの質問やタスクに回答するために、config.json に登録された関連リポジトリの情報が必要
+3. ユーザーが関連リポジトリの追加・無効化を指示した（管理操作）
+
+**対象リポジトリの判定**: config.json の `repositories` 配列（`active: true`）が唯一の真実。ドキュメント内で言及されている外部サービスやシーケンス図の参加者が config.json に登録されていれば、そのリポジトリのソースコードを取得して内部仕様を調査できる。
+
+## 実行フロー
+
+```
+暗黙発動: エージェントが関連リポジトリの知識が必要と判断
+    ↓
+Step 1: config.json 読み込み → 対象リポジトリ特定
+    ↓
+Step 2: リポジトリ同期（bin/cross-repo-sync-safe wrapper 経由）
+    ↓ 全自動・ユーザー確認不要
+Step 3: 知識参照（AGENTS.md → CLAUDE.md → コードサーチ、docs は Meta/Domain 2層）
+    ↓
+知識到達 → ユーザーへの回答に活用
+```
+
+---
+
+## Step 1: 設定読み込みと対象特定
+
+### 1.1 config.json の読み込み
+
+```
+Read: .cursor/skills/cross-repository-knowledge-link/config.json
+```
+
+### 1.2 設定値の取得
+
+config.json から以下の値を取得し、以降のステップで使用する:
+
+- `{clone_base_path}`: `clone_base_path` フィールドの値（リポジトリのクローン先ベースパス）
+- `{github_org}`: `github_org` フィールドの値
+- `{git_protocol}`: `git_protocol` フィールドの値（`ssh` または `https`）
+
+### 1.3 設定のバリデーション
+
+- `repositories` 配列の各エントリの `name` が `^[A-Za-z0-9._-]+$` に一致することを確認
+- バリデーション失敗時は処理を中断し、config.json の修正をユーザーに依頼
+
+### 1.4 対象リポジトリの特定
+
+config.json の `active: true` のリポジトリから、現在必要な知識に関連するリポジトリを特定する。
+必要なリポジトリのみを同期・参照する（全リポジトリを毎回同期する必要はない）。
+
+---
+
+## Step 2: リポジトリ同期（cross-repo-sync-safe wrapper 経由）
+
+対象リポジトリに対して、**全自動・ユーザー確認なし**で以下を実行する。
+
+### 2.1 wrapper による同期実行
+
+```bash
+bin/cross-repo-sync-safe sync .cursor/skills/cross-repository-knowledge-link/config.json {name}
+```
+
+wrapper が内部で以下を実行する:
+- clone 済み判定（`{clone_base_path}/{name}/.git` の存在確認）
+- 未 clone の場合: `git_protocol` に応じた URL で `git clone`
+- clone 済みの場合: `git fetch --all --prune`
+- 最新ブランチの自動特定（コミット日時が最新のリモートブランチを選択、`origin/HEAD` 除外）
+- ブランチ切り替え + pull
+
+### 2.2 同期結果の確認
+
+wrapper は JSON で結果を返す:
+
+```json
+{"name":"repo-name","branch":"main","commit_short":"a1b2c3d","commit_date":"2026-06-23 ...","commit_msg":"..."}
+```
+
+同期したブランチ名とコミットハッシュをユーザーに簡潔に伝える。
+
+### 2.3 同期前のステータス確認（任意）
+
+同期前に現在の状態を確認する場合:
+
+```bash
+bin/cross-repo-sync-safe status .cursor/skills/cross-repository-knowledge-link/config.json {name}
+```
+
+### 2.4 追跡ドキュメントへの参照記録（呼び出し元の責務）
+
+本スキルの **入力契約には `{ticket}` の受け渡しがない** ため、本スキル自身は `docs/agent-tasks/reports/{ticket}-*.md` への書き込みを行わない。
+
+代わりに、**呼び出し元（タスク実行ワークフロー等）の責務として**、本スキルが返したコミット情報を、自分の追跡ドキュメントに以下の書式で 1 行追記する:
+
+```markdown
+- [cross-repo] {name}@{branch} ({commit_short}): {読み取った主要ファイル or 得た知見の 1 行要約}
+```
+
+---
+
+## Step 3: 知識参照
+
+同期済みのリポジトリから直接ドキュメント・コードを読み込んで知識を得る。
+
+### 3.1 Layer 1 Context の 3 段フォールバック
+
+「CLAUDE.md / AGENTS.md 統合運用パターン」に準拠し、以下の優先順で Layer 1 Context を特定する。
+
+```bash
+ls {clone_base_path}/{name}/AGENTS.md
+ls {clone_base_path}/{name}/CLAUDE.md
+```
+
+#### パターンA: AGENTS.md が存在する場合
+
+1. AGENTS.md を全文読み込む:
+   ```
+   Read: {clone_base_path}/{name}/AGENTS.md
+   ```
+2. AGENTS.md に記載されたドキュメント構造に従い、必要な docs を読み込む
+3. 特に以下を優先的に確認:
+   - 仕様書（spec.md 等）
+   - アーキテクチャ（architecture.md 等）
+   - API定義（api.md, proto/ 等）
+4. AGENTS.md が `@CLAUDE.md` のような明示参照を含む場合は、参照先の CLAUDE.md も追加で読み込む
+
+#### パターンB: AGENTS.md が不在で CLAUDE.md のみ存在する場合
+
+1. CLAUDE.md を全文読み込む:
+   ```
+   Read: {clone_base_path}/{name}/CLAUDE.md
+   ```
+2. CLAUDE.md に記載された「ドキュメント構造」「参照順序」等に従って docs を読み込む
+3. CLAUDE.md が `@AGENTS.md` 参照を含むのに AGENTS.md が存在しない場合は、壊れた参照として扱い**「CLAUDE.md 単独」で進める**
+4. パターンA と同じ 3 項目（仕様書 / アーキテクチャ / API 定義）を優先的に確認する
+
+#### パターンC: AGENTS.md も CLAUDE.md も存在しない場合
+
+Layer 1 Context が一切ないため、以下のコードサーチで直接構造・仕様を把握する。
+
+##### フェーズ1: リポジトリ全体像の把握
+
+1. ルートディレクトリ構成を確認:
+   ```bash
+   ls -la {clone_base_path}/{name}/
+   ```
+2. `README.md` があれば全文読み込む
+3. 技術スタック把握:
+   - `go.mod` / `package.json` / `Cargo.toml` / `pyproject.toml` 等があれば読み込む
+
+##### フェーズ2: アーキテクチャ・エントリポイントの確認
+
+4. 主要ディレクトリの構造を確認
+5. エントリポイントを読み込む
+6. トップレベルサブディレクトリ一覧を確認し、ドメイン知識を推測する
+
+##### フェーズ3: インターフェース・仕様のコードサーチ
+
+7. proto定義や OpenAPI 定義があれば読み込む（API インターフェースが最も仕様を反映している）
+8. Grep でユーザーの質問に関連するキーワードを検索
+9. テストファイルをサンプリングしてドメイン知識・期待動作を把握
+
+### 3.2 docs の読み順（Meta / Domain 2層モデル）
+
+Layer 1 Context が指示する docs 構造がある場合は**それに従うのが最優先**。指示がない場合は以下の 2 層に沿って読み順を決める。
+
+#### Meta 層（判断フレームワーク・運用ルール / 大文字ファイル）
+
+「相手リポの**判断基準・運用ルール・既知の落とし穴**を知りたい」動機で発動したときに優先的に読む。
+
+- `DECISIONS.md` — 設計判断の時系列記録（ADR）
+- `QUALITY_GATE.md` — 品質ゲート定義
+- `GOTCHAS.md` — 既知の失敗パターン
+- `AGENT_RUNBOOK.md` — AI エージェント運用フレームワーク
+- `RUNBOOK.md` / `docs/runbooks/` — 運用手順書
+- `README.md` — セットアップ・開発開始までの最短経路
+
+#### Domain 層（このリポ固有の業務仕様 / kebab-case ファイル）
+
+「相手リポの**業務仕様・実装詳細**を知りたい」動機で発動したときに優先的に読む。
+
+- `spec.md` / `docs/spec/*.md` — 機能仕様
+- `architecture.md` — アーキテクチャ設計
+- `api.md` / `proto/` / `openapi/` — API 定義
+- `data-models.md` — データモデル / スキーマ
+- `workflows.md` — 処理フロー
+- `coding-standards.md` — コーディング規約
+
+#### 判定に迷うケース
+
+- 呼び出し動機が「仕様理解」か「障害調査」かで優先度を切り替える
+  - **仕様理解** → Domain 層優先（`spec.md` → `architecture.md` → `api.md`）
+  - **障害調査** → Meta 層優先（`runbooks/` → `GOTCHAS.md` → `DECISIONS.md`）
+
+### 3.3 知識の活用
+
+読み込んだ情報をもとに、ユーザーの質問・タスクに回答する。
+
+**重要**: 関連リポジトリの知識を参照するたびに、必ず Step 2 を先に実行して最新化すること。既に clone 済みでも `bin/cross-repo-sync-safe sync` は毎回実行する（wrapper 内部で fetch + 最新ブランチ切り替えを行う）。
+
+---
+
+## リポジトリ管理（ユーザーが明示的に指示した場合のみ）
+
+ユーザーが「関連リポジトリを追加/削除したい」と明示的に指示した場合に実行する。
+
+### 追加フロー
+
+1. ユーザーにリポジトリ情報を入力してもらう:
+   - `name`: リポジトリ名（例: `my-service`）
+   - `description`: 説明
+   - `relation`: 本リポジトリとの関連
+2. `config.json` の `repositories` 配列に新エントリを追加（`active: true`）
+3. Step 2-3 を実行して知識同期
+
+### 無効化フロー
+
+1. 現在の active リポジトリ一覧を提示し、AskQuestion で無効化対象を選択してもらう
+2. `config.json` で対象リポジトリの `active` を `false` に変更
+
+---
+
+## 安全対策
+
+### git 操作の wrapper 強制
+
+- AI が直接 `git clone` / `git fetch` / `git checkout` / `git pull` を実行してはならない
+- すべて `bin/cross-repo-sync-safe` wrapper 経由で実行する
+- wrapper は名前バリデーション・パス安全性・エラーハンドリングを内包する
+
+### パス安全性
+
+- clone 先パスは config.json の `clone_base_path` で定義されたベースパス配下のみ
+- `name` フィールドは `^[A-Za-z0-9._-]+$` でバリデーション済みの値のみ使用（wrapper が検証）
+- ワイルドカード・変数展開・コマンド置換は使用禁止
+
+### エラーハンドリング
+
+| エラー | 対処 |
+|--------|------|
+| wrapper exit 2（致命的） | config.json の設定を確認するようユーザーに案内 |
+| wrapper exit 1（操作失敗） | ネットワーク / 認証設定を確認するようユーザーに案内 |
+| clone/pull 失敗 | 関連リポジトリの知識なしで可能な範囲で回答 |
+| AGENTS.md 不在 | §3.1 パターンB の CLAUDE.md フォールバックへ |
+| CLAUDE.md も不在 | §3.1 パターンC のコードサーチへ |
+
+### 書き込み制限
+
+- このスキルが書き込むのは `config.json` のみ（リポジトリ追加・無効化時）
+- 本リポジトリの既存ドキュメント（`docs/`、`AGENTS.md` 等）への書き込みは行わない
+- clone 先（`clone_base_path` 配下）は読み取り専用として扱う
+
+---
+
+## 関連スキル（入口・出口）
+
+本スキルは関連リポジトリの知識取得に特化した**独立スキル（読み取り専用）**であり、前後のフェーズは他のスキルに委譲する。
+
+| 向き | 連携タイミング |
+| --- | --- |
+| 上流（入口） | タスク実行ワークフローの調査フェーズで、関連リポ実装の裏取りが必要な場合に暗黙的に呼び出される |
+| 上流（入口） | PR レビュー時に「レビュー指摘が関連リポとの連携仕様に依存する」場合に暗黙的に呼び出される |
+| 下流（出口） | 取得した関連リポの仕様と本リポ側 docs との差分反映が必要な場合は docs 更新スキルに委譲 |
+
+### 本スキルの責務範囲
+
+- **する**: 関連リポの同期（wrapper 経由）、Layer 1 Context 読み込み、docs 探索、コードサーチ、取得結果の返却
+- **しない**: 本リポ側の docs 更新、タスクレポート起票、PR 作成、関連リポへの書き込み
+
+委譲の原則: 本スキルは**読み取り専用の知識取得＋情報返却までを責務とする**。取得結果をどう使うかは呼び出し元が決める。
+
+---
+
+## Gotchas
+
+> 本スキルの運用で発生した「期待と違う」事例の記録。Observe → Amend → Evolve サイクルの入口。
+
+### 起票トリガー（再掲）
+
+1. 開発者から「期待と違う」等の不一致指摘を受けた
+2. 同じ問題で2回以上の修正が必要になった
+3. 本スキルの手順通りに作業したのに想定外の結果になった
+
+### 記録フォーマット
+
+```
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
+```
+
+### 想定されうる初期 Gotcha 候補（実際に観測されたら追記）
+
+- CLAUDE.md が `@AGENTS.md` を参照しているのに AGENTS.md が不在 → §3.1 パターンB に従い「CLAUDE.md 単独」として扱う
+- 最新ブランチがコミット日時的に古い feature ブランチで、main/master より古い情報を拾う → wrapper のブランチ選択で `origin/main` を無視する挙動が裏目に出たケース
+- `clone_base_path` が OS 再起動で消え、毎セッションで初回 clone が走る → `/tmp/` 使用時の意図した設計だが、体感コストが高い場合は永続パスに変更する
+- AI が wrapper を経由せず直接 git コマンドを実行する → guard-git-write.sh での deny / 本スキルの Step 2 手順の再確認
+
+（現時点のエントリは無し）
+
+---
+
+## 注意事項
+
+- このスキルはユーザーが直接実行するものではない。エージェントが関連リポジトリの知識が必要と判断したとき暗黙的に発動する
+- git 操作はすべて `bin/cross-repo-sync-safe` wrapper 経由。直接の git コマンド実行は禁止
+- ブランチ選択はユーザー確認不要。wrapper がコミット日時で最新のブランチを自動採用する
+- clone 先（`clone_base_path` 配下）は永続化しない。OS 再起動等で消えた場合は wrapper が再 clone する
+- config.json の `repositories` からエントリを物理削除するのではなく、`active: false` で無効化する
+- 関連リポジトリへの書き込み（コミット・プッシュ等）は一切行わない
+- Layer 1 Context の参照は **AGENTS.md → CLAUDE.md → コードサーチ** の 3 段フォールバック

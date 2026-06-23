@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# cross-repo-sync-safe — クロスリポジトリ知識リンク用 git 操作 wrapper
+#
+# AI エージェントが直接 git clone / fetch / checkout / pull を実行する代わりに
+# 本 wrapper を経由し、パス安全性・認証情報非露出・読み取り専用を保証する。
+#
+# Usage:
+#   bin/cross-repo-sync-safe sync  <config_json> <repo_name>
+#   bin/cross-repo-sync-safe status <config_json> <repo_name>
+#
+# Exit codes:
+#   0 = 成功（同期完了 or ステータス表示完了）
+#   1 = 操作失敗（修正可能: ネットワーク / ブランチ切替失敗等）
+#   2 = 致命的エラー（config 不在 / バリデーション失敗 / 引数不正）
+#
+# 出力（stdout）:
+#   sync:   JSON { "name", "branch", "commit_short", "commit_date", "commit_msg" }
+#   status: JSON { "name", "exists", "branch", "commit_short" } or { "name", "exists": false }
+
+readonly SCRIPT_NAME="cross-repo-sync-safe"
+
+# --- Argument validation ---
+if [[ $# -lt 3 ]]; then
+  echo "ERROR: Usage: bin/${SCRIPT_NAME} <sync|status> <config_json> <repo_name>" >&2
+  exit 2
+fi
+
+readonly ACTION="$1"
+readonly CONFIG_JSON="$2"
+readonly REPO_NAME="$3"
+
+if [[ "$ACTION" != "sync" && "$ACTION" != "status" ]]; then
+  echo "ERROR: action must be 'sync' or 'status', got: $ACTION" >&2
+  exit 2
+fi
+
+if [[ ! -f "$CONFIG_JSON" ]]; then
+  echo "ERROR: config.json not found: $CONFIG_JSON" >&2
+  exit 2
+fi
+
+# --- Name validation (path traversal prevention) ---
+validate_name() {
+  local name="$1"
+  if [[ ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "ERROR: invalid repository name (must match ^[A-Za-z0-9._-]+$): $name" >&2
+    exit 2
+  fi
+}
+validate_name "$REPO_NAME"
+
+# --- Config parsing ---
+if ! command -v jq &>/dev/null; then
+  echo "ERROR: jq is required but not installed" >&2
+  exit 2
+fi
+
+readonly CLONE_BASE_PATH=$(jq -r '.clone_base_path // empty' "$CONFIG_JSON")
+readonly GITHUB_ORG=$(jq -r '.github_org // empty' "$CONFIG_JSON")
+readonly GIT_PROTOCOL=$(jq -r '.git_protocol // "ssh"' "$CONFIG_JSON")
+
+if [[ -z "$CLONE_BASE_PATH" ]]; then
+  echo "ERROR: clone_base_path is not set in config.json" >&2
+  exit 2
+fi
+if [[ -z "$GITHUB_ORG" ]]; then
+  echo "ERROR: github_org is not set in config.json" >&2
+  exit 2
+fi
+
+# Verify the repo is registered and active
+readonly REPO_ACTIVE=$(jq -r --arg name "$REPO_NAME" \
+  '.repositories[] | select(.name == $name) | .active // false' "$CONFIG_JSON")
+
+if [[ "$REPO_ACTIVE" != "true" ]]; then
+  echo "ERROR: repository '$REPO_NAME' is not registered or not active in config.json" >&2
+  exit 2
+fi
+
+readonly REPO_PATH="${CLONE_BASE_PATH}/${REPO_NAME}"
+
+# --- Helper: construct clone URL ---
+_clone_url() {
+  case "$GIT_PROTOCOL" in
+    ssh)   echo "git@github.com:${GITHUB_ORG}/${REPO_NAME}.git" ;;
+    https) echo "https://github.com/${GITHUB_ORG}/${REPO_NAME}.git" ;;
+    *)
+      echo "ERROR: unsupported git_protocol: $GIT_PROTOCOL" >&2
+      exit 2
+      ;;
+  esac
+}
+
+# --- Action: status ---
+if [[ "$ACTION" == "status" ]]; then
+  if [[ -d "${REPO_PATH}/.git" ]]; then
+    branch=$(git -C "$REPO_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    commit_short=$(git -C "$REPO_PATH" log -1 --format='%h' 2>/dev/null || echo "unknown")
+    printf '{"name":"%s","exists":true,"branch":"%s","commit_short":"%s"}\n' \
+      "$REPO_NAME" "$branch" "$commit_short"
+  else
+    printf '{"name":"%s","exists":false}\n' "$REPO_NAME"
+  fi
+  exit 0
+fi
+
+# --- Action: sync ---
+mkdir -p "$CLONE_BASE_PATH"
+
+# Clone if not exists
+if [[ ! -d "${REPO_PATH}/.git" ]]; then
+  clone_url=$(_clone_url)
+  if ! git clone --quiet "$clone_url" "$REPO_PATH" 2>/dev/null; then
+    echo "ERROR: git clone failed for $REPO_NAME. Check network and auth settings." >&2
+    exit 1
+  fi
+fi
+
+# Fetch all remotes
+if ! git -C "$REPO_PATH" fetch --all --prune --quiet 2>/dev/null; then
+  echo "ERROR: git fetch failed for $REPO_NAME" >&2
+  exit 1
+fi
+
+# Find the most recently committed remote branch (exclude origin/HEAD)
+latest_ref=$(git -C "$REPO_PATH" for-each-ref \
+  --sort=-committerdate refs/remotes/origin/ \
+  --format='%(refname:short)' \
+  | grep -v '^origin/HEAD$' \
+  | head -1)
+
+if [[ -z "$latest_ref" ]]; then
+  echo "ERROR: no remote branches found for $REPO_NAME" >&2
+  exit 1
+fi
+
+# Strip "origin/" prefix
+branch="${latest_ref#origin/}"
+
+# Checkout and pull
+if ! git -C "$REPO_PATH" checkout --quiet "$branch" 2>/dev/null; then
+  if ! git -C "$REPO_PATH" checkout --quiet -b "$branch" "origin/$branch" 2>/dev/null; then
+    echo "ERROR: failed to checkout branch '$branch' in $REPO_NAME" >&2
+    exit 1
+  fi
+fi
+
+if ! git -C "$REPO_PATH" pull --quiet origin "$branch" 2>/dev/null; then
+  echo "WARN: git pull failed, continuing with fetched state" >&2
+fi
+
+# Output sync result as JSON
+commit_short=$(git -C "$REPO_PATH" log -1 --format='%h')
+commit_date=$(git -C "$REPO_PATH" log -1 --format='%ci')
+commit_msg=$(git -C "$REPO_PATH" log -1 --format='%s' | sed 's/"/\\"/g')
+
+printf '{"name":"%s","branch":"%s","commit_short":"%s","commit_date":"%s","commit_msg":"%s"}\n' \
+  "$REPO_NAME" "$branch" "$commit_short" "$commit_date" "$commit_msg"
+
+exit 0
