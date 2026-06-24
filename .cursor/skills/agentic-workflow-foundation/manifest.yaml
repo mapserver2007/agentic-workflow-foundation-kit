@@ -930,7 +930,9 @@ outputs:
       - "name: execute-agent-workflow"
       - "## 前提条件"
       - "Step Gate Matrix"
+      - "## Context Budget 到達時の対応"
       - "## 進行中タスクレポートからの再開"
+      - "## ベストプラクティス"
       - "## Gotchas"
   # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
   # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
