@@ -1,0 +1,194 @@
+---
+name: execute-agent-workflow
+description: >-
+  What - AI エージェントがタスク実行依頼（バグ修正・パフォーマンス改善・リファクタリング・新機能開発等）を
+  受けた際に、7 ステップの標準ワークフローに沿ってタスクを遂行する。
+  各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下の step 別ドキュメントに
+  Progressive Disclosure で分割されており、本スキルは全体の制御フローと Step Gate Matrix を担う。
+  Use when - 「タスクを実行して」「バグを修正して」「この機能を実装して」「リファクタして」
+  「パフォーマンス改善して」等の実装系タスク指示、または issue URL / タスクレポートを渡された場合。
+  Do NOT use for - (1) PR レビュー対応のみ（agent-code-review を使う）、
+  (2) PR 作成のみ（agent-github-pr を使う）、(3) issue 作成のみ（agent-github-issue を使う）、
+  (4) docs 反映のみ（agent-maintenance-docs を使う）、
+  (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Execute Agent Workflow
+
+AI エージェントがタスク実行依頼を受けた際の **7 ステップ標準ワークフロー** の制御スキル。
+
+各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下に Progressive Disclosure で分割されている。本スキルは全体の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+
+> **関連スキル**:
+> - [agent-code-review](../agent-code-review/SKILL.md) — Step ⑥ PR レビュー検証
+> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑥ PR 作成
+> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
+> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑦ docs 反映 + archives 移動
+
+---
+
+## 前提条件
+
+スキル起動直後に以下を確認する。
+
+1. `AGENTS.md` を読み、Session Protocol / Boundaries / Documentation Navigation を確認済み
+2. セッション開始ゲート（`.cursor/skills/session-handover/scripts/session-start-gate.sh`）を実行済み
+3. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートの有無を把握済み
+
+---
+
+## ワークフロー
+
+### Step Gate Matrix
+
+| Step | 詳細ドキュメント | 入口条件 | 退出条件 | 対応ゲート |
+| --- | --- | --- | --- | --- |
+| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 | — |
+| **② タスク確定** | [02-task-decision.md](../../../docs/agent-tasks/agent-workflow/02-task-decision.md) | Step ① 完了 | 判定チェックリスト全 OK | 一次調査 → レポート作成 |
+| **③ レポート作成** | [03-report-creation.md](../../../docs/agent-tasks/agent-workflow/03-report-creation.md) | Step ② 通過 | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step3`{{/if}} |
+| **④ 実装** | [04-implementation.md](../../../docs/agent-tasks/agent-workflow/04-implementation.md) | Step ③ 承認済み | コード変更完了 + レポート更新 | — |
+| **⑤ テスト** | [05-testing.md](../../../docs/agent-tasks/agent-workflow/05-testing.md) | Step ④ 完了 | コードゲート全 PASS | 実装 → PR{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} |
+| **⑥ PR レビュー** | [06-pr-review.md](../../../docs/agent-tasks/agent-workflow/06-pr-review.md) | Step ⑤ 通過 | レビュー完了承認 | PR → 完了{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{/if}} |
+| **⑦ 完了報告** | [07-completion.md](../../../docs/agent-tasks/agent-workflow/07-completion.md) | Step ⑥ 承認済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
+
+### Step ①: 調査・分析
+
+[01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) を読み込み実行する。
+
+1. ユーザーとの対話で問題・要件を把握する
+2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
+3. コードを調査し、根本原因 or 実装方針を特定する
+4. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+
+### Step ②: タスク確定の判定
+
+[02-task-decision.md](../../../docs/agent-tasks/agent-workflow/02-task-decision.md) を読み込み実行する。
+
+判定チェックリスト:
+- 実現性が明確か
+- 影響範囲が特定できているか
+- 実装方針が決まっているか
+- 優先度が設定されているか
+
+**全条件を満たさない場合**: タスクレポートを作成せずユーザーに状況報告する。
+
+### Step ③: タスクレポートの作成
+
+[03-report-creation.md](../../../docs/agent-tasks/agent-workflow/03-report-creation.md) を読み込み実行する。
+
+1. `docs/agent-tasks/reports/{yyyy-mm-dd-slug}.md` を作成する（必須 10 セクション）
+2. プレースホルダ `{XXX}` を残さない
+3. ユーザーに内容を提示して承認を得る
+{{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step3` でレポート構造を検証する{{/if}}
+
+### Step ④: 実装の実行
+
+[04-implementation.md](../../../docs/agent-tasks/agent-workflow/04-implementation.md) を読み込み実行する。
+
+- 既存実装パターンを踏襲する
+- `AGENTS.md > Boundaries` を遵守する（Always / Ask First / Never）
+- 設計次元 D-* を変更する判断が発生したら ADR を起票する
+
+### Step ⑤: テスト実装
+
+[05-testing.md](../../../docs/agent-tasks/agent-workflow/05-testing.md) を読み込み実行する。
+
+コードゲート:
+
+| ゲート | コマンド | 合格条件 |
+| --- | --- | --- |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | 差分なし |
+| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
+| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
+| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0 |
+
+{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step5` で一括検証する。{{/if}}
+
+**禁止事項**: テスト失敗の無視・lint 一括抑制・テスト skip（原因仮説の文章化が前提）。
+
+### Step ⑥: PR レビュー検証
+
+[06-pr-review.md](../../../docs/agent-tasks/agent-workflow/06-pr-review.md) を読み込み実行する。
+
+1. `agent-github-pr` スキルで PR を作成する
+2. `agent-code-review` スキルでレビュー指摘を取得・検証する
+3. ユーザーに検証結果を提示し承認後に返信・修正する
+4. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+
+### Step ⑦: 完了報告
+
+[07-completion.md](../../../docs/agent-tasks/agent-workflow/07-completion.md) を読み込み実行する。
+
+{{#if agent_workflow.maintenance_docs.enabled}}
+`agent-maintenance-docs` スキルに委譲する。スキルが以下を一貫して実行する:
+{{else}}
+以下を実行する:
+{{/if}}
+
+1. Domain 層 docs への仕様反映（G-DOC-SPEC）
+2. 完了チェック 6 項目の確認
+3. archives 移動（`git mv reports/{report}.md reports/archives/`）
+4. ユーザーへの完了報告
+
+---
+
+## 進行中タスクレポートからの再開
+
+セッション開始時に `docs/agent-tasks/reports/` 直下にレポートが存在する場合（= 進行中キャンペーン）:
+
+1. レポートを全体読み込みする
+2. 完了チェック 6 項目の状態から、どのステップまで完了しているかを判定する
+3. 未完了の最初のステップから再開する
+
+| 完了チェック状態 | 再開ステップ |
+| --- | --- |
+| 全て `[ ]` | Step ④（実装）から |
+| 実装完了 `[x]` のみ | Step ⑤（テスト）から |
+| テスト + コードゲート `[x]` | Step ⑥（PR レビュー）から |
+| PR レビュー `[x]` まで | Step ⑦（完了報告）から |
+
+---
+
+## ベストプラクティス
+
+[best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) に各段階の運用ベストプラクティスを集約している。
+
+---
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+>
+> `execute-agent-workflow` スキル運用中に発見した失敗・踏み外しの記録。
+
+### 起票トリガー
+
+1. ステップの順序を飛ばして実装に着手した（docs-first 違反）
+2. タスクレポート未作成のまま実装を進めた
+3. コードゲート未通過のまま PR を作成した
+4. レビュー完了承認なしに完了報告に進んだ
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
+```
+
+### エントリ
+
+（現時点のエントリは無し）
+
+---
+
+## 関連ドキュメント
+
+- [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（7 ステップ概要）
+- [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
+- [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー検証
+- [agent-github-pr](../agent-github-pr/SKILL.md) — PR 作成
+- [agent-github-issue](../agent-github-issue/SKILL.md) — issue 読み取り
+- [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — docs 反映 + archives 移動
+- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
+- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）/ フェーズ境界

@@ -4,6 +4,9 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 
 **Progressive Disclosure** に従い、本ファイルは概要とステップ index のみを担い、詳細手順は `agent-workflow/` 配下の step 別ファイル（L3）に分割している。
 
+{{#if agent_workflow.execute_skill}}
+> **制御スキル**: [`execute-agent-workflow`](../../.cursor/skills/execute-agent-workflow/SKILL.md)（7 ステップ標準ワークフローの制御スキル）
+{{/if}}
 {{#if code_review.enabled}}
 > **関連スキル**: [`agent-code-review`](../../.cursor/skills/agent-code-review/SKILL.md)（Step ⑥ PR レビュー検証）
 {{/if}}

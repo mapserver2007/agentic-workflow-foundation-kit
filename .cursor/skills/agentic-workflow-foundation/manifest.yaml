@@ -362,10 +362,8 @@ github_issue:
 #   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
-#   agent_workflow.maintenance_docs.enabled: true の場合、
-#   .cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
-#   注意: pos-necpf-service の execute-agent-workflow / maintenance-docs と同名の
-#   Cursor スキルは kit では生成しない。kit 固有名は agent-maintenance-docs。
+#   execute_skill: true の場合、.cursor/skills/execute-agent-workflow/SKILL.md を生成する。
+#   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
   enabled: false
@@ -921,9 +919,21 @@ outputs:
       - "推測禁止"
       - "既存実装の踏襲"
       - "archives 移動"
+  # execute-agent-workflow スキル（feature: agent_workflow.execute_skill で条件生成）。
+  # agent_workflow.execute_skill: true の場合のみ生成される。
+  # 7 ステップ標準ワークフローの制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+  - path: .cursor/skills/execute-agent-workflow/SKILL.md
+    template: skills/execute-agent-workflow/SKILL.md.template
+    mode: render
+    feature: agent_workflow.execute_skill
+    required_sections:
+      - "name: execute-agent-workflow"
+      - "## 前提条件"
+      - "Step Gate Matrix"
+      - "## 進行中タスクレポートからの再開"
+      - "## Gotchas"
   # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
   # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
-  # 推奨インストール Yes で有効化。pos-necpf の maintenance-docs とは別名。
   - path: .cursor/skills/agent-maintenance-docs/SKILL.md
     template: skills/agent-maintenance-docs/SKILL.md.template
     mode: render
