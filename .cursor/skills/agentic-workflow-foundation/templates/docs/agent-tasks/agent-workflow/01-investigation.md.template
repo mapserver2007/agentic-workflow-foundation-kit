@@ -28,6 +28,14 @@
 - [`{{this.path}}`](../../{{this.path}}) — {{this.desc}}
 {{/each}}
 
+### docs-first 参照記録
+
+調査中に参照した Domain 層 docs を記録する（Step ③ のレポート作成時に「関連する既存コード」セクションへ転記する）:
+
+{{#each project.doc_navigation.domain}}
+- [ ] `{{this.path}}` — 参照した / 該当なし
+{{/each}}
+
 ## 1.3 コードの調査
 
 > **必ず 1.2 ドキュメントの参照を完了してから実施する**。docs と矛盾する実装を発見した場合は docs を正として扱い、乖離をユーザーに報告する。
