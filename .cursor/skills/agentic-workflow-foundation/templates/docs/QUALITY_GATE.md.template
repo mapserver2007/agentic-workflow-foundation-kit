@@ -143,7 +143,7 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 {{#if agent_workflow.gate_scripts}}
 ### 1.7 ワークフローゲートディスパッチャー
 
-agent-workflow のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
+execute-agent-workflow のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
 
 実行コマンド: `.cursor/skills/session-handover/scripts/workflow-gate.sh <step>`
 

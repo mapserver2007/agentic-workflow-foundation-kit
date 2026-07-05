@@ -107,7 +107,7 @@
 - `## Gotchas`: ADR 運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
-- `name: agent-maintenance-docs`: Cursor skill としての識別子。pos-necpf の `maintenance-docs` とは別名。
+- `name: agent-maintenance-docs`: Cursor skill としての識別子。
 - `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。
 - `G-DOC-SPEC`: Domain 層ドキュメント仕様反映ゲートのスコープ定義。
 - `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
