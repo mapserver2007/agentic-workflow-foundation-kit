@@ -3,8 +3,10 @@
 # Cursor stop Hook: 経過時間 / プロンプト数 / 累積シェルバイト数の proxy 指標で
 # しきい値判定し、Yellow / Red 到達時に followup_message を返して AI に
 # Context Budget Protocol を実行させる。
+# また、チェックポイント marker（{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔）
+# を検出した場合は判断構造の外部化を促す followup_message を返す。
 # 仕様: AGENTS.md > Context Budget Protocol / docs/QUALITY_GATE.md / .cursor/hooks/README.md
-# 設計: フェイルオープン / 重複通知防止（last_warning_level）
+# 設計: フェイルオープン / 重複通知防止（last_warning_level）/ Yellow/Red が checkpoint に優先
 #
 # しきい値の SoT: agentic-workflow-foundation manifest.yaml > framework.budget_thresholds。
 # 本ファイルは生成物のため直接編集しない。閾値変更は manifest を編集し再生成する。
@@ -86,10 +88,33 @@ should_emit() {
   esac
 }
 
+# ---- チェックポイント marker 検出（Yellow/Red より低優先） ----
+CHECKPOINT_MARKER="$PROJECT_DIR/.cursor/.session/${SESSION_ID}.checkpoint"
+
 if [[ "$LEVEL" == "none" ]] || ! should_emit; then
+  if [[ -f "$CHECKPOINT_MARKER" ]]; then
+    CP_COUNT="$(cat "$CHECKPOINT_MARKER" 2>/dev/null)" || CP_COUNT="?"
+    rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
+    CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過（定期チェックポイント）。
+
+AI への指示:
+追跡ドキュメント（plan.md 等）の「セッション判断ログ」を最新化せよ:
+1. 現在のフェーズと直近で完了した作業
+2. このセッションで採用した判断と根拠（なぜその案を選んだか）
+3. 却下した案と却下理由（なぜ採用しなかったか）
+4. 現在のブロッカー・制約・未完了の検証
+
+この書き出しは「まだ注意力が高いうちの高品質な記録」として扱う。Yellow/Red 到達時の manifest 作成はこの記録を転記するだけで済む。
+この指示は定期チェックポイントであり、セッション切り替えの推奨ではない。作業は継続してよい。ユーザーへの言及は不要（裏作業）。"
+    jq -n --arg m "$CP_MSG" '{ followup_message: $m }'
+    exit 0
+  fi
   echo '{}'
   exit 0
 fi
+
+# Yellow/Red 発火時はチェックポイント marker を消す（Yellow/Red が優先）
+rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
 
 LOCK_FILE="$PROJECT_DIR/.cursor/.session/${SESSION_ID}.lock"
 (
@@ -106,16 +131,29 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（経過 ${ELAPSED_MIN}min / ${PROMPTS} prompts）。
 
 AI への指示:
-1. 追跡ドキュメント（AGENTS.md > Session Protocol 参照）と .cursor/.session/handoff-active.md を裏で更新する（ユーザー向けには差分・作業内容を表示しない）。
-2. ユーザーへの応答は次の趣旨だけ短く伝える: 「Red しきい値に到達しました。新規チャット (Cmd+N) を開いて会話を継続してください。前回の作業状態は自動的に引き継がれます。」
-3. 新規実装の受理は停止し、次セッションに委譲する。"
+1. 追跡ドキュメント（plan.md 等）の「次セッションTODO」「セッション判断ログ」を最新化する（plan.md が SoT）。
+2. .cursor/.session/handoff-active.md に以下の見出し順で manifest を書き出す:
+   ## ポインタ（追跡ドキュメントの現在位置）
+   ## 直近のユーザー依頼
+   ## セッション判断ログ
+   ### 採用した判断と根拠
+   ### 却下した案と却下理由
+   ## 制約・ブロッカー・未完了の検証
+   ## 次セッションの推奨アクション
+   ## 復旧メモ
+3. 書き出し後、Read で manifest を読み返し上記見出しが全て存在することを確認せよ。欠落があれば追記してから完了とする。
+4. manifest には plan.md と重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（plan.md 未反映の判断・直近の依頼）のみ記載する。
+5. ユーザーへの応答は次の趣旨だけ短く伝える: 「Red しきい値に到達しました。新規チャット (Cmd+N) を開いて会話を継続してください。前回の作業状態は自動的に引き継がれます。」
+6. 新規実装の受理は停止し、次セッションに委譲する。"
 else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（経過 ${ELAPSED_MIN}min / ${PROMPTS} prompts）。
 
 AI への指示:
-1. 現在の作業を 1-2 ターン以内に区切り、追跡ドキュメントの「次セッションTODO」「追加調査が必要な項目」を裏で最新化する。
-2. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
-3. Red 到達時は強制ハンドオフが発火する。"
+1. 追跡ドキュメント（plan.md 等）の「セッション判断ログ」を最新化する（plan.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
+2. 追跡ドキュメントの「次セッションTODO」を最新化する。
+3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-active.md に manifest を書き出す。manifest には plan.md の判断ログをそのまま転記し、plan.md 未反映の揮発情報のみ追記する。
+4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
+5. Red 到達時は強制ハンドオフが発火する。"
 fi
 
 jq -n --arg m "$MSG" '{ followup_message: $m }'

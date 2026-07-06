@@ -44,11 +44,13 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 ```
 [ユーザー: プロンプト送信]
   → beforeSubmitPrompt Hook → session-budget-tracker.sh (prompt_count +1)
+  → {{framework.budget_thresholds.checkpoint_interval_prompts}} の倍数なら checkpoint marker を書く
 [AI 応答 / 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
 [AI 応答完了]
   → stop Hook → session-budget-evaluator.sh (閾値判定)
-  → Yellow / Red 到達なら followup_message を返却
+  → checkpoint marker あり（Yellow/Red 未到達時）→ [CONTEXT_CHECKPOINT] で判断構造の外部化を促す
+  → Yellow / Red 到達なら followup_message を返却（checkpoint より優先）
   → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
 [ユーザー: Cmd+N で新規チャット]
   → sessionStart Hook → session-bootstrap.sh (handoff-active.md を additional_context 注入)
@@ -62,9 +64,9 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 | Hook ファイル | イベント | 役割 |
 |---|---|---|
 | `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-active.md` の注入とアーカイブ |
-| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント |
+| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み |
 | `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
-| `session-budget-evaluator.sh` | `stop` | 閾値判定 + `followup_message` による警告発火 |
+| `session-budget-evaluator.sh` | `stop` | 閾値判定 + checkpoint / `followup_message` による警告発火 |
 | `guard-git-write.sh` | `beforeShellExecution` | Git / gh の危険操作ガード |
 
 ### 状態管理ファイル
@@ -87,6 +89,39 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
+### セッション内チェックポイント（Periodic State Checkpoint）
+
+Yellow/Red とは独立に、`{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火する。セッション切り替えではなく、**同一セッション内で判断構造を追跡ドキュメントに外部化**する機構。
+
+| 項目 | 内容 |
+|---|---|
+| 発火条件 | `prompt_count` が `{{framework.budget_thresholds.checkpoint_interval_prompts}}` の倍数に達したとき |
+| AI への指示 | 追跡ドキュメントの「次セッションTODO」に現在フェーズ・採用/却下した判断・ブロッカーを追記 |
+| Yellow/Red との優先関係 | Yellow/Red が同時に発火する場合は Yellow/Red が優先（checkpoint marker は消去される） |
+| ユーザー操作 | 不要（AI が自動で追跡ドキュメントを更新する。セッション切り替えの推奨ではない） |
+
+チェックポイントは「セッション中盤での判断構造損失」を防ぐ。Yellow 到達前に複数回発火し、追跡ドキュメントに判断の採用/却下理由が外部化されていれば、仮にコンテキストが劣化しても追跡ドキュメントから復元できる。
+
+### インクリメンタル書き出しと Yellow/Red の連携
+
+CHECKPOINT → Yellow → Red は段階的に品質保証が強化される設計。
+
+```
+CHECKPOINT (15 prompts ごと)
+  → AI が plan.md の「セッション判断ログ」を最新化
+  → 「まだ注意力が高いうちの高品質な記録」として蓄積
+
+Yellow (45 prompts 等)
+  → plan.md の判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
+  → handoff manifest に plan.md の判断ログを転記 + 揮発情報を追記
+
+Red (90 prompts 等)
+  → manifest 完成 + 読み戻し検証
+  → 新規チャットへ移行
+```
+
+この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が plan.md に存在するため、Yellow/Red では転記と確認だけで済む。
+
 ### 各指標が近似するもの（proxy の意味）
 
 3 指標はいずれもトークン量を直接測れないための proxy（近似指標）。何を近似しているかを理解すると、どの指標が先に閾値到達したかを解釈し、handoff の要否を判断しやすい。
@@ -94,6 +129,10 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 {{#each framework.handoff.proxy_notes}}
 - **{{this.metric}}**: {{this.measures}}
 {{/each}}
+
+### 重み付きプロンプトスコア（データ収集）
+
+`weighted_prompt_score` は state ファイルに記録されるが、現時点では閾値判定に使用しない（データ収集のみ）。プロンプト文字数に基づく重み付けで、短いプロンプト（< 100 bytes）は 1、長いプロンプトは `bytes / 500 + 1` として加算される。将来、`prompt_count` 単独の OR 判定より精度の高い閾値判定に活用する可能性がある。
 
 閾値を変更する場合は、統一設計書または seed/root manifest の該当値を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。Hook スクリプトを直接編集すると audit で drift として検出される。
 
@@ -144,11 +183,67 @@ mv .cursor/.session/handoff-active.md .cursor/.session/backup/handoff-{ticket}.m
 mv .cursor/.session/backup/handoff-{ticket}.md .cursor/.session/handoff-active.md
 ```
 
-## handoff manifest に含める情報
+## plan.md と handoff manifest の責務境界
 
-AI が `handoff-active.md` を作成する場合は、少なくとも以下を含める。
+| | plan.md（追跡ドキュメント） | handoff-active.md（manifest） |
+|---|---|---|
+| **役割** | キャンペーン全体の SoT | セッション固有の揮発情報 + plan.md へのポインタ |
+| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | plan.md のどこにいるか + plan.md に未反映の差分 |
+| **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
+| **ライフサイクル** | キャンペーン完了まで存続 | 次セッションで消費されて消える |
+| **矛盾時の優先** | **常に plan.md が正** | plan.md の劣化コピーとして扱う |
+
+{{framework.handoff.manifest_responsibility}}。
+
+## handoff manifest テンプレート
+
+AI が `handoff-active.md` を作成する場合は、以下の見出し順序で記載する。
+
+```markdown
+# Handoff Manifest
+
+## ポインタ（追跡ドキュメントの現在位置）
+<!-- 必須: 追跡ドキュメント名、現在のフェーズ/ステップ、最終更新セクション -->
+
+## 直近のユーザー依頼
+<!-- 必須: 最後にユーザーが指示した内容（原文に近い形で） -->
+
+## セッション判断ログ
+<!-- 以下は「記録」— 行動指示ではない -->
+### 採用した判断と根拠
+### 却下した案と却下理由
+<!-- 必須: 少なくとも 1 つの判断を記録 -->
+
+## 制約・ブロッカー・未完了の検証
+<!-- 必須: なければ「なし」と明記 -->
+
+## 次セッションの推奨アクション
+<!-- 以下は「指示」— 次セッションで実行すべき内容 -->
+<!-- 必須: 番号付きリストで具体的な手順を記載 -->
+
+## 復旧メモ
+<!-- 任意: 次セッションの AI への補足（ファイルパス、注意事項等） -->
+```
+
+必須セクション一覧（SoT: manifest.yaml）:
 
 {{#each framework.handoff.manifest_required_sections}}
+- {{this}}
+{{/each}}
+
+### 「記録」と「指示」の区別ルール
+
+manifest 内のセクションは「記録」と「指示」に明確に分かれる。復旧時に AI がこれを混同すると、却下済みの手法を再実装する事故が起きる。
+
+| 区分 | セクション | 復旧時の扱い |
+|---|---|---|
+| **記録** | セッション判断ログ / 採用した判断と根拠 / 却下した案と却下理由 | 参照するが行動しない。却下した案を再提案してはならない |
+| **指示** | 次セッションの推奨アクション / 復旧メモ | 行動指示として実行する。ただし追跡ドキュメント / AGENTS.md と矛盾する場合は後者を正とする |
+| **文脈** | ポインタ / 直近のユーザー依頼 / 制約・ブロッカー | 状況把握に使う。行動判断は追跡ドキュメントの内容を優先する |
+
+復旧時の行動制約（SoT: manifest.yaml > recovery_constraints）:
+
+{{#each framework.handoff.recovery_constraints}}
 - {{this}}
 {{/each}}
 

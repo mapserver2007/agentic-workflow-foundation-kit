@@ -94,8 +94,10 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 `stop` Hook は経過時間 / プロンプト数 / シェル出力バイトを proxy 指標として OR 判定し、Yellow / Red 到達時に `[CONTEXT_BUDGET=...]` を通知する。閾値は `framework.budget_thresholds` を SoT とし、Yellow は `{{framework.budget_thresholds.yellow.elapsed_min}}` 分 / `{{framework.budget_thresholds.yellow.prompt_count}}` prompts / `{{framework.budget_thresholds.yellow.shell_bytes}}` bytes、Red は `{{framework.budget_thresholds.red.elapsed_min}}` 分 / `{{framework.budget_thresholds.red.prompt_count}}` prompts / `{{framework.budget_thresholds.red.shell_bytes}}` bytes とする。
 
-- Yellow: 追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し、作業の区切りを準備する
-- Red: `{{framework.handoff.active_manifest_path}}` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
+- Checkpoint: `{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造（採用/却下した案と理由）の外部化を促す。セッション切り替えは不要。Yellow 前に複数回発火し、劣化が始まる前の高品質な記録を蓄積する先制的防御（元記事の 60% 通知に相当）
+- Yellow: 追跡ドキュメント（plan.md = SoT）の「次セッションTODO / セッション判断ログ」を最新化し、作業の区切りを準備する
+- Red: 追跡ドキュメントを最新化した上で `{{framework.handoff.active_manifest_path}}` に handoff manifest（ポインタ + 揮発情報）を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
+- manifest は plan.md へのポインタ + セッション固有の揮発情報のみ。plan.md と同じ情報を重複して書かない
 
 詳細手順・失敗モード・ユーザー操作は `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
 

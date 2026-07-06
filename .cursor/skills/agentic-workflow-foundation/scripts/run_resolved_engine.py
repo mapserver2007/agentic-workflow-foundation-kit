@@ -53,11 +53,13 @@ def _yaml_quote(value) -> str:
 
 def _dump_scalar_key(key: str, value, indent: int) -> list[str]:
     pad = " " * indent
+    if value is None:
+        return [f"{pad}{key}:"]
     if isinstance(value, bool):
         return [f"{pad}{key}: {'true' if value else 'false'}"]
     if isinstance(value, int):
         return [f"{pad}{key}: {value}"]
-    s = "" if value is None else str(value)
+    s = str(value)
     if "\n" in s:
         lines = [f"{pad}{key}: |"]
         block_pad = " " * (indent + 2)

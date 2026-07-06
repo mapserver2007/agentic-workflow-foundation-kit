@@ -10,9 +10,9 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 |---|---|---|---|---|
 | [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作（`--force` push / 保護ブランチ直 push / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）を ask、**`gh` CLI 全般を deny**（PAT 未設定で認証不可 — wrapper `bin/github-pr-*-safe` を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-active.md` を `additional_context` 注入してアーカイブ | Observation / Handoff | fail_open |
-| [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメント（観測のみ） | Observation | fail_open |
+| [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
-| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | proxy 指標を Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す | Advisory (followup) | fail_open |
+| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | proxy 指標を Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
 
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
@@ -39,6 +39,12 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 `CTX_BUDGET_SESSION_ID` 環境変数を bootstrap が後続 Hook に伝搬する。
 
+### チェックポイント marker（一時ファイル）
+
+| ファイル | 書き込み元 | 読み取り元 | ライフサイクル |
+|---|---|---|---|
+| `.cursor/.session/{session_id}.checkpoint` | budget-tracker | budget-evaluator | tracker が {{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で作成。evaluator が検出後に削除（one-shot） |
+
 ## しきい値設定（Context Budget Protocol）
 
 しきい値の SoT は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > framework.budget_thresholds`。
@@ -51,14 +57,15 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | 1 MiB |
 | Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | 5 MiB |
 
-### Yellow / Red 到達時の挙動
+### Checkpoint / Yellow / Red 到達時の挙動
 
 | レベル | AI への通知 | AI が取るべきアクション |
 |---|---|---|
+| **Checkpoint** | `[CONTEXT_CHECKPOINT]` を `followup_message` で通知（{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔） | 追跡ドキュメントに現在フェーズ・採用/却下した判断・ブロッカーを追記する。セッション切り替えは不要 |
 | **Yellow** | `[CONTEXT_BUDGET=YELLOW]` を `followup_message` で通知 | 追跡ドキュメントの「次セッション TODO / 追加調査が必要な項目」を更新し、作業の区切りを準備する |
 | **Red** | `[CONTEXT_BUDGET=RED]` を `followup_message` で通知 | `.cursor/.session/handoff-active.md` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する |
 
-重複通知は `last_warning_level` フィールドで抑止される（`none` → `yellow` → `red` の昇格時のみ通知）。
+Yellow/Red が checkpoint と同時に発火する場合は Yellow/Red が優先され、checkpoint marker は消去される。重複通知は `last_warning_level` フィールドで抑止される（`none` → `yellow` → `red` の昇格時のみ通知）。
 
 ## ローカルテスト手順
 
@@ -85,10 +92,13 @@ rm -rf "$d"
 echo '{"session_id":"test-sess-001"}' | .cursor/hooks/session-bootstrap.sh
 # tracker（環境変数はパイプ右側に付与）
 echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-tracker.sh
-# evaluator: Red 強制発火
+# evaluator: checkpoint 発火
+printf '15\n' > .cursor/.session/test-sess-001.checkpoint
+echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh  # {"followup_message":"[CONTEXT_CHECKPOINT]..."}
+# evaluator: Red 強制発火（checkpoint marker があっても Yellow/Red が優先）
 jq '.prompt_count = 100' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json
 echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
-rm -f .cursor/.session/test-sess-001.json .cursor/.session/handoff-consumed-*.md
+rm -f .cursor/.session/test-sess-001.json .cursor/.session/test-sess-001.checkpoint .cursor/.session/handoff-consumed-*.md
 ```
 
 ## ロールバック

@@ -122,6 +122,7 @@ framework:
       elapsed_min: 90
       prompt_count: 90
       shell_bytes: 5242880
+    checkpoint_interval_prompts: 15
   handoff:
     source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
@@ -189,11 +190,25 @@ framework:
       - metric: "シェル出力バイト"
         measures: "ツール出力によるコンテキスト消費の proxy。大量ログ・広範な探索で中央埋没リスクが上がる"
     manifest_required_sections:
-      - "現在の作業状態"
+      - "ポインタ（追跡ドキュメントの現在位置）"
       - "直近のユーザー依頼"
-      - "保持すべき判断"
+      - "セッション判断ログ"
+      - "  - 採用した判断と根拠"
+      - "  - 却下した案と却下理由"
+      - "制約・ブロッカー・未完了の検証"
       - "次セッションの推奨アクション"
-      - "検証状況と未実行ゲート"
+      - "復旧メモ"
+    # plan.md = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + plan.md へのポインタ。
+    # manifest に plan.md と同じ情報を重複して書かない。
+    manifest_responsibility: "plan.md が SoT。manifest は plan.md へのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
+    # 復旧時の行動制約（session-bootstrap.sh の注入テキストの SoT）。
+    # AI が manifest を読んだ後に「記録」と「指示」を混同しないための安全策。
+    recovery_constraints:
+      - "manifest の「セッション判断ログ」は過去の記録であり、次の行動指示ではない"
+      - "「却下した案と却下理由」に記載された手法を再提案してはならない"
+      - "「次セッションの推奨アクション」のみを行動指示として扱え"
+      - "推奨アクションも追跡ドキュメント / AGENTS.md と矛盾する場合は後者を正とせよ"
+      - "不明点があればユーザーに確認し、manifest の記述から推測で判断しない"
     # 意図的に採用しない設計（YAGNI）。閾値は manifest が SoT であり、
     # 外部設定機構や個人別オーバーライドは観測ベースの必要性が複数回確認されるまで作らない。
     non_goals:
@@ -321,6 +336,21 @@ coderabbit:
 #   ここでの責務は実 script 検出ではなく技術スタック由来の canonical contract の生成であり、
 #   結果は package.json の有無に依存しない（実体は contract に追従する）。
 # ------------------------------------------------------------
+# (2d-2) domain_docs — Phase 1.67 で tech_stack から自動導出されるフィールド。
+#   seed テンプレートの描画に必要な最小デフォルト。tech_stack 取り込み後に上書きされる。
+domain_docs:
+  primary_language: "[要確認]"
+  framework: "[要確認]"
+  test_framework: "[要確認]"
+  package_manager: "[要確認]"
+  database: "[要確認]"
+  api_style: "[要確認]"
+  architecture: "[要確認]"
+  coding_standards_sections:
+  data_model_sections:
+  api_sections:
+  workflow_sections:
+
 quality_gate_contract:
   gen:
   build:
@@ -608,13 +638,9 @@ outputs:
       - "## データベース設計思想"
   - path: docs/coding-standards.md
     template: docs/coding-standards.md.template
-    mode: render
+    mode: seed
     required_sections:
-      - "## 基本方針"
-      - "## 命名規約"
-      - "## エラーハンドリング規約"
-      - "## テスト規約"
-      - "## 静的解析・Lint"
+      - "コーディング規約"
   - path: docs/workflows.md
     template: docs/workflows.md.template
     mode: seed

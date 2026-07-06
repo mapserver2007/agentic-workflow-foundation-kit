@@ -114,6 +114,12 @@ def run(skill_dir: str, check: bool) -> int:
         except (TypeError, KeyError, genlib.YamlError) as e:
             print(f"FATAL: outputs[] 定義エラー: {e}", file=sys.stderr)
             return 2
+        existing = _read(target_path)
+        mode = out.get("mode", "render")
+
+        if mode == "seed" and existing is not None:
+            continue
+
         template_text = _read(template_path)
         if template_text is None:
             print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
@@ -125,13 +131,6 @@ def run(skill_dir: str, check: bool) -> int:
         except genlib.RenderError as e:
             print(f"FATAL: 描画失敗 ({rel}): {e}", file=sys.stderr)
             return 2
-
-        existing = _read(target_path)
-        mode = out.get("mode", "render")
-
-        if mode == "seed" and existing is not None:
-            # 既存 seed は不可侵。存在すれば差分なし扱い。
-            continue
 
         if check:
             if existing != expected:
