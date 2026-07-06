@@ -48,6 +48,7 @@ framework:
     - afterShellExecution
     - beforeShellExecution
     - stop
+    - preCompact
   exit_codes:
     - code: 0
       meaning: 全検査PASS。次フェーズへ進む
@@ -114,6 +115,9 @@ framework:
     - id: Selective
       rule: 完了の自己宣言禁止。ゲート実行記録なしに「完了」と書かない
   budget_thresholds:
+    compact_yellow_percent: 60
+    compact_red_percent: 80
+    compact_freshness_sec: 300
     yellow:
       elapsed_min: 45
       prompt_count: 45
@@ -143,6 +147,12 @@ framework:
       - path: ".cursor/.session/handoff-consumed-{unix}.md"
         role: "消費済み handoff manifest のアーカイブ"
         lifecycle: "session-bootstrap.sh が active manifest をリネームして作成する"
+      - path: ".cursor/.session/compact-events.jsonl"
+        role: "compact イベントの校正データログ"
+        lifecycle: "session-compact-observer.sh が preCompact 発火時に追記する"
+      - path: ".cursor/.session/{session_id}.pending-handoff"
+        role: "compact 直後の handoff 発火トリガー（one-shot marker）"
+        lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -216,7 +226,8 @@ framework:
       - "個人別オーバーライド（.session-budget.local.json 等の階層化設定）"
     # 将来拡張候補。proxy 指標の誤検知を補完する方向の設計メモ。
     future_notes:
-      - "preCompact Hook が使えるようになれば、Cursor 側のコンパクション発動を直接検知でき、経過時間 proxy を補完できる（unified design の preCompact = コンパクション発生前の追跡ドキュメント書き込み促進が根拠）"
+      - "Phase 2: stop / beforeSubmitPrompt に context_window フィールドが追加されれば、毎ターン token% 判定が可能になり proxy を完全 fallback に降格できる"
+      - "Phase 2: preCompact に followup_message / additional_context が追加されれば、compact 直前に AI が自律的に handoff 作業を完了できる"
     # 参考リンク。リポ内の安定リンクのみを焼き込み、プロジェクト固有チケットや
     # 未検証の外部引用は含めない（移植性とトレーサビリティの両立）。
     references:
@@ -523,6 +534,14 @@ outputs:
     executable: true
     required_sections:
       - "shell_bytes"
+  - path: .cursor/hooks/session-compact-observer.sh
+    template: hooks/session-compact-observer.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "preCompact"
+      - "compact-events.jsonl"
+      - "pending-handoff"
   - path: .cursor/hooks/session-budget-evaluator.sh
     template: hooks/session-budget-evaluator.sh.template
     mode: render
@@ -530,6 +549,7 @@ outputs:
     required_sections:
       - "CONTEXT_BUDGET"
       - "followup_message"
+      - "pending-handoff"
   - path: .cursor/hooks/README.md
     template: hooks/README.md.template
     mode: render

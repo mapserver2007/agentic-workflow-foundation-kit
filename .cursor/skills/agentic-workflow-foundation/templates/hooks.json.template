@@ -25,6 +25,12 @@
         "timeout": 5
       }
     ],
+    "preCompact": [
+      {
+        "command": ".cursor/hooks/session-compact-observer.sh",
+        "timeout": 5
+      }
+    ],
     "stop": [
       {
         "command": ".cursor/hooks/session-budget-evaluator.sh",

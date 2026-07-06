@@ -47,8 +47,15 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
   → {{framework.budget_thresholds.checkpoint_interval_prompts}} の倍数なら checkpoint marker を書く
 [AI 応答 / 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
+[Cursor: コンパクション直前]
+  → preCompact Hook → session-compact-observer.sh
+  → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
+  → user_message でユーザーに compact 発生を通知
 [AI 応答完了]
-  → stop Hook → session-budget-evaluator.sh (閾値判定)
+  → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
+  → pending-handoff あり → token% で即座に compact 連動 handoff 発火
+  → pending-handoff なし + token% 鮮度 OK → token% 優先判定
+  → token% なし → 従来の proxy OR 判定
   → checkpoint marker あり（Yellow/Red 未到達時）→ [CONTEXT_CHECKPOINT] で判断構造の外部化を促す
   → Yellow / Red 到達なら followup_message を返却（checkpoint より優先）
   → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
@@ -66,7 +73,8 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 | `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-active.md` の注入とアーカイブ |
 | `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み |
 | `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
-| `session-budget-evaluator.sh` | `stop` | 閾値判定 + checkpoint / `followup_message` による警告発火 |
+| `session-compact-observer.sh` | `preCompact` | compact 直前の token% 記録 + pending-handoff マーカー + compact-events.jsonl |
+| `session-budget-evaluator.sh` | `stop` | 判定優先順位に従い token% / proxy で Yellow/Red 判定 + pending-handoff 検出 + checkpoint / `followup_message` による警告発火 |
 | `guard-git-write.sh` | `beforeShellExecution` | Git / gh の危険操作ガード |
 
 ### 状態管理ファイル
@@ -79,15 +87,46 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 
 > Active / Consumed manifest は `.cursor/.session/` 配下に集約する。Yellow / Red は同じ active manifest を上書き更新する。
 
-## 閾値（OR 判定）
+## 判定優先順位
 
-3 つの指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
+evaluator は以下の優先順位で判定する。上位の判定が適用された場合、下位は評価しない。
+
+| 優先度 | 条件 | 判定方式 | should_emit |
+|---|---|---|---|
+| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → plan.md 再読 + handoff 指示 | **bypass**（即発火） |
+| 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
+| 3 | token% なし or 鮮度切れ | proxy OR 判定（elapsed_min / prompt_count / shell_bytes） | 通常遷移制御 |
+| 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
+
+### コンパクション連動 handoff（pending-handoff パターン）
+
+`preCompact` Hook は `followup_message` を返せないため、MemPalace と同じ「pending マーカーパターン」を採用する。
+
+1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
+2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
+3. マーカー内の token% で Yellow/Red を判定し、should_emit を bypass して即座に handoff followup を発火
+4. compact 直後の followup には **plan.md の再読** を明示的に指示する（compact で in-context が要約されたため）
+
+## 閾値
+
+### proxy 閾値（fallback — token% 未取得時）
+
+3 つの proxy 指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
 
 | 指標 | Yellow | Red |
 |---|---|---|
 | 経過時間 (min) | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.red.elapsed_min}} |
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
+
+### compact 由来の token% 閾値（主指標 — preCompact 経由で取得）
+
+| レベル | token% | 鮮度判定 |
+|---|---|---|
+| Yellow | {{framework.budget_thresholds.compact_yellow_percent}}% 以上 | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
+| Red | {{framework.budget_thresholds.compact_red_percent}}% 以上 | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
+
+token% は preCompact 発火時に取得される実測値であり、proxy より正確。token% が取得済みかつ鮮度が新しい場合は proxy より優先して判定される。
 
 ### セッション内チェックポイント（Periodic State Checkpoint）
 
@@ -302,10 +341,35 @@ cat .cursor/.session/*.json | jq '{prompt_count, shell_bytes}'
 
 ## 設計上の既知の制約
 
-- 経過時間は proxy 指標（トークン量は Hook から取得不可）。誤検知あり（長時間放置の軽作業 = false positive）
+- Phase 1 では token% は preCompact 発火時にしか取得できない（毎ターン取得は Phase 2 の API 拡張が前提）
+- compact が一度も起きないセッションでは token% の恩恵がなく、proxy fallback のみで動作する
+- 経過時間は proxy 指標（トークン量と直接相関しない）。誤検知あり（長時間放置の軽作業 = false positive）
 - 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
 - session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するため、上記の必須情報を manifest に残す
+
+### compact-events.jsonl（校正データ）
+
+compact イベントの校正データログ。Phase 1 の主目的は **proxy 閾値の校正** に使うこと。
+
+分析用途:
+- compact 発火時の prompt_count / shell_bytes との相関 → proxy 閾値チューニング
+- auto compact の発火 % 分布 → `compact_yellow_percent` / `compact_red_percent` の妥当性検証
+- 1 セッション中の compact 頻度 → Thrashing リスクの評価
+
+### MemPalace 共存ガイドライン
+
+MemPalace が同じ `preCompact` に登録されている場合、hooks.json の配列に kit → MemPalace の順で並べる。kit の observer は軽量（timeout 5s）、MemPalace は重量（timeout 30s）。
+
+| 関心事 | kit | MemPalace |
+|---|---|---|
+| 判断構造の構造化退避 | plan.md + handoff manifest（SoT） | × |
+| transcript の verbatim 退避 | × | palace（mine） |
+| compact 直前の token% 記録 | compact-observer（state に書く） | × |
+| compact 検知後の handoff 促進 | pending-handoff → stop で followup | pending-save → stop で followup |
+| 長期記憶 RAG | × | palace search + wake hook |
+
+kit の `pending-handoff` と MemPalace の `pending-save` は別ファイル（`.cursor/.session/{id}.pending-handoff` vs `~/.mempalace/hook_state/cursor_{id}.pending`）で干渉しない。
 
 ### 将来拡張候補
 

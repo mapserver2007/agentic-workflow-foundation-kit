@@ -50,7 +50,11 @@ jq -n \
     prompt_count: 0,
     shell_bytes: 0,
     edit_count: 0,
-    last_warning_level: "none"
+    last_warning_level: "none",
+    last_compact_usage_percent: null,
+    last_compact_at: null,
+    compact_trigger: null,
+    compact_count: 0
   }' > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null
 
 # ---- handoff manifest 読み込み ----

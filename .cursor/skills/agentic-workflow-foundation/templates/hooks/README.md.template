@@ -12,7 +12,8 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-active.md` を `additional_context` 注入してアーカイブ | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
-| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | proxy 指標を Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
+| [session-compact-observer.sh](session-compact-observer.sh) | `preCompact` | compact 直前の token% を state に記録し、`compact-events.jsonl` に校正データを追記し、`pending-handoff` マーカーを書く | Observation | fail_open |
+| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | token%（あれば優先）または proxy 指標で Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。`pending-handoff` マーカー検出時は即座に compact 連動 handoff を発火する。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
 
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
@@ -36,6 +37,10 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | `shell_bytes` | shell-tracker | シェル実行出力長の累積バイト数 |
 | `edit_count` | （将来拡張用） | 0 初期化のみ |
 | `last_warning_level` | budget-evaluator | `none` / `yellow` / `red`（重複通知抑止） |
+| `last_compact_usage_percent` | compact-observer | 直近コンパクション時の使用率（%）。null = 未取得 |
+| `last_compact_at` | compact-observer | 直近コンパクション時刻（Unix epoch）。null = 未取得 |
+| `compact_trigger` | compact-observer | `auto` / `manual` / null |
+| `compact_count` | compact-observer | セッション中の compact 回数 |
 
 `CTX_BUDGET_SESSION_ID` 環境変数を bootstrap が後続 Hook に伝搬する。
 
@@ -44,6 +49,8 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | ファイル | 書き込み元 | 読み取り元 | ライフサイクル |
 |---|---|---|---|
 | `.cursor/.session/{session_id}.checkpoint` | budget-tracker | budget-evaluator | tracker が {{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で作成。evaluator が検出後に削除（one-shot） |
+| `.cursor/.session/{session_id}.pending-handoff` | compact-observer | budget-evaluator | compact-observer が preCompact 発火時に作成（token% を記載）。evaluator が検出後に削除し即座に compact 連動 handoff を発火 |
+| `.cursor/.session/compact-events.jsonl` | compact-observer | （分析用） | compact イベントの校正データログ。proxy 閾値チューニングと Phase 2 設計の根拠データ |
 
 ## しきい値設定（Context Budget Protocol）
 
@@ -56,6 +63,15 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 |---|---|---|---|---|
 | Yellow | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | 1 MiB |
 | Red | {{framework.budget_thresholds.red.elapsed_min}} | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | 5 MiB |
+
+#### compact 由来の token% 閾値（主指標 — preCompact 経由で取得）
+
+| レベル | token% | 鮮度 |
+|---|---|---|
+| Yellow | {{framework.budget_thresholds.compact_yellow_percent}}% | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
+| Red | {{framework.budget_thresholds.compact_red_percent}}% | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
+
+token% は preCompact 発火時に取得される実測値であり、proxy より正確。token% が取得済みかつ鮮度が新しい場合は proxy より優先される。pending-handoff マーカーがある場合は should_emit を bypass して即座に発火する。
 
 ### Checkpoint / Yellow / Red 到達時の挙動
 
@@ -98,7 +114,24 @@ echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-eva
 # evaluator: Red 強制発火（checkpoint marker があっても Yellow/Red が優先）
 jq '.prompt_count = 100' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json
 echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
-rm -f .cursor/.session/test-sess-001.json .cursor/.session/test-sess-001.checkpoint .cursor/.session/handoff-consumed-*.md
+
+# compact-observer: preCompact イベントのテスト
+jq '.prompt_count = 0 | .last_warning_level = "none"' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json
+echo '{"trigger":"auto","context_usage_percent":75,"context_tokens":150000,"context_window_size":200000,"message_count":40,"messages_to_compact":30,"is_first_compaction":true,"conversation_id":"test-conv","transcript_path":"/tmp/test"}' \
+  | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-compact-observer.sh
+# → {"user_message":"..."} + state に last_compact_usage_percent=75 + pending-handoff マーカー作成
+
+# evaluator: pending-handoff 検出 → compact 連動 handoff（Yellow: 75% >= 60%）
+echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
+# → {"followup_message":"[CONTEXT_BUDGET=YELLOW] コンパクション検出..."}
+
+# compact-observer: Red 級の token% でテスト
+echo '{"trigger":"auto","context_usage_percent":85,"context_tokens":170000,"context_window_size":200000,"message_count":50,"is_first_compaction":false}' \
+  | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-compact-observer.sh
+echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
+# → {"followup_message":"[CONTEXT_BUDGET=RED] コンパクション検出..."}
+
+rm -f .cursor/.session/test-sess-001.json .cursor/.session/test-sess-001.checkpoint .cursor/.session/test-sess-001.pending-handoff .cursor/.session/handoff-consumed-*.md .cursor/.session/compact-events.jsonl
 ```
 
 ## ロールバック
