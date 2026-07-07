@@ -66,7 +66,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
 2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞を確認（`docs/QUALITY_GATE.md §1.5`）
-3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む
+3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む。存在しなければ最小骨格（ポインタ + 判断ログ）で新規作成する
 {{#if agent_workflow.enabled}}4. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む
 5. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
 6. ソースコード調査はドキュメント把握後に開始する
@@ -99,6 +99,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - Checkpoint: `{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造（採用/却下した案と理由）の外部化を促す。セッション切り替えは不要。Yellow 前に複数回発火し、劣化が始まる前の高品質な記録を蓄積する先制的防御（元記事の 60% 通知に相当）
 - Yellow: 追跡ドキュメント（tracker.md = SoT）の「次セッションTODO / セッション判断ログ」を最新化し、作業の区切りを準備する
 - Red: 追跡ドキュメントを最新化した上で `{{framework.handoff.active_manifest_path}}` に handoff manifest（ポインタ + 揮発情報）を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
+- tracker.md 常時存在: セッション開始時に tracker.md が存在しない場合、AI は最小骨格で作成する。プランファイル駆動の場合はプランへのポインタ + セッション判断ログのみで十分。preCompact Hook も存在しない場合は自動生成する
 - compact 連動: `preCompact` → `pending-handoff` マーカー + tracker.md スナップショット自動退避 → 次の `stop` で即座に handoff 発火 + manifest 骨格機械生成。compact 直後は tracker.md を再読して制約を再ロードする
 - manifest は tracker.md へのポインタ + セッション固有の揮発情報のみ。tracker.md と同じ情報を重複して書かない
 - 注入サイズ上限: bootstrap は manifest を最大 {{framework.budget_thresholds.max_injection_bytes}} bytes に制限して注入する（Thrashing 防止）。超過時は tracker.md を直接 Read して補完する

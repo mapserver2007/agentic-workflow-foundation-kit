@@ -39,6 +39,7 @@ immutable upstream SoT(.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md / AI_BUSINESS_AGE
 seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
        │
        ├─ Phase 1.5: project 設定 + ACCD 採用/非採用 確定 → root manifest.yaml 生成
+       ├─ Phase 1.55: min_context_window_tokens → budget_thresholds 算出
        │
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
        ├─ Phase 1.65: tech_stack → quality_gate / quality_gate_contract
@@ -88,7 +89,8 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 ```text
 - [ ] Phase 1: unified design resolver / manifest / templates のフレームワーク変更（必要時のみ。PO 確定事項は再質問しない）
 - [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
-- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review / github_pr / github_issue オプション）
+- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review / github_pr / github_issue / context_budget オプション）
+- [ ] Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
@@ -136,7 +138,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - root `manifest.yaml` が**不在**なら、seed manifest をそのまま root へ新規生成する（`project.*` は Phase 1.5、`tech_stack` / `quality_gate` は Phase 1.6 / 1.65 で確定する placeholder のまま）。
 - root が**存在**するなら、`framework:` ブロックだけを seed 由来に置換する。root のファイルヘッダ（「正式 project manifest」の framing）・`project.*` / `tech_stack` / `quality_gate*` / `session` の確定値は保持する。
 - 冪等。`framework.*` 未変更なら「更新なし=冪等」を出力する。`framework:` ブロックを特定できない場合は exit 2。
-- 実行順序: Phase 1（seed/templates 編集）→ **Phase 1.45（bootstrap で root へ同期）** → Phase 1.5 以降（project / tech_stack / quality_gate 確定）→ Phase 2（generate）。
+- 実行順序: Phase 1（seed/templates 編集）→ **Phase 1.45（bootstrap で root へ同期）** → Phase 1.5（project 設定）→ **Phase 1.55（budget_thresholds 算出）** → Phase 1.6 以降（tech_stack / quality_gate 確定）→ Phase 2（generate）。
 
 #### `AGENTS.md > Context Budget Protocol` 節の取り扱い
 
@@ -234,6 +236,14 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
      - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.execute_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / execute-agent-workflow スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない
      - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
 
+- `context_budget`（最小コンテキストウィンドウ）: 使用するモデルの最小コンテキストウィンドウを PO に確認する。複数モデル併用時は最小のものを選ぶ。回答は `project.context_budget.min_context_window_tokens` に記録する。
+
+  **最小コンテキストウィンドウ確認**: 「使用するモデルの最小コンテキストウィンドウは？（複数モデルを併用する場合は最小のものを選んでください）」
+  - `200K tokens (推奨)` — Composer 2.5 等の 200K モデルを含む場合 → `min_context_window_tokens: 200000`
+  - `300K tokens` — Opus 4.8 等の 300K モデルのみ使用 → `min_context_window_tokens: 300000`
+  - `その他（カスタム入力）` — 数値をトークン単位で入力 → 入力値を `min_context_window_tokens` に設定
+  - Phase 1.55 で `resolve_budget_thresholds.py` がこの値から `framework.budget_thresholds` を決定論的に算出する
+
 **(2) 自動導出（質問不要）**
 
 - `tracking_artifact`: 全 `workflow_pattern` 共通で `.tracking/tracker.md`（固定値）。
@@ -264,6 +274,19 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - 確定値はすべて、スキル実行で生成されるリポジトリ直下 `manifest.yaml > project.*` に記入する。
 - ACCD の自動確定値は、スキル実行で生成されるリポジトリ直下 `manifest.yaml > framework.accd_axes[].adopted` / `not_adopted` に記入する。
 - 「複合型」になりそうな場合は、ワークスペース分離判断を PO に確認してから主パターンを確定する。
+
+### Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
+
+Phase 1.5 で確定した `project.context_budget.min_context_window_tokens` から `framework.budget_thresholds` を決定論的に算出し、root `manifest.yaml` に書き込む。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py
+```
+
+- `project.context_budget` が未設定の場合は WARN（exit 1）で seed default（200K tier）にフォールバックする。
+- bootstrap（Phase 1.45）が seed から同期した `framework.budget_thresholds` を上書きするため、最終値は resolver 由来になる。
+- `--check` フラグで dry-run（書き込みなし）を実行可能。
+- exit 2 は致命的エラー（manifest 破損等）。
 
 ### Phase 1.6: techstack 取り込み
 
@@ -403,7 +426,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 ## 重要な制約
 
 - **出力ファイルを直接編集しない**。変更は必ず immutable upstream docs / seed `manifest.yaml` / 生成済み root `manifest.yaml` / `templates/` / stateless resolver を編集して再生成する。
-- **root `manifest.yaml` の `framework:` ブロックを手編集しない**。framework の SoT は seed `manifest.yaml` であり、root へは Phase 1.45 の `run_resolved_engine.py bootstrap` で同期する。root を直接書き換えてよいのは Phase 1.5/1.6/1.65 が扱う `project.*` / `tech_stack` / `quality_gate*` / `session` の per-project 値（およびスクリプトによる自動反映）に限る。
+- **root `manifest.yaml` の `framework:` ブロックを手編集しない**。framework の SoT は seed `manifest.yaml` であり、root へは Phase 1.45 の `run_resolved_engine.py bootstrap` で同期する。ただし `framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。root を直接書き換えてよいのは Phase 1.5/1.55/1.6/1.65 が扱う `project.*` / `framework.budget_thresholds`（resolver 経由）/ `tech_stack` / `quality_gate*` / `session` の per-project 値（およびスクリプトによる自動反映）に限る。
 - **unified/bas は immutable 実行時入力として扱う**。読み取り専用で、スキル内部に前回実行状態を保存しない。seed manifest/templates を実行結果で永続更新しない。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **unified design / root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の upstream / per-project 解決ロジックを追加しない。

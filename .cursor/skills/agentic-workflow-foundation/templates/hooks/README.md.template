@@ -58,6 +58,8 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 しきい値の SoT は `.cursor/skills/agentic-workflow-foundation/manifest.yaml > framework.budget_thresholds`。
 変更は manifest を編集して `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成する（スクリプト直接編集は audit で drift 検出される）。
 
+決定根拠: `min_context_window = {{project.context_budget.min_context_window_tokens}}` tokens（Phase 1.5 で選択）。`resolve_budget_thresholds.py`（Phase 1.55）がこの値から全閾値を決定論的に算出。
+
 現行値:
 
 | レベル | prompt_count | shell_bytes | shell (MiB) |

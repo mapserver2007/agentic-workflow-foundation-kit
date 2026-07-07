@@ -105,9 +105,33 @@ jq -c -n \
 PENDING_FILE="$SESSION_DIR/${SESSION_ID}.pending-handoff"
 printf '%s\n' "$USAGE_PCT" > "$PENDING_FILE" 2>/dev/null || true
 
+# ---- 3.5. tracker.md が存在しなければ最小骨格を生成 ----
+TRACKER="$PROJECT_DIR/{{project.tracking_artifact}}"
+if [[ ! -f "$TRACKER" ]]; then
+  mkdir -p "$(dirname "$TRACKER")" 2>/dev/null || true
+  cat > "$TRACKER" 2>/dev/null <<'TRACKER_SKEL'
+# 追跡ドキュメント（自動生成骨格）
+
+## 現在のフェーズ
+<!-- TODO: AI が記入 -->
+
+## セッション判断ログ
+### 採用した判断と根拠
+### 却下した案と却下理由
+
+## ブロッカー・制約
+<!-- なし -->
+
+## 次セッションTODO
+<!-- TODO: AI が記入 -->
+
+## 完了チェック
+- [ ] <!-- TODO: AI が記入 -->
+TRACKER_SKEL
+fi
+
 # ---- 4. tracker.md のスナップショットを自動退避 ----
 MAX_SNAPSHOT_BYTES={{framework.budget_thresholds.max_snapshot_bytes}}
-TRACKER="$PROJECT_DIR/{{project.tracking_artifact}}"
 SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
 if [[ -f "$TRACKER" ]]; then
   head -c "${MAX_SNAPSHOT_BYTES}" "$TRACKER" > "$SNAPSHOT" 2>/dev/null || true
