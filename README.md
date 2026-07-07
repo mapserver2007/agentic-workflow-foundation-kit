@@ -229,7 +229,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### Context Budget は Hook で観測する
 
-生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`elapsed_min`、`prompt_count`、`shell_bytes` を proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest を使った新規チャット移行を促します。
+生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`prompt_count`、`shell_bytes` を proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest を使った新規チャット移行を促します。
 
 ## 前提条件
 
