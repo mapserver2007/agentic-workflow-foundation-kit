@@ -62,7 +62,7 @@
 - `5層モデル`: Context/Constraints/Capabilities/Automation/Delegation のマッピング。
 - `復旧プロトコル`: セッション中断からの復旧手順。
 
-### docs/session-handoff-guide.md（ADR Context Budget Auto-Handoff）
+### docs/CONTEXT_BUDGET.md（ADR Context Budget Auto-Handoff）
 - `CONTEXT_BUDGET`: Yellow/Red プロトコル。
 - `handoff-active.md`: manifest パス規約の SoT。
 - `## 生成根拠`: 設計入力の役割と入力状態が出力から確認でき（正本ファイル名・ハッシュは出力へ露出しない）、SKILL 内部に永続状態を持たないことを説明できること。

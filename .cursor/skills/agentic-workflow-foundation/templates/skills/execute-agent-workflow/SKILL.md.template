@@ -136,7 +136,7 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 
 ## Context Budget 到達時の対応
 
-`AGENTS.md > Context Budget Protocol` の Yellow / Red 到達時、ワークフローのどのステップにいても以下のルールに従う。詳細は [`docs/session-handoff-guide.md`](../../../docs/session-handoff-guide.md) を参照。
+`AGENTS.md > Context Budget Protocol` の Yellow / Red 到達時、ワークフローのどのステップにいても以下のルールに従う。詳細は [`docs/CONTEXT_BUDGET.md`](../../../docs/CONTEXT_BUDGET.md) を参照。
 
 | 警告レベル | 対応 |
 | --- | --- |

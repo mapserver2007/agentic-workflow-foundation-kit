@@ -3,7 +3,7 @@
 # Cursor preCompact Hook: コンパクション直前に実トークン使用率を記録し、
 # pending-handoff マーカーを書いて次の stop Hook で handoff を発火させる。
 # compact-events.jsonl に校正データを追記する。
-# 仕様: AGENTS.md > Context Budget Protocol / docs/session-handoff-guide.md / .cursor/hooks/README.md
+# 仕様: AGENTS.md > Context Budget Protocol / docs/CONTEXT_BUDGET.md / .cursor/hooks/README.md
 # 設計: フェイルオープン / 観測専用（preCompact は followup_message を返せない）
 #
 # しきい値の SoT: agentic-workflow-foundation manifest.yaml > framework.budget_thresholds。

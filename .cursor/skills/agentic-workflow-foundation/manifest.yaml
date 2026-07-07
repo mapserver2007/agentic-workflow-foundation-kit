@@ -630,8 +630,8 @@ outputs:
       - "G-PLAN-SECTION-001"
       - "例外承認記録"
       - "フェーズ境界"
-  - path: docs/session-handoff-guide.md
-    template: docs/session-handoff-guide.md.template
+  - path: docs/CONTEXT_BUDGET.md
+    template: docs/CONTEXT_BUDGET.md.template
     mode: render
     required_sections:
       - "CONTEXT_BUDGET"

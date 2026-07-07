@@ -12,7 +12,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
 | Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks |
-| Project Docs (Meta) | `docs/tech-stack.md`、`docs/session-handoff-guide.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Project Docs (Meta) | `docs/tech-stack.md`、`docs/CONTEXT_BUDGET.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（7ステップ + index + best-practices）、`docs/agent-tasks/reports/`、`agent-maintenance-docs` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
@@ -79,7 +79,7 @@ agentic-workflow-foundation-kit/
         │   │   ├── rules/           # 00-init 〜 03-github-security
         │   │   ├── hooks/           # guard-git-write, session-*, budget-*
         │   │   ├── docs/            # AGENT_RUNBOOK, QUALITY_GATE, tech-stack,
-        │   │   │                    # session-handoff-guide, DECISIONS, GOTCHAS,
+        │   │   │                    # CONTEXT_BUDGET, DECISIONS, GOTCHAS,
         │   │   │                    # spec, spec/README, architecture, api,
         │   │   │                    # data-models, coding-standards, workflows
         │   │   ├── skills/          # session-planning, session-handover,
@@ -174,7 +174,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Context | `AGENTS.md`、`CLAUDE.md` |
 | Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
-| Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/session-handoff-guide.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
+| Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`verification-gate.sh`、`session-start-gate.sh`、`plan-gate.sh`、`.cursor/skills/decisions-record/SKILL.md` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |

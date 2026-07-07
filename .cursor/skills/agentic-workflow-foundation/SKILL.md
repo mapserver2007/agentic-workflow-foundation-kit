@@ -7,7 +7,7 @@ description: >-
   Agentic Workflow 基盤ファイル群（AGENTS.md / CLAUDE.md /
   .cursor/rules/*.mdc / .cursor/hooks/* / .cursor/hooks.json /
   docs/AGENT_RUNBOOK.md / DECISIONS.md / GOTCHAS.md / QUALITY_GATE.md /
-  session-handoff-guide.md / docs/tech-stack.md / session-planning /
+  CONTEXT_BUDGET.md / docs/tech-stack.md / session-planning /
   session-handover / decisions-record / .gitignore / .cursorignore）を
   冪等・再現的に生成/メンテナンスする。「Agentic 基盤を生成して」
   「基盤ファイルを作って/更新して」「techstack を取り込んで再生成して」
@@ -142,7 +142,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 #### `AGENTS.md > Context Budget Protocol` 節の取り扱い
 
-`AGENTS.md` には `## Context Budget Protocol` 独立節を持たせる。これは、複数の生成物（`docs/session-handoff-guide.md` / `.cursor/hooks/README.md` / `session-budget-evaluator.sh` / `session-bootstrap.sh` / `framework.handoff.references`）が `AGENTS.md > Context Budget Protocol` を参照しているのに、実体の `AGENTS.md` には独立節がなく Layer 1 のアンカーが欠けている drift を解消するためである。
+`AGENTS.md` には `## Context Budget Protocol` 独立節を持たせる。これは、複数の生成物（`docs/CONTEXT_BUDGET.md` / `.cursor/hooks/README.md` / `session-budget-evaluator.sh` / `session-bootstrap.sh` / `framework.handoff.references`）が `AGENTS.md > Context Budget Protocol` を参照しているのに、実体の `AGENTS.md` には独立節がなく Layer 1 のアンカーが欠けている drift を解消するためである。
 
 **名称の位置づけ（断定の根拠を必ず書く）**:
 
@@ -157,9 +157,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **根拠**: 上記の統一設計書概念から派生した運用名であることを1行で示す。
 - **発火条件**: `framework.budget_thresholds` の `prompt_count` / `shell_bytes` を proxy 指標とし、OR 判定で Yellow / Red を判定する旨を書く。
 - **AI の行動**: Yellow では追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し区切りを準備する。Red では `framework.handoff.active_manifest_path`（`.cursor/.session/handoff-active.md`）に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する。
-- **詳細委譲**: 詳細手順・閾値・失敗モードは `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する旨を書く（AGENTS には短い規範のみ置き、内容を二重管理しない）。
+- **詳細委譲**: 詳細手順・閾値・失敗モードは `docs/CONTEXT_BUDGET.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する旨を書く（AGENTS には短い規範のみ置き、内容を二重管理しない）。
 
-> 重複防止: この節は新規 Meta doc（例: `docs/CONTEXT_BUDGET_PROTOCOL.md`）として切り出さない。詳細 doc の役割は既に `docs/session-handoff-guide.md` が担っており、`AGENTS.md` には Layer 1 の短い入口だけを置く方針とする。
+> 重複防止: この節は新規 Meta doc（例: `docs/CONTEXT_BUDGET_PROTOCOL.md`）として切り出さない。詳細 doc の役割は既に `docs/CONTEXT_BUDGET.md` が担っており、`AGENTS.md` には Layer 1 の短い入口だけを置く方針とする。
 
 #### `01-critical-constraints.mdc` の出力仕様
 
@@ -180,7 +180,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **Yellow / Red 到達時の挙動**: 各レベルの通知メッセージ（`[CONTEXT_BUDGET=YELLOW]` / `[CONTEXT_BUDGET=RED]`）と AI が取るべきアクションをテーブルで明記する。`last_warning_level` による重複通知抑止（`none` → `yellow` → `red` の昇格時のみ通知）も説明する。
 - **Hook 追加チェックリスト**: 新規 Hook 追加時に確認すべき項目をチェックリスト形式で記載する。最低限の項目: hooks.json 登録 / 実行ビット付与 / フェイル戦略決定 + README 一覧表追記 / テストケース追加 / `manifest.yaml > outputs[]` 追加 / Cursor Settings 確認 / 再生成 + audit PASS。
 - **Cursor 統合確認**: Cursor Settings > Features > Hooks での有効化確認手順を記載する。
-- **関連ドキュメントリンク集**: `AGENTS.md > Context Budget Protocol` / `docs/QUALITY_GATE.md §2.1` / `docs/session-handoff-guide.md` / `docs/DECISIONS.md` / `.cursor/hooks.json` へのリンクテーブルを設ける。
+- **関連ドキュメントリンク集**: `AGENTS.md > Context Budget Protocol` / `docs/QUALITY_GATE.md §2.1` / `docs/CONTEXT_BUDGET.md` / `docs/DECISIONS.md` / `.cursor/hooks.json` へのリンクテーブルを設ける。
 
 #### `session-planning/SKILL.md` の出力仕様
 

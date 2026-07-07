@@ -80,7 +80,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 3. 設計次元 D-* を変更する判断が発生した場合は **即時** `docs/DECISIONS.md` に ADR を追記
 4. 失敗・踏み外しの学びが発生した場合は `## Gotchas` 起票トリガーを確認し、該当すれば追記
-5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-active.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/session-handoff-guide.md`](docs/session-handoff-guide.md)。`.cursor/` 直下に独自ファイルを作成しない
+5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-active.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
 
 ### セッション再開
 
@@ -104,7 +104,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - manifest は tracker.md へのポインタ + セッション固有の揮発情報のみ。tracker.md と同じ情報を重複して書かない
 - 注入サイズ上限: bootstrap は manifest を最大 {{framework.budget_thresholds.max_injection_bytes}} bytes に制限して注入する（Thrashing 防止）。超過時は tracker.md を直接 Read して補完する
 
-詳細手順・失敗モード・ユーザー操作は `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
+詳細手順・失敗モード・ユーザー操作は `docs/CONTEXT_BUDGET.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
 
 ## Boundaries
 
@@ -157,7 +157,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - **docs/QUALITY_GATE.md**: 必須ゲート / 例外承認フロー / フェーズ境界
 - **docs/GOTCHAS.md**: 失敗事例集約版
 - **docs/AGENT_RUNBOOK.md**: AI エージェント運用フレームワーク（起動/停止/復旧/観測）
-- **docs/session-handoff-guide.md**: Context Budget Auto-Handoff の使い方 / handoff manifest パス規約の SoT
+- **docs/CONTEXT_BUDGET.md**: Context Budget Auto-Handoff の使い方 / handoff manifest パス規約の SoT
 
 {{#if agent_workflow.enabled}}
 ### タスク実行ワークフロー（agent_workflow 有効時）

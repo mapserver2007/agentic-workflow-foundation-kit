@@ -188,6 +188,6 @@ Hook が Cursor IDE で正しく認識されているかの確認手順。
 |---|---|
 | [`AGENTS.md > Context Budget Protocol`](../../AGENTS.md) | Layer 1 のコンテキスト予算ポリシー（Yellow/Red の AI 行動規範） |
 | [`docs/QUALITY_GATE.md §2.1`](../../docs/QUALITY_GATE.md) | Hook 強制範囲の SoT（guard-git-write.sh の deny/ask 対象定義） |
-| [`docs/session-handoff-guide.md`](../../docs/session-handoff-guide.md) | Context Budget Auto-Handoff の詳細手順・失敗モード |
+| [`docs/CONTEXT_BUDGET.md`](../../docs/CONTEXT_BUDGET.md) | Context Budget Auto-Handoff の詳細手順・失敗モード |
 | [`docs/DECISIONS.md`](../../docs/DECISIONS.md) | Hook 設計に関する ADR 記録 |
 | [`.cursor/hooks.json`](../hooks.json) | Hook 登録設定本体（version / イベント / timeout / loop_limit） |
