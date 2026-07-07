@@ -153,7 +153,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 - **目的**: LLM のコンテキストウィンドウは有限かつ揮発的であり、長時間セッションでは判断・進捗・制約が文脈から落ちる。これを防ぐため作業状態を外部化し、新規チャットで再構築する旨を書く。
 - **根拠**: 上記の統一設計書概念から派生した運用名であることを1行で示す。
-- **発火条件**: `framework.budget_thresholds` の `elapsed_min` / `prompt_count` / `shell_bytes` を proxy 指標とし、OR 判定で Yellow / Red を判定する旨を書く。
+- **発火条件**: `framework.budget_thresholds` の `prompt_count` / `shell_bytes` を proxy 指標とし、OR 判定で Yellow / Red を判定する旨を書く。
 - **AI の行動**: Yellow では追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し区切りを準備する。Red では `framework.handoff.active_manifest_path`（`.cursor/.session/handoff-active.md`）に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する。
 - **詳細委譲**: 詳細手順・閾値・失敗モードは `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する旨を書く（AGENTS には短い規範のみ置き、内容を二重管理しない）。
 

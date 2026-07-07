@@ -59,9 +59,18 @@ jq -n \
 
 # ---- handoff manifest 読み込み ----
 ADDITIONAL_CONTEXT=""
+MAX_INJECTION_BYTES={{framework.budget_thresholds.max_injection_bytes}}
 if [[ -f "$HANDOFF_FILE" ]]; then
   HANDOFF_CONTENT="$(cat "$HANDOFF_FILE" 2>/dev/null)" || HANDOFF_CONTENT=""
   if [[ -n "$HANDOFF_CONTENT" ]]; then
+    # ---- 注入サイズ上限（Thrashing 防止） ----
+    HANDOFF_SIZE=${#HANDOFF_CONTENT}
+    SIZE_WARNING=""
+    if (( HANDOFF_SIZE > MAX_INJECTION_BYTES )); then
+      HANDOFF_CONTENT="$(head -c "$MAX_INJECTION_BYTES" <<<"$HANDOFF_CONTENT" 2>/dev/null)"
+      SIZE_WARNING="
+警告: manifest が ${HANDOFF_SIZE} bytes あり、注入上限 ${MAX_INJECTION_BYTES} bytes で切り詰めました。追跡ドキュメント（.tracking/tracker.md）を直接 Read して全体を補完してください。"
+    fi
     # ---- 必須見出し簡易チェック（fail-open: 欠落があっても注入する） ----
     MISSING_SECTIONS=""
     for HEADING in "ポインタ" "直近のユーザー依頼" "セッション判断ログ" "採用した判断と根拠" "却下した案と却下理由" "制約・ブロッカー" "次セッションの推奨アクション"; do
@@ -75,6 +84,7 @@ if [[ -f "$HANDOFF_FILE" ]]; then
 警告: manifest に以下の必須見出しが欠落しています。追跡ドキュメント（.tracking/tracker.md）を直接 Read して補完してください:
 $(printf '%b' "$MISSING_SECTIONS")"
     fi
+    QUALITY_WARNING="${SIZE_WARNING}${QUALITY_WARNING}"
     ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_HANDOFF] 前セッションから引き継ぎ manifest を読み込みました。${QUALITY_WARNING}
 
 復旧手順:
@@ -94,6 +104,36 @@ $HANDOFF_CONTENT
     CONSUMED_FILE="$SESSION_DIR/handoff-consumed-${NOW_UNIX}.md"
     mv "$HANDOFF_FILE" "$CONSUMED_FILE" 2>/dev/null || true
   fi
+fi
+
+# ---- スナップショット突合（pre-compact snapshot と handoff manifest の整合チェック） ----
+RECONCILIATION_WARNING=""
+LATEST_SNAPSHOT=""
+for snap in "$SESSION_DIR"/pre-compact-*.md; do
+  [[ -f "$snap" ]] || continue
+  if [[ -z "$LATEST_SNAPSHOT" ]] || [[ "$snap" -nt "$LATEST_SNAPSHOT" ]]; then
+    LATEST_SNAPSHOT="$snap"
+  fi
+done
+if [[ -n "$LATEST_SNAPSHOT" ]] && [[ -n "$ADDITIONAL_CONTEXT" ]]; then
+  SNAP_CONTENT="$(cat "$LATEST_SNAPSHOT" 2>/dev/null)" || SNAP_CONTENT=""
+  if [[ -n "$SNAP_CONTENT" ]]; then
+    SNAP_HAS_INCOMPLETE=false
+    if echo "$SNAP_CONTENT" | grep -qE '^\s*- \[ \]' 2>/dev/null; then
+      SNAP_HAS_INCOMPLETE=true
+    fi
+    MANIFEST_MENTIONS_POINTER=false
+    if echo "$ADDITIONAL_CONTEXT" | grep -q "ポインタ" 2>/dev/null; then
+      MANIFEST_MENTIONS_POINTER=true
+    fi
+    if [[ "$SNAP_HAS_INCOMPLETE" == "true" ]] && [[ "$MANIFEST_MENTIONS_POINTER" == "false" ]]; then
+      RECONCILIATION_WARNING="
+警告（スナップショット突合）: pre-compact snapshot に未完了タスクがありますが、manifest にポインタが見つかりません。tracker.md を正として読み直してください。"
+    fi
+  fi
+fi
+if [[ -n "$RECONCILIATION_WARNING" ]]; then
+  ADDITIONAL_CONTEXT="${ADDITIONAL_CONTEXT}${RECONCILIATION_WARNING}"
 fi
 
 # ---- 出力 ----

@@ -5,7 +5,7 @@
 # 判定優先順位:
 #   1. pending-handoff マーカーあり → token% で Yellow/Red → should_emit bypass で即発火
 #   2. state に last_compact_usage_percent あり + 鮮度 OK → token% 優先判定
-#   3. token% なし or 鮮度切れ → 従来の proxy OR 判定（elapsed_min / prompt_count / shell_bytes）
+#   3. token% なし or 鮮度切れ → 従来の proxy OR 判定（prompt_count / shell_bytes）
 #   4. いずれの閾値にも未到達 → checkpoint marker があれば CHECKPOINT followup
 #
 # チェックポイント marker（{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔）
@@ -46,8 +46,8 @@ fi
 
 # ---- しきい値（SoT: manifest.yaml > framework.budget_thresholds） ----
 THRESHOLDS='{
-  "yellow": { "elapsed_min": {{framework.budget_thresholds.yellow.elapsed_min}}, "prompt_count": {{framework.budget_thresholds.yellow.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.yellow.shell_bytes}} },
-  "red":    { "elapsed_min": {{framework.budget_thresholds.red.elapsed_min}}, "prompt_count": {{framework.budget_thresholds.red.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.red.shell_bytes}} }
+  "yellow": { "prompt_count": {{framework.budget_thresholds.yellow.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.yellow.shell_bytes}} },
+  "red":    { "prompt_count": {{framework.budget_thresholds.red.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.red.shell_bytes}} }
 }'
 COMPACT_YELLOW_PCT={{framework.budget_thresholds.compact_yellow_percent}}
 COMPACT_RED_PCT={{framework.budget_thresholds.compact_red_percent}}
@@ -58,23 +58,14 @@ NOW_UNIX="$(date +%s)"
 STATE="$(cat "$STATE_FILE" 2>/dev/null)" || { echo '{}'; exit 0; }
 [[ -z "$STATE" ]] && { echo '{}'; exit 0; }
 
-STARTED="$(jq -r '.started_at_unix // 0' <<<"$STATE" 2>/dev/null)" || STARTED=0
 PROMPTS="$(jq -r '.prompt_count // 0' <<<"$STATE" 2>/dev/null)" || PROMPTS=0
 SHELL_BYTES="$(jq -r '.shell_bytes // 0' <<<"$STATE" 2>/dev/null)" || SHELL_BYTES=0
 LAST_LEVEL="$(jq -r '.last_warning_level // "none"' <<<"$STATE" 2>/dev/null)" || LAST_LEVEL="none"
-
-if ! [[ "$STARTED" =~ ^[0-9]+$ ]] || (( STARTED <= 0 || STARTED > NOW_UNIX )); then
-  echo '{}'
-  exit 0
-fi
 
 if ! [[ "$PROMPTS" =~ ^[0-9]+$ ]] || ! [[ "$SHELL_BYTES" =~ ^[0-9]+$ ]]; then
   echo '{}'
   exit 0
 fi
-
-ELAPSED_SEC=$((NOW_UNIX - STARTED))
-ELAPSED_MIN=$((ELAPSED_SEC / 60))
 
 # ---- token% 関連の state 読み取り ----
 LAST_COMPACT_PCT="$(jq -r '.last_compact_usage_percent // empty' <<<"$STATE" 2>/dev/null)" || LAST_COMPACT_PCT=""
@@ -105,6 +96,35 @@ token_level() {
     echo "yellow"
   else
     echo "none"
+  fi
+}
+
+# ---- manifest 骨格の機械生成（Yellow/Red 発火時に呼び出し） ----
+generate_manifest_skeleton() {
+  local HANDOFF_FILE="$SESSION_DIR/handoff-active.md"
+  if [[ ! -f "$HANDOFF_FILE" ]]; then
+    cat > "$HANDOFF_FILE" 2>/dev/null <<'SKEL'
+# Handoff Manifest
+
+## ポインタ（追跡ドキュメントの現在位置）
+<!-- TODO: AI が記入 -->
+
+## 直近のユーザー依頼
+<!-- TODO: AI が記入 -->
+
+## セッション判断ログ
+### 採用した判断と根拠
+### 却下した案と却下理由
+<!-- TODO: AI が記入 -->
+
+## 制約・ブロッカー・未完了の検証
+<!-- TODO: AI が記入 -->
+
+## 次セッションの推奨アクション
+<!-- TODO: AI が記入 -->
+
+## 復旧メモ
+SKEL
   fi
 }
 
@@ -139,16 +159,14 @@ fi
 
 # 判定優先順位 3: token% で判定されなかった場合は proxy OR 判定にフォールバック
 if [[ "$LEVEL_SOURCE" == "proxy" ]]; then
-  Y_MIN="$(jq -r '.yellow.elapsed_min // 45' <<<"$THRESHOLDS")"
   Y_PROMPT="$(jq -r '.yellow.prompt_count // 45' <<<"$THRESHOLDS")"
   Y_BYTES="$(jq -r '.yellow.shell_bytes // 1048576' <<<"$THRESHOLDS")"
-  R_MIN="$(jq -r '.red.elapsed_min // 90' <<<"$THRESHOLDS")"
   R_PROMPT="$(jq -r '.red.prompt_count // 90' <<<"$THRESHOLDS")"
   R_BYTES="$(jq -r '.red.shell_bytes // 5242880' <<<"$THRESHOLDS")"
 
-  if (( ELAPSED_MIN >= R_MIN )) || (( PROMPTS >= R_PROMPT )) || (( SHELL_BYTES >= R_BYTES )); then
+  if (( PROMPTS >= R_PROMPT )) || (( SHELL_BYTES >= R_BYTES )); then
     LEVEL="red"
-  elif (( ELAPSED_MIN >= Y_MIN )) || (( PROMPTS >= Y_PROMPT )) || (( SHELL_BYTES >= Y_BYTES )); then
+  elif (( PROMPTS >= Y_PROMPT )) || (( SHELL_BYTES >= Y_BYTES )); then
     LEVEL="yellow"
   fi
 fi
@@ -177,6 +195,8 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
     TMP_FILE="$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || exit 0
     printf '%s' "$UPDATED" > "$TMP_FILE" 2>/dev/null && mv "$TMP_FILE" "$STATE_FILE" 2>/dev/null
   ) 9>"$LOCK_FILE" 2>/dev/null || true
+
+  generate_manifest_skeleton
 
   COMPACT_PCT="${PENDING_PCT:-${LAST_COMPACT_PCT:-?}}"
   if [[ "$LEVEL" == "red" ]]; then
@@ -234,6 +254,9 @@ AI への指示:
 3. 却下した案と却下理由（なぜ採用しなかったか）
 4. 現在のブロッカー・制約・未完了の検証
 
+注意: 前回 CHECKPOINT 以降 tracker.md が未更新の場合、セッション判断が外部化されていない。
+判断構造を失う前に今すぐ追記せよ。
+
 この書き出しは「まだ注意力が高いうちの高品質な記録」として扱う。Yellow/Red 到達時の manifest 作成はこの記録を転記するだけで済む。
 この指示は定期チェックポイントであり、セッション切り替えの推奨ではない。作業は継続してよい。ユーザーへの言及は不要（裏作業）。"
     jq -n --arg m "$CP_MSG" '{ followup_message: $m }'
@@ -245,6 +268,8 @@ fi
 
 # Yellow/Red 発火時はチェックポイント marker を消す（Yellow/Red が優先）
 rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
+
+generate_manifest_skeleton
 
 LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
 (
@@ -261,7 +286,7 @@ LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
 if [[ "$LEVEL_SOURCE" == "compact" ]]; then
   TRIGGER_TEXT="コンパクション（${COMPACT_TRIGGER}、使用率 ${LAST_COMPACT_PCT:-?}%）"
 else
-  TRIGGER_TEXT="経過 ${ELAPSED_MIN}min / ${PROMPTS} prompts"
+  TRIGGER_TEXT="${PROMPTS} prompts / ${SHELL_BYTES} bytes"
 fi
 
 if [[ "$LEVEL" == "red" ]]; then

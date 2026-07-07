@@ -119,12 +119,12 @@ framework:
     compact_red_percent: 80
     compact_freshness_sec: 300
     compact_thrashing_count: 3
+    max_injection_bytes: 8192
+    max_snapshot_bytes: 8192
     yellow:
-      elapsed_min: 45
       prompt_count: 45
       shell_bytes: 1048576
     red:
-      elapsed_min: 90
       prompt_count: 90
       shell_bytes: 5242880
     checkpoint_interval_prompts: 15
@@ -137,6 +137,7 @@ framework:
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
     active_manifest_path: ".cursor/.session/handoff-active.md"
     consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{unix}.md"
+    snapshot_path_pattern: ".cursor/.session/pre-compact-{session_id}.md"
     state_glob: ".cursor/.session/{session_id}.json"
     state_files:
       - path: ".cursor/.session/{session_id}.json"
@@ -154,6 +155,9 @@ framework:
       - path: ".cursor/.session/{session_id}.pending-handoff"
         role: "compact 直後の handoff 発火トリガー（one-shot marker）"
         lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
+      - path: ".cursor/.session/pre-compact-{session_id}.md"
+        role: "preCompact 時の tracker.md 構造化スナップショット（復旧用退避）"
+        lifecycle: "compact-observer が preCompact 発火時に tracker.md から生成する。session-bootstrap.sh が次セッションで突合に使用する"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -175,9 +179,6 @@ framework:
       - id: "history-reopen"
         symptom: "過去チャット履歴を開き直しても sessionStart Hook が期待通り再発火しない場合がある"
         mitigation: "Cmd+N で新規チャットを開き、短文を1通送って bootstrap に注入させる"
-      - id: "time-false-positive"
-        symptom: "長時間放置で経過時間だけが増え、実際のトークン劣化より先に警告される"
-        mitigation: "proxy 指標の誤検知として扱う。運用上は新規チャットへ移る方を安全側とする"
       - id: "heavy-short-session"
         symptom: "短時間でも大量ログや重い議論でコンテキスト劣化が先に進む"
         mitigation: "shell_bytes と prompt_count の OR 判定で早期検知する。必要なら手動で handoff を作る"
@@ -185,9 +186,6 @@ framework:
         symptom: "同一セッション内で compact が 3 回以上発生し、compact 後すぐに再びコンテキストが圧迫される"
         mitigation: "compact_thrashing_count に達した時点で強制 Red を発火し、新規チャットへ誘導する"
     metric_updates:
-      - metric: "経過時間"
-        update: "評価時に現在時刻 - started_at_unix で都度計算する"
-        reset: "新セッション起動で開始時刻をリセットする"
       - metric: "プロンプト数"
         update: "beforeSubmitPrompt Hook でユーザー発話ごとに +1 する"
         reset: "新セッション起動で 0 に戻る"
@@ -197,8 +195,6 @@ framework:
     # 各指標は直接トークン量を測れないための proxy（近似指標）。何を近似しているかを
     # 明示すると、どの指標が先に閾値到達したか（OR 判定）を解釈し handoff 要否を判断しやすい。
     proxy_notes:
-      - metric: "経過時間"
-        measures: "トークン蓄積量の proxy。Hook からトークン数は取得できないため時間で近似する。長時間放置だけでも到達するので誤検知（false positive）が起きやすい"
       - metric: "プロンプト数"
         measures: "対話往復数の proxy。往復が増えるほど序盤の情報が中央に埋もれて薄まる"
       - metric: "シェル出力バイト"
@@ -633,7 +629,6 @@ outputs:
       - "単一 manifest 制約"
       - "意図的に採用しない設計"
       - "各指標が近似するもの（proxy の意味）"
-      - "席を外して時間だけ進んだ"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template

@@ -40,6 +40,23 @@ else
   echo "[PASS] handoff manifest 残存なし (G-SESSION-HANDOFF-001)"
 fi
 
+# --- G-SESSION-RED-CONTINUE-001: Red 到達後のセッション継続検出 (WARN) ---
+RED_DETECTED=false
+if [[ -d "$SESSION_DIR" ]] && command -v jq >/dev/null 2>&1; then
+  for state_f in "$SESSION_DIR"/*.json; do
+    [[ -f "$state_f" ]] || continue
+    last_lvl="$(jq -r '.last_warning_level // "none"' "$state_f" 2>/dev/null)" || last_lvl="none"
+    if [[ "$last_lvl" == "red" ]]; then
+      RED_DETECTED=true
+      echo "[WARN] Red 到達後の同一セッション継続が検出されました。Cmd+N で新規チャットを開くことを推奨します (G-SESSION-RED-CONTINUE-001)"
+      break
+    fi
+  done
+fi
+if [[ "$RED_DETECTED" == "false" ]]; then
+  echo "[PASS] Red 後継続なし (G-SESSION-RED-CONTINUE-001)"
+fi
+
 # --- 追跡ドキュメント列挙 ---
 tracked=()
 while IFS= read -r f; do
@@ -49,13 +66,30 @@ done < <(find_tracking_documents)
 now="$(date +%s)"
 if (( ${#tracked[@]} > 0 )); then
 for f in "${tracked[@]}"; do
-  # --- G-SESSION-STALE-001: 追跡ドキュメントの停滞 (WARN) ---
+# --- G-SESSION-STALE-001: 追跡ドキュメントの停滞 (WARN) ---
   mtime="$(date -r "$f" +%s 2>/dev/null || echo "")"
   if [[ -n "$mtime" ]]; then
     age_h=$(( (now - mtime) / 3600 ))
     if (( age_h >= STALE_HOURS )); then
       echo "[WARN] 追跡ドキュメントが ${age_h}h 停滞 (G-SESSION-STALE-001): $f"
     fi
+  fi
+
+  # --- G-SESSION-TRACKER-001: CHECKPOINT 後 tracker 未更新 (WARN) ---
+  if [[ -d "$SESSION_DIR" ]] && [[ -n "$mtime" ]]; then
+    for state_f in "$SESSION_DIR"/*.json; do
+      [[ -f "$state_f" ]] || continue
+      if command -v jq >/dev/null 2>&1; then
+        started="$(jq -r '.started_at_unix // empty' "$state_f" 2>/dev/null)" || started=""
+        prompts="$(jq -r '.prompt_count // 0' "$state_f" 2>/dev/null)" || prompts=0
+        if [[ -n "$started" ]] && [[ "$prompts" =~ ^[0-9]+$ ]] && (( prompts >= {{framework.budget_thresholds.checkpoint_interval_prompts}} )); then
+          if (( mtime < started )); then
+            echo "[WARN] CHECKPOINT 発火可能だが tracker が session 開始前から未更新 (G-SESSION-TRACKER-001): $f"
+            break
+          fi
+        fi
+      fi
+    done
   fi
 
   # --- G-SESSION-DONE-001: 完了済み追跡ドキュメントの残存 (WARN) ---

@@ -50,17 +50,21 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 [Cursor: コンパクション直前]
   → preCompact Hook → session-compact-observer.sh
   → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
+  → tracker.md のスナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
   → user_message でユーザーに compact 発生を通知
 [AI 応答完了]
   → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
   → pending-handoff あり → token% で即座に compact 連動 handoff 発火
+  → Yellow/Red 発火時: handoff manifest の骨格（必須見出し）を機械生成
   → pending-handoff なし + token% 鮮度 OK → token% 優先判定
   → token% なし → 従来の proxy OR 判定
   → checkpoint marker あり（Yellow/Red 未到達時）→ [CONTEXT_CHECKPOINT] で判断構造の外部化を促す
   → Yellow / Red 到達なら followup_message を返却（checkpoint より優先）
   → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
 [ユーザー: Cmd+N で新規チャット]
-  → sessionStart Hook → session-bootstrap.sh (handoff-active.md を additional_context 注入)
+  → sessionStart Hook → session-bootstrap.sh
+  → handoff-active.md を additional_context 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
   → AI が manifest を読み込んで作業継続
 ```
 
@@ -95,7 +99,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 |---|---|---|---|
 | 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → tracker.md 再読 + handoff 指示 | **bypass**（即発火） |
 | 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
-| 3 | token% なし or 鮮度切れ | proxy OR 判定（elapsed_min / prompt_count / shell_bytes） | 通常遷移制御 |
+| 3 | token% なし or 鮮度切れ | proxy OR 判定（prompt_count / shell_bytes） | 通常遷移制御 |
 | 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
 
 ### コンパクション連動 handoff（pending-handoff パターン）
@@ -111,11 +115,10 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 ### proxy 閾値（fallback — token% 未取得時）
 
-3 つの proxy 指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
+2 つの proxy 指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
 
 | 指標 | Yellow | Red |
 |---|---|---|
-| 経過時間 (min) | {{framework.budget_thresholds.yellow.elapsed_min}} | {{framework.budget_thresholds.red.elapsed_min}} |
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
 | シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
 
@@ -163,7 +166,7 @@ Red (90 prompts 等)
 
 ### 各指標が近似するもの（proxy の意味）
 
-3 指標はいずれもトークン量を直接測れないための proxy（近似指標）。何を近似しているかを理解すると、どの指標が先に閾値到達したかを解釈し、handoff の要否を判断しやすい。
+2 指標はいずれもトークン量を直接測れないための proxy（近似指標）。何を近似しているかを理解すると、どの指標が先に閾値到達したかを解釈し、handoff の要否を判断しやすい。
 
 {{#each framework.handoff.proxy_notes}}
 - **{{this.metric}}**: {{this.measures}}
@@ -308,22 +311,11 @@ manifest 内のセクションは「記録」と「指示」に明確に分か�
 
 ### 早すぎる警告に見える
 
-3 指標は OR 判定なので、時間以外の指標が先に到達した可能性がある。短いやり取りが多い場合は prompt_count、大量ログや探索が多い場合は shell_bytes が先に到達する。state ファイルの中身で原因を確認できる。
+2 指標は OR 判定なので、もう一方の指標が先に到達した可能性がある。短いやり取りが多い場合は prompt_count、大量ログや探索が多い場合は shell_bytes が先に到達する。state ファイルの中身で原因を確認できる。
 
 ```bash
 cat .cursor/.session/*.json | jq .
 ```
-
-### 席を外して時間だけ進んだ（真の劣化ではない警告）
-
-席を外していただけで経過時間だけが閾値に達した場合、トークンはほとんど蓄積しておらず、実際にはコンテキスト劣化していないことがある（経過時間は proxy 指標で、`time-false-positive` の失敗モードに相当する）。真の劣化か proxy 誤検知かは state ファイルで見分けられる。
-
-```bash
-cat .cursor/.session/*.json | jq '{prompt_count, shell_bytes}'
-```
-
-- `prompt_count` / `shell_bytes` も高い → 真の劣化の可能性が高い。指示どおり Cmd+N で新規チャットへ移る。
-- 経過時間だけが高く `prompt_count` / `shell_bytes` が低い → proxy 誤検知の可能性。ただし**運用上は安全側（Cmd+N で新規チャット）を推奨**する。劣化していない場合のやり直しコストは小さく、劣化を見逃すコストの方が大きいため。
 
 ### 新規チャットを開いたが引き継ぎされない
 
@@ -343,10 +335,33 @@ cat .cursor/.session/*.json | jq '{prompt_count, shell_bytes}'
 
 - Phase 1 では token% は preCompact 発火時にしか取得できない（毎ターン取得は Phase 2 の API 拡張が前提）
 - compact が一度も起きないセッションでは token% の恩恵がなく、proxy fallback のみで動作する
-- 経過時間は proxy 指標（トークン量と直接相関しない）。誤検知あり（長時間放置の軽作業 = false positive）
 - 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
 - session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するため、上記の必須情報を manifest に残す
+
+### preCompact 自動退避
+
+preCompact 発火時に `session-compact-observer.sh` が tracker.md を `.cursor/.session/pre-compact-{session_id}.md` にコピーする（最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。
+
+| 項目 | 内容 |
+|---|---|
+| 退避先 | `{{framework.handoff.snapshot_path_pattern}}` |
+| サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（超過時は先頭から切り詰め） |
+| 失敗時 | fail-open（退避失敗でもセッションをブロックしない） |
+
+スナップショットは次セッションの bootstrap で handoff manifest と突合され、矛盾があれば WARN が追記される。
+
+### manifest 骨格の機械生成
+
+Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-active.md` に必須見出しのみの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
+
+### 注入サイズ上限
+
+`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は先頭のみ注入し「tracker.md を Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
+
+### スナップショット突合
+
+`session-bootstrap.sh` は新セッション開始時に pre-compact スナップショットと handoff manifest を突合する。スナップショットに未完了タスクがあるが manifest にポインタがない場合は WARN を追記する（fail-open）。
 
 ### compact-events.jsonl（校正データ）
 

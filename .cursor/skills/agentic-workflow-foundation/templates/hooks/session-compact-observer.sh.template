@@ -105,8 +105,27 @@ jq -c -n \
 PENDING_FILE="$SESSION_DIR/${SESSION_ID}.pending-handoff"
 printf '%s\n' "$USAGE_PCT" > "$PENDING_FILE" 2>/dev/null || true
 
-# ---- 4. user_message でユーザーに compact 発生を通知 ----
+# ---- 4. tracker.md のスナップショットを自動退避 ----
+MAX_SNAPSHOT_BYTES={{framework.budget_thresholds.max_snapshot_bytes}}
+TRACKER="$PROJECT_DIR/{{project.tracking_artifact}}"
+SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
+if [[ -f "$TRACKER" ]]; then
+  head -c "${MAX_SNAPSHOT_BYTES}" "$TRACKER" > "$SNAPSHOT" 2>/dev/null || true
+fi
+
+# ---- 5. user_message でユーザーに compact 発生を通知 ----
 USER_MSG="コンパクションが発生しました（${TRIGGER}、使用率 ${USAGE_PCT}%）。次の応答完了時に handoff 準備が自動的に行われます。"
 
 jq -n --arg m "$USER_MSG" '{ user_message: $m }'
 exit 0
+
+# ---- Phase 2: preCompact で followup_message が使える場合 ----
+# Cursor API が preCompact の返り値に followup_message / additional_context を
+# サポートした場合、以下のコメントを解除して有効化する。
+# これにより compact 直前に AI へ handoff 作業を指示でき、
+# pending-handoff パターン（事後復旧）から事前退避に移行できる。
+#
+# FOLLOWUP_MSG="[CONTEXT_BUDGET=COMPACT_PREP] compact 直前。tracker を更新せよ。"
+# jq -n --arg m "$FOLLOWUP_MSG" --arg u "$USER_MSG" \
+#   '{ followup_message: $m, user_message: $u }'
+# exit 0
