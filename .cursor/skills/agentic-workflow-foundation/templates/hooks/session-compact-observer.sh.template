@@ -130,12 +130,32 @@ if [[ ! -f "$TRACKER" ]]; then
 TRACKER_SKEL
 fi
 
-# ---- 4. tracker.md のスナップショットを自動退避 ----
+# ---- 4. 包括的スナップショット（preCompact 拡充退避） ----
 MAX_SNAPSHOT_BYTES={{framework.budget_thresholds.max_snapshot_bytes}}
 SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
-if [[ -f "$TRACKER" ]]; then
-  head -c "${MAX_SNAPSHOT_BYTES}" "$TRACKER" > "$SNAPSHOT" 2>/dev/null || true
-fi
+{
+  echo "# Pre-Compact Snapshot"
+  echo "## compact 情報"
+  echo "- trigger: ${TRIGGER}"
+  echo "- usage: ${USAGE_PCT}%"
+  echo "- tokens: ${CONTEXT_TOKENS:-?} / ${CONTEXT_WINDOW:-?}"
+  echo "- prompt_count: ${PROMPT_COUNT}"
+  echo "- at: ${NOW_ISO}"
+  echo ""
+  echo "## tracker.md"
+  if [[ -f "$TRACKER" ]]; then
+    head -c 4096 "$TRACKER"
+  fi
+  echo ""
+  echo "## 直近のターンログ（turns.jsonl 末尾）"
+  TURNS_LOG="$SESSION_DIR/${SESSION_ID}.turns.jsonl"
+  if [[ -f "$TURNS_LOG" ]]; then
+    tail -20 "$TURNS_LOG"
+  fi
+  echo ""
+  echo "## state"
+  cat "$STATE_FILE" 2>/dev/null | jq '.' 2>/dev/null || true
+} | head -c "${MAX_SNAPSHOT_BYTES}" > "$SNAPSHOT" 2>/dev/null || true
 
 # ---- 5. user_message でユーザーに compact 発生を通知 ----
 USER_MSG="コンパクションが発生しました（${TRIGGER}、使用率 ${USAGE_PCT}%）。次の応答完了時に handoff 準備が自動的に行われます。"

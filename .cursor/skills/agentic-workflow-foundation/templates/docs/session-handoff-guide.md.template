@@ -43,14 +43,21 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 
 ```
 [ユーザー: プロンプト送信]
-  → beforeSubmitPrompt Hook → session-budget-tracker.sh (prompt_count +1)
+  → beforeSubmitPrompt Hook → session-budget-tracker.sh
+    → prompt_count +1 + prompt テキスト先頭 1000B を turns.jsonl に追記
   → {{framework.budget_thresholds.checkpoint_interval_prompts}} の倍数なら checkpoint marker を書く
-[AI 応答 / 内部でシェル実行]
+[AI 応答 / thinking]
+  → afterAgentResponse Hook → session-response-tracker.sh
+    → AI 応答テキスト先頭 1000B を turns.jsonl に追記
+  → afterAgentThought Hook → session-response-tracker.sh
+    → thinking テキスト先頭 1000B を turns.jsonl に追記
+[AI 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
 [Cursor: コンパクション直前]
   → preCompact Hook → session-compact-observer.sh
   → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
-  → tracker.md のスナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
+  → 包括的構造化スナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
+    （tracker.md + turns.jsonl 末尾 20 行 + state を統合）
   → user_message でユーザーに compact 発生を通知
 [AI 応答完了]
   → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
@@ -64,8 +71,9 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 [ユーザー: Cmd+N で新規チャット]
   → sessionStart Hook → session-bootstrap.sh
   → handoff-active.md を additional_context 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
   → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
-  → AI が manifest を読み込んで作業継続
+  → AI が manifest / snapshot を読み込んで作業継続
 ```
 
 ## 構成
@@ -75,9 +83,10 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 | Hook ファイル | イベント | 役割 |
 |---|---|---|
 | `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-active.md` の注入とアーカイブ |
-| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み |
+| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み + prompt テキスト先頭 1000B を turns.jsonl に追記 |
 | `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
-| `session-compact-observer.sh` | `preCompact` | compact 直前の token% 記録 + pending-handoff マーカー + compact-events.jsonl |
+| `session-response-tracker.sh` | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000B を turns.jsonl に追記（ゼロコスト会話ログ） |
+| `session-compact-observer.sh` | `preCompact` | compact 直前の token% 記録 + pending-handoff マーカー + compact-events.jsonl + 包括的構造化スナップショット |
 | `session-budget-evaluator.sh` | `stop` | 判定優先順位に従い token% / proxy で Yellow/Red 判定 + pending-handoff 検出 + checkpoint / `followup_message` による警告発火 |
 | `guard-git-write.sh` | `beforeShellExecution` | Git / gh の危険操作ガード |
 
@@ -368,11 +377,18 @@ cat .cursor/.session/*.json | jq .
 - compact が一度も起きないセッションでは token% の恩恵がなく、proxy fallback のみで動作する
 - 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
-- session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するため、上記の必須情報を manifest に残す
+- session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するが、包括的構造化スナップショット（turns.jsonl + tracker.md + state）により、manifest が書けなかった場合でも fallback 注入が可能
 
-### preCompact 自動退避
+### preCompact 包括的構造化スナップショット
 
-preCompact 発火時に `session-compact-observer.sh` が tracker.md を `.cursor/.session/pre-compact-{session_id}.md` にコピーする（最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。
+preCompact 発火時に `session-compact-observer.sh` が以下の情報を統合した包括的構造化スナップショットを `.cursor/.session/pre-compact-{session_id}.md` に生成する（最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。
+
+| セクション | 内容 | サイズ制限 |
+|---|---|---|
+| compact 情報 | trigger / usage% / tokens / prompt_count / timestamp | — |
+| tracker.md | 追跡ドキュメントの内容 | 先頭 4096 bytes |
+| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 末尾 20 行 |
+| state | prompt_count / shell_bytes / weighted_prompt_score 等の累積指標 | 全体 |
 
 | 項目 | 内容 |
 |---|---|
@@ -380,7 +396,10 @@ preCompact 発火時に `session-compact-observer.sh` が tracker.md を `.curso
 | サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（超過時は先頭から切り詰め） |
 | 失敗時 | fail-open（退避失敗でもセッションをブロックしない） |
 
-スナップショットは次セッションの bootstrap で handoff manifest と突合され、矛盾があれば WARN が追記される。
+スナップショットは次セッションの bootstrap で以下の2パターンで活用される:
+
+1. **handoff manifest あり**: manifest と snapshot を突合し、矛盾があれば WARN を追記
+2. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot の turns.jsonl セクションから直近のユーザー依頼を抽出し、fallback として `additional_context` に注入
 
 ### manifest 骨格の機械生成
 
@@ -439,7 +458,7 @@ kit の `pending-handoff` と MemPalace の `pending-save` は別ファイル（
 
 - [ ] `jq` がインストールされている（`which jq`）
 - [ ] `.cursor/hooks/*.sh` に実行権限がある（`ls -la .cursor/hooks/`）
-- [ ] `.cursor/hooks.json` に session 系 Hook が登録されている
+- [ ] `.cursor/hooks.json` に session 系 Hook が登録されている（`afterAgentResponse` / `afterAgentThought` 含む）
 - [ ] 数ターン会話して `.cursor/.session/{session_id}.json` が作られることを確認する（`cat .cursor/.session/*.json | jq .prompt_count`）
 - [ ] Red 通知後は Cmd+N で新規チャットを開く運用を理解する
 

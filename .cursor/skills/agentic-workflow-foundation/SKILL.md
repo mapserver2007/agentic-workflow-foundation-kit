@@ -246,13 +246,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 **(2) 自動導出（質問不要）**
 
-- `tracking_artifact`: 全 `workflow_pattern` 共通で `.tracking/tracker.md`（固定値）。
+- `tracking_artifact`: 全 `workflow_pattern` 共通で `.cursor/.tracking/tracker.md`（固定値）。
 - `name`: (1) の AskQuestion で「指定なし」が選ばれた場合のフォールバックとして、コピー先（実行先）リポジトリのディレクトリ名から自動導出する。PO が名前を入力した場合は (1) の入力値を優先する。
 - `slug`: 確定した `name` から導出する。
 - `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
 - `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run gen` / `pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
-全 `workflow_pattern` 共通で `tracking_artifact` は `.tracking/tracker.md`（固定値）。
+全 `workflow_pattern` 共通で `tracking_artifact` は `.cursor/.tracking/tracker.md`（固定値）。
 
 | ACCD 軸 | 自動採用する軽量実装 | 意図的に非採用とする BAS 固有の重い機構 |
 | --- | --- | --- |

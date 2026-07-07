@@ -69,7 +69,7 @@ if [[ -f "$HANDOFF_FILE" ]]; then
     if (( HANDOFF_SIZE > MAX_INJECTION_BYTES )); then
       HANDOFF_CONTENT="$(head -c "$MAX_INJECTION_BYTES" <<<"$HANDOFF_CONTENT" 2>/dev/null)"
       SIZE_WARNING="
-警告: manifest が ${HANDOFF_SIZE} bytes あり、注入上限 ${MAX_INJECTION_BYTES} bytes で切り詰めました。追跡ドキュメント（.tracking/tracker.md）を直接 Read して全体を補完してください。"
+警告: manifest が ${HANDOFF_SIZE} bytes あり、注入上限 ${MAX_INJECTION_BYTES} bytes で切り詰めました。追跡ドキュメント（{{project.tracking_artifact}}）を直接 Read して全体を補完してください。"
     fi
     # ---- 必須見出し簡易チェック（fail-open: 欠落があっても注入する） ----
     MISSING_SECTIONS=""
@@ -81,14 +81,14 @@ if [[ -f "$HANDOFF_FILE" ]]; then
     QUALITY_WARNING=""
     if [[ -n "$MISSING_SECTIONS" ]]; then
       QUALITY_WARNING="
-警告: manifest に以下の必須見出しが欠落しています。追跡ドキュメント（.tracking/tracker.md）を直接 Read して補完してください:
+警告: manifest に以下の必須見出しが欠落しています。追跡ドキュメント（{{project.tracking_artifact}}）を直接 Read して補完してください:
 $(printf '%b' "$MISSING_SECTIONS")"
     fi
     QUALITY_WARNING="${SIZE_WARNING}${QUALITY_WARNING}"
     ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_HANDOFF] 前セッションから引き継ぎ manifest を読み込みました。${QUALITY_WARNING}
 
 復旧手順:
-1. まず manifest 内「ポインタ」に記載された追跡ドキュメント（.tracking/tracker.md）を Read し、フェーズと制約を確認せよ
+1. まず manifest 内「ポインタ」に記載された追跡ドキュメント（{{project.tracking_artifact}}）を Read し、フェーズと制約を確認せよ
 2. manifest の「セッション判断ログ」「制約・ブロッカー」を追跡ドキュメントに反映せよ（未反映の揮発情報がある場合）
 3. 追跡ドキュメントの指示に従って作業を再開せよ
 
@@ -134,6 +134,38 @@ if [[ -n "$LATEST_SNAPSHOT" ]] && [[ -n "$ADDITIONAL_CONTEXT" ]]; then
 fi
 if [[ -n "$RECONCILIATION_WARNING" ]]; then
   ADDITIONAL_CONTEXT="${ADDITIONAL_CONTEXT}${RECONCILIATION_WARNING}"
+fi
+
+# ---- pre-compact snapshot からの fallback 注入（handoff manifest なし時） ----
+if [[ -z "$ADDITIONAL_CONTEXT" ]] && [[ -n "$LATEST_SNAPSHOT" ]]; then
+  SNAP_CONTENT="$(cat "$LATEST_SNAPSHOT" 2>/dev/null)" || SNAP_CONTENT=""
+  if [[ -n "$SNAP_CONTENT" ]]; then
+    SNAP_SIZE=${#SNAP_CONTENT}
+    if (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
+      SNAP_CONTENT="$(head -c "$MAX_INJECTION_BYTES" <<<"$SNAP_CONTENT" 2>/dev/null)"
+    fi
+    RECENT_PROMPTS=""
+    if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
+      RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""
+    fi
+    PROMPT_SUMMARY=""
+    if [[ -n "$RECENT_PROMPTS" ]]; then
+      PROMPT_SUMMARY="
+
+直近のユーザー依頼（turns.jsonl から抽出）:
+$(echo "$RECENT_PROMPTS" | jq -r '.summary // empty' 2>/dev/null | tail -3)"
+    fi
+    ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_FALLBACK] handoff manifest が存在しないため、pre-compact snapshot から文脈を復元します。${PROMPT_SUMMARY}
+
+復旧手順:
+1. まず追跡ドキュメント（{{project.tracking_artifact}}）を Read し、フェーズと制約を確認せよ
+2. snapshot 内の tracker.md セクションと実ファイルを突合し、差分があれば実ファイルを正とせよ
+3. 追跡ドキュメントの指示に従って作業を再開せよ
+
+---
+${SNAP_CONTENT}
+---"
+  fi
 fi
 
 # ---- 出力 ----

@@ -49,6 +49,8 @@ framework:
     - beforeShellExecution
     - stop
     - preCompact
+    - afterAgentResponse
+    - afterAgentThought
   exit_codes:
     - code: 0
       meaning: 全検査PASS。次フェーズへ進む
@@ -56,7 +58,7 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
-  # 追跡ドキュメント（.tracking/tracker.md）が満たすべき必須セクションの SoT。
+  # 追跡ドキュメント（.cursor/.tracking/tracker.md）が満たすべき必須セクションの SoT。
   # session-planning テンプレ（tracker.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
   # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
@@ -130,7 +132,7 @@ framework:
     red:
       prompt_count: 70
       shell_bytes: 4194304
-    checkpoint_interval_prompts: 15
+    checkpoint_interval_prompts: 5
   handoff:
     source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
@@ -159,8 +161,11 @@ framework:
         role: "compact 直後の handoff 発火トリガー（one-shot marker）"
         lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
       - path: ".cursor/.session/pre-compact-{session_id}.md"
-        role: "preCompact 時の tracker.md 構造化スナップショット（復旧用退避）"
-        lifecycle: "compact-observer が preCompact 発火時に tracker.md から生成する。session-bootstrap.sh が次セッションで突合に使用する"
+        role: "preCompact 時の包括的構造化スナップショット（tracker.md + turns.jsonl 末尾 + state を統合した復旧用退避）"
+        lifecycle: "compact-observer が preCompact 発火時に生成する。session-bootstrap.sh が次セッションで突合・注入に使用する"
+      - path: ".cursor/.session/{session_id}.turns.jsonl"
+        role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
+        lifecycle: "session-response-tracker.sh / session-budget-tracker.sh が追記。preCompact でスナップショットに含まれる"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -549,6 +554,13 @@ outputs:
     executable: true
     required_sections:
       - "shell_bytes"
+  - path: .cursor/hooks/session-response-tracker.sh
+    template: hooks/session-response-tracker.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "afterAgentResponse"
+      - "turns.jsonl"
   - path: .cursor/hooks/session-compact-observer.sh
     template: hooks/session-compact-observer.sh.template
     mode: render
@@ -751,6 +763,22 @@ outputs:
     required_sections:
       - "=== archive gate ==="
       - "G-ARCHIVE-CHECK-001"
+  - path: .cursor/skills/session-handover/scripts/gate-report.py
+    template: skills/session-handover/scripts/gate-report.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-REPORT-SECTION-001"
+      - "=== report gate ==="
+  - path: .cursor/skills/session-handover/scripts/gate-adr.py
+    template: skills/session-handover/scripts/gate-adr.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-ADR-SIGNIFICANCE-001"
+      - "G-ADR-ALTERNATIVES-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render
@@ -1058,7 +1086,7 @@ project:
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
-  tracking_artifact: ".tracking/tracker.md"
+  tracking_artifact: ".cursor/.tracking/tracker.md"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
   # 固定値（PO には問わない）。
