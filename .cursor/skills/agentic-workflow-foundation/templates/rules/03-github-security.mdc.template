@@ -17,36 +17,20 @@ description: GitHub 操作・token / secret / credential の安全ルール
 - `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN`
 - その他 token / secret / credential 環境変数
 
-禁止コマンド例（Hook が deny）:
-
-- `echo $GH_TOKEN` / `printf` 等による token 環境変数の出力
-- `gh auth token` / `gh auth status --show-token` / `gh auth status -t`
-- `env` / `printenv`（引数なし＝全環境変数ダンプ）
-
 ## 認証ファイルの読み取り禁止
 
-以下のファイル・ディレクトリを読み取ってはならない。`cat` だけでなく `less` / `more` / `head` / `tail` / `sed` / `awk` / `grep` / `rg` / `python` / `node` 等を使った読み取りも禁止する。
+以下のファイル・ディレクトリを読み取ってはならない（手段を問わない）。
 
-- `~/.config/gh/**`（gh CLI 認証情報）
-- `~/.git-credentials` / `~/.netrc`
-- `~/.ssh/**`（SSH 秘密鍵）
-- `.env` / `.env.*`（環境変数ファイル）
-- `*.pem` / `*.key`（秘密鍵ファイル）
+- `~/.config/gh/**` / `~/.git-credentials` / `~/.netrc` / `~/.ssh/**`
+- `.env` / `.env.*` / `*.pem` / `*.key`
 
 ## secret store への直接アクセス禁止
 
 OS credential store / パスワードマネージャー / クラウド secret manager を直接参照してはならない（Hook が deny）。
 
-- macOS Keychain: `security find-generic-password` / `security find-internet-password` / `security dump-keychain`
-- 1Password CLI: `op read` / `op item get`
-- AWS: `aws secretsmanager get-secret-value`
-- GCP: `gcloud secrets versions access`
-- HashiCorp Vault: `vault kv get`
-- pass: `pass show`
+- macOS Keychain (`security`) / 1Password CLI (`op`) / AWS Secrets Manager / GCP Secret Manager / HashiCorp Vault / pass
 
 ## Git 認証情報の読み取り禁止
-
-認証情報や token を含む URL を表示する可能性があるコマンドを禁止する（Hook が deny / ask）。
 
 - `git config --global --list` / `git config --system --list`
 - `git config --global --get credential.helper`
@@ -54,37 +38,12 @@ OS credential store / パスワードマネージャー / クラウド secret ma
 
 安全な Git 操作（`git status` / `git diff` / `git log` / `git branch` 等）は制限されない。
 
-## GitHub 操作の安全な実行方法
+## GitHub API 操作（Never）
 
-GitHub API への書き込み操作は、以下の **固定 wrapper コマンド** を使用する。`gh` CLI や GitHub API を AI が直接実行してはならない。
-
-### 許可する wrapper コマンド
-
-```bash
-bin/github-pr-create-safe <base-branch> <title-file> <body-file>
-bin/github-pr-reviews-safe <owner> <repo> <pr-number>
-bin/github-pr-comment-safe <pr-number> <body-file>
-bin/github-pr-reply-safe <pr-number> <comment-id> <body-file>
-bin/github-issue-create-safe <title-file> <body-file> [label1 label2 ...]
-bin/github-issue-read-safe <issue-number>
-```
-
-- `bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の**必須出力**としてスキル実行（Phase 2）で常に `bin/` に生成される（GitHub App のセットアップが前提。未設定時は wrapper が exit 2 で終了する）
-- `bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` は `code_review.enabled: true` の場合のみ生成される
-- wrapper 内部で GitHub App installation token を発行し、GitHub API を実行する
-- AI に返却されるのはコメント URL / レビュースレッド JSON のみ
-- 認証ヘルパー `bin/_github-app-auth.sh` および wrapper スクリプト（`bin/github-pr-*-safe` / `bin/github-issue-*-safe`）は AI から読み取り可能だが、ユーザーが明示的に依頼した場合を除き編集禁止
-
-### gh コマンドの扱い
-
-`gh` CLI は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) で **全サブコマンドが deny** される。本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、`gh` CLI の直接実行は認証が通らず失敗する。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能。
-
-- **deny（不可逆操作）**: `gh pr merge` / `gh repo delete|archive`
-- **deny（token 漏洩防止）**: `gh auth token` / `gh auth status --show-token` / `gh auth login --with-token`
-- **deny（PAT 未設定で認証不可 — wrapper を案内）**: `gh pr create` → `bin/github-pr-create-safe` / `gh pr comment|review` → `bin/github-pr-comment-safe` or `bin/github-pr-reply-safe` / `gh api` → `bin/github-pr-reviews-safe` 等
-- **deny（catch-all）**: 上記以外の全 `gh` サブコマンド（PAT 未設定で認証不可。対応 wrapper がない操作は現在実行できない）
-
-> **agent-code-review / agent-github-pr スキル**は上記の wrapper のみを使用し、`gh` を直接実行しない。`bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の必須出力として常に生成される。GitHub App が未設定の場合、wrapper は exit 2（致命的エラー）で終了する。
+- `gh` CLI を直接実行してはならない（全サブコマンドが [guard-git-write.sh](mdc:.cursor/hooks/guard-git-write.sh) で deny）
+- GitHub API 操作は `bin/github-*-safe` wrapper 経由でのみ実行可能
+- wrapper の引数・使い方は各スキルの references を参照: [agent-github-pr](mdc:.cursor/skills/agent-github-pr/references/pr-commands.md) / [agent-code-review](mdc:.cursor/skills/agent-code-review/references/gh-commands.md) / [agent-github-issue](mdc:.cursor/skills/agent-github-issue/references/issue-commands.md)
+- wrapper スクリプトと認証ヘルパー (`bin/_github-app-auth.sh`) はユーザー明示依頼時を除き編集禁止
 
 ## 優先度
 
