@@ -122,7 +122,7 @@ echo '{"session_id":"test-sess-001"}' | .cursor/hooks/session-bootstrap.sh
 # tracker（環境変数はパイプ右側に付与）
 echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-tracker.sh
 # evaluator: checkpoint 発火
-printf '15\n' > .cursor/.session/test-sess-001.checkpoint
+printf '{{framework.budget_thresholds.checkpoint_interval_prompts}}\n' > .cursor/.session/test-sess-001.checkpoint
 echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh  # {"followup_message":"[CONTEXT_CHECKPOINT]..."}
 # evaluator: Red 強制発火（checkpoint marker があっても Yellow/Red が優先）
 jq '.prompt_count = 100' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json

@@ -158,7 +158,7 @@ Yellow/Red とは独立に、`{{framework.budget_thresholds.checkpoint_interval_
 CHECKPOINT → Yellow → Red は段階的に品質保証が強化される設計。
 
 ```
-CHECKPOINT (15 prompts ごと)
+CHECKPOINT ({{framework.budget_thresholds.checkpoint_interval_prompts}} prompts ごと)
   → AI が tracker.md の「セッション判断ログ」を最新化
   → 「まだ注意力が高いうちの高品質な記録」として蓄積
 
