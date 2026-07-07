@@ -73,6 +73,14 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 token% は preCompact 発火時に取得される実測値であり、proxy より正確。token% が取得済みかつ鮮度が新しい場合は proxy より優先される。pending-handoff マーカーがある場合は should_emit を bypass して即座に発火する。
 
+#### Thrashing 検出（compact 頻発時の強制 Red）
+
+| 条件 | アクション |
+|---|---|
+| 同一セッション内の compact 回数 >= {{framework.budget_thresholds.compact_thrashing_count}} | pending-handoff 検出時に強制 Red に昇格 |
+
+compact が短期間に繰り返される場合、compact 後も急速にコンテキストが再圧迫されており、セッション継続の効果が低い。強制 Red で新規チャットへ誘導する。
+
 ### Checkpoint / Yellow / Red 到達時の挙動
 
 | レベル | AI への通知 | AI が取るべきアクション |

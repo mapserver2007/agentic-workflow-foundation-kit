@@ -52,6 +52,7 @@ THRESHOLDS='{
 COMPACT_YELLOW_PCT={{framework.budget_thresholds.compact_yellow_percent}}
 COMPACT_RED_PCT={{framework.budget_thresholds.compact_red_percent}}
 COMPACT_FRESHNESS_SEC={{framework.budget_thresholds.compact_freshness_sec}}
+COMPACT_THRASHING_COUNT={{framework.budget_thresholds.compact_thrashing_count}}
 
 NOW_UNIX="$(date +%s)"
 STATE="$(cat "$STATE_FILE" 2>/dev/null)" || { echo '{}'; exit 0; }
@@ -119,6 +120,11 @@ if [[ "$PENDING_HANDOFF" == "true" ]]; then
   if [[ "$LEVEL" == "none" ]]; then
     LEVEL="yellow"
   fi
+  # Thrashing 検出: compact 回数が閾値以上なら強制 Red
+  COMPACT_COUNT="$(jq -r '.compact_count // 0' <<<"$STATE" 2>/dev/null)" || COMPACT_COUNT=0
+  if [[ "$COMPACT_COUNT" =~ ^[0-9]+$ ]] && (( COMPACT_COUNT >= COMPACT_THRASHING_COUNT )); then
+    LEVEL="red"
+  fi
 elif [[ -n "$LAST_COMPACT_PCT" ]] && [[ -n "$LAST_COMPACT_AT" ]] && [[ "$LAST_COMPACT_AT" =~ ^[0-9]+$ ]]; then
   # 判定優先順位 2: state に token% あり + 鮮度チェック
   COMPACT_AGE=$((NOW_UNIX - LAST_COMPACT_AT))
@@ -179,7 +185,7 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（plan.md 等）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（.tracking/tracker.md）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-active.md に以下の見出し順で manifest を書き出す:
@@ -200,7 +206,7 @@ AI への指示:
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（plan.md 等）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（.tracking/tracker.md）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-active.md に manifest を書き出す準備をする。
@@ -222,7 +228,7 @@ if [[ "$LEVEL" == "none" ]] || ! should_emit; then
     CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過（定期チェックポイント）。
 
 AI への指示:
-追跡ドキュメント（plan.md 等）の「セッション判断ログ」を最新化せよ:
+追跡ドキュメント（.tracking/tracker.md）の「セッション判断ログ」を最新化せよ:
 1. 現在のフェーズと直近で完了した作業
 2. このセッションで採用した判断と根拠（なぜその案を選んだか）
 3. 却下した案と却下理由（なぜ採用しなかったか）
@@ -262,7 +268,7 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（plan.md 等）の「次セッションTODO」「セッション判断ログ」を最新化する（plan.md が SoT）。
+1. 追跡ドキュメント（.tracking/tracker.md）の「次セッションTODO」「セッション判断ログ」を最新化する（tracker.md が SoT）。
 2. .cursor/.session/handoff-active.md に以下の見出し順で manifest を書き出す:
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
@@ -273,16 +279,16 @@ AI への指示:
    ## 次セッションの推奨アクション
    ## 復旧メモ
 3. 書き出し後、Read で manifest を読み返し上記見出しが全て存在することを確認せよ。欠落があれば追記してから完了とする。
-4. manifest には plan.md と重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（plan.md 未反映の判断・直近の依頼）のみ記載する。
+4. manifest には tracker.md と重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（tracker.md 未反映の判断・直近の依頼）のみ記載する。
 5. ユーザーへの応答は次の趣旨だけ短く伝える: 「Red しきい値に到達しました。新規チャット (Cmd+N) を開いて会話を継続してください。前回の作業状態は自動的に引き継がれます。」
 6. 新規実装の受理は停止し、次セッションに委譲する。"
 else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（plan.md 等）の「セッション判断ログ」を最新化する（plan.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
+1. 追跡ドキュメント（.tracking/tracker.md）の「セッション判断ログ」を最新化する（tracker.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
 2. 追跡ドキュメントの「次セッションTODO」を最新化する。
-3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-active.md に manifest を書き出す。manifest には plan.md の判断ログをそのまま転記し、plan.md 未反映の揮発情報のみ追記する。
+3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-active.md に manifest を書き出す。manifest には tracker.md の判断ログをそのまま転記し、tracker.md 未反映の揮発情報のみ追記する。
 4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
 5. Red 到達時は強制ハンドオフが発火する。"
 fi

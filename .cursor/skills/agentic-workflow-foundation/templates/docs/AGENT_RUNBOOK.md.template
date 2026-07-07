@@ -78,7 +78,7 @@ flowchart LR
 
 | 状況 | 第一参照 | 復旧アクション |
 | --- | --- | --- |
-| セッション再開 | 追跡ドキュメント（archive 除く） | 最終チェック位置から続行 |
+| セッション再開 | 追跡ドキュメント（.tracking/tracker.md） | 最終チェック位置から続行 |
 | 品質ゲート失敗 | `docs/QUALITY_GATE.md > §2 例外承認フロー` | ユーザー承認 → 修正 or 例外起票 |
 | 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR 起票（Status: Proposed） |
 | 同じ失敗を繰り返した | `AGENTS.md > ## Gotchas` | Gotcha 追記 → 集約閾値超なら集約 |

@@ -98,7 +98,7 @@
 
 ### .cursor/skills/session-handover/scripts/session-start-gate.sh
 - `=== session-start gate ===`: 実行ログでゲート実行を識別できること。
-- `G-SESSION-HANDOFF-001` / `G-SESSION-ARCH-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）と完了済み追跡ドキュメントの `archive/` 取り残し（FAIL）を機械特定できること。`verification-gate.sh` と同クラスのシェルゲート（軽量実装 / 数値判定なし）として実装すること。
+- `G-SESSION-HANDOFF-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）と完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`verification-gate.sh` と同クラスのシェルゲート（軽量実装 / 数値判定なし）として実装すること。
 
 ### .cursor/skills/decisions-record/SKILL.md
 - `name: decisions-record`: Cursor skill としての識別子。

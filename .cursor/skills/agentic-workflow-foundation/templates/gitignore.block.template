@@ -1,2 +1,4 @@
 # agentic-workflow-foundation: Context Budget セッション state（コミットしない）
 .cursor/.session/
+# agentic-workflow-foundation: 追跡ドキュメント（キャンペーン状態管理ファイル・コミットしない）
+.tracking/

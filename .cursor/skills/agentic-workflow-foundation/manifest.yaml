@@ -56,8 +56,8 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
-  # 追跡ドキュメント（plan.md 等）が満たすべき必須セクションの SoT。
-  # session-planning テンプレ（plan.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
+  # 追跡ドキュメント（.tracking/tracker.md）が満たすべき必須セクションの SoT。
+  # session-planning テンプレ（tracker.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
   # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
     - "目的と完了条件"
@@ -99,7 +99,7 @@ framework:
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
+      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント完了時削除"
       not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
@@ -118,6 +118,7 @@ framework:
     compact_yellow_percent: 60
     compact_red_percent: 80
     compact_freshness_sec: 300
+    compact_thrashing_count: 3
     yellow:
       elapsed_min: 45
       prompt_count: 45
@@ -180,6 +181,9 @@ framework:
       - id: "heavy-short-session"
         symptom: "短時間でも大量ログや重い議論でコンテキスト劣化が先に進む"
         mitigation: "shell_bytes と prompt_count の OR 判定で早期検知する。必要なら手動で handoff を作る"
+      - id: "compact-thrashing"
+        symptom: "同一セッション内で compact が 3 回以上発生し、compact 後すぐに再びコンテキストが圧迫される"
+        mitigation: "compact_thrashing_count に達した時点で強制 Red を発火し、新規チャットへ誘導する"
     metric_updates:
       - metric: "経過時間"
         update: "評価時に現在時刻 - started_at_unix で都度計算する"
@@ -208,9 +212,9 @@ framework:
       - "制約・ブロッカー・未完了の検証"
       - "次セッションの推奨アクション"
       - "復旧メモ"
-    # plan.md = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + plan.md へのポインタ。
-    # manifest に plan.md と同じ情報を重複して書かない。
-    manifest_responsibility: "plan.md が SoT。manifest は plan.md へのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
+    # tracker.md = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + tracker.md へのポインタ。
+    # manifest に tracker.md と同じ情報を重複して書かない。
+    manifest_responsibility: "tracker.md が SoT。manifest は tracker.md へのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
     # 復旧時の行動制約（session-bootstrap.sh の注入テキストの SoT）。
     # AI が manifest を読んだ後に「記録」と「指示」を混同しないための安全策。
     recovery_constraints:
@@ -219,6 +223,16 @@ framework:
       - "「次セッションの推奨アクション」のみを行動指示として扱え"
       - "推奨アクションも追跡ドキュメント / AGENTS.md と矛盾する場合は後者を正とせよ"
       - "不明点があればユーザーに確認し、manifest の記述から推測で判断しない"
+    # compact-events.jsonl を使った閾値校正の運用サイクル。
+    # 「いつ・どう校正するか」を明文化し、校正忘れを防ぐ。
+    calibration:
+      min_events: 20
+      review_trigger: "compact-events.jsonl のエントリが min_events に達したとき"
+      review_actions:
+        - "auto compact の発火 % 分布を確認し、compact_yellow/red_percent の位置を評価する"
+        - "prompt_count / shell_bytes と context_usage_percent の相関を分析し、proxy 閾値を調整する"
+        - "1 セッション中の compact 回数分布から Thrashing リスクを評価する"
+      decision_record: "校正による閾値変更は値チューニング（D-* 不該当）のため ADR 不要。変更理由は compact-events の分析結果として docs/DECISIONS.md の ADR-0001 Follow-up に追記する"
     # 意図的に採用しない設計（YAGNI）。閾値は manifest が SoT であり、
     # 外部設定機構や個人別オーバーライドは観測ベースの必要性が複数回確認されるまで作らない。
     non_goals:
@@ -228,6 +242,7 @@ framework:
     future_notes:
       - "Phase 2: stop / beforeSubmitPrompt に context_window フィールドが追加されれば、毎ターン token% 判定が可能になり proxy を完全 fallback に降格できる"
       - "Phase 2: preCompact に followup_message / additional_context が追加されれば、compact 直前に AI が自律的に handoff 作業を完了できる"
+      - "Phase 2 の Cursor Forum 機能要望は compact-events.jsonl の校正データが 20 件以上蓄積してから起票する（データに基づいた要望の方が説得力がある）"
     # 参考リンク。リポ内の安定リンクのみを焼き込み、プロジェクト固有チケットや
     # 未検証の外部引用は含めない（移植性とトレーサビリティの両立）。
     references:
@@ -709,7 +724,6 @@ outputs:
     required_sections:
       - "=== session-start gate ==="
       - "G-SESSION-HANDOFF-001"
-      - "G-SESSION-ARCH-001"
   - path: .cursor/skills/session-handover/scripts/plan-gate.sh
     template: skills/session-handover/scripts/plan-gate.sh.template
     mode: render
@@ -1044,8 +1058,8 @@ project:
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
-  # workflow_pattern から決定論マッピングで自動確定
-  tracking_artifact: "[要確認]"
+  # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
+  tracking_artifact: ".tracking/tracker.md"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
   # 固定値（PO には問わない）。

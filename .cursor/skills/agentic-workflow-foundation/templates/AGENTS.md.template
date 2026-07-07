@@ -9,12 +9,12 @@
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
 
 - 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
-- 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）
+- 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（状態管理ファイル。`.gitignore` 対象・完了時は削除）
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
 - **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
-- **アーカイブ境界**: 完了した追跡ドキュメントは `archive/` に移動し AI の読み込み対象外にする
+- **完了時削除**: 完了した追跡ドキュメントは削除する（残す価値のある情報は DECISIONS.md / GOTCHAS.md に抽出済み）
 
 ## Documentation Naming Convention
 
@@ -65,8 +65,8 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 ### セッション開始
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
-2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞 / `archive/` 取り残しを確認（`docs/QUALITY_GATE.md §1.5`）
-3. 追跡ドキュメント（`{{project.tracking_artifact}}`、archive を除く）を一覧し、進行中キャンペーンがあれば読む
+2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞を確認（`docs/QUALITY_GATE.md §1.5`）
+3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む
 {{#if agent_workflow.enabled}}4. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む
 5. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
 6. ソースコード調査はドキュメント把握後に開始する
@@ -97,10 +97,10 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - **token% 閾値**（主指標 — preCompact 経由）: Yellow `{{framework.budget_thresholds.compact_yellow_percent}}`% / Red `{{framework.budget_thresholds.compact_red_percent}}`%（鮮度 `{{framework.budget_thresholds.compact_freshness_sec}}` 秒以内）
 - **proxy 閾値**（fallback）: Yellow は `{{framework.budget_thresholds.yellow.elapsed_min}}` 分 / `{{framework.budget_thresholds.yellow.prompt_count}}` prompts / `{{framework.budget_thresholds.yellow.shell_bytes}}` bytes、Red は `{{framework.budget_thresholds.red.elapsed_min}}` 分 / `{{framework.budget_thresholds.red.prompt_count}}` prompts / `{{framework.budget_thresholds.red.shell_bytes}}` bytes
 - Checkpoint: `{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造（採用/却下した案と理由）の外部化を促す。セッション切り替えは不要。Yellow 前に複数回発火し、劣化が始まる前の高品質な記録を蓄積する先制的防御（元記事の 60% 通知に相当）
-- Yellow: 追跡ドキュメント（plan.md = SoT）の「次セッションTODO / セッション判断ログ」を最新化し、作業の区切りを準備する
+- Yellow: 追跡ドキュメント（tracker.md = SoT）の「次セッションTODO / セッション判断ログ」を最新化し、作業の区切りを準備する
 - Red: 追跡ドキュメントを最新化した上で `{{framework.handoff.active_manifest_path}}` に handoff manifest（ポインタ + 揮発情報）を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
-- compact 連動: `preCompact` → `pending-handoff` マーカー → 次の `stop` で即座に handoff 発火。compact 直後は plan.md を再読して制約を再ロードする
-- manifest は plan.md へのポインタ + セッション固有の揮発情報のみ。plan.md と同じ情報を重複して書かない
+- compact 連動: `preCompact` → `pending-handoff` マーカー → 次の `stop` で即座に handoff 発火。compact 直後は tracker.md を再読して制約を再ロードする
+- manifest は tracker.md へのポインタ + セッション固有の揮発情報のみ。tracker.md と同じ情報を重複して書かない
 
 詳細手順・失敗モード・ユーザー操作は `docs/session-handoff-guide.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
 

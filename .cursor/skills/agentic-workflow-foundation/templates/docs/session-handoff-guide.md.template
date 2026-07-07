@@ -93,7 +93,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 | 優先度 | 条件 | 判定方式 | should_emit |
 |---|---|---|---|
-| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → plan.md 再読 + handoff 指示 | **bypass**（即発火） |
+| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → tracker.md 再読 + handoff 指示 | **bypass**（即発火） |
 | 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
 | 3 | token% なし or 鮮度切れ | proxy OR 判定（elapsed_min / prompt_count / shell_bytes） | 通常遷移制御 |
 | 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
@@ -105,7 +105,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
 2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
 3. マーカー内の token% で Yellow/Red を判定し、should_emit を bypass して即座に handoff followup を発火
-4. compact 直後の followup には **plan.md の再読** を明示的に指示する（compact で in-context が要約されたため）
+4. compact 直後の followup には **tracker.md の再読** を明示的に指示する（compact で in-context が要約されたため）
 
 ## 閾値
 
@@ -147,19 +147,19 @@ CHECKPOINT → Yellow → Red は段階的に品質保証が強化される設�
 
 ```
 CHECKPOINT (15 prompts ごと)
-  → AI が plan.md の「セッション判断ログ」を最新化
+  → AI が tracker.md の「セッション判断ログ」を最新化
   → 「まだ注意力が高いうちの高品質な記録」として蓄積
 
 Yellow (45 prompts 等)
-  → plan.md の判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
-  → handoff manifest に plan.md の判断ログを転記 + 揮発情報を追記
+  → tracker.md の判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
+  → handoff manifest に tracker.md の判断ログを転記 + 揮発情報を追記
 
 Red (90 prompts 等)
   → manifest 完成 + 読み戻し検証
   → 新規チャットへ移行
 ```
 
-この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が plan.md に存在するため、Yellow/Red では転記と確認だけで済む。
+この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が tracker.md に存在するため、Yellow/Red では転記と確認だけで済む。
 
 ### 各指標が近似するもの（proxy の意味）
 
@@ -222,15 +222,15 @@ mv .cursor/.session/handoff-active.md .cursor/.session/backup/handoff-{ticket}.m
 mv .cursor/.session/backup/handoff-{ticket}.md .cursor/.session/handoff-active.md
 ```
 
-## plan.md と handoff manifest の責務境界
+## tracker.md と handoff manifest の責務境界
 
-| | plan.md（追跡ドキュメント） | handoff-active.md（manifest） |
+| | tracker.md（追跡ドキュメント） | handoff-active.md（manifest） |
 |---|---|---|
-| **役割** | キャンペーン全体の SoT | セッション固有の揮発情報 + plan.md へのポインタ |
-| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | plan.md のどこにいるか + plan.md に未反映の差分 |
+| **役割** | キャンペーン全体の SoT | セッション固有の揮発情報 + tracker.md へのポインタ |
+| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker.md のどこにいるか + tracker.md に未反映の差分 |
 | **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
-| **ライフサイクル** | キャンペーン完了まで存続 | 次セッションで消費されて消える |
-| **矛盾時の優先** | **常に plan.md が正** | plan.md の劣化コピーとして扱う |
+| **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
+| **矛盾時の優先** | **常に tracker.md が正** | tracker.md の劣化コピーとして扱う |
 
 {{framework.handoff.manifest_responsibility}}。
 
@@ -357,13 +357,23 @@ compact イベントの校正データログ。Phase 1 の主目的は **proxy �
 - auto compact の発火 % 分布 → `compact_yellow_percent` / `compact_red_percent` の妥当性検証
 - 1 セッション中の compact 頻度 → Thrashing リスクの評価
 
+### 校正サイクル
+
+compact-events.jsonl のエントリが {{framework.handoff.calibration.min_events}} 件に達した時点で、以下の分析を行い閾値を校正する。
+
+{{#each framework.handoff.calibration.review_actions}}
+- {{this}}
+{{/each}}
+
+{{framework.handoff.calibration.decision_record}}。
+
 ### MemPalace 共存ガイドライン
 
 MemPalace が同じ `preCompact` に登録されている場合、hooks.json の配列に kit → MemPalace の順で並べる。kit の observer は軽量（timeout 5s）、MemPalace は重量（timeout 30s）。
 
 | 関心事 | kit | MemPalace |
 |---|---|---|
-| 判断構造の構造化退避 | plan.md + handoff manifest（SoT） | × |
+| 判断構造の構造化退避 | tracker.md + handoff manifest（SoT） | × |
 | transcript の verbatim 退避 | × | palace（mine） |
 | compact 直前の token% 記録 | compact-observer（state に書く） | × |
 | compact 検知後の handoff 促進 | pending-handoff → stop で followup | pending-save → stop で followup |

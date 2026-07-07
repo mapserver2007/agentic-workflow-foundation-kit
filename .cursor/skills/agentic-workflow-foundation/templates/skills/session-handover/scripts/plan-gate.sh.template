@@ -36,15 +36,15 @@ fi
 find_tracking_documents() {
   if [[ "$TRACKING" == */* ]]; then
     local candidate="$PROJECT_DIR/$TRACKING"
-    if [[ -f "$candidate" && "$candidate" != */archive/* ]]; then
+    if [[ -f "$candidate" ]]; then
       printf '%s\n' "$candidate"
     fi
     return
   fi
-  find "$PROJECT_DIR" -type f -name "$TRACKING" -not -path "*/archive/*" 2>/dev/null
+  find "$PROJECT_DIR" -type f -name "$TRACKING" 2>/dev/null
 }
 
-# 追跡ドキュメント列挙（archive/ 配下を除く）
+# 追跡ドキュメント列挙
 tracked=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && tracked+=("$f")

@@ -72,13 +72,13 @@ if [[ -f "$HANDOFF_FILE" ]]; then
     QUALITY_WARNING=""
     if [[ -n "$MISSING_SECTIONS" ]]; then
       QUALITY_WARNING="
-警告: manifest に以下の必須見出しが欠落しています。追跡ドキュメント（plan.md）を直接 Read して補完してください:
+警告: manifest に以下の必須見出しが欠落しています。追跡ドキュメント（.tracking/tracker.md）を直接 Read して補完してください:
 $(printf '%b' "$MISSING_SECTIONS")"
     fi
     ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_HANDOFF] 前セッションから引き継ぎ manifest を読み込みました。${QUALITY_WARNING}
 
 復旧手順:
-1. まず manifest 内「ポインタ」に記載された追跡ドキュメント（plan.md 等）を Read し、フェーズと制約を確認せよ
+1. まず manifest 内「ポインタ」に記載された追跡ドキュメント（.tracking/tracker.md）を Read し、フェーズと制約を確認せよ
 2. manifest の「セッション判断ログ」「制約・ブロッカー」を追跡ドキュメントに反映せよ（未反映の揮発情報がある場合）
 3. 追跡ドキュメントの指示に従って作業を再開せよ
 
