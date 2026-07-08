@@ -216,13 +216,7 @@ execute-agent-workflow のフェーズ境界ゲートを統一インターフェ
 | `env` / `printenv`（引数なし） | ask | 全環境変数に token が含まれる可能性 |
 | `git config --list` | ask | 認証情報を含む設定の表示リスク |
 
-**認証モデル**: 本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、GitHub API 操作はすべて wrapper (`bin/github-pr-*-safe`) 経由で行う。wrapper のみが `~/.config/github-apps/` の認証情報（GitHub App private key）にアクセスでき、内部で installation token を発行する。AI が `gh` CLI を直接実行しても認証が通らず失敗するため、上記の deny はこの認証モデルを Hook レベルで反映したものである。
-
-**素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / 全ての git 読み取り系。
-
-**フェイル戦略（二段階）**:
-- **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
-- **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。
+**認証モデル・フェイル戦略・素通し対象の詳細**: [`.cursor/hooks/README.md > 設計原則`](../.cursor/hooks/README.md) を参照。
 
 **詳細・テスト手順**: [`.cursor/hooks/README.md`](../.cursor/hooks/README.md)
 

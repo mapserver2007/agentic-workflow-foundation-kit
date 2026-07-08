@@ -22,9 +22,11 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 - **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。正規ワークフロー（`git commit` / `git push -u origin HEAD`）には干渉しない。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能（PAT 未設定のため `gh` 直接実行は認証不可）。
 - **観測 + 助言**: `session-*` 系は AI をブロックせず、state を蓄積してしきい値超過時のみ助言を返す。
+- **認証モデル**: 本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、GitHub API 操作はすべて wrapper (`bin/github-pr-*-safe`) 経由で行う。wrapper のみが `~/.config/github-apps/` の認証情報（GitHub App private key）にアクセスでき、内部で installation token を発行する。AI が `gh` CLI を直接実行しても認証が通らず失敗するため、deny はこの認証モデルを Hook レベルで反映したものである。
+- **素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / 全ての git 読み取り系。
 - **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
-  - **deny 対象はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく `ask` を返す。
-  - **deny 対象以外は fail_open**: スクリプト障害 / 入力空時は `{}` を返して exit 0。Hook の自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
+  - **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
+  - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
 
 ## State ファイル仕様（session-* 系）
 
