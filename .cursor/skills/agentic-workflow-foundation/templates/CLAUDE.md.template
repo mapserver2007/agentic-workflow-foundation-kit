@@ -21,7 +21,6 @@
 
 - **Never**: 無断 push / commit / `--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*`
 {{#each project.boundaries.never_extra}}- **Never**: {{this}}
-{{/each}}- **Always**: 変更前に関連ファイルを全体読み込みする
-{{#each project.boundaries.always}}- **Always**: {{this}}
+{{/each}}{{#each project.boundaries.always}}- **Always**: {{this}}
 {{/each}}
 > 完全な Boundaries / Session Protocol / Documentation Navigation は `AGENTS.md` を参照。Claude Code で `@AGENTS.md` が解決されない場合は `cat AGENTS.md` で確認する。

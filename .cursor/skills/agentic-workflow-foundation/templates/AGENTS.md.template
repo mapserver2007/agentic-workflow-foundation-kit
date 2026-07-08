@@ -112,7 +112,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 ### Always
 {{#each project.boundaries.always}}- {{this}}
-{{/each}}- 変更前に関連ファイルを全体読み込みする
+{{/each}}
 
 ### Ask First
 {{#each project.boundaries.ask_first}}- {{this}}
