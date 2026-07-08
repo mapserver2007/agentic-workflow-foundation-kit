@@ -92,19 +92,11 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 `Context Budget Protocol` は統一設計書の正式見出しではなく、「追跡ドキュメント / 検証ゲート / 再開プロトコル」、コンテキストの即時外部化、コンテキスト保護、Context/Session/State SoT を本基盤向けに束ねた運用名である。
 
-閾値判定は **token% 主指標 + proxy fallback** の 2 層構成。`preCompact` Hook で取得した実トークン使用率（token%）が利用可能な場合は proxy より優先する。token% 未取得時は従来の proxy OR 判定（プロンプト数 / シェル出力バイト）にフォールバックする。
+閾値判定と警告発火は Hook（`session-budget-evaluator.sh` / `session-compact-observer.sh`）が自動で行い、AI は `followup_message` で行動指示を受け取る。閾値の具体値・判定優先順位・失敗モード・ユーザー操作は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md) を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。
 
-- **token% 閾値**（主指標 — preCompact 経由）: Yellow `{{framework.budget_thresholds.compact_yellow_percent}}`% / Red `{{framework.budget_thresholds.compact_red_percent}}`%（鮮度 `{{framework.budget_thresholds.compact_freshness_sec}}` 秒以内）
-- **proxy 閾値**（fallback）: Yellow は `{{framework.budget_thresholds.yellow.prompt_count}}` prompts / `{{framework.budget_thresholds.yellow.shell_bytes}}` bytes、Red は `{{framework.budget_thresholds.red.prompt_count}}` prompts / `{{framework.budget_thresholds.red.shell_bytes}}` bytes
-- Checkpoint: `{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造（採用/却下した案と理由）の外部化を促す。セッション切り替えは不要。Yellow 前に複数回発火し、劣化が始まる前の高品質な記録を蓄積する先制的防御（元記事の 60% 通知に相当）
-- Yellow: 追跡ドキュメント（tracker.md = SoT）の「次セッションTODO / セッション判断ログ」を最新化し、作業の区切りを準備する
-- Red: 追跡ドキュメントを最新化した上で `{{framework.handoff.active_manifest_path}}` に handoff manifest（ポインタ + 揮発情報）を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する
-- tracker.md 常時存在: セッション開始時に tracker.md が存在しない場合、AI は最小骨格で作成する。プランファイル駆動の場合はプランへのポインタ + セッション判断ログのみで十分。preCompact Hook も存在しない場合は自動生成する
-- compact 連動: `preCompact` → `pending-handoff` マーカー + tracker.md スナップショット自動退避 → 次の `stop` で即座に handoff 発火 + manifest 骨格機械生成。compact 直後は tracker.md を再読して制約を再ロードする
-- manifest は tracker.md へのポインタ + セッション固有の揮発情報のみ。tracker.md と同じ情報を重複して書かない
-- 注入サイズ上限: bootstrap は manifest を最大 {{framework.budget_thresholds.max_injection_bytes}} bytes に制限して注入する（Thrashing 防止）。超過時は tracker.md を直接 Read して補完する
-
-詳細手順・失敗モード・ユーザー操作は `docs/CONTEXT_BUDGET.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。`AGENTS.md` には Layer 1 の短い入口だけを置き、詳細を二重管理しない。
+- **Checkpoint**: 定期的に `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造の外部化を促す（セッション切り替えではない）
+- **Yellow**: 追跡ドキュメントの最新化と作業の区切り準備。`followup_message` の指示に従う
+- **Red**: handoff manifest を `.cursor/.session/handoff-active.md` に書き出し、新規チャットへ誘導。新規実装を停止する
 
 ## Boundaries
 
