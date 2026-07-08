@@ -201,7 +201,7 @@ execute-agent-workflow のフェーズ境界ゲートを統一インターフェ
 | `git commit --amend` | ask | 履歴改ざんのためユーザー承認 |
 | `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask | 履歴書き換えのためユーザー承認 |
 
-**認証情報・secret 漏洩防止**（統一設計書外の拡張。[`.cursor/rules/03-github-security.mdc`](../.cursor/rules/03-github-security.mdc) を宣言的 SoT とし、Hook で deterministic 強制する）:
+**認証情報・secret 漏洩防止**（統一設計書外の拡張。[`AGENTS.md > Boundaries`](../AGENTS.md) を宣言的 SoT とし、[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) で deterministic 強制する）:
 
 | コマンドパターン | 挙動 | 根拠 |
 |---|---|---|

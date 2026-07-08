@@ -4,7 +4,7 @@
 
 `agent-github-issue` スキルで使用する固定 wrapper コマンドと関連コマンド集。GitHub API へのアクセスは wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
 
-> **セキュリティルール**: [`.cursor/rules/03-github-security.mdc`](../../../../.cursor/rules/03-github-security.mdc) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
 
 ---
 

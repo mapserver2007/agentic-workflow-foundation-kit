@@ -166,7 +166,7 @@ chmod 600 ~/.config/github-apps/private-key.pem
 | --- | --- | --- |
 | `private-key.pem` | `~/.config/github-apps/private-key.pem` | GitHub Apps からダウンロードした秘密鍵（**必須**） |
 
-> **配置の原則**: リポジトリ外（`~/.config/github-apps/`）に置き、AI（Cursor Agent）からは読み取れないようにする。`.cursor/rules/03-github-security.mdc` により、AI は `.pem` / `.key` ファイルの読み取りを禁止されている。wrapper はこのパスから private key を読み取る。
+> **配置の原則**: リポジトリ外（`~/.config/github-apps/`）に置き、AI（Cursor Agent）からは読み取れないようにする。`AGENTS.md > Boundaries` により、AI は `.pem` / `.key` ファイルの読み取りを禁止されている。wrapper はこのパスから private key を読み取る。
 
 ### 4.3 GitHub Apps のインストール
 
@@ -245,7 +245,7 @@ AI Agent ──→ wrapper（bin/github-pr-*-safe）──→ GitHub API
 AI Agent は token / private key に直接アクセスできない
   └── .cursorignore が bin/ を AI コンテキストから除外（サンドボックス遮断）
   └── guard-git-write.sh が gh auth token / .pem 読み取りをブロック
-  └── 03-github-security.mdc が認証ファイル読み取りを禁止
+  └── AGENTS.md > Boundaries が認証ファイル読み取りを禁止
 ```
 
 ---

@@ -112,7 +112,7 @@ fi
 
 # ============================================================
 # DENY パターン（token / secret / credential 漏洩防止）
-# 仕様: .cursor/rules/03-github-security.mdc
+# 仕様: AGENTS.md > Boundaries / docs/QUALITY_GATE.md §2.1
 # ============================================================
 
 # gh auth による token 取得・表示

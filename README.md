@@ -9,7 +9,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | 領域 | 生成・管理するもの |
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
-| Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
+| Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
 | Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks |
 | Project Docs (Meta) | `docs/tech-stack.md`、`docs/CONTEXT_BUDGET.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
@@ -76,7 +76,7 @@ agentic-workflow-foundation-kit/
         │   │   ├── hooks.json.template
         │   │   ├── gitignore.block.template
         │   │   ├── cursorignore.block.template
-        │   │   ├── rules/           # 00-init 〜 03-github-security
+        │   │   ├── rules/           # 00-init 〜 02-agent-conduct
         │   │   ├── hooks/           # guard-git-write, session-*, budget-*
         │   │   ├── docs/            # AGENT_RUNBOOK, QUALITY_GATE, tech-stack,
         │   │   │                    # CONTEXT_BUDGET, DECISIONS, GOTCHAS,
@@ -172,7 +172,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | 種別 | ファイル |
 | --- | --- |
 | Context | `AGENTS.md`、`CLAUDE.md` |
-| Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc`、`03-github-security.mdc` |
+| Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |

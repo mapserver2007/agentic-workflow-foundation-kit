@@ -31,7 +31,7 @@
 | `framework.handoff` | `docs/CONTEXT_BUDGET.md`（本番運用レベルのユーザー手順 / 状態ファイル / 失敗モード / manifest 必須項目 / 非採用設計(non_goals) / 将来拡張(future_notes) / 参考リンク(references)） |
 | `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` / `.cursor/skills/session-planning/SKILL.md` / `.cursor/skills/session-handover/SKILL.md`。ゲート文脈は `.cursor/skills/session-handover/scripts/session-start-gate.sh`（検査対象）/ `docs/QUALITY_GATE.md`（§1.4 検査ID / §1.5 セッション開始ゲート / §3 フェーズ境界ゲート）で補足 |
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
-| `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` / `.cursor/rules/03-github-security.mdc`（token / secret / credential 保護） |
+| `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
 | `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands。`G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST`） |
 | `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract。gen / build / lint / test）/ `AGENTS.md`（Quality Gate Contract） |
 | `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ）/ `.coderabbit.yaml`（`coderabbit` 経由で tech_stack に従属） |
@@ -39,7 +39,7 @@
 | `domain_docs.primary_language` / `domain_docs.framework` / `domain_docs.*_sections` | `docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/coding-standards.md` / `docs/workflows.md`（Domain 層スケルトン。Phase 1.67 で tech_stack から自動導出、seed モード） |
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
-| `framework.security` | `.cursor/rules/03-github-security.mdc`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
+| `framework.security` | `AGENTS.md > Boundaries`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
 | `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
 | `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 

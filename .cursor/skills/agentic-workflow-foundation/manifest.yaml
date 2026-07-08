@@ -515,15 +515,6 @@ outputs:
       - "Cautious"
       - "Thorough"
       - "Selective"
-  - path: .cursor/rules/03-github-security.mdc
-    template: rules/03-github-security.mdc.template
-    mode: render
-    required_sections:
-      - "alwaysApply: true"
-      - "token"
-      - "secret"
-      - "credential"
-      - "guard-git-write.sh"
   - path: .cursor/hooks/guard-git-write.sh
     template: hooks/guard-git-write.sh.template
     mode: render
@@ -1118,7 +1109,7 @@ project:
     never_extra:
       - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
       - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
-      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials）を読み取る"
+      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials / ~/.netrc / ~/.ssh/**）を読み取る"
       - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
   # 固定値（生成物 docs/tech-stack.md + Domain 層ドキュメント群を指す。PO には問わない）。
   doc_navigation:
