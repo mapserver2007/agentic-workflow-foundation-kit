@@ -113,9 +113,9 @@ framework:
     - id: Cautious
       rule: 修正前の証拠収集。再現条件/影響範囲/既存実装パターンの3点を明示してから提案
     - id: Thorough
-      rule: 対症療法の禁止。テスト失敗をskip/抑制する前に原因仮説を文章化
+      rule: 検証の網羅。ゲート未実行で完了宣言禁止、対症療法（skip/抑制）前に原因仮説を文章化
     - id: Selective
-      rule: 完了の自己宣言禁止。ゲート実行記録なしに「完了」と書かない
+      rule: 出力の自己レビュー。提出前に「文脈のない読み手が正しく理解・判断できるか」を検証する
   budget_thresholds:
     # min_context_window_tokens から resolve_budget_thresholds.py が算出する。
     # 以下の値は seed default（200K tier）。Phase 1.55 resolver が project 入力で上書きする。
