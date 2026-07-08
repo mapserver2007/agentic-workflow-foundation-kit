@@ -1,0 +1,129 @@
+# Context Budget 実装詳細リファレンス
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。統一設計書 / manifest / templates を更新して再生成する。 -->
+
+> このファイルは [`docs/CONTEXT_BUDGET.md`](../CONTEXT_BUDGET.md) の実装詳細を Progressive Disclosure で分離したもの。
+> 日常のセッション管理ではコア文書のみで十分であり、本ファイルは閾値チューニング・校正・外部ツール連携・将来拡張の検討時に参照する。
+
+## インクリメンタル書き出しと Yellow/Red の連携
+
+CHECKPOINT → Yellow → Red は段階的に品質保証が強化される設計。
+
+```
+CHECKPOINT ({{framework.budget_thresholds.checkpoint_interval_prompts}} prompts ごと)
+  → AI が tracker.md の「セッション判断ログ」を最新化
+  → 「まだ注意力が高いうちの高品質な記録」として蓄積
+
+Yellow (45 prompts 等)
+  → tracker.md の判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
+  → handoff manifest に tracker.md の判断ログを転記 + 揮発情報を追記
+
+Red (90 prompts 等)
+  → manifest 完成 + 読み戻し検証
+  → 新規チャットへ移行
+```
+
+この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が tracker.md に存在するため、Yellow/Red では転記と確認だけで済む。
+
+## 重み付きプロンプトスコア（データ収集）
+
+`weighted_prompt_score` は state ファイルに記録されるが、現時点では閾値判定に使用しない（データ収集のみ）。プロンプト文字数に基づく重み付けで、短いプロンプト（< 100 bytes）は 1、長いプロンプトは `bytes / 500 + 1` として加算される。将来、`prompt_count` 単独の OR 判定より精度の高い閾値判定に活用する可能性がある。
+
+## 閾値の変更手順
+
+閾値を変更する場合は、統一設計書または seed/root manifest の該当値を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。Hook スクリプトを直接編集すると audit で drift として検出される。
+
+## 閾値の決定根拠
+
+上記の閾値は Phase 1.5 で選択した**最小コンテキストウィンドウサイズ（{{project.context_budget.min_context_window_tokens}} tokens）**に基づき、`resolve_budget_thresholds.py` が決定論的に算出した値である。
+
+| 項目 | 値 |
+|---|---|
+| 最小コンテキストウィンドウ | {{project.context_budget.min_context_window_tokens}} tokens |
+| 算出スクリプト | `.cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py` |
+| 算出フェーズ | Phase 1.55（Phase 1.5 直後、Phase 1.6 の前） |
+
+複数モデルを併用する場合、最小のコンテキストウィンドウに合わせて保守的な閾値が適用される。閾値の再算出は `project.context_budget.min_context_window_tokens` を変更して `resolve_budget_thresholds.py` を再実行し、その後 `generate` + `audit` で反映する。
+
+運用後に `compact-events.jsonl` が蓄積されたら、既存の校正サイクル（`manifest.yaml > handoff.calibration`）で値を微調整できる。校正による値変更は ADR 不要（値チューニング）。
+
+## 意図的に採用しない設計（YAGNI）
+
+manifest を閾値の SoT とし、以下は観測ベースの必要性が複数回確認されるまで作らない。
+
+{{#each framework.handoff.non_goals}}
+- {{this}}
+{{/each}}
+
+## preCompact 包括的構造化スナップショット
+
+preCompact 発火時に `session-compact-observer.sh` が以下の情報を統合した包括的構造化スナップショットを `.cursor/.session/pre-compact-{session_id}.md` に生成する（最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。
+
+| セクション | 内容 | サイズ制限 |
+|---|---|---|
+| compact 情報 | trigger / usage% / tokens / prompt_count / timestamp | — |
+| tracker.md | 追跡ドキュメントの内容 | 先頭 4096 bytes |
+| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 末尾 20 行 |
+| state | prompt_count / shell_bytes / weighted_prompt_score 等の累積指標 | 全体 |
+
+| 項目 | 内容 |
+|---|---|
+| 退避先 | `{{framework.handoff.snapshot_path_pattern}}` |
+| サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（超過時は先頭から切り詰め） |
+| 失敗時 | fail-open（退避失敗でもセッションをブロックしない） |
+
+スナップショットは次セッションの bootstrap で以下の2パターンで活用される:
+
+1. **handoff manifest あり**: manifest と snapshot を突合し、矛盾があれば WARN を追記
+2. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot の turns.jsonl セクションから直近のユーザー依頼を抽出し、fallback として `additional_context` に注入
+
+## manifest 骨格の機械生成
+
+Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-active.md` に必須見出しのみの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
+
+## 注入サイズ上限
+
+`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は先頭のみ注入し「tracker.md を Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
+
+## スナップショット突合
+
+`session-bootstrap.sh` は新セッション開始時に pre-compact スナップショットと handoff manifest を突合する。スナップショットに未完了タスクがあるが manifest にポインタがない場合は WARN を追記する（fail-open）。
+
+## compact-events.jsonl（校正データ）
+
+compact イベントの校正データログ。Phase 1 の主目的は **proxy 閾値の校正** に使うこと。
+
+分析用途:
+- compact 発火時の prompt_count / shell_bytes との相関 → proxy 閾値チューニング
+- auto compact の発火 % 分布 → `compact_yellow_percent` / `compact_red_percent` の妥当性検証
+- 1 セッション中の compact 頻度 → Thrashing リスクの評価
+
+## 校正サイクル
+
+compact-events.jsonl のエントリが {{framework.handoff.calibration.min_events}} 件に達した時点で、以下の分析を行い閾値を校正する。
+
+{{#each framework.handoff.calibration.review_actions}}
+- {{this}}
+{{/each}}
+
+{{framework.handoff.calibration.decision_record}}。
+
+## MemPalace 共存ガイドライン
+
+MemPalace が同じ `preCompact` に登録されている場合、hooks.json の配列に kit → MemPalace の順で並べる。kit の observer は軽量（timeout 5s）、MemPalace は重量（timeout 30s）。
+
+| 関心事 | kit | MemPalace |
+|---|---|---|
+| 判断構造の構造化退避 | tracker.md + handoff manifest（SoT） | × |
+| transcript の verbatim 退避 | × | palace（mine） |
+| compact 直前の token% 記録 | compact-observer（state に書く） | × |
+| compact 検知後の handoff 促進 | pending-handoff → stop で followup | pending-save → stop で followup |
+| 長期記憶 RAG | × | palace search + wake hook |
+
+kit の `pending-handoff` と MemPalace の `pending-save` は別ファイル（`.cursor/.session/{id}.pending-handoff` vs `~/.mempalace/hook_state/cursor_{id}.pending`）で干渉しない。
+
+## 将来拡張候補
+
+{{#each framework.handoff.future_notes}}
+- {{this}}
+{{/each}}

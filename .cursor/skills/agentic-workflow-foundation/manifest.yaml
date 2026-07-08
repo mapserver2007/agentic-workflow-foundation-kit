@@ -634,8 +634,19 @@ outputs:
       - "## チェックリスト"
       - "## 参考リンク"
       - "単一 manifest 制約"
-      - "意図的に採用しない設計"
       - "各指標が近似するもの（proxy の意味）"
+      - "context-budget-internals.md"
+  - path: docs/references/context-budget-internals.md
+    template: docs/references/context-budget-internals.md.template
+    mode: render
+    required_sections:
+      - "preCompact"
+      - "compact-events.jsonl"
+      - "校正サイクル"
+      - "MemPalace"
+      - "将来拡張候補"
+      - "意図的に採用しない設計"
+      - "閾値の決定根拠"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
