@@ -43,6 +43,9 @@ __pycache__/
 secret/
 .env
 
+# MEGA sync (local only)
+.megaignore
+
 # Archive / superseded docs (any depth)
 **/old/
 
