@@ -22,7 +22,6 @@ reviews:
   assess_linked_issues: true
   related_issues: true
   related_prs: true
-  review_bot_prs: true
   suggested_labels: false
   suggested_reviewers: true
   auto_assign_reviewers: false
