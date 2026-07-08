@@ -1088,6 +1088,12 @@ project:
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
+  # 設計根拠（SoT §6 からの意図的逸脱）:
+  #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
+  #   永続化すべき判断は DECISIONS.md / GOTCHAS.md に抽出する設計。
+  #   git 履歴にセッション状態のノイズを入れず、ルートディレクトリを .cursor/ 配下に隔離する。
+  # 下流注記: トレーサビリティ要件がある業務プロジェクトでは SoT §6 準拠
+  #   （ルート直下 plan.md + archive/ 保管 + git 管理）に戻すことを推奨する。
   tracking_artifact: ".cursor/.tracking/tracker.md"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
