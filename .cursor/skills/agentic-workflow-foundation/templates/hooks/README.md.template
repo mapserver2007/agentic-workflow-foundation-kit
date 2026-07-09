@@ -66,10 +66,12 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 現行値:
 
-| レベル | prompt_count | shell_bytes | shell (MiB) |
+| レベル | prompt_count | shell_bytes | shell (可読) |
 |---|---|---|---|
-| Yellow | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | 1 MiB |
-| Red | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | 5 MiB |
+| Yellow | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.yellow.shell_bytes_label}} |
+| Red | {{framework.budget_thresholds.red.prompt_count}} | {{framework.budget_thresholds.red.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes_label}} |
+
+> `shell (可読)` は `shell_bytes` を 1024 基数（KiB/MiB）で表記したもの。`resolve_budget_thresholds.py` が tier 算出時に `shell_bytes_label` として manifest へ書き込む。
 
 #### compact 由来の token% 閾値（主指標 — preCompact 経由で取得）
 

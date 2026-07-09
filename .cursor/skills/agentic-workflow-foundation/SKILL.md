@@ -176,7 +176,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 **`.cursor/hooks/README.md` テンプレートが満たすべき最低要件**:
 
-- **しきい値テーブルの人間可読表記**: `shell_bytes` 列に加え、`shell (MiB)` 列を追加する。バイト数だけでは運用者が直感的に把握できない。
+- **しきい値テーブルの人間可読表記**: `shell_bytes` 列に加え、`shell (可読)` 列を追加する。値は `resolve_budget_thresholds.py` が `shell_bytes_label`（1024 基数 KiB/MiB）として manifest に書き込み、テンプレートは `{{framework.budget_thresholds.*.shell_bytes_label}}` で展開する。バイト数だけでは運用者が直感的に把握できない。
 - **Yellow / Red 到達時の挙動**: 各レベルの通知メッセージ（`[CONTEXT_BUDGET=YELLOW]` / `[CONTEXT_BUDGET=RED]`）と AI が取るべきアクションをテーブルで明記する。`last_warning_level` による重複通知抑止（`none` → `yellow` → `red` の昇格時のみ通知）も説明する。
 - **Hook 追加チェックリスト**: 新規 Hook 追加時に確認すべき項目をチェックリスト形式で記載する。最低限の項目: hooks.json 登録 / 実行ビット付与 / フェイル戦略決定 + README 一覧表追記 / テストケース追加 / `manifest.yaml > outputs[]` 追加 / Cursor Settings 確認 / 再生成 + audit PASS。
 - **Cursor 統合確認**: Cursor Settings > Features > Hooks での有効化確認手順を記載する。
