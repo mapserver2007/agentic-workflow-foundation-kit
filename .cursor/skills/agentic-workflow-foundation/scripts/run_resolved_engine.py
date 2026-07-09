@@ -23,10 +23,13 @@ ROOT_OVERLAY_KEYS = (
     "tech_stack",
     "session",
     "quality_gate_contract",
+    "domain_docs",
     "code_review",
     "github_pr",
     "github_issue",
     "coderabbit",
+    "agent_workflow",
+    "cross_repo_knowledge",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
@@ -43,11 +46,27 @@ UPSTREAM_DESIGN_INPUTS = (
 
 def _yaml_quote(value) -> str:
     s = "" if value is None else str(value)
-    if "\n" in s:
-        raise genlib.YamlError("複数行スカラは resolved manifest でサポートしない")
     if '"' in s:
         return "'" + s.replace("'", "''") + "'"
     return '"' + s + '"'
+
+
+def _dump_scalar_key(key: str, value, indent: int) -> list[str]:
+    pad = " " * indent
+    if value is None:
+        return [f"{pad}{key}:"]
+    if isinstance(value, bool):
+        return [f"{pad}{key}: {'true' if value else 'false'}"]
+    if isinstance(value, int):
+        return [f"{pad}{key}: {value}"]
+    s = str(value)
+    if "\n" in s:
+        lines = [f"{pad}{key}: |"]
+        block_pad = " " * (indent + 2)
+        for line in s.split("\n"):
+            lines.append(f"{block_pad}{line}")
+        return lines
+    return [f"{pad}{key}: {_yaml_quote(s)}"]
 
 
 def _yaml_scalar(value) -> str:
@@ -69,7 +88,7 @@ def _dump_yaml_node(value, indent: int = 0):
                 lines.append(f"{pad}{key}:")
                 lines.extend(_dump_yaml_node(item, indent + 2))
             else:
-                lines.append(f"{pad}{key}: {_yaml_scalar(item)}")
+                lines.extend(_dump_scalar_key(key, item, indent))
         return lines
     if isinstance(value, list):
         for item in value:
@@ -84,6 +103,11 @@ def _dump_yaml_node(value, indent: int = 0):
                     if isinstance(child, (dict, list)):
                         lines.append(f"{prefix}{key}:")
                         lines.extend(_dump_yaml_node(child, indent + 4))
+                    elif isinstance(child, str) and "\n" in child:
+                        lines.append(f"{prefix}{key}: |")
+                        block_pad = " " * (len(prefix) + 2)
+                        for line in child.split("\n"):
+                            lines.append(f"{block_pad}{line}")
                     else:
                         lines.append(f"{prefix}{key}: {_yaml_scalar(child)}")
             elif isinstance(item, list):
@@ -198,10 +222,34 @@ def _apply_upstream_design_inputs(merged: dict) -> dict:
     return merged
 
 
+def _is_feature_enabled(manifest: dict, feature: str) -> bool:
+    """feature トグルを評価する。
+
+    トップレベル（code_review / agent_workflow）と dot パス
+    （agent_workflow.execute_skill / agent_workflow.maintenance_docs）に対応する。
+    末端が dict で enabled キーを持つ場合はその値を、それ以外は truthiness を返す。
+    """
+    if not feature:
+        return False
+    node: object = manifest
+    parts = feature.split(".")
+    for i, part in enumerate(parts):
+        if not isinstance(node, dict):
+            return False
+        node = node.get(part)
+        if node is None:
+            return False
+        if i == len(parts) - 1:
+            if isinstance(node, dict) and "enabled" in node:
+                return bool(node.get("enabled"))
+            return bool(node)
+    return False
+
+
 def _filter_outputs_by_features(manifest: dict) -> dict:
     """feature フラグが無効な outputs エントリを除外する。
 
-    outputs[].feature が指定されている場合、manifest[feature].enabled が
+    outputs[].feature が指定されている場合、対応する feature トグルが
     truthy でなければそのエントリを生成対象から除外する。
     feature が未指定の outputs はそのまま通過する。
 
@@ -216,10 +264,7 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
             filtered.append(out)
             continue
         features = feature if isinstance(feature, list) else [feature]
-        if any(
-            isinstance(manifest.get(f), dict) and manifest.get(f, {}).get("enabled")
-            for f in features
-        ):
+        if any(_is_feature_enabled(manifest, f) for f in features):
             filtered.append(out)
     manifest["outputs"] = filtered
     return manifest

@@ -1,0 +1,43 @@
+# データモデル
+
+<!-- このファイルは agentic-workflow-foundation スキルの seed 生成物（初回のみ生成）。
+     PO / 開発者がプロジェクト固有のデータモデルで充実させる。再生成では上書きしない。 -->
+
+> データベース: {{domain_docs.database}}
+> 主要言語: {{domain_docs.primary_language}}
+
+## データベース設計思想
+
+[TODO] DB 設計の基本方針・正規化レベル・命名規約を記述する。
+
+## 主要テーブル/コレクション構成
+
+[TODO] 主要エンティティの構造・カラム・型を記述する。
+
+## ER図・関係性
+
+[TODO] エンティティ間のリレーションを図示する（Mermaid 推奨）。
+
+```mermaid
+erDiagram
+    ENTITY_A ||--o{ ENTITY_B : "has"
+```
+
+## データアクセスパターン
+
+[TODO] Repository パターン・クエリ方針・トランザクション管理を記述する。
+
+{{#each domain_docs.data_model_sections}}
+## {{this.title}}
+
+> {{this.guidance}}
+
+[TODO]
+
+{{/each}}
+
+## 参照
+
+- [仕様概要](spec.md)
+- [アーキテクチャ設計](architecture.md)
+- [API 仕様](api.md)

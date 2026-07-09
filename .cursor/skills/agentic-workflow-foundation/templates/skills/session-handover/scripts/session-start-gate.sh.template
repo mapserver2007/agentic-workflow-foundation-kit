@@ -23,12 +23,12 @@ fi
 find_tracking_documents() {
   if [[ "$TRACKING" == */* ]]; then
     local candidate="$PROJECT_DIR/$TRACKING"
-    if [[ -f "$candidate" && "$candidate" != */archive/* ]]; then
+    if [[ -f "$candidate" ]]; then
       printf '%s\n' "$candidate"
     fi
     return
   fi
-  find "$PROJECT_DIR" -type f -name "$TRACKING" -not -path "*/archive/*" 2>/dev/null
+  find "$PROJECT_DIR" -type f -name "$TRACKING" 2>/dev/null
 }
 
 fail=0
@@ -40,7 +40,24 @@ else
   echo "[PASS] handoff manifest 残存なし (G-SESSION-HANDOFF-001)"
 fi
 
-# --- 追跡ドキュメント列挙（archive/ 配下を除く） ---
+# --- G-SESSION-RED-CONTINUE-001: Red 到達後のセッション継続検出 (WARN) ---
+RED_DETECTED=false
+if [[ -d "$SESSION_DIR" ]] && command -v jq >/dev/null 2>&1; then
+  for state_f in "$SESSION_DIR"/*.json; do
+    [[ -f "$state_f" ]] || continue
+    last_lvl="$(jq -r '.last_warning_level // "none"' "$state_f" 2>/dev/null)" || last_lvl="none"
+    if [[ "$last_lvl" == "red" ]]; then
+      RED_DETECTED=true
+      echo "[WARN] Red 到達後の同一セッション継続が検出されました。Cmd+N で新規チャットを開くことを推奨します (G-SESSION-RED-CONTINUE-001)"
+      break
+    fi
+  done
+fi
+if [[ "$RED_DETECTED" == "false" ]]; then
+  echo "[PASS] Red 後継続なし (G-SESSION-RED-CONTINUE-001)"
+fi
+
+# --- 追跡ドキュメント列挙 ---
 tracked=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && tracked+=("$f")
@@ -49,14 +66,8 @@ done < <(find_tracking_documents)
 now="$(date +%s)"
 if (( ${#tracked[@]} > 0 )); then
 for f in "${tracked[@]}"; do
-  # --- G-SESSION-STALE-001: 追跡ドキュメントの停滞 (WARN) ---
-  mtime=""
-  if command -v git >/dev/null 2>&1; then
-    mtime="$(git -C "$PROJECT_DIR" log -1 --format=%ct -- "$f" 2>/dev/null || true)"
-  fi
-  if [[ -z "$mtime" ]]; then
-    mtime="$(date -r "$f" +%s 2>/dev/null || echo "")"
-  fi
+# --- G-SESSION-STALE-001: 追跡ドキュメントの停滞 (WARN) ---
+  mtime="$(date -r "$f" +%s 2>/dev/null || echo "")"
   if [[ -n "$mtime" ]]; then
     age_h=$(( (now - mtime) / 3600 ))
     if (( age_h >= STALE_HOURS )); then
@@ -64,16 +75,32 @@ for f in "${tracked[@]}"; do
     fi
   fi
 
-  # --- G-SESSION-ARCH-001: 完了済み追跡ドキュメントの archive 取り残し (FAIL) ---
+  # --- G-SESSION-TRACKER-001: CHECKPOINT 後 tracker 未更新 (WARN) ---
+  if [[ -d "$SESSION_DIR" ]] && [[ -n "$mtime" ]]; then
+    for state_f in "$SESSION_DIR"/*.json; do
+      [[ -f "$state_f" ]] || continue
+      if command -v jq >/dev/null 2>&1; then
+        started="$(jq -r '.started_at_unix // empty' "$state_f" 2>/dev/null)" || started=""
+        prompts="$(jq -r '.prompt_count // 0' "$state_f" 2>/dev/null)" || prompts=0
+        if [[ -n "$started" ]] && [[ "$prompts" =~ ^[0-9]+$ ]] && (( prompts >= {{framework.budget_thresholds.checkpoint_interval_prompts}} )); then
+          if (( mtime < started )); then
+            echo "[WARN] CHECKPOINT 発火可能だが tracker が session 開始前から未更新 (G-SESSION-TRACKER-001): $f"
+            break
+          fi
+        fi
+      fi
+    done
+  fi
+
+  # --- G-SESSION-DONE-001: 完了済み追跡ドキュメントの残存 (WARN) ---
   if grep -qE '^[[:space:]]*- \[x\]' "$f" 2>/dev/null && ! grep -qE '^[[:space:]]*- \[ \]' "$f" 2>/dev/null; then
-    echo "[FAIL] 完了チェック済みだが archive/ 未移動 (G-SESSION-ARCH-001): $f"
-    fail=1
+    echo "[WARN] 全チェック完了済みだが削除されていない (G-SESSION-DONE-001): $f"
   fi
 done
 fi
 
 if (( ${#tracked[@]} == 0 )); then
-  echo "[PASS] archive 外に進行中の追跡ドキュメントなし (G-SESSION-ARCH-001 / G-SESSION-STALE-001)"
+  echo "[PASS] 進行中の追跡ドキュメントなし (G-SESSION-STALE-001 / G-SESSION-DONE-001)"
 fi
 
 if (( fail != 0 )); then

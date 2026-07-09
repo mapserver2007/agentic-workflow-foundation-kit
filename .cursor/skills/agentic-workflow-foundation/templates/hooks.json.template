@@ -25,6 +25,24 @@
         "timeout": 5
       }
     ],
+    "preCompact": [
+      {
+        "command": ".cursor/hooks/session-compact-observer.sh",
+        "timeout": 5
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": ".cursor/hooks/session-response-tracker.sh",
+        "timeout": 5
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": ".cursor/hooks/session-response-tracker.sh",
+        "timeout": 5
+      }
+    ],
     "stop": [
       {
         "command": ".cursor/hooks/session-budget-evaluator.sh",

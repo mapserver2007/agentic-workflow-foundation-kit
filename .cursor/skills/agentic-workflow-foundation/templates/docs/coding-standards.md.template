@@ -1,0 +1,18 @@
+# コーディング規約
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（domain_docs.coding_standards_sections）を更新して再生成する。 -->
+
+> 主要言語: {{domain_docs.primary_language}}
+> テストフレームワーク: {{domain_docs.test_framework}}
+> パッケージ管理: {{domain_docs.package_manager}}
+
+{{#each domain_docs.coding_standards_sections}}
+## {{this.title}}
+
+{{this.content}}
+{{/each}}
+
+## 参照
+
+- [アーキテクチャ設計](architecture.md)
+- [技術スタック](tech-stack.md)

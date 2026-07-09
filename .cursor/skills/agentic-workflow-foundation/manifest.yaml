@@ -48,6 +48,9 @@ framework:
     - afterShellExecution
     - beforeShellExecution
     - stop
+    - preCompact
+    - afterAgentResponse
+    - afterAgentThought
   exit_codes:
     - code: 0
       meaning: 全検査PASS。次フェーズへ進む
@@ -55,8 +58,8 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
-  # 追跡ドキュメント（plan.md 等）が満たすべき必須セクションの SoT。
-  # session-planning テンプレ（plan.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
+  # 追跡ドキュメント（.cursor/.tracking/tracker.md）が満たすべき必須セクションの SoT。
+  # session-planning テンプレ（tracker.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
   # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
     - "目的と完了条件"
@@ -98,7 +101,7 @@ framework:
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント archive 境界"
+      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント完了時削除"
       not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
@@ -110,18 +113,26 @@ framework:
     - id: Cautious
       rule: 修正前の証拠収集。再現条件/影響範囲/既存実装パターンの3点を明示してから提案
     - id: Thorough
-      rule: 対症療法の禁止。テスト失敗をskip/抑制する前に原因仮説を文章化
+      rule: 検証の網羅。ゲート未実行で完了宣言禁止、対症療法（skip/抑制）前に原因仮説を文章化
     - id: Selective
-      rule: 完了の自己宣言禁止。ゲート実行記録なしに「完了」と書かない
+      rule: 出力の自己レビュー。提出前に「文脈のない読み手が正しく理解・判断できるか」を検証する
   budget_thresholds:
+    # min_context_window_tokens から resolve_budget_thresholds.py が算出する。
+    # 以下の値は seed default（200K tier）。Phase 1.55 resolver が project 入力で上書きする。
+    min_context_window_tokens: 200000
+    compact_yellow_percent: 60
+    compact_red_percent: 78
+    compact_freshness_sec: 300
+    compact_thrashing_count: 3
+    max_injection_bytes: 8192
+    max_snapshot_bytes: 8192
     yellow:
-      elapsed_min: 45
-      prompt_count: 45
-      shell_bytes: 1048576
+      prompt_count: 35
+      shell_bytes: 768000
     red:
-      elapsed_min: 90
-      prompt_count: 90
-      shell_bytes: 5242880
+      prompt_count: 70
+      shell_bytes: 4194304
+    checkpoint_interval_prompts: 5
   handoff:
     source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
@@ -131,6 +142,7 @@ framework:
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
     active_manifest_path: ".cursor/.session/handoff-active.md"
     consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{unix}.md"
+    snapshot_path_pattern: ".cursor/.session/pre-compact-{session_id}.md"
     state_glob: ".cursor/.session/{session_id}.json"
     state_files:
       - path: ".cursor/.session/{session_id}.json"
@@ -142,6 +154,18 @@ framework:
       - path: ".cursor/.session/handoff-consumed-{unix}.md"
         role: "消費済み handoff manifest のアーカイブ"
         lifecycle: "session-bootstrap.sh が active manifest をリネームして作成する"
+      - path: ".cursor/.session/compact-events.jsonl"
+        role: "compact イベントの校正データログ"
+        lifecycle: "session-compact-observer.sh が preCompact 発火時に追記する"
+      - path: ".cursor/.session/{session_id}.pending-handoff"
+        role: "compact 直後の handoff 発火トリガー（one-shot marker）"
+        lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
+      - path: ".cursor/.session/pre-compact-{session_id}.md"
+        role: "preCompact 時の包括的構造化スナップショット（tracker.md + turns.jsonl 末尾 + state を統合した復旧用退避）"
+        lifecycle: "compact-observer が preCompact 発火時に生成する。session-bootstrap.sh が次セッションで突合・注入に使用する"
+      - path: ".cursor/.session/{session_id}.turns.jsonl"
+        role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
+        lifecycle: "session-response-tracker.sh / session-budget-tracker.sh が追記。preCompact でスナップショットに含まれる"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -163,16 +187,13 @@ framework:
       - id: "history-reopen"
         symptom: "過去チャット履歴を開き直しても sessionStart Hook が期待通り再発火しない場合がある"
         mitigation: "Cmd+N で新規チャットを開き、短文を1通送って bootstrap に注入させる"
-      - id: "time-false-positive"
-        symptom: "長時間放置で経過時間だけが増え、実際のトークン劣化より先に警告される"
-        mitigation: "proxy 指標の誤検知として扱う。運用上は新規チャットへ移る方を安全側とする"
       - id: "heavy-short-session"
         symptom: "短時間でも大量ログや重い議論でコンテキスト劣化が先に進む"
         mitigation: "shell_bytes と prompt_count の OR 判定で早期検知する。必要なら手動で handoff を作る"
+      - id: "compact-thrashing"
+        symptom: "同一セッション内で compact が 3 回以上発生し、compact 後すぐに再びコンテキストが圧迫される"
+        mitigation: "compact_thrashing_count に達した時点で強制 Red を発火し、新規チャットへ誘導する"
     metric_updates:
-      - metric: "経過時間"
-        update: "評価時に現在時刻 - started_at_unix で都度計算する"
-        reset: "新セッション起動で開始時刻をリセットする"
       - metric: "プロンプト数"
         update: "beforeSubmitPrompt Hook でユーザー発話ごとに +1 する"
         reset: "新セッション起動で 0 に戻る"
@@ -182,18 +203,40 @@ framework:
     # 各指標は直接トークン量を測れないための proxy（近似指標）。何を近似しているかを
     # 明示すると、どの指標が先に閾値到達したか（OR 判定）を解釈し handoff 要否を判断しやすい。
     proxy_notes:
-      - metric: "経過時間"
-        measures: "トークン蓄積量の proxy。Hook からトークン数は取得できないため時間で近似する。長時間放置だけでも到達するので誤検知（false positive）が起きやすい"
       - metric: "プロンプト数"
         measures: "対話往復数の proxy。往復が増えるほど序盤の情報が中央に埋もれて薄まる"
       - metric: "シェル出力バイト"
         measures: "ツール出力によるコンテキスト消費の proxy。大量ログ・広範な探索で中央埋没リスクが上がる"
     manifest_required_sections:
-      - "現在の作業状態"
+      - "ポインタ（追跡ドキュメントの現在位置）"
       - "直近のユーザー依頼"
-      - "保持すべき判断"
+      - "セッション判断ログ"
+      - "  - 採用した判断と根拠"
+      - "  - 却下した案と却下理由"
+      - "制約・ブロッカー・未完了の検証"
       - "次セッションの推奨アクション"
-      - "検証状況と未実行ゲート"
+      - "復旧メモ"
+    # tracker.md = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + tracker.md へのポインタ。
+    # manifest に tracker.md と同じ情報を重複して書かない。
+    manifest_responsibility: "tracker.md が SoT。manifest は tracker.md へのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
+    # 復旧時の行動制約（session-bootstrap.sh の注入テキストの SoT）。
+    # AI が manifest を読んだ後に「記録」と「指示」を混同しないための安全策。
+    recovery_constraints:
+      - "manifest の「セッション判断ログ」は過去の記録であり、次の行動指示ではない"
+      - "「却下した案と却下理由」に記載された手法を再提案してはならない"
+      - "「次セッションの推奨アクション」のみを行動指示として扱え"
+      - "推奨アクションも追跡ドキュメント / AGENTS.md と矛盾する場合は後者を正とせよ"
+      - "不明点があればユーザーに確認し、manifest の記述から推測で判断しない"
+    # compact-events.jsonl を使った閾値校正の運用サイクル。
+    # 「いつ・どう校正するか」を明文化し、校正忘れを防ぐ。
+    calibration:
+      min_events: 20
+      review_trigger: "compact-events.jsonl のエントリが min_events に達したとき"
+      review_actions:
+        - "auto compact の発火 % 分布を確認し、compact_yellow/red_percent の位置を評価する"
+        - "prompt_count / shell_bytes と context_usage_percent の相関を分析し、proxy 閾値を調整する"
+        - "1 セッション中の compact 回数分布から Thrashing リスクを評価する"
+      decision_record: "校正による閾値変更は値チューニング（D-* 不該当）のため ADR 不要。変更理由は compact-events の分析結果として docs/DECISIONS.md の ADR-0001 Follow-up に追記する"
     # 意図的に採用しない設計（YAGNI）。閾値は manifest が SoT であり、
     # 外部設定機構や個人別オーバーライドは観測ベースの必要性が複数回確認されるまで作らない。
     non_goals:
@@ -201,7 +244,9 @@ framework:
       - "個人別オーバーライド（.session-budget.local.json 等の階層化設定）"
     # 将来拡張候補。proxy 指標の誤検知を補完する方向の設計メモ。
     future_notes:
-      - "preCompact Hook が使えるようになれば、Cursor 側のコンパクション発動を直接検知でき、経過時間 proxy を補完できる（unified design の preCompact = コンパクション発生前の追跡ドキュメント書き込み促進が根拠）"
+      - "Phase 2: stop / beforeSubmitPrompt に context_window フィールドが追加されれば、毎ターン token% 判定が可能になり proxy を完全 fallback に降格できる"
+      - "Phase 2: preCompact に followup_message / additional_context が追加されれば、compact 直前に AI が自律的に handoff 作業を完了できる"
+      - "Phase 2 の Cursor Forum 機能要望は compact-events.jsonl の校正データが 20 件以上蓄積してから起票する（データに基づいた要望の方が説得力がある）"
     # 参考リンク。リポ内の安定リンクのみを焼き込み、プロジェクト固有チケットや
     # 未検証の外部引用は含めない（移植性とトレーサビリティの両立）。
     references:
@@ -228,6 +273,7 @@ tech_stack:
 #   が正式な検証コマンドの置き場になる。
 # ------------------------------------------------------------
 session:
+  tracker_always_required: true
   large_task_threshold:
     files: 5
     subtasks: 3
@@ -321,6 +367,21 @@ coderabbit:
 #   ここでの責務は実 script 検出ではなく技術スタック由来の canonical contract の生成であり、
 #   結果は package.json の有無に依存しない（実体は contract に追従する）。
 # ------------------------------------------------------------
+# (2d-2) domain_docs — Phase 1.67 で tech_stack から自動導出されるフィールド。
+#   seed テンプレートの描画に必要な最小デフォルト。tech_stack 取り込み後に上書きされる。
+domain_docs:
+  primary_language: "[要確認]"
+  framework: "[要確認]"
+  test_framework: "[要確認]"
+  package_manager: "[要確認]"
+  database: "[要確認]"
+  api_style: "[要確認]"
+  architecture: "[要確認]"
+  coding_standards_sections:
+  data_model_sections:
+  api_sections:
+  workflow_sections:
+
 quality_gate_contract:
   gen:
   build:
@@ -354,6 +415,64 @@ github_pr:
 # ------------------------------------------------------------
 github_issue:
   enabled: false
+
+# ------------------------------------------------------------
+# (2i) agent_workflow — タスク実行ワークフロー docs（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
+#   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+#   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
+#
+#   execute_skill: true の場合、.cursor/skills/execute-agent-workflow/SKILL.md を生成する。
+#   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
+# ------------------------------------------------------------
+agent_workflow:
+  enabled: false
+  report_slug_format: "yyyy-mm-dd-slug"
+  maintenance_docs:
+    enabled: false
+  gate_scripts: true
+  execute_skill: false
+  step_gates:
+    - id: step3
+      desc: "計画→実装境界（必須セクション充足）"
+      cmd: "plan-gate.sh report"
+    - id: step3-report
+      desc: "レポート構造検査（必須10セクション充足）"
+      cmd: "gate-report.py"
+    - id: step5
+      desc: "実装→検証（コードゲート）"
+      cmd: "code-gate"
+    - id: step6
+      desc: "検証→PR（検証ゲート）"
+      cmd: "verification-gate.sh"
+    - id: step7
+      desc: "PR→完了（レビュー完了承認）"
+      cmd: "plan-gate.sh review"
+    - id: adr
+      desc: "ADR 起票内容の機械検査"
+      cmd: "gate-adr.py"
+    - id: archive
+      desc: "完了チェック6項目 + archives移動検査"
+      cmd: "archive-gate.sh"
+  # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
+  # service: チケット管理サービス名 / format: 番号の正規表現パターン
+  ticket:
+    service: github
+    format: "[0-9]+"
+
+# ------------------------------------------------------------
+# (2j) cross_repo_knowledge — クロスリポジトリ知識リンクスキル（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
+#   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
+#   git clone / fetch / checkout / pull はすべて wrapper 経由で行い、
+#   AI が直接 git コマンドを実行しない設計。
+# ------------------------------------------------------------
+cross_repo_knowledge:
+  enabled: false
+  clone_base_path: "/tmp/cross-repo-knowledge"
+  git_protocol: "ssh"
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
@@ -396,15 +515,6 @@ outputs:
       - "Cautious"
       - "Thorough"
       - "Selective"
-  - path: .cursor/rules/03-github-security.mdc
-    template: rules/03-github-security.mdc.template
-    mode: render
-    required_sections:
-      - "alwaysApply: true"
-      - "token"
-      - "secret"
-      - "credential"
-      - "guard-git-write.sh"
   - path: .cursor/hooks/guard-git-write.sh
     template: hooks/guard-git-write.sh.template
     mode: render
@@ -435,6 +545,21 @@ outputs:
     executable: true
     required_sections:
       - "shell_bytes"
+  - path: .cursor/hooks/session-response-tracker.sh
+    template: hooks/session-response-tracker.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "afterAgentResponse"
+      - "turns.jsonl"
+  - path: .cursor/hooks/session-compact-observer.sh
+    template: hooks/session-compact-observer.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "preCompact"
+      - "compact-events.jsonl"
+      - "pending-handoff"
   - path: .cursor/hooks/session-budget-evaluator.sh
     template: hooks/session-budget-evaluator.sh.template
     mode: render
@@ -442,6 +567,7 @@ outputs:
     required_sections:
       - "CONTEXT_BUDGET"
       - "followup_message"
+      - "pending-handoff"
   - path: .cursor/hooks/README.md
     template: hooks/README.md.template
     mode: render
@@ -495,8 +621,8 @@ outputs:
       - "G-PLAN-SECTION-001"
       - "例外承認記録"
       - "フェーズ境界"
-  - path: docs/session-handoff-guide.md
-    template: docs/session-handoff-guide.md.template
+  - path: docs/CONTEXT_BUDGET.md
+    template: docs/CONTEXT_BUDGET.md.template
     mode: render
     required_sections:
       - "CONTEXT_BUDGET"
@@ -508,9 +634,19 @@ outputs:
       - "## チェックリスト"
       - "## 参考リンク"
       - "単一 manifest 制約"
-      - "意図的に採用しない設計"
       - "各指標が近似するもの（proxy の意味）"
-      - "席を外して時間だけ進んだ"
+      - "context-budget-internals.md"
+  - path: docs/references/context-budget-internals.md
+    template: docs/references/context-budget-internals.md.template
+    mode: render
+    required_sections:
+      - "preCompact"
+      - "compact-events.jsonl"
+      - "校正サイクル"
+      - "MemPalace"
+      - "将来拡張候補"
+      - "意図的に採用しない設計"
+      - "閾値の決定根拠"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
@@ -518,6 +654,46 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
       - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+  # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
+  # resolve_domain_docs.py（Phase 1.67）が tech_stack から domain_docs.* を決定し、
+  # テンプレート内の {{#each}} で tech-stack 固有セクションを展開する。
+  - path: docs/spec.md
+    template: docs/spec.md.template
+    mode: seed
+    required_sections:
+      - "## 目的と背景"
+      - "## ドメイン用語集"
+  - path: docs/spec/README.md
+    template: docs/spec/README.md.template
+    mode: seed
+    required_sections:
+      - "## 命名規約"
+      - "## テンプレート"
+  - path: docs/architecture.md
+    template: docs/architecture.md.template
+    mode: seed
+    required_sections:
+      - "## システム全体構成"
+  - path: docs/api.md
+    template: docs/api.md.template
+    mode: seed
+    required_sections:
+      - "## API設計概要"
+  - path: docs/data-models.md
+    template: docs/data-models.md.template
+    mode: seed
+    required_sections:
+      - "## データベース設計思想"
+  - path: docs/coding-standards.md
+    template: docs/coding-standards.md.template
+    mode: seed
+    required_sections:
+      - "コーディング規約"
+  - path: docs/workflows.md
+    template: docs/workflows.md.template
+    mode: seed
+    required_sections:
+      - "## 主要ユースケースの処理フロー"
   # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
   # coderabbit.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .coderabbit.yaml
@@ -534,7 +710,7 @@ outputs:
     mode: render
     required_sections:
       - "name: session-planning"
-      - "## 大規模タスクの検知"
+      - "## 追跡ドキュメントの存在保証"
       - "## パターン選択フロー"
       - "## 追跡ドキュメント"
       - "## Gotchas"
@@ -561,7 +737,6 @@ outputs:
     required_sections:
       - "=== session-start gate ==="
       - "G-SESSION-HANDOFF-001"
-      - "G-SESSION-ARCH-001"
   - path: .cursor/skills/session-handover/scripts/plan-gate.sh
     template: skills/session-handover/scripts/plan-gate.sh.template
     mode: render
@@ -570,6 +745,42 @@ outputs:
       - "=== plan gate"
       - "G-PLAN-SECTION-001"
       - "G-PLAN-REVIEW-001"
+  - path: .cursor/skills/session-handover/scripts/workflow-gate.sh
+    template: skills/session-handover/scripts/workflow-gate.sh.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "=== workflow gate ==="
+      - "step3"
+      - "step3-report"
+      - "step5"
+      - "adr"
+      - "archive"
+  - path: .cursor/skills/session-handover/scripts/archive-gate.sh
+    template: skills/session-handover/scripts/archive-gate.sh.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "=== archive gate ==="
+      - "G-ARCHIVE-CHECK-001"
+  - path: .cursor/skills/session-handover/scripts/gate-report.py
+    template: skills/session-handover/scripts/gate-report.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-REPORT-SECTION-001"
+      - "=== report gate ==="
+  - path: .cursor/skills/session-handover/scripts/gate-adr.py
+    template: skills/session-handover/scripts/gate-adr.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-ADR-SIGNIFICANCE-001"
+      - "G-ADR-ALTERNATIVES-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render
@@ -708,6 +919,149 @@ outputs:
     template: bin/github-pr-create-safe.template
     mode: render
     executable: true
+  # agent-workflow docs（feature: agent_workflow で条件生成）。
+  # docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+  # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
+  - path: docs/agent-tasks/reports/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow
+  - path: docs/agent-tasks/reports/archives/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow
+  - path: docs/agent-tasks/agent-workflow.md
+    template: docs/agent-tasks/agent-workflow.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "基本フロー"
+      - "ステップ別詳細"
+      - "reports/"
+  - path: docs/agent-tasks/README.md
+    template: docs/agent-tasks/README.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "1キャンペーン"
+      - "reports/"
+  - path: docs/agent-tasks/agent-workflow/01-investigation.md
+    template: docs/agent-tasks/agent-workflow/01-investigation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "ドキュメントの参照"
+      - "コードの調査"
+      - "ADR 起票判定"
+  - path: docs/agent-tasks/agent-workflow/02-task-decision.md
+    template: docs/agent-tasks/agent-workflow/02-task-decision.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "判定チェックリスト"
+      - "タスク確定ではない場合"
+  - path: docs/agent-tasks/agent-workflow/03-report-creation.md
+    template: docs/agent-tasks/agent-workflow/03-report-creation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "必須セクション"
+      - "プレースホルダ禁止"
+      - "進行中キャンペーン"
+  - path: docs/agent-tasks/agent-workflow/04-implementation.md
+    template: docs/agent-tasks/agent-workflow/04-implementation.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "既存実装の踏襲"
+      - "設計判断が発生した場合"
+  - path: docs/agent-tasks/agent-workflow/05-testing.md
+    template: docs/agent-tasks/agent-workflow/05-testing.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "コードゲート"
+      - "合格条件"
+      - "禁止事項"
+  - path: docs/agent-tasks/agent-workflow/06-pr-review.md
+    template: docs/agent-tasks/agent-workflow/06-pr-review.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "PR 作成"
+      - "指摘の検証"
+      - "レビュー完了承認"
+  - path: docs/agent-tasks/agent-workflow/07-completion.md
+    template: docs/agent-tasks/agent-workflow/07-completion.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "docs への仕様反映"
+      - "完了条件の確認"
+      - "archives 移動"
+      - "G-DOC-SPEC"
+  - path: docs/agent-tasks/agent-workflow/best-practices.md
+    template: docs/agent-tasks/agent-workflow/best-practices.md.template
+    mode: render
+    feature: agent_workflow
+    required_sections:
+      - "推測禁止"
+      - "既存実装の踏襲"
+      - "archives 移動"
+  # execute-agent-workflow スキル（feature: agent_workflow.execute_skill で条件生成）。
+  # agent_workflow.execute_skill: true の場合のみ生成される。
+  # 7 ステップ標準ワークフローの制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+  - path: .cursor/skills/execute-agent-workflow/SKILL.md
+    template: skills/execute-agent-workflow/SKILL.md.template
+    mode: render
+    feature: agent_workflow.execute_skill
+    required_sections:
+      - "name: execute-agent-workflow"
+      - "## 前提条件"
+      - "Step Gate Matrix"
+      - "## Context Budget 到達時の対応"
+      - "## 進行中タスクレポートからの再開"
+      - "## ベストプラクティス"
+      - "## Gotchas"
+  # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
+  # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
+  - path: .cursor/skills/agent-maintenance-docs/SKILL.md
+    template: skills/agent-maintenance-docs/SKILL.md.template
+    mode: render
+    feature: agent_workflow.maintenance_docs
+    required_sections:
+      - "name: agent-maintenance-docs"
+      - "## 責務範囲"
+      - "G-DOC-SPEC"
+      - "責務境界テーブル"
+      - "## Gotchas"
+  # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
+  # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。
+  - path: .cursor/skills/cross-repository-knowledge-link/SKILL.md
+    template: skills/cross-repository-knowledge-link/SKILL.md.template
+    mode: render
+    feature: cross_repo_knowledge
+    required_sections:
+      - "name: cross-repository-knowledge-link"
+      - "## 発動条件"
+      - "## 実行フロー"
+      - "cross-repo-sync-safe"
+      - "## 安全対策"
+      - "## Gotchas"
+  - path: .cursor/skills/cross-repository-knowledge-link/config.json
+    template: skills/cross-repository-knowledge-link/config.json.template
+    mode: seed
+    feature: cross_repo_knowledge
+  - path: bin/cross-repo-sync-safe
+    template: bin/cross-repo-sync-safe.template
+    mode: render
+    feature: cross_repo_knowledge
+    executable: true
+    required_sections:
+      - "cross-repo-sync-safe"
+      - "validate_name"
+      - "clone_base_path"
   - path: .gitignore
     template: gitignore.block.template
     mode: marker
@@ -733,8 +1087,14 @@ project:
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
   # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
   workflow_pattern: "[要確認]"
-  # workflow_pattern から決定論マッピングで自動確定
-  tracking_artifact: "[要確認]"
+  # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
+  # 設計根拠（SoT §6 からの意図的逸脱）:
+  #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
+  #   永続化すべき判断は DECISIONS.md / GOTCHAS.md に抽出する設計。
+  #   git 履歴にセッション状態のノイズを入れず、ルートディレクトリを .cursor/ 配下に隔離する。
+  # 下流注記: トレーサビリティ要件がある業務プロジェクトでは SoT §6 準拠
+  #   （ルート直下 plan.md + archive/ 保管 + git 管理）に戻すことを推奨する。
+  tracking_artifact: ".cursor/.tracking/tracker.md"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   agent_role: "自己完結 SoT（manifest + templates）から Agentic Workflow 基盤ファイル群を決定論的に生成・監査・メンテナンスするエージェント"
   # 固定値（PO には問わない）。
@@ -766,10 +1126,24 @@ project:
     never_extra:
       - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
       - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
-      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials）を読み取る"
+      - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials / ~/.netrc / ~/.ssh/**）を読み取る"
       - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
-  # 固定値（生成物 docs/tech-stack.md を指す。PO には問わない）。
+  # 固定値（生成物 docs/tech-stack.md + Domain 層ドキュメント群を指す。PO には問わない）。
   doc_navigation:
     domain:
       - path: "docs/tech-stack.md"
         desc: "技術スタック方針（tech_stack 由来の Domain 層サマリ・生成物）"
+      - path: "docs/spec.md"
+        desc: "仕様概要 — ドメインコンテキスト + 機能インデックス。各機能の詳細は docs/spec/*.md（seed 生成物）"
+      - path: "docs/spec/"
+        desc: "機能別詳細仕様 — 各機能の SoT。README.md に命名規約とテンプレート（seed 生成物）"
+      - path: "docs/architecture.md"
+        desc: "アーキテクチャ設計 — システム構成・コンポーネント責務・依存関係方針（seed 生成物）"
+      - path: "docs/api.md"
+        desc: "API 仕様 — エンドポイント一覧・リクエスト/レスポンス・エラーハンドリング（seed 生成物）"
+      - path: "docs/data-models.md"
+        desc: "データモデル — DB スキーマ・ER 関係・マイグレーション規約（seed 生成物）"
+      - path: "docs/coding-standards.md"
+        desc: "コーディング規約 — tech-stack から自動導出されたベストプラクティス（render 生成物）"
+      - path: "docs/workflows.md"
+        desc: "ワークフロー — 主要ユースケースの処理フロー・状態遷移・エラーハンドリング（seed 生成物）"

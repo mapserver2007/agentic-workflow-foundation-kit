@@ -1,0 +1,63 @@
+# ⑤ テスト実装
+
+[← agent-workflow.md（index）に戻る](../agent-workflow.md)
+
+実装したコードのテストを作成し、コードゲートを通過させるフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の「G-BUILD / G-LINT / G-TEST / G-GEN」がこのフェーズのゲート。
+
+---
+
+## 5.1 テストの作成
+
+タスクレポートのテスト計画に従ってテストを実装する。
+
+### テスト作成の原則
+- 正常系 / 異常系 / 境界値の3観点を漏れなくカバーする
+- 既存テストのスタイル・命名規則を踏襲する
+- テスト間の独立性を保つ（共有状態を排除する）
+
+## 5.2 テストの実行（コードゲート）
+
+[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の全ゲートを通す。
+
+{{#if agent_workflow.gate_scripts}}
+```bash
+.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+```
+{{else}}
+```bash
+{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}
+```
+{{/if}}
+
+### 合格条件
+
+| ゲート | コマンド | 合格条件 |
+| --- | --- | --- |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | 差分なし（生成物がコミット済み） |
+| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
+| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
+| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
+
+**禁止事項**（AGENTS.md > Boundaries と整合）:
+- テストの一部失敗を黙って無視する
+- lint 指摘を一括抑制する
+- 失敗しているテストをスキップする
+
+## 5.3 タスクレポートの更新
+
+テスト実装完了後、`reports/{report}.md` のテスト計画セクションのチェックボックスを更新する。
+
+```markdown
+- [x] {テストケース1}
+- [x] {テストケース2}
+```
+
+完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新する。
+
+---
+
+## 関連ドキュメント
+
+- [04-implementation.md](04-implementation.md) — 前ステップ（実装）
+- [06-pr-review.md](06-pr-review.md) — 次ステップ（PR レビュー検証）
+- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 — コードゲートの定義

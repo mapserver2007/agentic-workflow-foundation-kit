@@ -1,0 +1,46 @@
+# アーキテクチャ設計
+
+<!-- このファイルは agentic-workflow-foundation スキルの seed 生成物（初回のみ生成）。
+     PO / 開発者がプロジェクト固有の設計で充実させる。再生成では上書きしない。 -->
+
+> 技術スタック: {{domain_docs.primary_language}} / {{domain_docs.framework}}
+> アーキテクチャ: {{domain_docs.architecture}}
+
+## システム全体構成
+
+[TODO] 外部システムとの接続関係を図示する（Mermaid 推奨）。
+
+```mermaid
+graph TB
+    subgraph "本システム"
+        A[コンポーネント A]
+        B[コンポーネント B]
+    end
+    C[外部システム]
+    A --> B
+    B --> C
+```
+
+## ディレクトリ/モジュール責務
+
+[TODO] 主要ディレクトリの責務を記述する。
+
+| ディレクトリ | 責務 | 依存先 |
+|-------------|------|--------|
+|  |  |  |
+
+## 主要コンポーネント詳細
+
+[TODO] コンポーネント間の依存関係と責務を記述する。
+
+## 依存関係方針
+
+[TODO] 依存の方向性・DI 方針・外部ライブラリ選定基準を記述する。
+
+## 参照
+
+- [仕様概要](spec.md)
+- [API 仕様](api.md)
+- [データモデル](data-models.md)
+- [コーディング規約](coding-standards.md)
+- [技術スタック](tech-stack.md)
