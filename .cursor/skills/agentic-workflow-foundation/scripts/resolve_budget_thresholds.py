@@ -70,6 +70,19 @@ RED_PCT_FLOOR = 75
 RED_PCT_CEIL = 80
 
 
+def format_shell_bytes_label(n: int) -> str:
+    """shell_bytes を二進 KiB/MiB の人間可読表記に変換する（1024 基数）。"""
+    mib = 1024 * 1024
+    kib = 1024
+    if n >= mib and n % mib == 0:
+        return f"{n // mib} MiB"
+    if n >= kib and n % kib == 0:
+        return f"{n // kib} KiB"
+    if n >= mib:
+        return f"{n / mib:.2f} MiB"
+    return f"{n / kib:.1f} KiB"
+
+
 def _out(level: str, msg: str) -> None:
     print(f"[resolve_budget_thresholds] {level}: {msg}")
 
@@ -114,10 +127,12 @@ def resolve(min_window: int) -> dict:
         "yellow": {
             "prompt_count": tier["yellow_prompt_count"],
             "shell_bytes": tier["yellow_shell_bytes"],
+            "shell_bytes_label": format_shell_bytes_label(tier["yellow_shell_bytes"]),
         },
         "red": {
             "prompt_count": tier["red_prompt_count"],
             "shell_bytes": tier["red_shell_bytes"],
+            "shell_bytes_label": format_shell_bytes_label(tier["red_shell_bytes"]),
         },
         "checkpoint_interval_prompts": FIXED["checkpoint_interval_prompts"],
     }
@@ -187,9 +202,11 @@ def _render_budget_block(resolved: dict) -> list[str]:
         "    yellow:",
         f"      prompt_count: {resolved['yellow']['prompt_count']}",
         f"      shell_bytes: {resolved['yellow']['shell_bytes']}",
+        f"      shell_bytes_label: \"{resolved['yellow']['shell_bytes_label']}\"",
         "    red:",
         f"      prompt_count: {resolved['red']['prompt_count']}",
         f"      shell_bytes: {resolved['red']['shell_bytes']}",
+        f"      shell_bytes_label: \"{resolved['red']['shell_bytes_label']}\"",
         f"    checkpoint_interval_prompts: {resolved['checkpoint_interval_prompts']}",
     ]
 

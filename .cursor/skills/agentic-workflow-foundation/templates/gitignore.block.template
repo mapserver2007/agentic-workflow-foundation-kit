@@ -2,3 +2,5 @@
 .cursor/.session/
 # agentic-workflow-foundation: 追跡ドキュメント（キャンペーン状態管理ファイル・コミットしない）
 .cursor/.tracking/
+# MEGA sync (local only)
+.megaignore

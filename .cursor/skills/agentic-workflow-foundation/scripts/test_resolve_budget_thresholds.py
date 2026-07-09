@@ -9,7 +9,15 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from resolve_budget_thresholds import resolve, main  # noqa: E402
+from resolve_budget_thresholds import format_shell_bytes_label, resolve, main  # noqa: E402
+
+
+def test_shell_bytes_label():
+    assert format_shell_bytes_label(768000) == "750 KiB"
+    assert format_shell_bytes_label(4194304) == "4 MiB"
+    assert format_shell_bytes_label(1048576) == "1 MiB"
+    assert format_shell_bytes_label(5242880) == "5 MiB"
+    print("PASS: shell_bytes_label formatting")
 
 
 def test_200k_preset():
@@ -19,7 +27,9 @@ def test_200k_preset():
     assert r["yellow"]["prompt_count"] == 35, f"prompt_y: {r['yellow']['prompt_count']}"
     assert r["red"]["prompt_count"] == 70, f"prompt_r: {r['red']['prompt_count']}"
     assert r["yellow"]["shell_bytes"] == 768000
+    assert r["yellow"]["shell_bytes_label"] == "750 KiB"
     assert r["red"]["shell_bytes"] == 4194304
+    assert r["red"]["shell_bytes_label"] == "4 MiB"
     assert r["min_context_window_tokens"] == 200000
     assert r["checkpoint_interval_prompts"] == 15
     assert r["compact_freshness_sec"] == 300
@@ -34,7 +44,9 @@ def test_300k_preset():
     assert r["yellow"]["prompt_count"] == 45
     assert r["red"]["prompt_count"] == 90
     assert r["yellow"]["shell_bytes"] == 1048576
+    assert r["yellow"]["shell_bytes_label"] == "1 MiB"
     assert r["red"]["shell_bytes"] == 5242880
+    assert r["red"]["shell_bytes_label"] == "5 MiB"
     assert r["min_context_window_tokens"] == 300000
     print("PASS: 300K preset")
 
@@ -140,6 +152,7 @@ framework:
 
 
 if __name__ == "__main__":
+    test_shell_bytes_label()
     test_200k_preset()
     test_300k_preset()
     test_custom_150k()

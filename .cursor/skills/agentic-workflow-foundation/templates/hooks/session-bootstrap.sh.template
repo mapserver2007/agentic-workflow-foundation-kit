@@ -59,6 +59,7 @@ jq -n \
 
 # ---- handoff manifest 読み込み ----
 ADDITIONAL_CONTEXT=""
+HANDOFF_CONTENT=""
 MAX_INJECTION_BYTES={{framework.budget_thresholds.max_injection_bytes}}
 if [[ -f "$HANDOFF_FILE" ]]; then
   HANDOFF_CONTENT="$(cat "$HANDOFF_FILE" 2>/dev/null)" || HANDOFF_CONTENT=""

@@ -129,7 +129,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 | 指標 | Yellow | Red |
 |---|---|---|
 | プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
-| シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} | {{framework.budget_thresholds.red.shell_bytes}} |
+| シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} ({{framework.budget_thresholds.yellow.shell_bytes_label}}) | {{framework.budget_thresholds.red.shell_bytes}} ({{framework.budget_thresholds.red.shell_bytes_label}}) |
 
 ### compact 由来の token% 閾値（主指標 — preCompact 経由で取得）
 
