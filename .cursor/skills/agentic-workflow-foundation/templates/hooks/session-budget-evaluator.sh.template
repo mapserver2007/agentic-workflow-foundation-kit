@@ -38,6 +38,7 @@ fi
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 STATE_FILE="$SESSION_DIR/${SESSION_ID}.json"
+TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${SESSION_ID}.md"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   echo '{}'
@@ -101,7 +102,7 @@ token_level() {
 
 # ---- manifest 骨格の機械生成（Yellow/Red 発火時に呼び出し） ----
 generate_manifest_skeleton() {
-  local HANDOFF_FILE="$SESSION_DIR/handoff-active.md"
+  local HANDOFF_FILE="$SESSION_DIR/handoff-${SESSION_ID}.md"
   if [[ ! -f "$HANDOFF_FILE" ]]; then
     cat > "$HANDOFF_FILE" 2>/dev/null <<'SKEL'
 # Handoff Manifest
@@ -205,10 +206,10 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（{{project.tracking_artifact}}）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（$TRACKER_FILE）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
-4. .cursor/.session/handoff-active.md に以下の見出し順で manifest を書き出す:
+4. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
    ## セッション判断ログ
@@ -226,10 +227,10 @@ AI への指示:
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（{{project.tracking_artifact}}）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（$TRACKER_FILE）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
-4. .cursor/.session/handoff-active.md に manifest を書き出す準備をする。
+4. .cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す準備をする。
 5. ユーザーに「コンパクションが発生しました（使用率 ${COMPACT_PCT}%）。区切りの良いタイミングで
    新規チャット (Cmd+N) を開くことをお勧めします。」と短く伝える。"
   fi
@@ -245,20 +246,7 @@ if [[ "$LEVEL" == "none" ]] || ! should_emit; then
   if [[ -f "$CHECKPOINT_MARKER" ]]; then
     CP_COUNT="$(cat "$CHECKPOINT_MARKER" 2>/dev/null)" || CP_COUNT="?"
     rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
-    CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過（定期チェックポイント）。
-
-AI への指示:
-追跡ドキュメント（{{project.tracking_artifact}}）の「セッション判断ログ」を最新化せよ:
-1. 現在のフェーズと直近で完了した作業
-2. このセッションで採用した判断と根拠（なぜその案を選んだか）
-3. 却下した案と却下理由（なぜ採用しなかったか）
-4. 現在のブロッカー・制約・未完了の検証
-
-注意: 前回 CHECKPOINT 以降 tracker.md が未更新の場合、セッション判断が外部化されていない。
-判断構造を失う前に今すぐ追記せよ。
-
-この書き出しは「まだ注意力が高いうちの高品質な記録」として扱う。Yellow/Red 到達時の manifest 作成はこの記録を転記するだけで済む。
-この指示は定期チェックポイントであり、セッション切り替えの推奨ではない。作業は継続してよい。ユーザーへの言及は不要（裏作業）。"
+    CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過。追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化せよ: (1) 現在のフェーズと直近完了作業 (2) 採用した判断と根拠 (3) 却下した案と理由 (4) ブロッカー・制約。作業は継続してよい。ユーザーへの言及は不要。"
     jq -n --arg m "$CP_MSG" '{ followup_message: $m }'
     exit 0
   fi
@@ -293,8 +281,8 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（{{project.tracking_artifact}}）の「次セッションTODO」「セッション判断ログ」を最新化する（tracker.md が SoT）。
-2. .cursor/.session/handoff-active.md に以下の見出し順で manifest を書き出す:
+1. 追跡ドキュメント（$TRACKER_FILE）の「次セッションTODO」「セッション判断ログ」を最新化する（tracker.md が SoT）。
+2. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
    ## セッション判断ログ
@@ -311,9 +299,9 @@ else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（{{project.tracking_artifact}}）の「セッション判断ログ」を最新化する（tracker.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
+1. 追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化する（tracker.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
 2. 追跡ドキュメントの「次セッションTODO」を最新化する。
-3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-active.md に manifest を書き出す。manifest には tracker.md の判断ログをそのまま転記し、tracker.md 未反映の揮発情報のみ追記する。
+3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には tracker.md の判断ログをそのまま転記し、tracker.md 未反映の揮発情報のみ追記する。
 4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
 5. Red 到達時は強制ハンドオフが発火する。"
 fi

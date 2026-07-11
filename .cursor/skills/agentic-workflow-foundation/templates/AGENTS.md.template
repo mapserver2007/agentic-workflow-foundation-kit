@@ -9,7 +9,7 @@
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
 
 - 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
-- 追跡ドキュメント（単一ファイル）: `{{project.tracking_artifact}}`（状態管理ファイル。`.gitignore` 対象・完了時は削除）
+- 追跡ドキュメント: `{{project.tracking_artifact}}`（セッションごとの状態管理ファイル。`.gitignore` 対象・完了時は削除）
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
@@ -80,7 +80,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 3. 設計次元 D-* を変更する判断が発生した場合は **即時** `docs/DECISIONS.md` に ADR を追記
 4. 失敗・踏み外しの学びが発生した場合は `## Gotchas` 起票トリガーを確認し、該当すれば追記
-5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-active.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
+5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-{session_id}.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
 
 ### セッション再開
 
@@ -96,7 +96,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 - **Checkpoint**: 定期的に `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造の外部化を促す（セッション切り替えではない）
 - **Yellow**: 追跡ドキュメントの最新化と作業の区切り準備。`followup_message` の指示に従う
-- **Red**: handoff manifest を `.cursor/.session/handoff-active.md` に書き出し、新規チャットへ誘導。新規実装を停止する
+- **Red**: handoff manifest を `.cursor/.session/handoff-{session_id}.md` に書き出し、新規チャットへ誘導。新規実装を停止する
 
 ## Boundaries
 

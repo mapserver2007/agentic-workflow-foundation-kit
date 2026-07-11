@@ -31,6 +31,7 @@ fi
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 STATE_FILE="$SESSION_DIR/${SESSION_ID}.json"
+TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${SESSION_ID}.md"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   echo '{}'
@@ -105,8 +106,8 @@ jq -c -n \
 PENDING_FILE="$SESSION_DIR/${SESSION_ID}.pending-handoff"
 printf '%s\n' "$USAGE_PCT" > "$PENDING_FILE" 2>/dev/null || true
 
-# ---- 3.5. tracker.md が存在しなければ最小骨格を生成 ----
-TRACKER="$PROJECT_DIR/{{project.tracking_artifact}}"
+# ---- 3.5. tracker が存在しなければ最小骨格を生成 ----
+TRACKER="$TRACKER_FILE"
 if [[ ! -f "$TRACKER" ]]; then
   mkdir -p "$(dirname "$TRACKER")" 2>/dev/null || true
   cat > "$TRACKER" 2>/dev/null <<'TRACKER_SKEL'

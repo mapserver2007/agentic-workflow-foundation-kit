@@ -70,7 +70,9 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
   → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
 [ユーザー: Cmd+N で新規チャット]
   → sessionStart Hook → session-bootstrap.sh
-  → handoff-active.md を additional_context 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → handoff-{session_id}.md をスキャン（0/1/2+ 分岐）
+  → 1 件: auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させる
   → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
   → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
   → AI が manifest / snapshot を読み込んで作業継続
@@ -82,7 +84,7 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 
 | Hook ファイル | イベント | 役割 |
 |---|---|---|
-| `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-active.md` の注入とアーカイブ |
+| `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-{session_id}.md` の注入とアーカイブ（並行セッション対応: 0/1/2+ 分岐） |
 | `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み + prompt テキスト先頭 1000B を turns.jsonl に追記 |
 | `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
 | `session-response-tracker.sh` | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000B を turns.jsonl に追記（ゼロコスト会話ログ） |
@@ -171,7 +173,7 @@ Yellow/Red とは独立に、`{{framework.budget_thresholds.checkpoint_interval_
 | `{{this.warning}}` | {{this.action}} |
 {{/each}}
 
-新規チャットで短文を1通送れば、`session-bootstrap.sh` が `.cursor/.session/handoff-active.md` を自動注入する。例: 「続きをお願いします」「再開」「.」。
+新規チャットで短文を1通送れば、`session-bootstrap.sh` が `.cursor/.session/handoff-{session_id}.md` を自動注入する。複数の handoff が存在する場合は AskQuestion でどれを読み込むかユーザーに選択させる。例: 「続きをお願いします」「再開」「.」。
 
 ### Red 通知後にやってはいけないこと
 
@@ -187,30 +189,27 @@ Yellow/Red とは独立に、`{{framework.budget_thresholds.checkpoint_interval_
 - **消費後**: `session-bootstrap.sh` が `{{framework.handoff.consumed_manifest_pattern}}` にリネームしてアーカイブ
 - `.cursor/` 直下に独自ファイルを作成しない
 
-### 単一 manifest 制約
+### 並行セッション対応
 
-`{{framework.handoff.active_manifest_path}}` は 1 ファイル管理のため、複数キャンペーンを並行で引き継ぐことはできない。最後に書いた manifest が常に有効になる。別タスクを挟む場合は、active manifest を手動で退避してから新規チャットを開く。退避を怠ると、別タスクのチャットが先に active manifest を消費してしまう（失敗モード `mis-consume`）。退避した manifest は元のキャンペーンに戻る前に必ず復元する。
+handoff manifest はセッションごとに独立したファイル（`handoff-{session_id}.md`）として管理される。並行セッションが同一 manifest を上書きする問題は発生しない。
 
-```bash
-mkdir -p .cursor/.session/backup
-chmod 700 .cursor/.session/backup
+| 状況 | bootstrap の動作 |
+|---|---|
+| handoff 0 件 | 新規セッション（handoff なし） |
+| handoff 1 件 | auto-inject + consumed リネーム（従来と同じ UX） |
+| handoff 2+ 件 | `[CONTEXT_BUDGET_HANDOFF_SELECT]` マーカーを注入し、AI が AskQuestion でユーザーに選択させる |
 
-# 別タスクを始める前に manifest を退避
-mv .cursor/.session/handoff-active.md .cursor/.session/backup/handoff-{ticket}.md
+2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択分のみ consumed リネームされ、残りは後続セッションで消費可能。
 
-# 別タスク完了後、元のキャンペーンに戻る前に復元
-mv .cursor/.session/backup/handoff-{ticket}.md .cursor/.session/handoff-active.md
-```
+## tracker と handoff manifest の責務境界
 
-## tracker.md と handoff manifest の責務境界
-
-| | tracker.md（追跡ドキュメント） | handoff-active.md（manifest） |
+| | tracker-{session_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
 |---|---|---|
-| **役割** | キャンペーン全体の SoT | セッション固有の揮発情報 + tracker.md へのポインタ |
-| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker.md のどこにいるか + tracker.md に未反映の差分 |
+| **役割** | キャンペーン（= セッション）の SoT | セッション固有の揮発情報 + tracker へのポインタ |
+| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker のどこにいるか + tracker に未反映の差分 |
 | **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
 | **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
-| **矛盾時の優先** | **常に tracker.md が正** | tracker.md の劣化コピーとして扱う |
+| **矛盾時の優先** | **常に tracker が正** | tracker の劣化コピーとして扱う |
 
 {{framework.handoff.manifest_responsibility}}。
 
@@ -233,7 +232,7 @@ tracker.md はプランファイルへのポインタ + セッション判断ロ
 
 ## handoff manifest テンプレート
 
-AI が `handoff-active.md` を作成する場合は、以下の見出し順序で記載する。
+AI が `handoff-{session_id}.md` を作成する場合は、以下の見出し順序で記載する。
 
 ```markdown
 # Handoff Manifest
@@ -313,9 +312,9 @@ cat .cursor/.session/*.json | jq .
 
 ### 新規チャットを開いたが引き継ぎされない
 
-1. `.cursor/.session/handoff-active.md` が存在するか確認する
+1. `.cursor/.session/handoff-*.md`（`handoff-consumed-*` を除く）が存在するか確認する
 2. 既に consumed 済みなら `.cursor/.session/handoff-consumed-*` を確認する
-3. 必要なら consumed manifest を `handoff-active.md` として復元し、もう一度 Cmd+N で新規チャットを開く
+3. 必要なら consumed manifest を `handoff-{session_id}.md` として復元し、もう一度 Cmd+N で新規チャットを開く
 
 ## 失敗モード
 
@@ -331,7 +330,7 @@ cat .cursor/.session/*.json | jq .
 - compact が一度も起きないセッションでは token% の恩恵がなく、proxy fallback のみで動作する
 - 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
-- session handoff の内容品質は AI が作る `handoff-active.md` の品質に依存するが、包括的構造化スナップショット（turns.jsonl + tracker.md + state）により、manifest が書けなかった場合でも fallback 注入が可能
+- session handoff の内容品質は AI が作る `handoff-{session_id}.md` の品質に依存するが、包括的構造化スナップショット（turns.jsonl + tracker + state）により、manifest が書けなかった場合でも fallback 注入が可能
 
 > preCompact スナップショット / manifest 骨格の機械生成 / 注入サイズ上限 / スナップショット突合 /
 > compact-events.jsonl 校正 / 校正サイクル / MemPalace 共存 / 将来拡張候補の詳細は
