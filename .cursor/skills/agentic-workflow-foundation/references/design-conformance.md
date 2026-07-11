@@ -64,14 +64,14 @@
 
 ### docs/CONTEXT_BUDGET.md（ADR Context Budget Auto-Handoff）
 - `CONTEXT_BUDGET`: Yellow/Red プロトコル。
-- `handoff-active.md`: manifest パス規約の SoT。
+- `handoff-{session_id}.md`: manifest パス規約の SoT（並行セッション対応）。
 - `## 生成根拠`: 設計入力の役割と入力状態が出力から確認でき（正本ファイル名・ハッシュは出力へ露出しない）、SKILL 内部に永続状態を持たないことを説明できること。
 - `## なぜ必要か`: Lost in the Middle とコンテキストドリフトの運用リスクを利用者が理解できること。
 - `## 構成`: Hook スクリプトと `.cursor/.session/` 状態ファイルの責務が復元可能であること。
 - `## 各指標の更新タイミング`: prompt_count / shell_bytes の proxy 指標がいつ更新・リセットされるかを明示すること。
 - `## チェックリスト`: 新メンバーが初回セットアップで Hook 登録・実行権限・state 生成を確認できること。
 - `## 参考リンク`: 採用根拠（DECISIONS）・Hook 技術詳細・AI 振る舞い規範への安定リンクを提示し、判断の裏取り経路を保全すること。プロジェクト固有チケットや未検証の外部引用は焼き込まない（`framework.handoff.references` が SoT）。
-- `単一 manifest 制約`: `handoff-active.md` の誤 consume と並行キャンペーン非対応を明示し、手動退避で事故を回避できること。
+- `並行セッション対応`: セッションごとの独立した handoff manifest（`handoff-{session_id}.md`）による並行セッション管理と、stale-handoff の検出・選択機構を説明できること。
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
 ### docs/tech-stack.md（techstack §9）

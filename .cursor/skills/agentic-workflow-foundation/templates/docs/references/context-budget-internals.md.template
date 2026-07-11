@@ -79,7 +79,7 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 
 ## manifest 骨格の機械生成
 
-Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-active.md` に必須見出しのみの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
+Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.md` に必須見出しのみの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
 
 ## 注入サイズ上限
 
