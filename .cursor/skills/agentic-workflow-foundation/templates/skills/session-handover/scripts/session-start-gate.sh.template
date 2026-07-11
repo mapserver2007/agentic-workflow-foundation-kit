@@ -9,7 +9,6 @@ set -u
 
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
-HANDOFF_FILE="$SESSION_DIR/handoff-active.md"
 TRACKING="{{project.tracking_artifact}}"
 STALE_HOURS=24
 
@@ -21,22 +20,31 @@ if [[ -z "$TRACKING" || "$TRACKING" == \[* ]]; then
 fi
 
 find_tracking_documents() {
-  if [[ "$TRACKING" == */* ]]; then
-    local candidate="$PROJECT_DIR/$TRACKING"
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-    fi
-    return
+  local tracking_dir
+  tracking_dir="$(dirname "$PROJECT_DIR/$TRACKING")"
+  local tracking_base
+  tracking_base="$(basename "$TRACKING")"
+  local tracking_pattern="${tracking_base//\{session_id\}/*}"
+  if [[ -d "$tracking_dir" ]]; then
+    find "$tracking_dir" -maxdepth 1 -type f -name "$tracking_pattern" 2>/dev/null
   fi
-  find "$PROJECT_DIR" -type f -name "$TRACKING" 2>/dev/null
 }
 
 fail=0
 
 # --- G-SESSION-HANDOFF-001: handoff manifest 未消費の残存 (WARN) ---
-if [[ -f "$HANDOFF_FILE" ]]; then
-  echo "[WARN] handoff-active.md 残存。新規チャットの sessionStart Hook が consume すべき (G-SESSION-HANDOFF-001): $HANDOFF_FILE"
-else
+HANDOFF_FOUND=false
+if [[ -d "$SESSION_DIR" ]]; then
+  for hf in "$SESSION_DIR"/handoff-*.md; do
+    [[ -f "$hf" ]] || continue
+    case "$(basename "$hf")" in
+      handoff-consumed-*) continue ;;
+    esac
+    HANDOFF_FOUND=true
+    echo "[WARN] handoff manifest 残存。新規チャットの sessionStart Hook が consume すべき (G-SESSION-HANDOFF-001): $hf"
+  done
+fi
+if [[ "$HANDOFF_FOUND" == "false" ]]; then
   echo "[PASS] handoff manifest 残存なし (G-SESSION-HANDOFF-001)"
 fi
 
