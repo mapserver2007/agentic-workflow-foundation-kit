@@ -30,6 +30,7 @@ ROOT_OVERLAY_KEYS = (
     "coderabbit",
     "agent_workflow",
     "cross_repo_knowledge",
+    "multi_agent_evaluation",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (

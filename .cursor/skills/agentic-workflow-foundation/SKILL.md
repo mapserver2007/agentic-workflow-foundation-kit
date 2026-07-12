@@ -220,7 +220,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。
+- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`multi_agent_evaluation` は推奨スキル一括確認とは別の 1 論点として確認する（モデル設定が必要なため）。
 
   **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
      - Yes → 以下を固定値で一括設定する
@@ -244,6 +244,16 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
   - `その他（カスタム入力）` — 数値をトークン単位で入力 → 入力値を `min_context_window_tokens` に設定
   - Phase 1.55 で `resolve_budget_thresholds.py` がこの値から `framework.budget_thresholds` を決定論的に算出する
 
+- `multi_agent_evaluation`（多角評価スキル）: 推奨スキル一括確認とは**別の 1 論点**として確認する。モデル設定が必要なためバンドルしない。
+
+  **多角評価スキル確認**: 「要件・方針・設計判断を A/B 並列分析 + C 独立裁定で多角評価する multi-agent-evaluation スキルをインストールしますか？」（推奨: Yes / No）
+     - Yes → `multi_agent_evaluation.enabled: true` を設定し、続けてモデル設定を 1 問で確認する:
+       - **モデル設定**: 「C（裁定者）/ A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C には最も高性能なモデルを推奨します。C と A/B が全て同一モデルの場合は設定エラーになります。」
+       - PO が指定した値を `multi_agent_evaluation.models.{judge,analyst_a,analyst_b}` に設定する
+       - 利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
+       - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
+     - No → `multi_agent_evaluation.enabled: false` のまま → multi-agent-evaluation スキルを生成しない
+
 **(2) 自動導出（質問不要）**
 
 - `tracking_artifact`: 全 `workflow_pattern` 共通で `.cursor/.tracking/tracker.md`（固定値）。
@@ -258,7 +268,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | --- | --- | --- |
 | A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
 | B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `session-start-gate.sh` / `guard-git-write.sh` / 軽量検査ID（`G-{GATE}-{CAT}-{NNN}`） | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
-| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル | engine / model resolver による異モデル強制 |
+| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル / multi-agent-evaluation（A/B 並列分析 + C 独立裁定） | engine / model resolver による異モデル強制 |
 | D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント完了時削除 | 提案書 7 ステップパイプライン |
 | E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
 

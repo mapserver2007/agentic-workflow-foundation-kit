@@ -159,6 +159,10 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン
 {{/if}}
+{{#if multi_agent_evaluation.enabled}}
+### 多角評価（multi_agent_evaluation 有効時）
+- **`.cursor/skills/multi-agent-evaluation/SKILL.md`**: 要件・方針・設計判断の多角評価（A/B 並列分析 + C 独立裁定。コード diff レビューではない）
+{{/if}}
 
 ### Domain 層（このリポ固有の業務・実装 / kebab-case）
 {{#each project.doc_navigation.domain}}- **{{this.path}}**: {{this.desc}}

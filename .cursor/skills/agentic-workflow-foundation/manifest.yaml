@@ -97,7 +97,7 @@ framework:
       not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
-      adopted: "Task subagent 並列探索 / 自己反論 / review スキル"
+      adopted: "Task subagent 並列探索 / 自己反論 / review スキル / multi-agent-evaluation（A/B 並列分析 + C 独立裁定）"
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
@@ -465,6 +465,35 @@ agent_workflow:
   ticket:
     service: github
     format: "[0-9]+"
+
+# ------------------------------------------------------------
+# (2k) multi_agent_evaluation — 多角評価スキル（オプション生成）
+#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   enabled: true の場合のみ outputs[] の feature: multi_agent_evaluation エントリが生成対象になる。
+#   A（推進分析）・B（反証分析）の並列 readonly subagent と C（独立裁定・親エージェント）で
+#   要件・方針・設計判断を構造的に評価する。コード diff レビューではない（agent-code-review の責務）。
+#   C と A/B が全て同一モデルの場合は設定エラーとする。
+# ------------------------------------------------------------
+multi_agent_evaluation:
+  enabled: false
+  models:
+    judge: "[要確認]"
+    analyst_a: "[要確認]"
+    analyst_b: "[要確認]"
+  execution:
+    require_distinct_agents: true
+    model_unavailable: "ABORT"
+    max_rounds: 3
+    max_rebuttal_turns_per_issue: 1
+    stop_when: "NO_MATERIAL_ISSUES"
+  high_impact_categories:
+    - "security_or_authorization"
+    - "secret_or_sensitive_data"
+    - "data_deletion_or_migration"
+    - "breaking_external_api"
+    - "irreversible_architecture"
+    - "unapproved_cost_or_schedule"
+    - "must_requirement_conflict"
 
 # ------------------------------------------------------------
 # (2j) cross_repo_knowledge — クロスリポジトリ知識リンクスキル（オプション生成）
@@ -1040,6 +1069,51 @@ outputs:
       - "G-DOC-SPEC"
       - "責務境界テーブル"
       - "## Gotchas"
+  # multi-agent-evaluation スキル（feature: multi_agent_evaluation で条件生成）。
+  # multi_agent_evaluation.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .cursor/skills/multi-agent-evaluation/SKILL.md
+    template: skills/multi-agent-evaluation/SKILL.md.template
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "name: multi-agent-evaluation"
+      - "## 判断フロー"
+      - "## C の判定契約"
+      - "辞書式裁定規則"
+      - "## 高影響カテゴリ"
+      - "## Gotchas"
+  - path: .cursor/skills/multi-agent-evaluation/references/analyst-brief.md
+    template: skills/multi-agent-evaluation/references/analyst-brief.md.template
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "Evidence Ledger"
+      - "相補分析の視点指示"
+  - path: .cursor/skills/multi-agent-evaluation/references/verification-flags.md
+    template: skills/multi-agent-evaluation/references/verification-flags.md.template
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "DISTINCT_AGENT_EXECUTION_UNVERIFIED"
+      - "MODEL_ASSIGNMENT_UNVERIFIED"
+      - "BASELINE_INTEGRITY_UNVERIFIED"
+      - "LOOP_CONVERGED"
+  - path: .cursor/skills/multi-agent-evaluation/references/issue-card-format.md
+    template: skills/multi-agent-evaluation/references/issue-card-format.md.template
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "匿名化争点カード"
+      - "除外する要素"
+  - path: .cursor/skills/multi-agent-evaluation/references/decision-report.md
+    template: skills/multi-agent-evaluation/references/decision-report.md.template
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "判断レポート定型"
+      - "Pre-analysis Record"
+      - "検証フラグ"
+      - "最終裁定"
   # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
   # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。
