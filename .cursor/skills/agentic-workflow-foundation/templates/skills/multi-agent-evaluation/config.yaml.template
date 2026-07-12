@@ -5,24 +5,34 @@
 
 models:
   # C（裁定者）: 親エージェントに割り当てるモデル（最も高性能なモデルを推奨）
-  judge: "{{multi_agent_evaluation.models.judge}}"
+  judge: "{{#if multi_agent_evaluation.models.judge}}{{multi_agent_evaluation.models.judge}}{{else}}claude-4.6-opus-high-thinking{{/if}}"
   # A（推進分析）: readonly subagent
-  analyst_a: "{{multi_agent_evaluation.models.analyst_a}}"
+  analyst_a: "{{#if multi_agent_evaluation.models.analyst_a}}{{multi_agent_evaluation.models.analyst_a}}{{else}}composer-2.5-fast{{/if}}"
   # B（反証分析）: readonly subagent
-  analyst_b: "{{multi_agent_evaluation.models.analyst_b}}"
+  analyst_b: "{{#if multi_agent_evaluation.models.analyst_b}}{{multi_agent_evaluation.models.analyst_b}}{{else}}composer-2.5-fast{{/if}}"
 
 execution:
   # true の場合、A/B を別プロセスとして起動する
-  require_distinct_agents: {{multi_agent_evaluation.execution.require_distinct_agents}}
+  require_distinct_agents: {{#if multi_agent_evaluation.execution.require_distinct_agents}}{{multi_agent_evaluation.execution.require_distinct_agents}}{{else}}true{{/if}}
   # モデル利用不可時の方針: ABORT（即終了）
-  model_unavailable: "{{multi_agent_evaluation.execution.model_unavailable}}"
+  model_unavailable: "{{#if multi_agent_evaluation.execution.model_unavailable}}{{multi_agent_evaluation.execution.model_unavailable}}{{else}}ABORT{{/if}}"
   # 最大ラウンド数（round 0 含む）
-  max_rounds: {{multi_agent_evaluation.execution.max_rounds}}
+  max_rounds: {{#if multi_agent_evaluation.execution.max_rounds}}{{multi_agent_evaluation.execution.max_rounds}}{{else}}3{{/if}}
   # 争点ごとの反駁上限
-  max_rebuttal_turns_per_issue: {{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}
+  max_rebuttal_turns_per_issue: {{#if multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}{{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}{{else}}1{{/if}}
   # 停止条件
-  stop_when: "{{multi_agent_evaluation.execution.stop_when}}"
+  stop_when: "{{#if multi_agent_evaluation.execution.stop_when}}{{multi_agent_evaluation.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
 
 high_impact_categories:
+{{#if multi_agent_evaluation.high_impact_categories}}
 {{#each multi_agent_evaluation.high_impact_categories}}  - "{{this}}"
 {{/each}}
+{{else}}
+  - "security_or_authorization"
+  - "secret_or_sensitive_data"
+  - "data_deletion_or_migration"
+  - "breaking_external_api"
+  - "irreversible_architecture"
+  - "unapproved_cost_or_schedule"
+  - "must_requirement_conflict"
+{{/if}}
