@@ -6,8 +6,8 @@
 
 A/B はそれぞれ `Task` subagent（`readonly: true`）として同一メッセージで並列起動する。
 
-- A のモデル: `{{multi_agent_evaluation.models.analyst_a}}`
-- B のモデル: `{{multi_agent_evaluation.models.analyst_b}}`
+- A のモデル: `config.yaml > models.analyst_a` の値
+- B のモデル: `config.yaml > models.analyst_b` の値
 - 互いの出力を見ない（C だけが両方を受け取る）
 - C の暫定結論・候補の由来・価値判断を渡さない
 

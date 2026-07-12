@@ -24,19 +24,24 @@ disable-model-invocation: true
 
 ## モデルと実行設定
 
-設定値は `manifest.yaml > multi_agent_evaluation` から読み取る。
-
-- **C（裁定者）**: `{{multi_agent_evaluation.models.judge}}` — 親エージェントに割り当てる
-- **A（推進分析）**: `{{multi_agent_evaluation.models.analyst_a}}` — readonly subagent
-- **B（反証分析）**: `{{multi_agent_evaluation.models.analyst_b}}` — readonly subagent
-- **最大ラウンド**: `{{multi_agent_evaluation.execution.max_rounds}}`（round 0 含む）
-- **争点ごとの反駁上限**: `{{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}`
+**SoT は [`config.yaml`](config.yaml)**（本ディレクトリ直下）。モデルや実行パラメータの変更は config.yaml を直接編集する。
 
 ### 起動前チェック
 
-1. 指定モデルが実行環境で利用可能か確認する。利用不可の場合は判断フローを開始せず、利用不可のモデル名と設定修正を促すエラーメッセージを出力して即終了する（`ABORT`）。同等モデルへの暗黙フォールバックはしない
-2. C と A/B が全て同一モデルの場合は設定エラーとして拒否する（C ↔ A/B 間の多様性喪失）
-3. A/B は別エージェント（別プロセス）として起動する。別プロセス起動を確認できない場合は `DISTINCT_AGENT_EXECUTION_UNVERIFIED` を記録する（→ [references/verification-flags.md](references/verification-flags.md)）
+1. config.yaml を読み込み、以下の設定値を取得する:
+   ```
+   Read: .cursor/skills/multi-agent-evaluation/config.yaml
+   ```
+   - `models.judge` — C（裁定者）に割り当てるモデル
+   - `models.analyst_a` — A（推進分析）に割り当てるモデル
+   - `models.analyst_b` — B（反証分析）に割り当てるモデル
+   - `execution.max_rounds` — 最大ラウンド数（round 0 含む）
+   - `execution.max_rebuttal_turns_per_issue` — 争点ごとの反駁上限
+   - `execution.model_unavailable` — モデル利用不可時の方針
+   - `high_impact_categories` — 高影響カテゴリ一覧
+2. 指定モデルが実行環境で利用可能か確認する。利用不可の場合は判断フローを開始せず、利用不可のモデル名と config.yaml の修正を促すエラーメッセージを出力して即終了する（`execution.model_unavailable` の方針に従う）。同等モデルへの暗黙フォールバックはしない
+3. C と A/B が全て同一モデルの場合は設定エラーとして拒否する（C ↔ A/B 間の多様性喪失）
+4. A/B は別エージェント（別プロセス）として起動する。別プロセス起動を確認できない場合は `DISTINCT_AGENT_EXECUTION_UNVERIFIED` を記録する（→ [references/verification-flags.md](references/verification-flags.md)）
 
 ---
 
@@ -96,7 +101,7 @@ A/B を `Task` subagent（`readonly: true`）として同一メッセージで�
 
 **通常の再審**: C は争点台帳とその論点に必要な最小限の証跡だけを A/B に同一メッセージで渡して独立再審を並列依頼する。再審では優先視点を入れ替えるか、各争点について両者に最強の賛成・反対根拠を要求する。A/B は (a) Must・高影響ゲート違反、(b) 証跡の誤読・欠落・過大評価、(c) 対称比較に漏れた候補・コスト、(d) 裁定を変え得る仮定のいずれかに該当する新規かつ反証可能な問題だけを返す。
 
-**限定反駁**（相反する一次証跡を持つ結論変更可能な命題がある場合のみ）: C が匿名化した争点カードを A/B に同時配布する。争点カードの構成は [references/issue-card-format.md](references/issue-card-format.md) を参照。争点ごとの反駁は `{{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}` 回まで。同一争点に追加の問いで上限を迂回することは禁止する。
+**限定反駁**（相反する一次証跡を持つ結論変更可能な命題がある場合のみ）: C が匿名化した争点カードを A/B に同時配布する。争点カードの構成は [references/issue-card-format.md](references/issue-card-format.md) を参照。争点ごとの反駁は `config.yaml > execution.max_rebuttal_turns_per_issue` の値まで。同一争点に追加の問いで上限を迂回することは禁止する。
 
 **停止条件**: 全決定的命題が `VERIFIED` / `DISPROVED` / `EXPLICITLY_UNRESOLVED` に分類され、未解消命題が結論を変えないか `INVESTIGATE` / `ESCALATE` に移管済みの状態（`NO_MATERIAL_ISSUES`）。停止条件を満たした場合は `LOOP_CONVERGED` を記録する（→ [references/verification-flags.md](references/verification-flags.md)）。上限到達は品質保証ではないため、収束と同義に扱わない。
 
@@ -127,7 +132,7 @@ C は選択候補について以下を確認する。
 | `INVESTIGATE` | 検証可能な問い・最小の調査/PoC/測定・結果による分岐条件・完了基準を定義する |
 | `ESCALATE` | ユーザーだけが決められる価値判断、高影響ゲート、または未解決の決定的な不確実性を返す |
 
-高影響に分類される判断（`manifest.yaml > multi_agent_evaluation.high_impact_categories`）は、証跡の十分性にかかわらず `SELECT` / `SELECT_WITH_CONDITIONS` を返さず、`ESCALATE` する。
+高影響に分類される判断（`config.yaml > high_impact_categories`）は、証跡の十分性にかかわらず `SELECT` / `SELECT_WITH_CONDITIONS` を返さず、`ESCALATE` する。
 
 ### 辞書式裁定規則
 
@@ -148,10 +153,7 @@ C は選択候補について以下を確認する。
 
 ## 高影響カテゴリ
 
-{{#each multi_agent_evaluation.high_impact_categories}}- `{{this}}`
-{{/each}}
-
-高影響の判定はこの列挙に対応する manifest の機械可読な分類値で行い、「重大」のような非定義語での運用判断を許容しない。
+**SoT は `config.yaml > high_impact_categories`**。高影響の判定はこの列挙に対応する config.yaml の機械可読な分類値で行い、「重大」のような非定義語での運用判断を許容しない。
 
 ---
 

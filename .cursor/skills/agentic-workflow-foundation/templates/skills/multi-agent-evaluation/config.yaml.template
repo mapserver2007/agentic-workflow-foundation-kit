@@ -1,0 +1,28 @@
+# multi-agent-evaluation 実行設定
+#
+# このファイルを直接編集してモデルや実行パラメータを変更できます。
+# mode: seed のため、再生成時に既存の編集内容は上書きされません。
+
+models:
+  # C（裁定者）: 親エージェントに割り当てるモデル（最も高性能なモデルを推奨）
+  judge: "{{multi_agent_evaluation.models.judge}}"
+  # A（推進分析）: readonly subagent
+  analyst_a: "{{multi_agent_evaluation.models.analyst_a}}"
+  # B（反証分析）: readonly subagent
+  analyst_b: "{{multi_agent_evaluation.models.analyst_b}}"
+
+execution:
+  # true の場合、A/B を別プロセスとして起動する
+  require_distinct_agents: {{multi_agent_evaluation.execution.require_distinct_agents}}
+  # モデル利用不可時の方針: ABORT（即終了）
+  model_unavailable: "{{multi_agent_evaluation.execution.model_unavailable}}"
+  # 最大ラウンド数（round 0 含む）
+  max_rounds: {{multi_agent_evaluation.execution.max_rounds}}
+  # 争点ごとの反駁上限
+  max_rebuttal_turns_per_issue: {{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}
+  # 停止条件
+  stop_when: "{{multi_agent_evaluation.execution.stop_when}}"
+
+high_impact_categories:
+{{#each multi_agent_evaluation.high_impact_categories}}  - "{{this}}"
+{{/each}}
