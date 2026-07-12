@@ -113,6 +113,19 @@
 - `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
 - `## Gotchas`: 反映判定 / archives 移動の運用失敗の Observe → Amend → Evolve 入口。
 
+### .cursor/skills/multi-agent-evaluation/SKILL.md（feature: multi_agent_evaluation）
+- `name: multi-agent-evaluation`: Cursor skill としての識別子。
+- `## 判断フロー`: Phase 1〜8 の構造的評価フローが存在すること。
+- `## C の判定契約`: C（裁定者）の判定条件と禁止事項が定義されていること。
+- `辞書式裁定規則`: Must 制約 → 成功条件 → 証跡 → 可逆性の順序で候補を比較する規則。
+- `## 高影響カテゴリ`: `config.yaml > high_impact_categories` を SoT とする分類一覧。
+- `## Gotchas`: 独立性違反・Pre-analysis Record 欠落・ESCALATE 漏れ等の運用失敗の Observe → Amend → Evolve 入口。
+
+### .cursor/skills/multi-agent-evaluation/config.yaml（feature: multi_agent_evaluation / seed）
+- `models`: C（裁定者）/ A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。SKILL.md の起動前チェックが config.yaml からモデル設定を読み込む前提。
+- `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `model_unavailable` 等の実行パラメータが定義されていること。
+- `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
+
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
 
 QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。

@@ -1082,6 +1082,14 @@ outputs:
       - "辞書式裁定規則"
       - "## 高影響カテゴリ"
       - "## Gotchas"
+  - path: .cursor/skills/multi-agent-evaluation/config.yaml
+    template: skills/multi-agent-evaluation/config.yaml.template
+    mode: seed
+    feature: multi_agent_evaluation
+    required_sections:
+      - "models"
+      - "execution"
+      - "high_impact_categories"
   - path: .cursor/skills/multi-agent-evaluation/references/analyst-brief.md
     template: skills/multi-agent-evaluation/references/analyst-brief.md.template
     mode: render
