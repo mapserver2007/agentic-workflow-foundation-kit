@@ -220,7 +220,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`multi_agent_evaluation` は推奨スキル一括確認とは別の 1 論点として確認する（モデル設定が必要なため）。
+- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `multi_agent_evaluation`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `multi_agent_evaluation` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`multi_agent_evaluation` のモデル設定は有効化後に別途 1 論点で確認する。
 
   **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
      - Yes → 以下を固定値で一括設定する
@@ -232,8 +232,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
        - `agent_workflow.execute_skill: true` → execute-agent-workflow スキルを生成
        - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
        - `cross_repo_knowledge.enabled: true` → cross-repository-knowledge-link スキルと `bin/cross-repo-sync-safe` を生成
-       - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.execute_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / execute-agent-workflow スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない
+       - `multi_agent_evaluation.enabled: true` → multi-agent-evaluation スキルを生成（続けてモデル設定を 1 問で確認する）
+       - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit / multi-agent-evaluation 個別設定の個別質問は行わない
+     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.execute_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `multi_agent_evaluation.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / execute-agent-workflow スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / multi-agent-evaluation スキルを生成しない
      - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
 
 - `context_budget`（最小コンテキストウィンドウ）: 使用するモデルの最小コンテキストウィンドウを PO に確認する。複数モデル併用時は最小のものを選ぶ。回答は `project.context_budget.min_context_window_tokens` に記録する。
@@ -244,15 +245,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
   - `その他（カスタム入力）` — 数値をトークン単位で入力 → 入力値を `min_context_window_tokens` に設定
   - Phase 1.55 で `resolve_budget_thresholds.py` がこの値から `framework.budget_thresholds` を決定論的に算出する
 
-- `multi_agent_evaluation`（多角評価スキル）: 推奨スキル一括確認とは**別の 1 論点**として確認する。モデル設定が必要なためバンドルしない。
+- `multi_agent_evaluation.models`（多角評価スキルのモデル設定）: 推奨スキル一括確認で `multi_agent_evaluation.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。
 
-  **多角評価スキル確認**: 「要件・方針・設計判断を A/B 並列分析 + C 独立裁定で多角評価する multi-agent-evaluation スキルをインストールしますか？」（推奨: Yes / No）
-     - Yes → `multi_agent_evaluation.enabled: true` を設定し、続けてモデル設定を 1 問で確認する:
-       - **モデル設定**: 「C（裁定者）/ A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C には最も高性能なモデルを推奨します。C と A/B が全て同一モデルの場合は設定エラーになります。」
-       - PO が指定した値を `multi_agent_evaluation.models.{judge,analyst_a,analyst_b}` に設定する
-       - 利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
-       - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
-     - No → `multi_agent_evaluation.enabled: false` のまま → multi-agent-evaluation スキルを生成しない
+  **多角評価モデル設定確認**: 「C（裁定者）/ A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C には最も高性能なモデルを推奨します。C と A/B が全て同一モデルの場合は設定エラーになります。」
+     - PO が指定した値を `multi_agent_evaluation.models.{judge,analyst_a,analyst_b}` に設定する
+     - 利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
+     - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
+     - `multi_agent_evaluation.enabled: false`（推奨スキル一括確認で No）の場合はこの質問をスキップする
 
 **(2) 自動導出（質問不要）**
 
