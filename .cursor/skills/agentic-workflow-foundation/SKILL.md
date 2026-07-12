@@ -248,8 +248,12 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `multi_agent_evaluation.models`（多角評価スキルのモデル設定）: 推奨スキル一括確認で `multi_agent_evaluation.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。
 
   **多角評価モデル設定確認**: 「C（裁定者）/ A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C には最も高性能なモデルを推奨します。C と A/B が全て同一モデルの場合は設定エラーになります。」
-     - PO が指定した値を `multi_agent_evaluation.models.{judge,analyst_a,analyst_b}` に設定する
-     - 利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
+     - デフォルト（推奨）: `C: claude-4.6-opus-high-thinking` / `A: composer-2.5-fast` / `B: composer-2.5-fast`
+     - AskQuestion の選択肢は以下の固定構成で提示する:
+       - A（推奨）: C=`claude-4.6-opus-high-thinking` / A=`composer-2.5-fast` / B=`composer-2.5-fast`
+       - B: その他（カスタム入力）
+     - 推奨を選択 → `manifest.yaml > multi_agent_evaluation.models` にデフォルト値を設定する
+     - カスタム入力 → PO が指定した値を `multi_agent_evaluation.models.{judge,analyst_a,analyst_b}` に設定する。利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
      - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
      - `multi_agent_evaluation.enabled: false`（推奨スキル一括確認で No）の場合はこの質問をスキップする
 
