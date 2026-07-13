@@ -41,7 +41,7 @@
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
 | `framework.security` | `AGENTS.md > Boundaries`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
 | `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
-| `multi_agent_evaluation` | `.cursor/skills/multi-agent-evaluation/SKILL.md`（A/B 並列分析 + C 独立裁定。要件・方針の多角評価）/ `config.yaml`（モデル・実行パラメータの SoT。seed モード）/ `references/analyst-brief.md` / `references/verification-flags.md` / `references/issue-card-format.md` / `references/decision-report.md` |
+| `multi_agent_evaluation` | `.cursor/skills/multi-agent-evaluation/SKILL.md`（内部 A/B 並列分析 + C 統合裁定。通常のチャット返答と同じ体裁で応答）/ `config.yaml`（モデル・実行パラメータの SoT。seed モード）/ `references/analyst-brief.md` / `references/verification-flags.md` / `references/issue-card-format.md` / `references/response-synthesis.md` |
 | `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 
 ## 変更時の運用

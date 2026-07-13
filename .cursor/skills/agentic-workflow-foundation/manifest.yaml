@@ -470,14 +470,14 @@ agent_workflow:
 # (2k) multi_agent_evaluation — 多角評価スキル（オプション生成）
 #   Phase 1.5 の AskQuestion で生成有無を決定する。
 #   enabled: true の場合のみ outputs[] の feature: multi_agent_evaluation エントリが生成対象になる。
-#   A（推進分析）・B（反証分析）の並列 readonly subagent と C（独立裁定・親エージェント）で
-#   要件・方針・設計判断を構造的に評価する。コード diff レビューではない（agent-code-review の責務）。
-#   C と A/B が全て同一モデルの場合は設定エラーとする。
+#   A（推進視点）・B（反証視点）の並列 readonly subagent と C（統合裁定・親エージェント）で
+#   内部的に多角分析を行い、通常のチャット返答と同じ体裁で応答する。
+#   内部の A/B 分析プロセスはユーザーに表示しない。
+#   C のモデルはスキル呼び出し時に選択し、A/B のモデルだけを設定する。
 # ------------------------------------------------------------
 multi_agent_evaluation:
   enabled: false
   models:
-    judge: "[要確認]"
     analyst_a: "[要確認]"
     analyst_b: "[要確認]"
   execution:
@@ -1077,10 +1077,9 @@ outputs:
     feature: multi_agent_evaluation
     required_sections:
       - "name: multi-agent-evaluation"
-      - "## 判断フロー"
-      - "## C の判定契約"
-      - "辞書式裁定規則"
-      - "## 高影響カテゴリ"
+      - "## 内部フロー"
+      - "## 応答の契約"
+      - "表示しない内部情報"
       - "## Gotchas"
   - path: .cursor/skills/multi-agent-evaluation/config.yaml
     template: skills/multi-agent-evaluation/config.yaml.template
@@ -1104,7 +1103,6 @@ outputs:
     required_sections:
       - "DISTINCT_AGENT_EXECUTION_UNVERIFIED"
       - "MODEL_ASSIGNMENT_UNVERIFIED"
-      - "BASELINE_INTEGRITY_UNVERIFIED"
       - "LOOP_CONVERGED"
   - path: .cursor/skills/multi-agent-evaluation/references/issue-card-format.md
     template: skills/multi-agent-evaluation/references/issue-card-format.md.template
@@ -1113,15 +1111,15 @@ outputs:
     required_sections:
       - "匿名化争点カード"
       - "除外する要素"
-  - path: .cursor/skills/multi-agent-evaluation/references/decision-report.md
-    template: skills/multi-agent-evaluation/references/decision-report.md.template
+  - path: .cursor/skills/multi-agent-evaluation/references/response-synthesis.md
+    template: skills/multi-agent-evaluation/references/response-synthesis.md.template
     mode: render
     feature: multi_agent_evaluation
     required_sections:
-      - "判断レポート定型"
-      - "Pre-analysis Record"
-      - "検証フラグ"
-      - "最終裁定"
+      - "応答生成ガイド"
+      - "禁止される表現パターン"
+      - "許容される表現パターン"
+      - "高影響領域の扱い"
   # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
   # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。

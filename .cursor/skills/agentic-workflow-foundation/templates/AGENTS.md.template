@@ -161,7 +161,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 {{/if}}
 {{#if multi_agent_evaluation.enabled}}
 ### 多角評価（multi_agent_evaluation 有効時）
-- **`.cursor/skills/multi-agent-evaluation/SKILL.md`**: 要件・方針・設計判断の多角評価（A/B 並列分析 + C 独立裁定。コード diff レビューではない）
+- **`.cursor/skills/multi-agent-evaluation/SKILL.md`**: 内部で A/B 並列分析 + C 統合裁定を行い、通常のチャット返答と同じ体裁で応答する多角評価スキル
 {{/if}}
 
 ### Domain 層（このリポ固有の業務・実装 / kebab-case）

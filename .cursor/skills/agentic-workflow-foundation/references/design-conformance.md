@@ -122,7 +122,7 @@
 - `## Gotchas`: 独立性違反・Pre-analysis Record 欠落・ESCALATE 漏れ等の運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/multi-agent-evaluation/config.yaml（feature: multi_agent_evaluation / seed）
-- `models`: C（裁定者）/ A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。SKILL.md の起動前チェックが config.yaml からモデル設定を読み込む前提。
+- `models`: A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。C（裁定者）はスキルを呼び出す親エージェントであり、そのモデルは呼び出し時に選択する。SKILL.md の起動前チェックが config.yaml から A/B のモデル設定を読み込む前提。
 - `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `model_unavailable` 等の実行パラメータが定義されていること。
 - `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
 

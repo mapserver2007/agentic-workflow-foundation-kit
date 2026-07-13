@@ -1,14 +1,12 @@
 # multi-agent-evaluation 実行設定
 #
-# このファイルを直接編集してモデルや実行パラメータを変更できます。
+# このファイルを直接編集して A/B のモデルや実行パラメータを変更できます。
 # mode: seed のため、再生成時に既存の編集内容は上書きされません。
 
 models:
-  # C（裁定者）: 親エージェントに割り当てるモデル（最も高性能なモデルを推奨）
-  judge: "{{#if multi_agent_evaluation.models.judge}}{{multi_agent_evaluation.models.judge}}{{else}}claude-4.6-opus-high-thinking{{/if}}"
-  # A（推進分析）: readonly subagent
+  # A（推進視点）: readonly subagent
   analyst_a: "{{#if multi_agent_evaluation.models.analyst_a}}{{multi_agent_evaluation.models.analyst_a}}{{else}}composer-2.5-fast{{/if}}"
-  # B（反証分析）: readonly subagent
+  # B（反証視点）: readonly subagent
   analyst_b: "{{#if multi_agent_evaluation.models.analyst_b}}{{multi_agent_evaluation.models.analyst_b}}{{else}}composer-2.5-fast{{/if}}"
 
 execution:
@@ -23,6 +21,7 @@ execution:
   # 停止条件
   stop_when: "{{#if multi_agent_evaluation.execution.stop_when}}{{multi_agent_evaluation.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
 
+# 高影響領域: この領域に該当する判断は不確実性を明示しユーザー判断を促す
 high_impact_categories:
 {{#if multi_agent_evaluation.high_impact_categories}}
 {{#each multi_agent_evaluation.high_impact_categories}}  - "{{this}}"
