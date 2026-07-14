@@ -115,15 +115,15 @@
 
 ### .cursor/skills/multi-agent-evaluation/SKILL.md（feature: multi_agent_evaluation）
 - `name: multi-agent-evaluation`: Cursor skill としての識別子。
-- `## 判断フロー`: Phase 1〜8 の構造的評価フローが存在すること。
-- `## C の判定契約`: C（裁定者）の判定条件と禁止事項が定義されていること。
-- `辞書式裁定規則`: Must 制約 → 成功条件 → 証跡 → 可逆性の順序で候補を比較する規則。
-- `## 高影響カテゴリ`: `config.yaml > high_impact_categories` を SoT とする分類一覧。
-- `## Gotchas`: 独立性違反・Pre-analysis Record 欠落・ESCALATE 漏れ等の運用失敗の Observe → Amend → Evolve 入口。
+- `## 内部フロー`: Phase 1〜6 の構造的評価フロー（入力解析→ブリーフ作成→A/B 並列分析→統合裁定→再審→応答生成）が存在すること。
+- `## 応答の契約`: 応答品質基準（一次証跡優先の採用順位）と禁止事項が定義されていること。
+- `応答品質の基準`: 一次証跡の直接性 → 問いへの適合性 → 再現可能性 → A/B の一致、の採用順位。
+- `高影響領域`: `config.yaml > high_impact_categories` を SoT とする判断基準。
+- `## Gotchas`: 独立性違反・暗黙フォールバック・同一モデル時の品質保証示唆等の運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/multi-agent-evaluation/config.yaml（feature: multi_agent_evaluation / seed）
-- `models`: A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。C（裁定者）はスキルを呼び出す親エージェントであり、そのモデルは呼び出し時に選択する。SKILL.md の起動前チェックが config.yaml から A/B のモデル設定を読み込む前提。
-- `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `model_unavailable` 等の実行パラメータが定義されていること。
+- `models`: A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。C（裁定者）はスキルを呼び出す親エージェントであり、そのモデルは呼び出し時に選択する。SKILL.md の起動前チェックが config.yaml から A/B のモデル設定を読み込み、同一モデル時は `MODEL_HOMOGENEOUS` を記録する前提。
+- `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` / `model_unavailable` / `stop_when` 等の実行パラメータが定義されていること。
 - `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
 
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）

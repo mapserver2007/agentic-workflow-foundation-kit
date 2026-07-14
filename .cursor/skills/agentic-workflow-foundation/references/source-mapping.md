@@ -41,7 +41,7 @@
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
 | `framework.security` | `AGENTS.md > Boundaries`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
 | `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
-| `multi_agent_evaluation` | `.cursor/skills/multi-agent-evaluation/SKILL.md`（内部 A/B 並列分析 + C 統合裁定。通常のチャット返答と同じ体裁で応答）/ `config.yaml`（モデル・実行パラメータの SoT。seed モード）/ `references/analyst-brief.md` / `references/verification-flags.md` / `references/issue-card-format.md` / `references/response-synthesis.md` |
+| `multi_agent_evaluation` | `.cursor/skills/multi-agent-evaluation/SKILL.md`（内部 A/B 並列分析 + C 統合裁定。通常のチャット返答と同じ体裁で応答。一次証跡優先の採用順位、同一モデル時の限定性開示、A/B 未回収時の中止規約を含む）/ `config.yaml`（モデル・実行パラメータの SoT。seed モード。`max_issues_per_round` / `stop_when` を含む）/ `references/analyst-brief.md`（Ledger スキーマ・`不明` 正規値・ブリーフ欠落報告）/ `references/verification-flags.md`（`MODEL_HOMOGENEOUS` を含む）/ `references/issue-card-format.md`（再審三条件・ラウンド配布上限）/ `references/response-synthesis.md`（一次証跡優先 tie-break） |
 | `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 
 ## 変更時の運用

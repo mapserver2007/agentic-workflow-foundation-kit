@@ -485,6 +485,7 @@ multi_agent_evaluation:
     model_unavailable: "ABORT"
     max_rounds: 3
     max_rebuttal_turns_per_issue: 1
+    max_issues_per_round: 1
     stop_when: "NO_MATERIAL_ISSUES"
   high_impact_categories:
     - "security_or_authorization"
@@ -1089,6 +1090,15 @@ outputs:
       - "models"
       - "execution"
       - "high_impact_categories"
+  - path: .cursor/skills/multi-agent-evaluation/README.md
+    template: skills/multi-agent-evaluation/README.md
+    mode: render
+    feature: multi_agent_evaluation
+    required_sections:
+      - "## 動作の要点"
+      - "## 実行設定と前提"
+      - "## 有効なユースケース"
+      - "## 起動判断フロー"
   - path: .cursor/skills/multi-agent-evaluation/references/analyst-brief.md
     template: skills/multi-agent-evaluation/references/analyst-brief.md.template
     mode: render

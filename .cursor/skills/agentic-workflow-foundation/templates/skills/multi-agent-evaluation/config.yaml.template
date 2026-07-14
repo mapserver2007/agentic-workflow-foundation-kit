@@ -18,6 +18,8 @@ execution:
   max_rounds: {{#if multi_agent_evaluation.execution.max_rounds}}{{multi_agent_evaluation.execution.max_rounds}}{{else}}3{{/if}}
   # 争点ごとの反駁上限
   max_rebuttal_turns_per_issue: {{#if multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}{{multi_agent_evaluation.execution.max_rebuttal_turns_per_issue}}{{else}}1{{/if}}
+  # 再審1ラウンドあたりの争点カード配布上限
+  max_issues_per_round: {{#if multi_agent_evaluation.execution.max_issues_per_round}}{{multi_agent_evaluation.execution.max_issues_per_round}}{{else}}1{{/if}}
   # 停止条件
   stop_when: "{{#if multi_agent_evaluation.execution.stop_when}}{{multi_agent_evaluation.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
 
