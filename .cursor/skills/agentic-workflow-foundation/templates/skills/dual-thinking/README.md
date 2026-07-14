@@ -1,4 +1,4 @@
-# multi-agent-evaluation — ユースケースガイド
+# dual-thinking — ユースケースガイド
 
 > SKILL.md（生成物）の補足ドキュメント。起動判断の実用ガイドラインを記載する。
 
@@ -27,12 +27,15 @@ A/B 並列分析 + C 統合裁定の構造により、これらのリスクを�
 実行設定の SoT は [`config.yaml`](config.yaml) です。
 
 - `models.analyst_a` / `models.analyst_b`: A/B に割り当てるモデル
+- `execution.require_distinct_models`: A/B に異なるモデルを要求するか（静的 audit で検査）
 - `execution.max_rounds`: round 0 を含む最大分析ラウンド数
 - `execution.max_rebuttal_turns_per_issue`: 争点ごとの反駁上限
 - `execution.max_issues_per_round`: 再審1ラウンドあたりの争点カード配布上限
 - `execution.model_unavailable`: モデルが利用できない場合の方針
 - `execution.stop_when`: 再審の停止条件
 - `high_impact_categories`: リスクと不確実性を明示し、ユーザーの最終判断を必要とする領域
+
+**静的検査**: config.yaml の構造・異モデル要求・再審予算・停止方針は基盤 audit（`run_resolved_engine.py audit`）の静的ゲート G-DT-* で検査される。実行時のモデル実割当・A/B の相互非参照・別プロセス実行は Cursor Subagent API の制約により静的検査の対象外。
 
 起動前に A/B の指定モデルが利用可能であることを確認する。利用不可時は同等モデルへ暗黙に代替せず、`config.yaml` の修正を促して終了する。A/B が同一モデルの場合、A/B の一致をモデル独立な検証とはみなさない（一次証跡の直接性を優先する）。
 
@@ -101,12 +104,12 @@ A/B 並列分析 + C 統合裁定の構造により、これらのリスクを�
               ├─ No → 通常のチャットで回答
               └─ Yes → 複数の合理的な見方があるか？
                          ├─ No（一つの見方で十分）→ 通常のチャットで回答
-                         └─ Yes → multi-agent-evaluation を起動
+                         └─ Yes → dual-thinking を起動
 ```
 
 **AND 条件**: 「即答不可」×「影響が大きい」×「複数の合理的な見方がある」
 
-明示的に「多角的に考えて」「慎重に検討して」「multi-agent-evaluation で回答して」と依頼された場合も起動対象です。ただし、コード diff のレビューは `agent-code-review` の責務です。
+明示的に「多角的に考えて」「慎重に検討して」「dual-thinking で回答して」と依頼された場合も起動対象です。ただし、コード diff のレビューは `agent-code-review` の責務です。
 
 ## コスト認識
 
@@ -122,12 +125,12 @@ A/B 並列分析 + C 統合裁定の構造により、これらのリスクを�
 
 | ツール | 解決する問い | 出力 |
 | --- | --- | --- |
-| multi-agent-evaluation | **何をすべきか / どう考えるべきか** | 自然言語の回答（通常のチャット返答と同一体裁） |
+| dual-thinking | **何をすべきか / どう考えるべきか** | 自然言語の回答（通常のチャット返答と同一体裁） |
 | Plan Mode | **どう実装するか**（HOW） | プランファイル（.plan.md） |
 
 両者は競合ではなく補完関係。典型的な併用パターン:
 
 ```
-方針未確定 → multi-agent-evaluation（WHAT を決定）→ Plan Mode（HOW を計画）→ 実装
+方針未確定 → dual-thinking（WHAT を決定）→ Plan Mode（HOW を計画）→ 実装
 方針確定済み → Plan Mode（HOW を計画）→ 実装
 ```

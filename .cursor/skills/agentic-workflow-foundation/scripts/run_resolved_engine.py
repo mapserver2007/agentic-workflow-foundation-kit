@@ -30,7 +30,7 @@ ROOT_OVERLAY_KEYS = (
     "coderabbit",
     "agent_workflow",
     "cross_repo_knowledge",
-    "multi_agent_evaluation",
+    "dual_thinking",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
@@ -373,7 +373,21 @@ def prepare_skill_dir(resolved_dir: str, manifest: dict) -> str:
     return resolved_dir
 
 
-def run_engine(command: str, resolved_dir: str) -> int:
+def _run_dual_thinking_validator(manifest: dict) -> int:
+    """dual_thinking が有効なら静的契約検査を実行する。無効時は skip。"""
+    if not _is_feature_enabled(manifest, "dual_thinking"):
+        return 0
+    config_path = os.path.join(
+        ROOT, ".cursor", "skills", "dual-thinking", "config.yaml",
+    )
+    if not os.path.isfile(config_path):
+        print("[validate_dual_thinking] SKIP: config.yaml 不在（feature 有効だが未生成）")
+        return 0
+    from validate_dual_thinking import run as validate_run
+    return validate_run(config_path)
+
+
+def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) -> int:
     if command in ("generate", "check"):
         args = [
             sys.executable,
@@ -392,7 +406,12 @@ def run_engine(command: str, resolved_dir: str) -> int:
         ]
     else:
         raise ValueError(f"未知の command: {command}")
-    return subprocess.call(args, cwd=ROOT)
+    rc = subprocess.call(args, cwd=ROOT)
+    if rc != 0:
+        return rc
+    if command == "audit" and manifest is not None:
+        return _run_dual_thinking_validator(manifest)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -416,7 +435,7 @@ def main(argv=None) -> int:
             dir=os.path.join(ROOT, ".cursor", "skills"),
         ) as tmp_skill_dir:
             resolved_dir = prepare_skill_dir(tmp_skill_dir, manifest)
-            return run_engine(args.command, resolved_dir)
+            return run_engine(args.command, resolved_dir, manifest)
     except genlib.YamlError as e:
         print(f"FATAL: {e}", file=sys.stderr)
         return 2

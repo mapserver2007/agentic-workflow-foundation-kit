@@ -113,15 +113,15 @@
 - `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
 - `## Gotchas`: 反映判定 / archives 移動の運用失敗の Observe → Amend → Evolve 入口。
 
-### .cursor/skills/multi-agent-evaluation/SKILL.md（feature: multi_agent_evaluation）
-- `name: multi-agent-evaluation`: Cursor skill としての識別子。
+### .cursor/skills/dual-thinking/SKILL.md（feature: dual_thinking）
+- `name: dual-thinking`: Cursor skill としての識別子。
 - `## 内部フロー`: Phase 1〜6 の構造的評価フロー（入力解析→ブリーフ作成→A/B 並列分析→統合裁定→再審→応答生成）が存在すること。
 - `## 応答の契約`: 応答品質基準（一次証跡優先の採用順位）と禁止事項が定義されていること。
 - `応答品質の基準`: 一次証跡の直接性 → 問いへの適合性 → 再現可能性 → A/B の一致、の採用順位。
 - `高影響領域`: `config.yaml > high_impact_categories` を SoT とする判断基準。
 - `## Gotchas`: 独立性違反・暗黙フォールバック・同一モデル時の品質保証示唆等の運用失敗の Observe → Amend → Evolve 入口。
 
-### .cursor/skills/multi-agent-evaluation/config.yaml（feature: multi_agent_evaluation / seed）
+### .cursor/skills/dual-thinking/config.yaml（feature: dual_thinking / seed）
 - `models`: A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。C（裁定者）はスキルを呼び出す親エージェントであり、そのモデルは呼び出し時に選択する。SKILL.md の起動前チェックが config.yaml から A/B のモデル設定を読み込み、同一モデル時は `MODEL_HOMOGENEOUS` を記録する前提。
 - `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` / `model_unavailable` / `stop_when` 等の実行パラメータが定義されていること。
 - `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
