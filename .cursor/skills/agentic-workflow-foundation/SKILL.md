@@ -248,9 +248,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `dual_thinking.models`（多角評価スキルの A/B モデル設定）: 推奨スキル一括確認で `dual_thinking.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。C はスキルを呼び出す親エージェントであり、そのモデルはスキル呼び出し時に選択するため、この設定対象に含めない。
 
   **多角評価 A/B モデル設定確認**: 「A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C（裁定者）はスキル呼び出し時に選択した親エージェントのモデルで実行されます。」
-     - デフォルト（推奨）: `A: composer-2.5-fast` / `B: composer-2.5-fast`
+     - デフォルト（推奨）: `A: composer-2.5-fast` / `B: gpt-5.6-terra-medium`（GPT-5.6 Terra）
      - AskQuestion の選択肢は以下の固定構成で提示する:
-       - A（推奨）: A=`composer-2.5-fast` / B=`composer-2.5-fast`
+       - A（推奨）: A=`composer-2.5-fast` / B=`gpt-5.6-terra-medium`（GPT-5.6 Terra）
        - B: その他（カスタム入力）
      - 推奨を選択 → `manifest.yaml > dual_thinking.models` にデフォルト値を設定する
      - カスタム入力 → PO が指定した値を `dual_thinking.models.{analyst_a,analyst_b}` に設定する。利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
