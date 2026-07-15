@@ -422,8 +422,8 @@ github_issue:
   enabled: false
 
 # ------------------------------------------------------------
-# (2i) agent_workflow — タスク実行ワークフロー docs（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+# (2i) agent_workflow — タスク実行ワークフロー docs + orchestrator スキル
+#   Phase 1.5 の AskQuestion で生成有無を変更可能（seed default: true）。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
 #   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①③④⑤⑥⑦、②は①退出ゲート）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
@@ -432,12 +432,12 @@ github_issue:
 #   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
-  enabled: false
+  enabled: true
   report_slug_format: "yyyy-mm-dd-slug"
   maintenance_docs:
-    enabled: false
+    enabled: true
   gate_scripts: true
-  orchestrator_skill: false
+  orchestrator_skill: true
   # ステップ間パイプラインの中間生成物（決定 13 / 14）。
   # worker が incomplete/blocked で返却する際に書き出し、正式 artifact 確認後に削除する。
   artifact:
