@@ -53,6 +53,56 @@
 
 D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 / 値チューニングの選択 / リネーム / docs 整理 等）は ADR 起票せず PR 説明で完結。
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（4.1〜4.4）。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `report_path` | string | yes | 承認済みタスクレポートのパス |
+| `approved_plan` | string | yes | ユーザー承認済みの実装方針（レポートの「実装方針」セクション） |
+| `base_commit_sha` | string | yes | 実装開始時点の commit SHA（re-dispatch 時の差分基準） |
+| `revised_plan_ref` | string | no | 再 dispatch 時: 修正方針への参照 |
+| `partial_artifact_ref` | string | no | 再 dispatch 時: 前回の partial artifact パス |
+| `approved_adr_id` | string | no | 再 dispatch 時: 承認済み ADR 番号 |
+
+### 出力（envelope: YAML front matter + Markdown body）
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 実装結果 |
+| `step` | string | `"step4"` | 固定値 |
+| `changed_files` | string[] | — | 変更したファイルパス一覧 |
+| `untracked_files` | string[] | — | 新規作成（未追跡）ファイル一覧 |
+| `base_commit_sha` | string | — | 入力と同値（re-dispatch 照合用） |
+| `impl_summary` | string | — | 実装内容のサマリ |
+| `adr_needed` | boolean | — | D-* 変更が発生したか |
+| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `decision_alternatives` | string[] | — | `blocked: adr_required` 時の代替案 |
+
+- `complete`: オーケストレータはレポートの完了チェックを更新し⑤へ遷移する
+- `incomplete`: worker のコンテキスト不足等。partial artifact を書き出し再 dispatch 可能にする
+- `blocked` (`reason: adr_required`): D-* 変更検知。オーケストレータは ADR 起草 → `workflow-gate.sh adr` → ユーザー承認 → 新規④ worker を `revised_plan_ref` + `partial_artifact_ref` + `approved_adr_id` 付きで起動する
+- `fatal`: exit 2 相当。オーケストレータがユーザーに報告し QUALITY_GATE §2 例外承認導線を案内する
+
+### Markdown body
+
+実装内容の詳細（変更箇所の説明・設計判断の経緯・テストへの引き継ぎ事項）。⑤ worker が文脈として読む。
+
+### re-dispatch 時の復元検証
+
+再 dispatch 前にオーケストレータは以下を検証する:
+
+1. `git diff --stat <base_commit_sha>` と `changed_files` の一致
+2. `git ls-files --others --exclude-standard` と `untracked_files` の一致
+3. 不一致がある場合は re-dispatch を中止しユーザーに報告する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント

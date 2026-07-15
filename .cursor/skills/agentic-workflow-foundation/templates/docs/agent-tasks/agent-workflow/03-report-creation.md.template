@@ -139,10 +139,43 @@
 この内容で実装を進めてよろしいですか？
 ```
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（3.1〜3.4）。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `investigation_memo_path` | string | yes | ①出力の構造化調査メモパス |
+| `gate1_result` | enum | yes | `PASS`（①退出ゲート通過済み） |
+| `report_slug` | string | yes | レポートファイル名（`{{agent_workflow.report_slug_format}}`） |
+
+### 出力（envelope: YAML front matter + Markdown body）
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` | 作成結果 |
+| `step` | string | `"step3"` | 固定値 |
+| `report_path` | string | — | 作成されたレポートの相対パス |
+| `report_digest` | string | — | レポート内容のサマリ（親がユーザー承認を求める際に使用） |
+| `gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh step3-report` 相当の自己検査結果 |
+| `missing` | string[] | — | `incomplete` 時の未充足セクション名 |
+| `reason` | string | — | `blocked` 時の理由（`naming_conflict` / `gate_fail`） |
+
+- `complete`: オーケストレータはユーザーにレポートを提示し承認を求める。承認後 `workflow-gate.sh step3-report` を実行し④へ遷移する
+- `incomplete`: 必須セクションが不足。オーケストレータは `missing` を確認し追加情報付与で再 dispatch する
+- `blocked`: 命名衝突やゲート検査失敗。オーケストレータが状況を判断しユーザーに報告する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント
 
-- [02-task-decision.md](02-task-decision.md) — 前ステップ（タスク確定の判定）
+- [01-investigation.md](01-investigation.md) — 前ステップ（調査・分析）
+- [02-task-decision.md](02-task-decision.md) — ①退出ゲート仕様
 - [04-implementation.md](04-implementation.md) — 次ステップ（実装）
 - [AGENTS.md > Documentation Naming Convention](../../../AGENTS.md) — Meta/Domain 命名規約

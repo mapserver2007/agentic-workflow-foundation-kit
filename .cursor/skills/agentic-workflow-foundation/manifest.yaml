@@ -425,10 +425,10 @@ github_issue:
 # (2i) agent_workflow — タスク実行ワークフロー docs（オプション生成）
 #   Phase 1.5 の AskQuestion で生成有無を決定する。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
-#   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+#   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①③④⑤⑥⑦、②は①退出ゲート）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
-#   execute_skill: true の場合、.cursor/skills/execute-agent-workflow/SKILL.md を生成する。
+#   orchestrator_skill: true の場合、.cursor/skills/workflow-orchestrator/SKILL.md を生成する。
 #   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
@@ -437,7 +437,21 @@ agent_workflow:
   maintenance_docs:
     enabled: false
   gate_scripts: true
-  execute_skill: false
+  orchestrator_skill: false
+  # ステップ間パイプラインの中間生成物（決定 13 / 14）。
+  # worker が incomplete/blocked で返却する際に書き出し、正式 artifact 確認後に削除する。
+  artifact:
+    dir: ".cursor/.artifacts"
+    naming_pattern: "{report-slug}--{step}.md"
+    envelope:
+      format: "yaml-front-matter"
+      required_fields:
+        - "status"
+        - "step"
+      # I-4: front matter パーサー依存。PyYAML（yaml.safe_load）を唯一のパーサーとする。
+      # 未導入・不正 front matter・未知必須フィールドは exit 2（致命的エラー）。
+      parser: "python3-pyyaml"
+      parser_missing_exit: 2
   step_gates:
     - id: step3
       desc: "計画→実装境界（必須セクション充足）"
@@ -457,8 +471,14 @@ agent_workflow:
     - id: adr
       desc: "ADR 起票内容の機械検査"
       cmd: "gate-adr.py"
+    - id: artifact
+      desc: "Worker artifact envelope 検査"
+      cmd: "gate-artifact.py"
+    - id: redispatch
+      desc: "re-dispatch 前の復元差分照合"
+      cmd: "gate-redispatch.py"
     - id: archive
-      desc: "完了チェック6項目 + archives移動検査"
+      desc: "完了チェック6項目 + 残存artifact検査 + archives移動検査"
       cmd: "archive-gate.sh"
   # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
   # service: チケット管理サービス名 / format: 番号の正規表現パターン
@@ -832,6 +852,23 @@ outputs:
     required_sections:
       - "G-ADR-SIGNIFICANCE-001"
       - "G-ADR-ALTERNATIVES-001"
+  - path: .cursor/skills/session-handover/scripts/gate-artifact.py
+    template: skills/session-handover/scripts/gate-artifact.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-ARTIFACT-PARSE-001"
+      - "G-ARTIFACT-FIELD-001"
+      - "G-ARTIFACT-STATUS-001"
+  - path: .cursor/skills/session-handover/scripts/gate-redispatch.py
+    template: skills/session-handover/scripts/gate-redispatch.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-REDISPATCH-SHA-001"
+      - "G-REDISPATCH-CHANGED-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render
@@ -971,7 +1008,7 @@ outputs:
     mode: render
     executable: true
   # agent-workflow docs（feature: agent_workflow で条件生成）。
-  # docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+  # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①③④⑤⑥⑦、②は①退出ゲート）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
   - path: docs/agent-tasks/reports/.gitkeep
     template: gitkeep.template
@@ -1059,15 +1096,15 @@ outputs:
       - "推測禁止"
       - "既存実装の踏襲"
       - "archives 移動"
-  # execute-agent-workflow スキル（feature: agent_workflow.execute_skill で条件生成）。
-  # agent_workflow.execute_skill: true の場合のみ生成される。
-  # 7 ステップ標準ワークフローの制御フロー・Step Gate Matrix・スキル連携を一元管理する。
-  - path: .cursor/skills/execute-agent-workflow/SKILL.md
-    template: skills/execute-agent-workflow/SKILL.md.template
+  # workflow-orchestrator スキル（feature: agent_workflow.orchestrator_skill で条件生成）。
+  # agent_workflow.orchestrator_skill: true の場合のみ生成される。
+  # 6 段階標準ワークフロー（①③④⑤⑥⑦、②は①退出ゲート）の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+  - path: .cursor/skills/workflow-orchestrator/SKILL.md
+    template: skills/workflow-orchestrator/SKILL.md.template
     mode: render
-    feature: agent_workflow.execute_skill
+    feature: agent_workflow.orchestrator_skill
     required_sections:
-      - "name: execute-agent-workflow"
+      - "name: workflow-orchestrator"
       - "## 前提条件"
       - "Step Gate Matrix"
       - "## Context Budget 到達時の対応"
@@ -1225,6 +1262,10 @@ project:
     build_cmd: "[要確認] Phase 1.65 で導出"
     lint_cmd: "[要確認] Phase 1.65 で導出"
     test_cmd: "[要確認] Phase 1.65 で導出"
+    # G-GEN porcelain チェック対象パス（決定 10）。
+    # gen_cmd 実行後 git status --porcelain -- <paths> で差分を検査する。
+    # 未定義（キー不在）= exit 2（安全側フォールバック禁止）。空リスト = gen 不要（スキップ）。
+    gen_artifact_paths:
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"

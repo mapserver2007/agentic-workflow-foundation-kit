@@ -54,6 +54,50 @@
 
 完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新する。
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（5.1〜5.3）。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `report_path` | string | yes | タスクレポートのパス（テスト計画セクションを参照） |
+| `impl_summary` | string | yes | ④出力の実装サマリ |
+| `changed_files` | string[] | yes | ④出力の変更ファイル一覧 |
+
+### 出力（envelope: YAML front matter + Markdown body）
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | テスト結果 |
+| `step` | string | `"step5"` | 固定値 |
+| `gate_results` | object | — | 各ゲートの exit code（`{ gen: 0, build: 0, lint: 0, test: 0 }`） |
+| `test_summary` | string | — | テスト結果のサマリ |
+| `advisory_loop_count` | integer | — | 実行した Advisory ループ回数 |
+| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `gate_id` | string | — | `fatal` 時の失敗ゲート ID |
+| `stderr_summary` | string | — | `fatal` 時のエラー出力要約 |
+
+### Advisory ループ（worker 責務）
+
+worker は個別ゲート（build / lint / test）の Advisory ループを**上限 3 回**まで自律実行する:
+
+1. ゲート実行 → exit 1 → 修正 → 再実行（最大 3 回）
+2. 3 回以内に exit 0: `status: complete`
+3. 3 回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
+
+**重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step5` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
+
+### エスカレーション
+
+- `blocked` (`advisory_loop_exceeded`): オーケストレータの選択肢 — (a) QUALITY_GATE §2 例外承認 → 通過 / (b) 追加情報付与で再 dispatch / (c) ユーザー報告 + 中断
+- `fatal` (exit 2): オーケストレータがユーザーに報告し例外承認導線を案内する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント

@@ -74,9 +74,51 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 ---
 
+## 1.6 ①退出ゲート（タスク確定の判定）
+
+調査完了後、[02-task-decision.md](02-task-decision.md) の判定チェックリスト 5 項目を検証する。全項目を満たした場合のみ Step ③（レポート作成）に進む。
+
+満たさない場合はタスクレポートを作成せず、ユーザーに状況を報告して追加調査の方針を合意する。詳細は [02-task-decision.md](02-task-decision.md) を参照。
+
+---
+
+{{#if agent_workflow.artifact}}
+## Worker Contract
+
+本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（1.1〜1.6）であり、本節は入出力 schema のみを定義する。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `task_request` | string | yes | タスク依頼テキスト or issue URL |
+| `doc_navigation` | string[] | no | 参照すべき Domain 層 docs パス一覧（省略時は AGENTS.md から取得） |
+
+### 出力（envelope: YAML front matter + Markdown body）
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` | 調査完了 or 追加情報必要 |
+| `step` | string | `"step1"` | 固定値 |
+| `gate_result` | enum | `PASS` / `INCOMPLETE` | [②退出ゲート](02-task-decision.md) 5 項目の判定結果 |
+| `missing` | string[] | — | `INCOMPLETE` 時の不足項目。`PASS` 時は空配列 |
+| `investigation_memo_path` | string | — | 構造化調査メモの相対パス（`.cursor/.artifacts/{slug}--step1.md` body 部） |
+
+- `complete` + `gate_result: PASS`: オーケストレータは③へ遷移する
+- `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
+- `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは partial artifact を読み追加情報付与で再 dispatch する
+
+### Markdown body
+
+調査メモ本体（根本原因分析・実装方針候補・ADR 起票判定結果・docs-first 参照記録）。次の worker（③）が文脈として読む。
+{{/if}}
+
+---
+
 ## 関連ドキュメント
 
 - [AGENTS.md](../../../AGENTS.md) — Session Protocol / Documentation Navigation
 - [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票フォーマット
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) — フェーズ境界の定義
-- [02-task-decision.md](02-task-decision.md) — 次ステップ（タスク確定の判定）
+- [02-task-decision.md](02-task-decision.md) — ①退出ゲート仕様（判定チェックリスト 5 項目）
+- [03-report-creation.md](03-report-creation.md) — 次ステップ（レポート作成）

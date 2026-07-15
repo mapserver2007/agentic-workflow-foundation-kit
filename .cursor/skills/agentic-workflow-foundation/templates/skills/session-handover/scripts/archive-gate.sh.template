@@ -25,6 +25,10 @@ COMPLETION_ITEMS=(
   "ADR 起票判定"
 )
 
+{{#if agent_workflow.artifact}}
+ARTIFACTS_DIR="$PROJECT_DIR/{{agent_workflow.artifact.dir}}"
+{{/if}}
+
 check_report() {
   local file="$1"
   local fail=0
@@ -61,6 +65,29 @@ check_report() {
     done
     fail=1
   fi
+
+{{#if agent_workflow.artifact}}
+  # --- G-ARCHIVE-ARTIFACT-001: slug に紐づく残存 partial artifact の検査 ---
+  local basename
+  basename="$(basename "$file" .md)"
+  if [[ -d "$ARTIFACTS_DIR" ]]; then
+    local residual=()
+    while IFS= read -r af; do
+      [[ -n "$af" ]] && residual+=("$af")
+    done < <(find "$ARTIFACTS_DIR" -maxdepth 1 -name "${basename}--*" -type f 2>/dev/null | sort)
+
+    if (( ${#residual[@]} > 0 )); then
+      echo "[FAIL] slug '${basename}' に紐づく残存 partial artifact あり (G-ARCHIVE-ARTIFACT-001)"
+      for rf in "${residual[@]}"; do
+        echo "  - 残存: $rf"
+      done
+      echo "  正式 artifact の存在を確認後、手動で削除してください。"
+      fail=1
+    else
+      echo "[PASS] 残存 partial artifact なし (G-ARCHIVE-ARTIFACT-001)"
+    fi
+  fi
+{{/if}}
 
   return $fail
 }

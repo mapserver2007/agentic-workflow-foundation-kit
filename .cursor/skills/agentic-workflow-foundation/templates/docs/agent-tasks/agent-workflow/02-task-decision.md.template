@@ -1,8 +1,10 @@
-# ② タスク確定の判定
+# ①退出ゲート — タスク確定の判定
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
-タスクレポート作成前に、調査結果が「着手可能な状態」に達しているかを判定するフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) の「一次調査 → タスクレポート作成」フェーズ境界に対応する。
+Step ①（調査・分析）の退出ゲート仕様。タスクレポート作成（③）前に、調査結果が「着手可能な状態」に達しているかを判定する。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) の「一次調査 → タスクレポート作成」フェーズ境界に対応する。
+
+> **位置づけ**: 本ドキュメントは独立した実行ステップではなく、①の退出条件を定義するゲート仕様の SoT である。①の手順内で [1.6 節](01-investigation.md) から参照される。
 
 ---
 
@@ -40,10 +42,33 @@
 
 タスク確定の条件を満たせない理由を明示し、追加調査の方針をユーザーと合意する。
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+①の退出ゲートとして、worker が自己検証する際の evidence 定義。5 項目すべてに evidence が存在すれば `PASS`、1 つでも不足すれば `INCOMPLETE` を返す。
+
+### Evidence（①出力 envelope の `gate_result` 判定基準）
+
+| チェック項目 | evidence | 判定 |
+| --- | --- | --- |
+| 実現性 | 変更対象ファイルが 1 つ以上特定されている | ファイルパス列挙 |
+| 影響範囲の明確化 | 影響を受ける機能名 or コンポーネント名が列挙されている | 名称列挙 |
+| 実装方針の特定 | 変更内容が 1 文以上で記述されている | テキスト |
+| 実装アプローチの立案 | 実装手順が順序付きで記述されている | 番号付きリスト |
+| 優先度の決定 | High / Medium / Low が設定されている | enum 値 |
+
+### 判定ロジック
+
+- **`PASS`**: 5 項目すべてに evidence あり → ①出力 envelope `gate_result: PASS`
+- **`INCOMPLETE`**: 1 つ以上 evidence なし → ①出力 envelope `gate_result: INCOMPLETE`, `missing: [不足項目名]`
+{{/if}}
+
 ---
 
 ## 関連ドキュメント
 
-- [01-investigation.md](01-investigation.md) — 前ステップ（調査・分析）
+- [01-investigation.md](01-investigation.md) — ①調査・分析（本ゲートの呼び出し元）
 - [03-report-creation.md](03-report-creation.md) — 次ステップ（レポート作成）
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) — フェーズ境界の定義

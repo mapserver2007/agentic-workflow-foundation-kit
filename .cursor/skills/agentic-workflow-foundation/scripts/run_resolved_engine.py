@@ -227,7 +227,7 @@ def _is_feature_enabled(manifest: dict, feature: str) -> bool:
     """feature トグルを評価する。
 
     トップレベル（code_review / agent_workflow）と dot パス
-    （agent_workflow.execute_skill / agent_workflow.maintenance_docs）に対応する。
+    （agent_workflow.orchestrator_skill / agent_workflow.maintenance_docs）に対応する。
     末端が dict で enabled キーを持つ場合はその値を、それ以外は truthiness を返す。
     """
     if not feature:
@@ -245,6 +245,138 @@ def _is_feature_enabled(manifest: dict, feature: str) -> bool:
                 return bool(node.get("enabled"))
             return bool(node)
     return False
+
+
+_LEGACY_WORKFLOW_KEY = "execute_skill"
+_CANONICAL_WORKFLOW_KEY = "orchestrator_skill"
+
+
+def _migrate_agent_workflow_keys(manifest: dict) -> dict:
+    """agent_workflow.execute_skill → orchestrator_skill の正規化（fail-closed）。
+
+    - 旧キーのみ → 新キーへ移行
+    - 新旧が同値で併存 → 旧キーを除去
+    - 新旧が異なる値で併存 → exit 2（暗黙の選択をしない）
+    """
+    aw = manifest.get("agent_workflow")
+    if not isinstance(aw, dict):
+        return manifest
+
+    has_old = _LEGACY_WORKFLOW_KEY in aw
+    has_new = _CANONICAL_WORKFLOW_KEY in aw
+
+    if has_old and has_new:
+        if aw[_LEGACY_WORKFLOW_KEY] != aw[_CANONICAL_WORKFLOW_KEY]:
+            print(
+                f"FATAL: agent_workflow に旧キー '{_LEGACY_WORKFLOW_KEY}: {aw[_LEGACY_WORKFLOW_KEY]}' と "
+                f"新キー '{_CANONICAL_WORKFLOW_KEY}: {aw[_CANONICAL_WORKFLOW_KEY]}' が異なる値で併存。"
+                f"手動で解決してください。",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        del aw[_LEGACY_WORKFLOW_KEY]
+        print(f"[migrate] agent_workflow.{_LEGACY_WORKFLOW_KEY} を除去（同値の {_CANONICAL_WORKFLOW_KEY} が存在）")
+    elif has_old and not has_new:
+        aw[_CANONICAL_WORKFLOW_KEY] = aw.pop(_LEGACY_WORKFLOW_KEY)
+        print(f"[migrate] agent_workflow.{_LEGACY_WORKFLOW_KEY} → {_CANONICAL_WORKFLOW_KEY} へ移行")
+
+    return manifest
+
+
+def _migrate_root_manifest_file(root_manifest_path: str) -> int:
+    """root manifest ファイルのテキストレベルで旧キーを正規化する。
+
+    dict レベルの検証は _migrate_agent_workflow_keys で行うため、
+    ここでは検証済みのテキスト置換のみ行う。0=更新あり/不要、2=競合。
+    """
+    if not os.path.isfile(root_manifest_path):
+        return 0
+
+    with open(root_manifest_path, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    import re
+
+    old_key_pat = re.compile(r"^(\s+)execute_skill:", re.MULTILINE)
+    new_key_pat = re.compile(r"^(\s+)orchestrator_skill:", re.MULTILINE)
+    old_matches = old_key_pat.findall(text)
+    new_matches = new_key_pat.findall(text)
+
+    if not old_matches:
+        return 0
+
+    if old_matches and new_matches:
+        old_line = re.search(r"^\s+execute_skill:\s*(.+)$", text, re.MULTILINE)
+        new_line = re.search(r"^\s+orchestrator_skill:\s*(.+)$", text, re.MULTILINE)
+        if old_line and new_line and old_line.group(1).strip() != new_line.group(1).strip():
+            print(
+                "FATAL: root manifest に execute_skill と orchestrator_skill が異なる値で併存。",
+                file=sys.stderr,
+            )
+            return 2
+
+    updated = text
+    updated = re.sub(
+        r"execute_skill",
+        "orchestrator_skill",
+        updated,
+    )
+    updated = re.sub(
+        r"execute-agent-workflow",
+        "workflow-orchestrator",
+        updated,
+    )
+
+    if updated != text:
+        with open(root_manifest_path, "w", encoding="utf-8") as f:
+            f.write(updated)
+        print(f"[migrate] root manifest のテキストレベル正規化完了: {root_manifest_path}")
+    return 0
+
+
+def _cleanup_legacy_skill_dir() -> int:
+    """旧生成ディレクトリ .cursor/skills/execute-agent-workflow/ を安全に削除する。
+
+    - 生成マーカー（agentic-workflow-foundation スキルの生成物）が確認できる SKILL.md のみ削除
+    - 想定外の内容・追加ファイルがある場合は exit 2
+    - 新スキルが存在しない場合は exit 2（新旧同時不在を防止）
+    """
+    legacy_dir = os.path.join(ROOT, ".cursor", "skills", "execute-agent-workflow")
+    new_dir = os.path.join(ROOT, ".cursor", "skills", "workflow-orchestrator")
+
+    if not os.path.isdir(legacy_dir):
+        return 0
+
+    if not os.path.isdir(new_dir):
+        print(
+            "FATAL: 旧ディレクトリ execute-agent-workflow が存在するが "
+            "新ディレクトリ workflow-orchestrator が未生成。先に generate を実行してください。",
+            file=sys.stderr,
+        )
+        return 2
+
+    entries = os.listdir(legacy_dir)
+    if set(entries) != {"SKILL.md"}:
+        print(
+            f"FATAL: execute-agent-workflow/ に想定外のファイルが存在: {entries}. "
+            f"手動で確認してください。",
+            file=sys.stderr,
+        )
+        return 2
+
+    skill_path = os.path.join(legacy_dir, "SKILL.md")
+    with open(skill_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "agentic-workflow-foundation" not in content:
+        print(
+            "FATAL: execute-agent-workflow/SKILL.md に生成マーカーがありません。手動で確認してください。",
+            file=sys.stderr,
+        )
+        return 2
+
+    shutil.rmtree(legacy_dir)
+    print("[cleanup] 旧ディレクトリ .cursor/skills/execute-agent-workflow/ を安全に削除")
+    return 0
 
 
 def _filter_outputs_by_features(manifest: dict) -> dict:
@@ -277,6 +409,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
         return _filter_outputs_by_features(_apply_upstream_design_inputs(manifest))
 
     overlay = genlib.load_manifest(root_manifest_path)
+    _migrate_agent_workflow_keys(overlay)
     merged = dict(manifest)
     for key in ROOT_OVERLAY_KEYS:
         if key not in overlay:
@@ -421,6 +554,10 @@ def main(argv=None) -> int:
     parser.add_argument("--root-manifest", default=os.path.join(ROOT, "manifest.yaml"))
     args = parser.parse_args(argv)
 
+    rc = _migrate_root_manifest_file(args.root_manifest)
+    if rc != 0:
+        return rc
+
     if args.command == "bootstrap":
         try:
             return bootstrap_root_manifest(args.seed_manifest, args.root_manifest)
@@ -435,7 +572,12 @@ def main(argv=None) -> int:
             dir=os.path.join(ROOT, ".cursor", "skills"),
         ) as tmp_skill_dir:
             resolved_dir = prepare_skill_dir(tmp_skill_dir, manifest)
-            return run_engine(args.command, resolved_dir, manifest)
+            rc = run_engine(args.command, resolved_dir, manifest)
+            if rc != 0:
+                return rc
+            if args.command == "generate":
+                return _cleanup_legacy_skill_dir()
+            return 0
     except genlib.YamlError as e:
         print(f"FATAL: {e}", file=sys.stderr)
         return 2

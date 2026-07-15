@@ -1,8 +1,8 @@
 ---
-name: execute-agent-workflow
+name: workflow-orchestrator
 description: >-
   What - AI エージェントがタスク実行依頼（バグ修正・パフォーマンス改善・リファクタリング・新機能開発等）を
-  受けた際に、7 ステップの標準ワークフローに沿ってタスクを遂行する。
+  受けた際に、6 段階（①③④⑤⑥⑦、②は①退出ゲート）の標準ワークフローに沿ってタスクを遂行する。
   各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下の step 別ドキュメントに
   Progressive Disclosure で分割されており、本スキルは全体の制御フローと Step Gate Matrix を担う。
   Use when - 「タスクを実行して」「バグを修正して」「この機能を実装して」「リファクタして」
@@ -15,9 +15,9 @@ description: >-
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
 
-# Execute Agent Workflow
+# Workflow Orchestrator
 
-AI エージェントがタスク実行依頼を受けた際の **7 ステップ標準ワークフロー** の制御スキル。
+AI エージェントがタスク実行依頼を受けた際の **6 段階標準ワークフロー**（①③④⑤⑥⑦、②は①退出ゲート）の制御スキル。
 
 各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下に Progressive Disclosure で分割されている。本スキルは全体の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
 
@@ -45,15 +45,14 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 
 | Step | 詳細ドキュメント | 入口条件 | 退出条件 | 対応ゲート |
 | --- | --- | --- | --- | --- |
-| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 | — |
-| **② タスク確定** | [02-task-decision.md](../../../docs/agent-tasks/agent-workflow/02-task-decision.md) | Step ① 完了 | 判定チェックリスト全 OK | 一次調査 → レポート作成 |
-| **③ レポート作成** | [03-report-creation.md](../../../docs/agent-tasks/agent-workflow/03-report-creation.md) | Step ② 通過 | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step3`{{/if}} |
+| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + [②退出ゲート](../../../docs/agent-tasks/agent-workflow/02-task-decision.md)（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
+| **③ レポート作成** | [03-report-creation.md](../../../docs/agent-tasks/agent-workflow/03-report-creation.md) | ①退出ゲート PASS | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step3`{{/if}} |
 | **④ 実装** | [04-implementation.md](../../../docs/agent-tasks/agent-workflow/04-implementation.md) | Step ③ 承認済み | コード変更完了 + レポート更新 | — |
 | **⑤ テスト** | [05-testing.md](../../../docs/agent-tasks/agent-workflow/05-testing.md) | Step ④ 完了 | コードゲート全 PASS | 実装 → PR{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} |
 | **⑥ PR レビュー** | [06-pr-review.md](../../../docs/agent-tasks/agent-workflow/06-pr-review.md) | Step ⑤ 通過 | レビュー完了承認 | PR → 完了{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{/if}} |
 | **⑦ 完了報告** | [07-completion.md](../../../docs/agent-tasks/agent-workflow/07-completion.md) | Step ⑥ 承認済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
 
-### Step ①: 調査・分析
+### Step ①: 調査・分析（②退出ゲートを内包）
 
 [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) を読み込み実行する。
 
@@ -61,15 +60,13 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
 3. コードを調査し、根本原因 or 実装方針を特定する
 4. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+5. **①退出ゲート**: [02-task-decision.md](../../../docs/agent-tasks/agent-workflow/02-task-decision.md) の判定チェックリスト 5 項目を検証する
 
-### Step ②: タスク確定の判定
-
-[02-task-decision.md](../../../docs/agent-tasks/agent-workflow/02-task-decision.md) を読み込み実行する。
-
-判定チェックリスト:
+退出ゲート（[②の判定チェックリスト](../../../docs/agent-tasks/agent-workflow/02-task-decision.md)）:
 - 実現性が明確か
 - 影響範囲が特定できているか
 - 実装方針が決まっているか
+- 実装アプローチが立案されているか
 - 優先度が設定されているか
 
 **全条件を満たさない場合**: タスクレポートを作成せずユーザーに状況報告する。
@@ -141,7 +138,7 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 | 警告レベル | 対応 |
 | --- | --- |
 | **Yellow** | 現在のステップを区切りまで完了し、タスクレポートの「追加調査が必要な項目」と「完了チェック」を最新化する。次セッションへの引き継ぎを準備する |
-| **Red** | 現在の作業を即時中断し、タスクレポートを最新化した上で handoff manifest（`.cursor/.session/handoff-active.md`）を書き出す。同セッションで新ステップに進まない |
+| **Red** | 現在の作業を即時中断し、タスクレポートを最新化した上で handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を書き出す。同セッションで新ステップに進まない |
 
 **ステップ途中での中断ルール**:
 - 該当ステップのチェックを `[ ]` のまま残す
@@ -177,7 +174,7 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 
 > 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
 >
-> `execute-agent-workflow` スキル運用中に発見した失敗・踏み外しの記録。
+> `workflow-orchestrator` スキル運用中に発見した失敗・踏み外しの記録。
 
 ### 起票トリガー
 
@@ -200,7 +197,7 @@ AI エージェントがタスク実行依頼を受けた際の **7 ステップ
 
 ## 関連ドキュメント
 
-- [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（7 ステップ概要）
+- [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（6 段階概要）
 - [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
 - [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー検証
 - [agent-github-pr](../agent-github-pr/SKILL.md) — PR 作成
