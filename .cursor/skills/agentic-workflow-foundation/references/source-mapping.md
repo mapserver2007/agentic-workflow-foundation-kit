@@ -41,6 +41,7 @@
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
 | `framework.security` | `AGENTS.md > Boundaries`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
 | `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
+| `dual_thinking` | `.cursor/skills/dual-thinking/SKILL.md`（内部 A/B 並列分析 + C 統合裁定。通常のチャット返答と同じ体裁で応答。一次証跡優先の採用順位、同一モデル時の限定性開示、A/B 未回収時の中止規約、静的保証と実行時制約の境界表を含む）/ `config.yaml`（モデル・実行パラメータの SoT。seed モード。`require_distinct_models` / `max_issues_per_round` / `stop_when` を含む）/ `references/analyst-brief.md`（Ledger スキーマ・`不明` 正規値・ブリーフ欠落報告）/ `references/verification-flags.md`（`MODEL_HOMOGENEOUS` を含む。静的検査との関係を明記）/ `references/issue-card-format.md`（再審三条件・ラウンド配布上限）/ `references/response-synthesis.md`（一次証跡優先 tie-break）/ `validate_dual_thinking.py`（静的契約ゲート G-DT-*。audit 統合）/ `docs/QUALITY_GATE.md §4.1`（静的契約ゲートの検査 ID・対象外の実行時特性） |
 | `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
 
 ## 変更時の運用
