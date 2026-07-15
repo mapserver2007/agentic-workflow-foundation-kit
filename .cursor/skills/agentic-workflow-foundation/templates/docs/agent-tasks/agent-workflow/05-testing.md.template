@@ -1,4 +1,4 @@
-# ⑤ テスト実装
+# ④ テスト実装
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 5.1 テストの作成
+## 4.1 テストの作成
 
 タスクレポートのテスト計画に従ってテストを実装する。
 
@@ -15,13 +15,13 @@
 - 既存テストのスタイル・命名規則を踏襲する
 - テスト間の独立性を保つ（共有状態を排除する）
 
-## 5.2 テストの実行（コードゲート）
+## 4.2 テストの実行（コードゲート）
 
 [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の全ゲートを通す。
 
 {{#if agent_workflow.gate_scripts}}
 ```bash
-.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+.cursor/skills/session-handover/scripts/workflow-gate.sh step4
 ```
 {{else}}
 ```bash
@@ -43,7 +43,7 @@
 - lint 指摘を一括抑制する
 - 失敗しているテストをスキップする
 
-## 5.3 タスクレポートの更新
+## 4.3 タスクレポートの更新
 
 テスト実装完了後、`reports/{report}.md` のテスト計画セクションのチェックボックスを更新する。
 
@@ -59,22 +59,22 @@
 
 ## Worker Contract
 
-本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（5.1〜5.3）。
+本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（4.1〜4.3）。
 
 ### 入力
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | `report_path` | string | yes | タスクレポートのパス（テスト計画セクションを参照） |
-| `impl_summary` | string | yes | ④出力の実装サマリ |
-| `changed_files` | string[] | yes | ④出力の変更ファイル一覧 |
+| `impl_summary` | string | yes | ③出力の実装サマリ |
+| `changed_files` | string[] | yes | ③出力の変更ファイル一覧 |
 
 ### 出力（envelope: YAML front matter + Markdown body）
 
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
 | `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | テスト結果 |
-| `step` | string | `"step5"` | 固定値 |
+| `step` | string | `"step4"` | 固定値 |
 | `gate_results` | object | — | 各ゲートの exit code（`{ gen: 0, build: 0, lint: 0, test: 0 }`） |
 | `test_summary` | string | — | テスト結果のサマリ |
 | `advisory_loop_count` | integer | — | 実行した Advisory ループ回数 |
@@ -90,7 +90,7 @@ worker は個別ゲート（build / lint / test）の Advisory ループを**上
 2. 3 回以内に exit 0: `status: complete`
 3. 3 回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
 
-**重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step5` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
+**重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step4` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
 
 ### エスカレーション
 
@@ -102,6 +102,6 @@ worker は個別ゲート（build / lint / test）の Advisory ループを**上
 
 ## 関連ドキュメント
 
-- [04-implementation.md](04-implementation.md) — 前ステップ（実装）
-- [06-pr-review.md](06-pr-review.md) — 次ステップ（PR レビュー検証）
+- [03-implementation.md](03-implementation.md) — 前ステップ（実装）
+- [05-pr-review.md](05-pr-review.md) — 次ステップ（PR レビュー検証）
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 — コードゲートの定義

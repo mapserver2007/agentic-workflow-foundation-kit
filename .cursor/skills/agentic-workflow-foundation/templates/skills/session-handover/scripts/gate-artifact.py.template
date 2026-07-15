@@ -12,16 +12,16 @@ import sys
 from pathlib import Path
 
 VALID_STATUSES = {"complete", "incomplete", "blocked", "fatal"}
-VALID_STEPS = {"step1", "step3", "step4", "step5", "step7"}
+VALID_STEPS = {"step1", "step2", "step3", "step4", "step6"}
 
 COMMON_REQUIRED = ["status", "step"]
 
 STEP_REQUIRED_FIELDS = {
     "step1": ["gate_result", "investigation_memo_path"],
-    "step3": ["report_path"],
-    "step4": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
-    "step5": ["gate_results", "test_summary", "advisory_loop_count"],
-    "step7": ["docs_updated", "archive_path", "archive_gate_result"],
+    "step2": ["report_path"],
+    "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
+    "step4": ["gate_results", "test_summary", "advisory_loop_count"],
+    "step6": ["docs_updated", "archive_path", "archive_gate_result"],
 }
 
 
@@ -105,8 +105,8 @@ def check_artifact(filepath: str, json_mode: bool = False):
                 })
                 fail = True
 
-    # --- base_commit_sha 検証（step4） ---
-    if step == "step4" and "base_commit_sha" in fm:
+    # --- base_commit_sha 検証（step3） ---
+    if step == "step3" and "base_commit_sha" in fm:
         sha = fm["base_commit_sha"]
         if not isinstance(sha, str) or not re.match(r"^[0-9a-f]{7,40}$", sha):
             results.append({

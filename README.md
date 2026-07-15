@@ -16,7 +16,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む） |
 | Project Docs (Meta) | `docs/tech-stack.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①③④⑤⑥⑦ + ①退出ゲート + index + best-practices + README）、`docs/agent-tasks/reports/`、`workflow-orchestrator`、`agent-maintenance-docs` |
+| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices + README）、`docs/agent-tasks/reports/`、`workflow-orchestrator`、`agent-maintenance-docs` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
@@ -159,7 +159,7 @@ agentic-workflow-foundation-kit/
 | `session-planning` | 追跡ドキュメント（`.cursor/.tracking/tracker.md`）の作成・更新 |
 | `session-handover` | セッション開始/終了ゲート、handoff、検証ゲート |
 | `decisions-record` | ADR（`docs/DECISIONS.md`）の起票 |
-| `workflow-orchestrator` | 6 段階標準タスク実行ワークフロー（①③④⑤⑥⑦、②は①退出ゲート） |
+| `workflow-orchestrator` | 6 段階標準タスク実行ワークフロー（①〜⑥、①の退出ゲートを内包） |
 | `agent-maintenance-docs` | タスク完了時の docs 反映 + archives 移動 |
 | `agent-code-review` | PR レビューコメントの検証・返答 |
 | `agent-github-pr` | PR 作成 |

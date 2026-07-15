@@ -30,7 +30,7 @@
 
 ### docs-first 参照記録
 
-調査中に参照した Domain 層 docs を記録する（Step ③ のレポート作成時に「関連する既存コード」セクションへ転記する）:
+調査中に参照した Domain 層 docs を記録する（Step ② のレポート作成時に「関連する既存コード」セクションへ転記する）:
 
 {{#each project.doc_navigation.domain}}
 - [ ] `{{this.path}}` — 参照した / 該当なし
@@ -44,7 +44,7 @@
 - エラー発生箇所の特定
 - 関連する処理フローの確認
 - データモデル・スキーマの確認
-{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（③）に `[cross-repo]` 行として 1 行追記する
+{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（②）に `[cross-repo]` 行として 1 行追記する
 {{/if}}
 
 **重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
@@ -74,11 +74,28 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 ---
 
-## 1.6 ①退出ゲート（タスク確定の判定）
+## 1.6 退出ゲート（タスク確定の判定）
 
-調査完了後、[02-task-decision.md](02-task-decision.md) の判定チェックリスト 5 項目を検証する。全項目を満たした場合のみ Step ③（レポート作成）に進む。
+調査完了後、以下の全項目を検証する。すべてを満たした場合のみ Step ②（レポート作成）に進む。
 
-満たさない場合はタスクレポートを作成せず、ユーザーに状況を報告して追加調査の方針を合意する。詳細は [02-task-decision.md](02-task-decision.md) を参照。
+- [ ] **実現性**: タスクの実現方法が明確（証跡: 変更対象ファイルが 1 つ以上特定されている）
+- [ ] **影響範囲の明確化**: どの機能・ユーザーに影響するかが特定できている（証跡: 影響を受ける機能名 or コンポーネント名が列挙されている）
+- [ ] **実装方針の特定**: コード・ロジック・データのどこをどう変更すべきかが判明している（証跡: 変更内容が 1 文以上で記述されている）
+- [ ] **実装アプローチの立案**: どのように実装すべきかの方針が決まっている（証跡: 実装手順が順序付きで記述されている）
+- [ ] **優先度の決定**: High / Medium / Low の優先度が設定されている
+
+いずれかを満たさない場合は、タスクレポートを作成せずユーザーに状況を報告し、追加調査の方針を合意する。
+
+```markdown
+現在の調査状況：
+- {調査で判明していること}
+
+不明な点：
+- {特定できていない項目}
+
+追加で必要な情報：
+- {ユーザーに確認してほしいこと}
+```
 
 ---
 
@@ -100,17 +117,17 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 | --- | --- | --- | --- |
 | `status` | enum | `complete` / `incomplete` | 調査完了 or 追加情報必要 |
 | `step` | string | `"step1"` | 固定値 |
-| `gate_result` | enum | `PASS` / `INCOMPLETE` | [②退出ゲート](02-task-decision.md) 5 項目の判定結果 |
+| `gate_result` | enum | `PASS` / `INCOMPLETE` | 本節の退出ゲート 5 項目の判定結果 |
 | `missing` | string[] | — | `INCOMPLETE` 時の不足項目。`PASS` 時は空配列 |
 | `investigation_memo_path` | string | — | 構造化調査メモの相対パス（`.cursor/.artifacts/{slug}--step1.md` body 部） |
 
-- `complete` + `gate_result: PASS`: オーケストレータは③へ遷移する
+- `complete` + `gate_result: PASS`: オーケストレータは②へ遷移する
 - `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
 - `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは partial artifact を読み追加情報付与で再 dispatch する
 
 ### Markdown body
 
-調査メモ本体（根本原因分析・実装方針候補・ADR 起票判定結果・docs-first 参照記録）。次の worker（③）が文脈として読む。
+調査メモ本体（根本原因分析・実装方針候補・ADR 起票判定結果・docs-first 参照記録）。次の worker（②）が文脈として読む。
 {{/if}}
 
 ---
@@ -120,5 +137,4 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 - [AGENTS.md](../../../AGENTS.md) — Session Protocol / Documentation Navigation
 - [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票フォーマット
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) — フェーズ境界の定義
-- [02-task-decision.md](02-task-decision.md) — ①退出ゲート仕様（判定チェックリスト 5 項目）
-- [03-report-creation.md](03-report-creation.md) — 次ステップ（レポート作成）
+- [02-report-creation.md](02-report-creation.md) — 次ステップ（レポート作成）

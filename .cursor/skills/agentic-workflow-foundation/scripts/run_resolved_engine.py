@@ -379,6 +379,37 @@ def _cleanup_legacy_skill_dir() -> int:
     return 0
 
 
+_LEGACY_WORKFLOW_DOCS = {
+    "02-task-decision.md": "# ①退出ゲート — タスク確定の判定",
+    "03-report-creation.md": "# ③ タスクレポートの作成",
+    "04-implementation.md": "# ④ 実装の実行",
+    "05-testing.md": "# ⑤ テスト実装",
+    "06-pr-review.md": "# ⑥ PR レビュー検証",
+    "07-completion.md": "# ⑦ 完了報告",
+}
+
+
+def _cleanup_legacy_workflow_docs() -> int:
+    """連番化前の生成済み step docs を生成マーカー付きの内容だけ安全に削除する。"""
+    workflow_dir = os.path.join(ROOT, "docs", "agent-tasks", "agent-workflow")
+    for filename, expected_heading in _LEGACY_WORKFLOW_DOCS.items():
+        path = os.path.join(workflow_dir, filename)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            first_line = f.readline().rstrip("\n")
+        if first_line != expected_heading:
+            print(
+                f"FATAL: 旧 step doc '{path}' の内容が想定と異なります。"
+                "手動で確認してください。",
+                file=sys.stderr,
+            )
+            return 2
+        os.remove(path)
+        print(f"[cleanup] 旧 step doc を削除: {path}")
+    return 0
+
+
 def _filter_outputs_by_features(manifest: dict) -> dict:
     """feature フラグが無効な outputs エントリを除外する。
 
@@ -576,6 +607,9 @@ def main(argv=None) -> int:
             if rc != 0:
                 return rc
             if args.command == "generate":
+                rc = _cleanup_legacy_workflow_docs()
+                if rc != 0:
+                    return rc
                 return _cleanup_legacy_skill_dir()
             return 0
     except genlib.YamlError as e:

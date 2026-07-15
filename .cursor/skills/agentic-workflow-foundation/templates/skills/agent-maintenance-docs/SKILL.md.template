@@ -3,10 +3,10 @@ name: agent-maintenance-docs
 description: >-
   タスク実装・レビュー完了後に、Domain 層ドキュメントへの仕様反映と
   完了レポートの archives 移動を一貫して実行する。
-  workflow-orchestrator Step ⑦（完了報告）の docs 反映 + archives 移動を責務範囲とする。
+  workflow-orchestrator Step ⑥（完了報告）の docs 反映 + archives 移動を責務範囲とする。
   Use when - 「docs に反映して」「仕様を反映して」「archives に移動して」
-  「完了報告して」「maintenance-docs」等の指示、または workflow-orchestrator Step ⑦ からの委譲。
-  Do NOT use for - (1) コード実装（Step ④）、(2) テスト実装（Step ⑤）、
+  「完了報告して」「maintenance-docs」等の指示、または workflow-orchestrator Step ⑥ からの委譲。
+  Do NOT use for - (1) コード実装（Step ③）、(2) テスト実装（Step ④）、
   (3) PR レビュー対応（agent-code-review）、(4) PR 作成（agent-github-pr）、
   (5) Meta 層（AGENTS.md / QUALITY_GATE.md 等）の編集。
 disable-model-invocation: true
@@ -17,12 +17,12 @@ disable-model-invocation: true
 タスク完了後の **Domain 層ドキュメント仕様反映** と **完了レポート archives 移動** を担うスキル。
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
-<!-- disable-model-invocation: true — モデル任意発火を抑止し、workflow-orchestrator Step ⑦ からの明示的委譲でのみ実行する。 -->
+<!-- disable-model-invocation: true — モデル任意発火を抑止し、workflow-orchestrator Step ⑥ からの明示的委譲でのみ実行する。 -->
 
 ## 前提条件
 
 1. `agent_workflow.enabled: true` かつ `agent_workflow.maintenance_docs.enabled: true`
-2. PR レビュー検証（Step ⑥）が完了していること
+2. PR レビュー検証（Step ⑤）が完了していること
 3. タスクレポート（`docs/agent-tasks/reports/{report}.md`）が存在すること
 
 ## 責務範囲
@@ -124,8 +124,8 @@ docs 反映 + archives 移動が完了しました：
 | `docs/QUALITY_GATE.md` | — | Meta 層生成物 |
 | `docs/AGENT_RUNBOOK.md` | — | Meta 層生成物 |
 | archives 移動 | `git mv` 実行 | — |
-| コード実装 | — | Step ④ の責務 |
-| テスト実装 | — | Step ⑤ の責務 |
+| コード実装 | — | Step ③ の責務 |
+| テスト実装 | — | Step ④ の責務 |
 | PR レビュー | — | `agent-code-review` の責務 |
 
 ## Gotchas
