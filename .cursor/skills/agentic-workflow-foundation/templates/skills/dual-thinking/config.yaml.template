@@ -39,3 +39,19 @@ high_impact_categories:
   - "unapproved_cost_or_schedule"
   - "must_requirement_conflict"
 {{/if}}
+
+# ワークフロー自動起動トリアージ設定
+# Step ① の調査深度トリアージで使用する。詳細は references/workflow-triage.md を参照。
+# このセクションが存在しない場合、dispatch 側がデフォルト値で動作する。
+triage:
+  # スコア起動の閾値（信号がこの件数以上で dual-thinking を起動）
+  score_threshold: {{#if dual_thinking.triage.score_threshold}}{{dual_thinking.triage.score_threshold}}{{else}}2{{/if}}
+  # 即時起動条件のカテゴリ（high_impact_categories を参照）
+  immediate_triggers:
+    - "requirement_docs_contradiction"
+    - "high_impact_category_match"
+    - "undefined_acceptance_with_multiple_candidates"
+  # ワークフロー自動起動の失敗時方針（skip: graceful skip / abort: 中止）
+  on_failure: "{{#if dual_thinking.triage.on_failure}}{{dual_thinking.triage.on_failure}}{{else}}skip{{/if}}"
+  # 高影響カテゴリ該当 + 起動失敗時にユーザー通知するか
+  notify_on_high_impact_failure: {{#if dual_thinking.triage.notify_on_high_impact_failure}}{{dual_thinking.triage.notify_on_high_impact_failure}}{{else}}true{{/if}}

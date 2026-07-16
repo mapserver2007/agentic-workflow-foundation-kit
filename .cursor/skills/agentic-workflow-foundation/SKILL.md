@@ -228,7 +228,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
        - `github_pr.enabled: true` → agent-github-pr スキルを生成
        - `github_issue.enabled: true` → agent-github-issue スキルと `bin/github-issue-{create,read}-safe` を生成
        - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
-       - `agent_workflow.enabled: true` → agent-workflow docs（6 段階：①③④⑤⑥⑦ + ①退出ゲート + index + best-practices）を生成
+       - `agent_workflow.enabled: true` → agent-workflow docs（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices）を生成
        - `agent_workflow.orchestrator_skill: true` → workflow-orchestrator スキルを生成
        - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
        - `cross_repo_knowledge.enabled: true` → cross-repository-knowledge-link スキルと `bin/cross-repo-sync-safe` を生成

@@ -26,6 +26,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 > - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
 > - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
 > - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+{{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
+{{/if}}
 
 ---
 
@@ -58,9 +60,17 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. ユーザーとの対話で問題・要件を把握する
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
-3. コードを調査し、根本原因 or 実装方針を特定する
+{{#if dual_thinking.enabled}}3. **調査深度トリアージ**: docs-first 完了後、[`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準でリスク信号を評価し、分析方式を決定する
+   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行（A/B subagent 並列起動 → 統合結果を investigation memo に書き出し）
+   - `skipped`: 通常の Step ① worker を dispatch
+   - `deferred`: 通常の Step ① worker を dispatch → worker 完走後に orchestrator がスコア起動条件を事後判定
+4. コードを調査し、根本原因 or 実装方針を特定する
+5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+{{else}}3. コードを調査し、根本原因 or 実装方針を特定する
 4. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
 5. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+{{/if}}
 
 退出ゲート（[①の判定チェックリスト](../../../docs/agent-tasks/agent-workflow/01-investigation.md)）:
 - 実現性が明確か
@@ -70,6 +80,10 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 - 優先度が設定されているか
 
 **全条件を満たさない場合**: タスクレポートを作成せずユーザーに状況報告する。
+{{#if dual_thinking.enabled}}
+
+**deferred 再判定**: worker が investigation memo を返した後、orchestrator がスコア起動条件を事後評価する。条件合致時は orchestrator が C として dual-thinking を起動し investigation memo を上書きする。条件不合致時は `skipped`（理由: 再判定不合致）に遷移し、worker の memo をそのまま ② へ引き継ぐ。dual-thinking 起動失敗時は graceful skip（高影響カテゴリ該当時はユーザー通知）。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
+{{/if}}
 
 ### Step ②: タスクレポートの作成
 
@@ -205,3 +219,6 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — docs 反映 + archives 移動
 - `AGENTS.md` — Boundaries / Agent Role / Session Protocol
 - `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）/ フェーズ境界
+{{#if dual_thinking.enabled}}- [dual-thinking](../dual-thinking/SKILL.md) — 多角評価スキル（Step ① トリアージで自動起動）
+- [references/workflow-triage.md](../dual-thinking/references/workflow-triage.md) — トリアージ基準の SoT
+{{/if}}

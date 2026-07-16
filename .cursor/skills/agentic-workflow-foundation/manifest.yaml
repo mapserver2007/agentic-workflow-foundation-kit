@@ -425,7 +425,7 @@ github_issue:
 # (2i) agent_workflow — タスク実行ワークフロー docs + orchestrator スキル
 #   Phase 1.5 の AskQuestion で生成有無を変更可能（seed default: true）。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
-#   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①③④⑤⑥⑦、②は①退出ゲート）+ index + best-practices を生成する。
+#   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
 #   orchestrator_skill: true の場合、.cursor/skills/workflow-orchestrator/SKILL.md を生成する。
@@ -453,19 +453,19 @@ agent_workflow:
       parser: "python3-pyyaml"
       parser_missing_exit: 2
   step_gates:
-    - id: step3
+    - id: step2
       desc: "計画→実装境界（必須セクション充足）"
       cmd: "plan-gate.sh report"
-    - id: step3-report
+    - id: step2-report
       desc: "レポート構造検査（必須10セクション充足）"
       cmd: "gate-report.py"
-    - id: step5
+    - id: step4
       desc: "実装→検証（コードゲート）"
       cmd: "code-gate"
-    - id: step6
+    - id: step5
       desc: "検証→PR（検証ゲート）"
       cmd: "verification-gate.sh"
-    - id: step7
+    - id: step6
       desc: "PR→完了（レビュー完了承認）"
       cmd: "plan-gate.sh review"
     - id: adr
@@ -823,9 +823,9 @@ outputs:
     executable: true
     required_sections:
       - "=== workflow gate ==="
-      - "step3"
-      - "step3-report"
-      - "step5"
+      - "step2"
+      - "step2-report"
+      - "step4"
       - "adr"
       - "archive"
   - path: .cursor/skills/session-handover/scripts/archive-gate.sh
@@ -1008,7 +1008,7 @@ outputs:
     mode: render
     executable: true
   # agent-workflow docs（feature: agent_workflow で条件生成）。
-  # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①③④⑤⑥⑦、②は①退出ゲート）+ index + best-practices を生成する。
+  # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
   - path: docs/agent-tasks/reports/.gitkeep
     template: gitkeep.template
@@ -1041,14 +1041,7 @@ outputs:
       - "ドキュメントの参照"
       - "コードの調査"
       - "ADR 起票判定"
-  - path: docs/agent-tasks/agent-workflow/02-task-decision.md
-    template: docs/agent-tasks/agent-workflow/02-task-decision.md.template
-    mode: render
-    feature: agent_workflow
-    required_sections:
-      - "判定チェックリスト"
-      - "タスク確定ではない場合"
-  - path: docs/agent-tasks/agent-workflow/03-report-creation.md
+  - path: docs/agent-tasks/agent-workflow/02-report-creation.md
     template: docs/agent-tasks/agent-workflow/03-report-creation.md.template
     mode: render
     feature: agent_workflow
@@ -1056,14 +1049,14 @@ outputs:
       - "必須セクション"
       - "プレースホルダ禁止"
       - "進行中キャンペーン"
-  - path: docs/agent-tasks/agent-workflow/04-implementation.md
+  - path: docs/agent-tasks/agent-workflow/03-implementation.md
     template: docs/agent-tasks/agent-workflow/04-implementation.md.template
     mode: render
     feature: agent_workflow
     required_sections:
       - "既存実装の踏襲"
       - "設計判断が発生した場合"
-  - path: docs/agent-tasks/agent-workflow/05-testing.md
+  - path: docs/agent-tasks/agent-workflow/04-testing.md
     template: docs/agent-tasks/agent-workflow/05-testing.md.template
     mode: render
     feature: agent_workflow
@@ -1071,7 +1064,7 @@ outputs:
       - "コードゲート"
       - "合格条件"
       - "禁止事項"
-  - path: docs/agent-tasks/agent-workflow/06-pr-review.md
+  - path: docs/agent-tasks/agent-workflow/05-pr-review.md
     template: docs/agent-tasks/agent-workflow/06-pr-review.md.template
     mode: render
     feature: agent_workflow
@@ -1079,7 +1072,7 @@ outputs:
       - "PR 作成"
       - "指摘の検証"
       - "レビュー完了承認"
-  - path: docs/agent-tasks/agent-workflow/07-completion.md
+  - path: docs/agent-tasks/agent-workflow/06-completion.md
     template: docs/agent-tasks/agent-workflow/07-completion.md.template
     mode: render
     feature: agent_workflow
@@ -1098,7 +1091,7 @@ outputs:
       - "archives 移動"
   # workflow-orchestrator スキル（feature: agent_workflow.orchestrator_skill で条件生成）。
   # agent_workflow.orchestrator_skill: true の場合のみ生成される。
-  # 6 段階標準ワークフロー（①③④⑤⑥⑦、②は①退出ゲート）の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+  # 6 段階標準ワークフロー（①〜⑥、①の退出ゲートを内包）の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
   - path: .cursor/skills/workflow-orchestrator/SKILL.md
     template: skills/workflow-orchestrator/SKILL.md.template
     mode: render
@@ -1183,6 +1176,15 @@ outputs:
       - "禁止される表現パターン"
       - "許容される表現パターン"
       - "高影響領域の扱い"
+  - path: .cursor/skills/dual-thinking/references/workflow-triage.md
+    template: skills/dual-thinking/references/workflow-triage.md.template
+    mode: render
+    feature: dual_thinking
+    required_sections:
+      - "即時起動条件"
+      - "スコア起動条件"
+      - "triage_result"
+      - "失敗種別"
   # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
   # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。
