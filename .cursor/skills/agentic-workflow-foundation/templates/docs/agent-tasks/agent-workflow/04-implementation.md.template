@@ -58,7 +58,9 @@ D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 
 
 ## Worker Contract
 
-本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（3.1〜3.4）。
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（3.1〜3.4）。
+
+**許可書込み範囲**: source / test / report + step envelope。commit / push 禁止。
 
 ### 入力
 
@@ -68,10 +70,12 @@ D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 
 | `approved_plan` | string | yes | ユーザー承認済みの実装方針（レポートの「実装方針」セクション） |
 | `base_commit_sha` | string | yes | 実装開始時点の commit SHA（re-dispatch 時の差分基準） |
 | `revised_plan_ref` | string | no | 再 dispatch 時: 修正方針への参照 |
-| `partial_artifact_ref` | string | no | 再 dispatch 時: 前回の partial artifact パス |
+| `prev_envelope_ref` | string | no | 再 dispatch 時: 前回の step envelope パス |
 | `approved_adr_id` | string | no | 再 dispatch 時: 承認済み ADR 番号 |
 
-### 出力（envelope: YAML front matter + Markdown body）
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step3.md` へ書き出す。
 
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
@@ -85,9 +89,11 @@ D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 
 | `reason` | string | — | `blocked` / `fatal` 時の理由 |
 | `decision_alternatives` | string[] | — | `blocked: adr_required` 時の代替案 |
 
-- `complete`: オーケストレータはレポートの完了チェックを更新し④へ遷移する
-- `incomplete`: worker のコンテキスト不足等。partial artifact を書き出し再 dispatch 可能にする
-- `blocked` (`reason: adr_required`): D-* 変更検知。オーケストレータは ADR 起草 → `workflow-gate.sh adr` → ユーザー承認 → 新規③ worker を `revised_plan_ref` + `partial_artifact_ref` + `approved_adr_id` 付きで起動する
+### 終端状態と遷移
+
+- `complete`: オーケストレータは正式成果物（`changed_files` / `untracked_files` と working tree の照合）を確認し、レポートの完了チェックを更新して④へ遷移する
+- `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
+- `blocked` (`reason: adr_required`): D-* 変更検知。オーケストレータは ADR 起草 → `workflow-gate.sh adr` → ユーザー承認 → 新規③ worker を `revised_plan_ref` + `prev_envelope_ref` + `approved_adr_id` 付きで起動する
 - `fatal`: exit 2 相当。オーケストレータがユーザーに報告し QUALITY_GATE §2 例外承認導線を案内する
 
 ### Markdown body

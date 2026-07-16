@@ -438,8 +438,9 @@ agent_workflow:
     enabled: true
   gate_scripts: true
   orchestrator_skill: true
-  # ステップ間パイプラインの中間生成物（決定 13 / 14）。
-  # worker が incomplete/blocked で返却する際に書き出し、正式 artifact 確認後に削除する。
+  # step envelope: 全 worker の終端結果（complete/incomplete/blocked/fatal）を保存する永続 artifact（決定 13 / 14）。
+  # complete を含む全状態で書き出し、次ステップの入力・再開・機械検証に用いる。
+  # 前ステップの envelope は次ステップの envelope と正式成果物の検証完了後に削除する。最終残存検査は archive gate が行う。
   artifact:
     dir: ".cursor/.artifacts"
     naming_pattern: "{report-slug}--{step}.md"
@@ -480,6 +481,17 @@ agent_workflow:
     - id: archive
       desc: "完了チェック6項目 + 残存artifact検査 + archives移動検査"
       cmd: "archive-gate.sh"
+  # ステップ別モデル設定（PO 決定値）。
+  # config.yaml テンプレートがこの値を seed 初期値として使い、生成後は PO が直接 config.yaml を編集できる。
+  # Step ⑤（PR レビュー）は親直接実行のため config 対象外（決定 12）。
+  models:
+    step1_investigation: "claude-4.6-opus-high-thinking"
+    step2_report: "composer-2.5-fast"
+    step3_implementation: "gpt-5.6-terra-medium"
+    step4_testing: "composer-2.5-fast"
+    step6_completion: "composer-2.5-fast"
+  # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）
+  model_unavailable: "ABORT"
   # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
   # service: チケット管理サービス名 / format: 番号の正規表現パターン
   ticket:
@@ -1104,6 +1116,27 @@ outputs:
       - "## 進行中タスクレポートからの再開"
       - "## ベストプラクティス"
       - "## Gotchas"
+  # workflow-orchestrator config.yaml（ステップ別モデル設定 / mode: seed で PO 直接編集可）。
+  - path: .cursor/skills/workflow-orchestrator/config.yaml
+    template: skills/workflow-orchestrator/config.yaml.template
+    mode: seed
+    feature: agent_workflow.orchestrator_skill
+    required_sections:
+      - "models"
+      - "model_unavailable"
+  # workflow-orchestrator dispatch reference（analyst-brief.md 相当）。
+  # 各ステップの subagent 起動方式・モデルキー・step envelope 契約を定義する。
+  - path: .cursor/skills/workflow-orchestrator/references/worker-dispatch.md
+    template: skills/workflow-orchestrator/references/worker-dispatch.md.template
+    mode: render
+    feature: agent_workflow.orchestrator_skill
+    required_sections:
+      - "dispatch モード"
+      - "Subagent 起動方式"
+      - "config.yaml"
+      - "model"
+      - "モデル利用不可時"
+      - "step envelope"
   # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
   # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
   - path: .cursor/skills/agent-maintenance-docs/SKILL.md

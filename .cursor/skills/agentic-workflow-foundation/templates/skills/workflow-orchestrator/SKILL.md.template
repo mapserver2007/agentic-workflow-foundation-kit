@@ -26,6 +26,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 > - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
 > - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
 > - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
 {{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
 {{/if}}
 
@@ -38,6 +39,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 1. `AGENTS.md` を読み、Session Protocol / Boundaries / Documentation Navigation を確認済み
 2. セッション開始ゲート（`.cursor/skills/session-handover/scripts/session-start-gate.sh`）を実行済み
 3. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートの有無を把握済み
+4. [`config.yaml`](config.yaml) を実行設定の SoT として読む。ステップ別モデル・dispatch 方針はここから取得する
 
 ---
 
@@ -56,20 +58,21 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ①: 調査・分析（退出ゲートを内包）
 
-[01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) を読み込み実行する。
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
-1. ユーザーとの対話で問題・要件を把握する
+1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
 {{#if dual_thinking.enabled}}3. **調査深度トリアージ**: docs-first 完了後、[`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準でリスク信号を評価し、分析方式を決定する
-   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行（A/B subagent 並列起動 → 統合結果を investigation memo に書き出し）
-   - `skipped`: 通常の Step ① worker を dispatch
-   - `deferred`: 通常の Step ① worker を dispatch → worker 完走後に orchestrator がスコア起動条件を事後判定
+   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行（A/B subagent 並列起動 → 統合結果を investigation memo に書き出し）。**dual-thinking の `config.yaml` が SoT**（`step1_investigation` は不使用）
+   - `skipped`: [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
+   - `deferred`: Step ① worker を dispatch → worker 完走後に orchestrator がスコア起動条件を事後判定
 4. コードを調査し、根本原因 or 実装方針を特定する
 5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
 6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
-{{else}}3. コードを調査し、根本原因 or 実装方針を特定する
-4. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
-5. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+{{else}}3. [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
+4. コードを調査し、根本原因 or 実装方針を特定する
+5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
 {{/if}}
 
 退出ゲート（[①の判定チェックリスト](../../../docs/agent-tasks/agent-workflow/01-investigation.md)）:
@@ -87,7 +90,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ②: タスクレポートの作成
 
-[02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) を読み込み実行する。
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step2_report`）。Step doc: [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md)。
 
 1. `docs/agent-tasks/reports/{yyyy-mm-dd-slug}.md` を作成する（必須 10 セクション）
 2. プレースホルダ `{XXX}` を残さない
@@ -96,7 +99,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ③: 実装の実行
 
-[03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を読み込み実行する。
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step3_implementation`）。Step doc: [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md)。
 
 - 既存実装パターンを踏襲する
 - `AGENTS.md > Boundaries` を遵守する（Always / Ask First / Never）
@@ -104,7 +107,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ④: テスト実装
 
-[04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) を読み込み実行する。
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step4_testing`）。Step doc: [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md)。
 
 コードゲート:
 
@@ -121,7 +124,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ⑤: PR レビュー検証
 
-[05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) を読み込み実行する。
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
 
 1. `agent-github-pr` スキルで PR を作成する
 2. `agent-code-review` スキルでレビュー指摘を取得・検証する
@@ -130,7 +133,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ⑥: 完了報告
 
-[06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) を読み込み実行する。
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step6_completion`）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 `agent-maintenance-docs` スキルに委譲する。スキルが以下を一貫して実行する:
@@ -211,6 +214,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ## 関連ドキュメント
 
+- [config.yaml](config.yaml) — ステップ別モデル設定（SoT）
+- [references/worker-dispatch.md](references/worker-dispatch.md) — Subagent dispatch 契約
 - [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（6 段階概要）
 - [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
 - [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー検証

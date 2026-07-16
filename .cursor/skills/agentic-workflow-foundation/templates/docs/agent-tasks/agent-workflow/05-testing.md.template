@@ -59,7 +59,9 @@
 
 ## Worker Contract
 
-本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（4.1〜4.3）。
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（4.1〜4.3）。
+
+**許可書込み範囲**: test / report + step envelope。commit / push 禁止。
 
 ### 入力
 
@@ -69,7 +71,9 @@
 | `impl_summary` | string | yes | ③出力の実装サマリ |
 | `changed_files` | string[] | yes | ③出力の変更ファイル一覧 |
 
-### 出力（envelope: YAML front matter + Markdown body）
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step4.md` へ書き出す。
 
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
@@ -92,8 +96,10 @@ worker は個別ゲート（build / lint / test）の Advisory ループを**上
 
 **重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step4` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
 
-### エスカレーション
+### 終端状態と遷移
 
+- `complete`: オーケストレータは正式成果物（`gate_results` + 親による `workflow-gate.sh step4` PASS）を確認し⑤へ遷移する
+- `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
 - `blocked` (`advisory_loop_exceeded`): オーケストレータの選択肢 — (a) QUALITY_GATE §2 例外承認 → 通過 / (b) 追加情報付与で再 dispatch / (c) ユーザー報告 + 中断
 - `fatal` (exit 2): オーケストレータがユーザーに報告し例外承認導線を案内する
 {{/if}}

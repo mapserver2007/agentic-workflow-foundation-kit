@@ -10,13 +10,13 @@
 
 - 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 - 追跡ドキュメント: `{{project.tracking_artifact}}`（セッションごとの状態管理ファイル。`.gitignore` 対象・完了時は削除）
-{{#if agent_workflow.artifact}}- 中間生成物: `{{agent_workflow.artifact.dir}}/{report-slug}--{step}.md`（ステップ間パイプラインの partial artifact。`.gitignore` 対象・ステップ完了で削除）{{/if}}
+{{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate が行う）{{/if}}
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
 - **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
 - **完了時削除**: 完了した追跡ドキュメントは削除する（残す価値のある情報は DECISIONS.md / GOTCHAS.md に抽出済み）
-{{#if agent_workflow.artifact}}- **中間生成物の削除**: ステップの正式 artifact 生成完了後、当該ステップの partial artifact を削除する。削除前にオーケストレータが正式 artifact の存在を確認するゲートチェックを行う（誤削除防止）{{/if}}
+{{#if agent_workflow.artifact}}- **step envelope の削除**: 前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。削除前にオーケストレータが `gate-artifact.py` で検証する（誤削除防止）。最終的な残存検査・削除は archive gate が行う{{/if}}
 
 ## Documentation Naming Convention
 

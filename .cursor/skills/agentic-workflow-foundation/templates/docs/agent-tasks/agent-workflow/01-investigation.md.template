@@ -114,7 +114,9 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 {{#if agent_workflow.artifact}}
 ## Worker Contract
 
-本ステップを bounded worker に委譲する場合の入出力契約。手順の SoT は上記セクション（1.1〜1.{{#if dual_thinking.enabled}}7{{else}}6{{/if}}）であり、本節は入出力 schema のみを定義する。
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（1.1〜1.{{#if dual_thinking.enabled}}7{{else}}6{{/if}}）であり、本節は入出力 schema のみを定義する。
+
+**許可書込み範囲**: step envelope のみ。source / report は変更しない。commit / push 禁止。
 
 ### 入力
 
@@ -123,21 +125,27 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 | `task_request` | string | yes | タスク依頼テキスト or issue URL |
 | `doc_navigation` | string[] | no | 参照すべき Domain 層 docs パス一覧（省略時は AGENTS.md から取得） |
 
-### 出力（envelope: YAML front matter + Markdown body）
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step1.md` へ書き出す。
 
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
-| `status` | enum | `complete` / `incomplete` | 調査完了 or 追加情報必要 |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 調査結果 |
 | `step` | string | `"step1"` | 固定値 |
 | `gate_result` | enum | `PASS` / `INCOMPLETE` | 本節の退出ゲート 5 項目の判定結果 |
 | `missing` | string[] | — | `INCOMPLETE` 時の不足項目。`PASS` 時は空配列 |
-| `investigation_memo_path` | string | — | 構造化調査メモの相対パス（`.cursor/.artifacts/{slug}--step1.md` body 部） |
+| `investigation_memo_path` | string | — | 構造化調査メモの相対パス（step envelope body 部を指してよい） |
 {{#if dual_thinking.enabled}}| `triage_result` | enum | `skipped` / `invoked` / `deferred` | 調査深度トリアージの判定結果 |
-{{/if}}
+{{/if}}| `reason` | string | — | `blocked` / `fatal` 時の理由 |
 
-- `complete` + `gate_result: PASS`: オーケストレータは②へ遷移する
+### 終端状態と遷移
+
+- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）を確認し②へ遷移する
 - `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
-- `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは partial artifact を読み追加情報付与で再 dispatch する
+- `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは step envelope を読み追加情報付与で再 dispatch する
+- `blocked`: オーケストレータが reason に応じてエスカレーション
+- `fatal`: オーケストレータがユーザーに報告して停止する
 
 ### Markdown body（標準セクション構造）
 
