@@ -28,7 +28,7 @@
 
 | 区分 | 使ってよい出典（タグ: `[REPO]`） | 使ってはいけない（タグ: `[CR]` / `[USER]`） |
 | --- | --- | --- |
-| `[REPO]` | 該当ファイルの実コード / `AGENTS.md` / プロジェクトのコーディング規約（存在する場合） / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 同一リポジトリ内の類似既存実装 | — |
+| `[REPO]` | 該当ファイルの実コード / `AGENTS.md` / `.cursor/rules/01-critical-constraints.mdc` / プロジェクトのコーディング規約（存在する場合） / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 同一リポジトリ内の類似既存実装 | — |
 | `[CR]` | — | レビュー指摘本文の**言い回し**（「矛盾」「整合性違反」「網羅性不足」「Best Practice」等のフレーミング語） / 自動レビューツールのラベル |
 | `[USER]` | — | ユーザー発言の**語気**（「本当に？」「誤りでは」「もう一度考えて」「修正したほうがよくないか」等） |
 
@@ -176,7 +176,7 @@ Blind first read を実施した上で、各指摘の検証起点（自動レビ
 
 | スタンプ | 意味 | 反論根拠としての有効性 |
 | --- | --- | --- |
-| `[REPO]` | 該当ファイル / `AGENTS.md` / プロジェクトのコーディング規約（存在する場合） / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装 / Blind first read 所感 | ✅ 有効 |
+| `[REPO]` | 該当ファイル / `AGENTS.md` / `.cursor/rules/01-critical-constraints.mdc` / プロジェクトのコーディング規約（存在する場合） / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装 / Blind first read 所感 | ✅ 有効 |
 | `[CR]` | レビュー指摘本文の言い回し / フレーミング語 | ❌ **無効**（反論に使えない） |
 | `[USER]` | ユーザー発言の語気 / challenge phrase | ❌ **無効**（反論に使えない） |
 

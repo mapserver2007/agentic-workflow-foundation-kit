@@ -931,6 +931,11 @@ outputs:
       - "Hard Stop"
       - "不変条件"
       - "Mode B 突入時のフロー"
+      - "judgment-protocol.md"
+      - "approval-loop.md"
+      - "review-completion.md"
+      - "Post Quality Gate"
+      - "Step 3 へ直接進む"
   - path: .cursor/skills/agent-code-review/references/gh-commands.md
     template: skills/agent-code-review/references/gh-commands.md.template
     mode: render

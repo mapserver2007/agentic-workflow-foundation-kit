@@ -2,11 +2,11 @@
 
 # Mode B リマインダ要約（再注入専用）
 
-> Lost in the middle 対策: Mode B 選択直後に本ファイルを Read で再注入し、判定ルール・Step 順序・Hard Stop をコンテキスト末尾に再配置する。SKILL.md 全体や references/ の再読込は不要。
+> Lost in the middle 対策: Mode B 選択直後に本ファイルを Read で再注入し、判定ルール・Step 順序・Hard Stop をコンテキスト末尾に再配置する。Mode B 選択直後は本ファイル以外の再読込は不要。ただし各 Step の Hard Stop 到達時は、下表の references を必ず全文読込する。
 
 ## Step 順序（Mode B でも不変）
 
-Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ループ）→ Step 6.7（完了承認）→ Step 7（レポート）
+Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ループ）→ Post（Quality Gate・保留確認）→ Step 6.7（完了承認）→ Step 7（レポート）
 
 ## Hard Stop（Read 必須の再確認）
 

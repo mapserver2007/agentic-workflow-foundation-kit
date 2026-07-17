@@ -153,7 +153,7 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 #### 不変条件（常時適用 / 暗記必須）
 
-- **`[REPO]` 出典制約**: 判定根拠として使用できるのは `[REPO]`（実コード / `AGENTS.md` / コーディング規約 / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装）のみ。`[CR]`（指摘本文の言い回し）/ `[USER]`（ユーザー発言の語気）は判定根拠として使用禁止
+- **`[REPO]` 出典制約**: 判定根拠として使用できるのは `[REPO]`（実コード / `AGENTS.md` / `.cursor/rules/01-critical-constraints.mdc` / コーディング規約 / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装）のみ。`[CR]`（指摘本文の言い回し）/ `[USER]`（ユーザー発言の語気）は判定根拠として使用禁止
 - **Blind first read 必須**: 指摘本文・「Prompt for AI Agents」を読む**前**に該当ファイルを白紙状態で読み、`[REPO blind]` プレフィクス付き 1 行所感を記録
 - **自己反論必須**: §4.2 ①〜④ で `judgment_initial` を出した直後、`judgment_final` を出す前に Phase 2 自己反論（最強反論 3 件 + `[REPO]` 出典スタンプ必須）→ Phase 3 評価（反転 / 確定+rebuttal / 引き分け→個別承認）を必ず実施
 - **`judgment_final` は 3 段階**: 修正必須 / 修正推奨 / 修正不要（+ `ask_first` 属性フラグ）
