@@ -77,9 +77,7 @@ G-* は技術スタックから決まる root scripts を外部インターフ�
 
 **G-DOC-SPEC の対象スコープ**:
 
-対象（`project.doc_navigation.domain` に列挙された Domain 層 md ファイル）:
-{{#each project.doc_navigation.domain}}- `{{this.path}}` — {{this.desc}}
-{{/each}}
+対象は [`AGENTS.md > Documentation Navigation > Domain 層`](../AGENTS.md) に列挙された Domain 層 md ファイル（`project.doc_navigation.domain`）。
 
 除外:
 - Meta 層（`DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`）

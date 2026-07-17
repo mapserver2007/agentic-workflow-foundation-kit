@@ -28,20 +28,7 @@
 
 ## 3.3 制約事項の遵守（AGENTS.md > Boundaries）
 
-### Always
-{{#each project.boundaries.always}}
-- {{this}}
-{{/each}}
-
-### Ask First（ユーザー承認が必要）
-{{#each project.boundaries.ask_first}}
-- {{this}}
-{{/each}}
-
-### Never
-{{#each project.boundaries.never_extra}}
-- {{this}}
-{{/each}}
+[`AGENTS.md > Boundaries`](../../../AGENTS.md) の Always / Ask First / Never を遵守する。詳細は AGENTS.md を参照。
 
 ## 3.4 設計判断が発生した場合（設計次元 D-*）
 

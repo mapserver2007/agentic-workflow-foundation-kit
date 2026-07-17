@@ -422,5 +422,3 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 - [approval-loop.md](approval-loop.md) — Step 5-6 承認ループ詳細
 - [gh-commands.md](gh-commands.md) — wrapper コマンドリファレンス
 - [reply-templates.md](reply-templates.md) — GitHub 返信テンプレート
-- [QUALITY_GATE.md](../../../../docs/QUALITY_GATE.md) — 検証ゲート定義
-- [AGENTS.md](../../../../AGENTS.md) — Boundaries / Gotchas

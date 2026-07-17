@@ -32,10 +32,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 
 ### 反映対象ドキュメント（G-DOC-SPEC スコープ）
 
-対象（`project.doc_navigation.domain` に列挙された Domain 層 md ファイル）:
-{{#each project.doc_navigation.domain}}
-- [`{{this.path}}`](../../{{this.path}}) — {{this.desc}}
-{{/each}}
+対象は [`AGENTS.md > Documentation Navigation > Domain 層`](../../../AGENTS.md) に列挙された Domain 層 md ファイル（`project.doc_navigation.domain`）。
 
 除外:
 - Meta 層（`DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`）
@@ -118,17 +115,7 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 
 ## 6.6 Gotchas 起票判定
 
-セッション中に以下のいずれかが発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) に運用ログを追記する。
-
-**起票トリガー**（`AGENTS.md > ## Gotchas > 起票トリガー` と同一）:
-1. 開発者から「期待と違う」等の不一致指摘を受けた
-2. 同じ問題で 2 回以上の修正が必要になった
-3. 既存スキル・ドキュメント通りに作業したのに想定外の結果になった
-
-記録フォーマット:
-```
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
-```
+セッション中に起票条件に該当する事象が発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) の起票トリガー・記録フォーマットに従い追記する。
 
 {{#if agent_workflow.artifact}}
 ---
@@ -178,5 +165,4 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 {{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
 - [docs/GOTCHAS.md](../../GOTCHAS.md) — Gotchas 集約版
-- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — PR レビュー → 完了報告 → アーカイブのフェーズ境界
-- [AGENTS.md > Session Protocol](../../../AGENTS.md) — セッション終了手順
+- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — フェーズ境界ゲート

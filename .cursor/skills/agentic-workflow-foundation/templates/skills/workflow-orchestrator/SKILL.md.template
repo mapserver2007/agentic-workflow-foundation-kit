@@ -110,14 +110,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step4_testing`）。Step doc: [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md)。
 
-コードゲート:
-
-| ゲート | コマンド | 合格条件 |
-| --- | --- | --- |
-| G-GEN | `{{project.quality_gate.gen_cmd}}` | 差分なし |
-| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
-| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
-| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0 |
+コードゲート（[`docs/QUALITY_GATE.md §1.1`](../../../docs/QUALITY_GATE.md) 参照）:
 
 {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` で一括検証する。{{/if}}
 
@@ -191,26 +184,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
 >
-> `workflow-orchestrator` スキル運用中に発見した失敗・踏み外しの記録。
-
-### 起票トリガー
-
-1. ステップの順序を飛ばして実装に着手した（docs-first 違反）
-2. タスクレポート未作成のまま実装を進めた
-3. コードゲート未通過のまま PR を作成した
-4. レビュー完了承認なしに完了報告に進んだ
-
-### 記録フォーマット
-
-```text
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
-```
-
-### エントリ
-
-（現時点のエントリは無し）
+> スキル固有の注意: ステップ順序飛ばし・レポート未作成のまま実装・ゲート未通過で PR 作成
 
 ---
 
@@ -220,12 +196,6 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 - [references/worker-dispatch.md](references/worker-dispatch.md) — Subagent dispatch 契約
 - [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（6 段階概要）
 - [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
-- [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー検証
-- [agent-github-pr](../agent-github-pr/SKILL.md) — PR 作成
-- [agent-github-issue](../agent-github-issue/SKILL.md) — issue 読み取り
-- [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — docs 反映 + archives 移動
-- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
-- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）/ フェーズ境界
 {{#if dual_thinking.enabled}}- [dual-thinking](../dual-thinking/SKILL.md) — 多角評価スキル（Step ① トリアージで自動起動）
 - [references/workflow-triage.md](../dual-thinking/references/workflow-triage.md) — トリアージ基準の SoT
 {{/if}}
