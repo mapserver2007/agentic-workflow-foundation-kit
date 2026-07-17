@@ -74,8 +74,8 @@ def check_redispatch(filepath: str, json_mode: bool = False):
         return 1
 
     # --- base_commit_sha が有効な commit か検証 ---
-    rc, _ = run_git(["cat-file", "-t", base_sha])
-    if rc != 0:
+    rc, object_type = run_git(["cat-file", "-t", base_sha])
+    if rc != 0 or object_type != "commit":
         results.append({
             "id": "G-REDISPATCH-SHA-002",
             "level": "FAIL",
@@ -131,11 +131,16 @@ def check_redispatch(filepath: str, json_mode: bool = False):
         actual_untracked = set(ls_output.splitlines()) if ls_output else set()
         only_in_artifact_u = artifact_untracked - actual_untracked
         only_in_tree_u = actual_untracked - artifact_untracked
-        if only_in_artifact_u:
+        if only_in_artifact_u or only_in_tree_u:
+            msg_parts = []
+            if only_in_artifact_u:
+                msg_parts.append(f"artifact にあるが tree にない: {sorted(only_in_artifact_u)}")
+            if only_in_tree_u:
+                msg_parts.append(f"tree にあるが artifact にない: {sorted(only_in_tree_u)}")
             results.append({
                 "id": "G-REDISPATCH-UNTRACKED-002",
                 "level": "FAIL",
-                "msg": f"artifact の untracked_files が tree に存在しない: {sorted(only_in_artifact_u)}",
+                "msg": f"untracked_files 不一致: {'; '.join(msg_parts)}",
             })
             fail = True
         else:

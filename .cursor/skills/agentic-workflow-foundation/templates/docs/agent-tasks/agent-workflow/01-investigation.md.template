@@ -20,7 +20,7 @@
 
 ## 1.2 ドキュメントの参照
 
-> **AGENTS.md > Documentation Navigation の docs-first 原則**: コード調査（1.4）に進む前に、必ず本節の docs を先に確認する。コード検索を 1.2 より先に実行してはならない（仕様の推論をコードからしないため）。
+> **AGENTS.md > Documentation Navigation の docs-first 原則**: コード調査（1.{{#if dual_thinking.enabled}}4{{else}}3{{/if}}）に進む前に、必ず本節の docs を先に確認する。コード検索を 1.2 より先に実行してはならない（仕様の推論をコードからしないため）。
 
 `AGENTS.md > Documentation Navigation` の参照順序に従う。
 

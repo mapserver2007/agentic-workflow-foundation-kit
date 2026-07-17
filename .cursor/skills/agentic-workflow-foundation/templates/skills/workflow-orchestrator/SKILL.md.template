@@ -22,11 +22,11 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下に Progressive Disclosure で分割されている。本スキルは全体の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
 
 > **関連スキル**:
-> - [agent-code-review](../agent-code-review/SKILL.md) — Step ⑤ PR レビュー検証
-> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
-> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
-> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
-> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
+{{#if code_review.enabled}}> - [agent-code-review](../agent-code-review/SKILL.md) — Step ⑤ PR レビュー検証
+{{/if}}{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
+{{/if}}{{#if github_issue.enabled}}> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+{{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
 {{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
 {{/if}}
 
@@ -54,7 +54,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | Step ② 承認済み | コード変更完了 + レポート更新 | — |
 | **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → PR{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
 | **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | PR → 完了{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} |
-| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ 承認済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
+| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ 承認済み{{#if agent_workflow.gate_scripts}} + `workflow-gate.sh step6` PASS{{/if}} | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
 
 ### Step ①: 調査・分析（退出ゲートを内包）
 
@@ -95,7 +95,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 1. `docs/agent-tasks/reports/{yyyy-mm-dd-slug}.md` を作成する（必須 10 セクション）
 2. プレースホルダ `{XXX}` を残さない
 3. ユーザーに内容を提示して承認を得る
-{{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step2-report` でレポート構造を検証する{{/if}}
+{{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step2` で Step ② 完了条件を検証する
+5. `workflow-gate.sh step2-report` でレポート構造を検証する{{/if}}
 
 ### Step ③: 実装の実行
 
@@ -130,6 +131,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 2. `agent-code-review` スキルでレビュー指摘を取得・検証する
 3. ユーザーに検証結果を提示し承認後に返信・修正する
 4. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+{{#if agent_workflow.gate_scripts}}5. `workflow-gate.sh step6` で Step ⑥ 入口条件を検証する{{/if}}
 
 ### Step ⑥: 完了報告
 

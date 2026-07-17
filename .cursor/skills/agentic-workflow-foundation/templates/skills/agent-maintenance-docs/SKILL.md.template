@@ -120,7 +120,7 @@ docs 反映 + archives 移動が完了しました：
 | `AGENTS.md` | — | Meta 層生成物。SoT は manifest → templates（Never 抵触） |
 | `docs/tech-stack.md` | — | SoT は `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`。逆流禁止 |
 | `docs/DECISIONS.md` | — | ADR 起票は `decisions-record` スキルの責務 |
-| `docs/GOTCHAS.md` | — | Gotchas 起票は workflow-orchestrator Step ⑦ 直轄の判断 |
+| `docs/GOTCHAS.md` | — | Gotchas 起票は workflow-orchestrator Step ⑥ 直轄の判断 |
 | `docs/QUALITY_GATE.md` | — | Meta 層生成物 |
 | `docs/AGENT_RUNBOOK.md` | — | Meta 層生成物 |
 | archives 移動 | `git mv` 実行 | — |

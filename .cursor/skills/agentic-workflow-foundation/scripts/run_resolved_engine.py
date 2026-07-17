@@ -237,6 +237,8 @@ def _is_feature_enabled(manifest: dict, feature: str) -> bool:
     for i, part in enumerate(parts):
         if not isinstance(node, dict):
             return False
+        if i > 0 and "enabled" in node and not bool(node["enabled"]):
+            return False
         node = node.get(part)
         if node is None:
             return False
@@ -314,13 +316,15 @@ def _migrate_root_manifest_file(root_manifest_path: str) -> int:
                 file=sys.stderr,
             )
             return 2
-
-    updated = text
-    updated = re.sub(
-        r"execute_skill",
-        "orchestrator_skill",
-        updated,
-    )
+        updated = re.sub(
+            r"^\s+execute_skill:.*\n?",
+            "",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    else:
+        updated = re.sub(r"execute_skill", "orchestrator_skill", text)
     updated = re.sub(
         r"execute-agent-workflow",
         "workflow-orchestrator",
