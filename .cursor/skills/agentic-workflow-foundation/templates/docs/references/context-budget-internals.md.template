@@ -47,6 +47,33 @@ Red (manifest.yaml > framework.budget_thresholds 参照)
 
 運用後に `compact-events.jsonl` が蓄積されたら、既存の校正サイクル（`manifest.yaml > handoff.calibration`）で値を微調整できる。校正による値変更は ADR 不要（値チューニング）。
 
+## tracker と handoff manifest の責務境界（詳細）
+
+| | tracker-{session_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
+|---|---|---|
+| **役割** | キャンペーン（= セッション）の SoT | セッション固有の揮発情報 + tracker へのポインタ |
+| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker のどこにいるか + tracker に未反映の差分 |
+| **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
+| **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
+| **矛盾時の優先** | **常に tracker が正** | tracker の劣化コピーとして扱う |
+
+### 追跡ドキュメントのプランファイル連携
+
+プランファイル（`.cursor/plans/*.plan.md`）駆動のタスクでは、追跡ドキュメントにタスク分解（todos）を重複して書かない。
+追跡ドキュメントはプランファイルへのポインタ + セッション判断ログ + ブロッカーのみを記載する。
+
+例:
+
+```markdown
+## 現在のフェーズ
+- 参照プラン: `.cursor/plans/dynamic_budget_thresholds.plan.md`
+- 現在位置: t4（resolver script 作成）実装中
+
+## セッション判断ログ
+### 採用した判断と根拠
+- tier 境界を完全一致にした（理由: テスト計画との整合）
+```
+
 ## 意図的に採用しない設計（YAGNI）
 
 manifest を閾値の SoT とし、以下は観測ベースの必要性が複数回確認されるまで作らない。

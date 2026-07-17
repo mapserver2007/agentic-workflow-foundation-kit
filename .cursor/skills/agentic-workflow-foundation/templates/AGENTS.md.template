@@ -94,7 +94,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 `Context Budget Protocol` は統一設計書の正式見出しではなく、「追跡ドキュメント / 検証ゲート / 再開プロトコル」、コンテキストの即時外部化、コンテキスト保護、Context/Session/State SoT を本基盤向けに束ねた運用名である。
 
-閾値判定と警告発火は Hook（`session-budget-evaluator.sh` / `session-compact-observer.sh`）が自動で行い、AI は `followup_message` で行動指示を受け取る。閾値の具体値・判定優先順位・失敗モード・ユーザー操作は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md) を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する。
+閾値判定と警告発火は Hook（`session-budget-evaluator.sh` / `session-compact-observer.sh`）が自動で行い、AI は `followup_message` で行動指示を受け取る。ユーザー操作・失敗モード・handoff パス規約は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md) を SoT とし、閾値の具体値・判定優先順位・Hook 技術詳細は [`.cursor/hooks/README.md`](.cursor/hooks/README.md) を参照する。
 
 - **Checkpoint**: 定期的に `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造の外部化を促す（セッション切り替えではない）
 - **Yellow**: 追跡ドキュメントの最新化と作業の区切り準備。`followup_message` の指示に従う
