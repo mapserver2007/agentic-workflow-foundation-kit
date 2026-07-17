@@ -12,11 +12,11 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue`、`execute-agent-workflow`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
+| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue`、`workflow-orchestrator`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む） |
 | Project Docs (Meta) | `docs/tech-stack.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（7ステップ + index + best-practices + README）、`docs/agent-tasks/reports/`、`execute-agent-workflow`、`agent-maintenance-docs` |
+| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices + README）、`docs/agent-tasks/reports/`、`workflow-orchestrator`、`agent-maintenance-docs` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
@@ -115,7 +115,7 @@ agentic-workflow-foundation-kit/
         │   │   ├── skills/                   # session-planning, session-handover,
         │   │   │                             # decisions-record, agent-code-review,
         │   │   │                             # agent-github-pr, agent-github-issue,
-        │   │   │                             # execute-agent-workflow, agent-maintenance-docs,
+        │   │   │                             # workflow-orchestrator, agent-maintenance-docs,
         │   │   │                             # cross-repository-knowledge-link
         │   │   └── bin/                      # _github-app-auth.sh, github-*-safe,
         │   │                                 # cross-repo-sync-safe
@@ -141,7 +141,7 @@ agentic-workflow-foundation-kit/
         └── （生成スキル）                     # session-planning, session-handover,
                                                # decisions-record, agent-code-review,
                                                # agent-github-pr, agent-github-issue,
-                                               # execute-agent-workflow, agent-maintenance-docs,
+                                               # workflow-orchestrator, agent-maintenance-docs,
                                                # cross-repository-knowledge-link
 ```
 
@@ -159,7 +159,7 @@ agentic-workflow-foundation-kit/
 | `session-planning` | 追跡ドキュメント（`.cursor/.tracking/tracker.md`）の作成・更新 |
 | `session-handover` | セッション開始/終了ゲート、handoff、検証ゲート |
 | `decisions-record` | ADR（`docs/DECISIONS.md`）の起票 |
-| `execute-agent-workflow` | 7 ステップ標準タスク実行ワークフロー |
+| `workflow-orchestrator` | 6 段階標準タスク実行ワークフロー（①〜⑥、①の退出ゲートを内包） |
 | `agent-maintenance-docs` | タスク完了時の docs 反映 + archives 移動 |
 | `agent-code-review` | PR レビューコメントの検証・返答 |
 | `agent-github-pr` | PR 作成 |
@@ -237,7 +237,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
-| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/execute-agent-workflow/SKILL.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
+| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
 | Optional Cross-Repo | `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
@@ -247,7 +247,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
-- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/execute-agent-workflow/SKILL.md` — `agent_workflow.enabled: true` の場合のみ
+- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md` — `agent_workflow.enabled: true` の場合のみ
 - `.cursor/skills/agent-maintenance-docs/SKILL.md` — `agent_workflow.maintenance_docs.enabled: true` の場合のみ
 - `.cursor/skills/cross-repository-knowledge-link/**` と `bin/cross-repo-sync-safe` — `cross_repo_knowledge.enabled: true` の場合のみ
 
@@ -261,7 +261,7 @@ Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初�
 | --- | --- | --- |
 | 1. Context | 目的・判断基準・運用入口 | `AGENTS.md`、`CLAUDE.md`、`docs/*` |
 | 2. Constraints | 常時適用される制約 | `.cursor/rules/*.mdc` |
-| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`execute-agent-workflow`、`agent-code-review`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
+| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`workflow-orchestrator`、`agent-code-review`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
 | 4. Automation | ツール実行前後・セッション境界の自動処理 | `.cursor/hooks/*`、`.cursor/hooks.json` |
 | 5. Delegation | 子エージェントへの委譲 | 本キットでは生成しない。Cursor 組み込み Subagent を利用する |
 

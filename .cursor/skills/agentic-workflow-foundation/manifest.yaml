@@ -422,44 +422,76 @@ github_issue:
   enabled: false
 
 # ------------------------------------------------------------
-# (2i) agent_workflow — タスク実行ワークフロー docs（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+# (2i) agent_workflow — タスク実行ワークフロー docs + orchestrator スキル
+#   Phase 1.5 の AskQuestion で生成有無を変更可能（seed default: true）。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
-#   docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+#   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
-#   execute_skill: true の場合、.cursor/skills/execute-agent-workflow/SKILL.md を生成する。
+#   orchestrator_skill: true の場合、.cursor/skills/workflow-orchestrator/SKILL.md を生成する。
 #   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
-  enabled: false
+  enabled: true
   report_slug_format: "yyyy-mm-dd-slug"
   maintenance_docs:
-    enabled: false
+    enabled: true
   gate_scripts: true
-  execute_skill: false
+  orchestrator_skill: true
+  # step envelope: 全 worker の終端結果（complete/incomplete/blocked/fatal）を保存する永続 artifact（決定 13 / 14）。
+  # complete を含む全状態で書き出し、次ステップの入力・再開・機械検証に用いる。
+  # 前ステップの envelope は次ステップの envelope と正式成果物の検証完了後に削除する。最終残存検査は archive gate が行う。
+  artifact:
+    dir: ".cursor/.artifacts"
+    naming_pattern: "{report-slug}--{step}.md"
+    envelope:
+      format: "yaml-front-matter"
+      required_fields:
+        - "status"
+        - "step"
+      # I-4: front matter パーサー依存。PyYAML（yaml.safe_load）を唯一のパーサーとする。
+      # 未導入・不正 front matter・未知必須フィールドは exit 2（致命的エラー）。
+      parser: "python3-pyyaml"
+      parser_missing_exit: 2
   step_gates:
-    - id: step3
+    - id: step2
       desc: "計画→実装境界（必須セクション充足）"
       cmd: "plan-gate.sh report"
-    - id: step3-report
+    - id: step2-report
       desc: "レポート構造検査（必須10セクション充足）"
       cmd: "gate-report.py"
-    - id: step5
+    - id: step4
       desc: "実装→検証（コードゲート）"
       cmd: "code-gate"
-    - id: step6
+    - id: step5
       desc: "検証→PR（検証ゲート）"
       cmd: "verification-gate.sh"
-    - id: step7
+    - id: step6
       desc: "PR→完了（レビュー完了承認）"
       cmd: "plan-gate.sh review"
     - id: adr
       desc: "ADR 起票内容の機械検査"
       cmd: "gate-adr.py"
+    - id: artifact
+      desc: "Worker artifact envelope 検査"
+      cmd: "gate-artifact.py"
+    - id: redispatch
+      desc: "re-dispatch 前の復元差分照合"
+      cmd: "gate-redispatch.py"
     - id: archive
-      desc: "完了チェック6項目 + archives移動検査"
+      desc: "完了チェック6項目 + 残存artifact検査 + archives移動検査"
       cmd: "archive-gate.sh"
+  # ステップ別モデル設定（PO 決定値）。
+  # config.yaml テンプレートがこの値を seed 初期値として使い、生成後は PO が直接 config.yaml を編集できる。
+  # Step ⑤（PR レビュー）は親直接実行のため config 対象外（決定 12）。
+  models:
+    step1_investigation: "claude-4.6-opus-high-thinking"
+    step2_report: "composer-2.5-fast"
+    step3_implementation: "gpt-5.6-terra-medium"
+    step4_testing: "composer-2.5-fast"
+    step6_completion: "composer-2.5-fast"
+  # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）
+  model_unavailable: "ABORT"
   # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
   # service: チケット管理サービス名 / format: 番号の正規表現パターン
   ticket:
@@ -803,9 +835,9 @@ outputs:
     executable: true
     required_sections:
       - "=== workflow gate ==="
-      - "step3"
-      - "step3-report"
-      - "step5"
+      - "step2"
+      - "step2-report"
+      - "step4"
       - "adr"
       - "archive"
   - path: .cursor/skills/session-handover/scripts/archive-gate.sh
@@ -832,6 +864,23 @@ outputs:
     required_sections:
       - "G-ADR-SIGNIFICANCE-001"
       - "G-ADR-ALTERNATIVES-001"
+  - path: .cursor/skills/session-handover/scripts/gate-artifact.py
+    template: skills/session-handover/scripts/gate-artifact.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-ARTIFACT-PARSE-001"
+      - "G-ARTIFACT-FIELD-001"
+      - "G-ARTIFACT-STATUS-001"
+  - path: .cursor/skills/session-handover/scripts/gate-redispatch.py
+    template: skills/session-handover/scripts/gate-redispatch.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-REDISPATCH-SHA-001"
+      - "G-REDISPATCH-CHANGED-001"
   - path: .cursor/skills/decisions-record/SKILL.md
     template: skills/decisions-record/SKILL.md.template
     mode: render
@@ -971,7 +1020,7 @@ outputs:
     mode: render
     executable: true
   # agent-workflow docs（feature: agent_workflow で条件生成）。
-  # docs/agent-tasks/agent-workflow/ 配下に 7 ステップ + index + best-practices を生成する。
+  # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
   - path: docs/agent-tasks/reports/.gitkeep
     template: gitkeep.template
@@ -1004,14 +1053,7 @@ outputs:
       - "ドキュメントの参照"
       - "コードの調査"
       - "ADR 起票判定"
-  - path: docs/agent-tasks/agent-workflow/02-task-decision.md
-    template: docs/agent-tasks/agent-workflow/02-task-decision.md.template
-    mode: render
-    feature: agent_workflow
-    required_sections:
-      - "判定チェックリスト"
-      - "タスク確定ではない場合"
-  - path: docs/agent-tasks/agent-workflow/03-report-creation.md
+  - path: docs/agent-tasks/agent-workflow/02-report-creation.md
     template: docs/agent-tasks/agent-workflow/03-report-creation.md.template
     mode: render
     feature: agent_workflow
@@ -1019,14 +1061,14 @@ outputs:
       - "必須セクション"
       - "プレースホルダ禁止"
       - "進行中キャンペーン"
-  - path: docs/agent-tasks/agent-workflow/04-implementation.md
+  - path: docs/agent-tasks/agent-workflow/03-implementation.md
     template: docs/agent-tasks/agent-workflow/04-implementation.md.template
     mode: render
     feature: agent_workflow
     required_sections:
       - "既存実装の踏襲"
       - "設計判断が発生した場合"
-  - path: docs/agent-tasks/agent-workflow/05-testing.md
+  - path: docs/agent-tasks/agent-workflow/04-testing.md
     template: docs/agent-tasks/agent-workflow/05-testing.md.template
     mode: render
     feature: agent_workflow
@@ -1034,7 +1076,7 @@ outputs:
       - "コードゲート"
       - "合格条件"
       - "禁止事項"
-  - path: docs/agent-tasks/agent-workflow/06-pr-review.md
+  - path: docs/agent-tasks/agent-workflow/05-pr-review.md
     template: docs/agent-tasks/agent-workflow/06-pr-review.md.template
     mode: render
     feature: agent_workflow
@@ -1042,7 +1084,7 @@ outputs:
       - "PR 作成"
       - "指摘の検証"
       - "レビュー完了承認"
-  - path: docs/agent-tasks/agent-workflow/07-completion.md
+  - path: docs/agent-tasks/agent-workflow/06-completion.md
     template: docs/agent-tasks/agent-workflow/07-completion.md.template
     mode: render
     feature: agent_workflow
@@ -1059,21 +1101,42 @@ outputs:
       - "推測禁止"
       - "既存実装の踏襲"
       - "archives 移動"
-  # execute-agent-workflow スキル（feature: agent_workflow.execute_skill で条件生成）。
-  # agent_workflow.execute_skill: true の場合のみ生成される。
-  # 7 ステップ標準ワークフローの制御フロー・Step Gate Matrix・スキル連携を一元管理する。
-  - path: .cursor/skills/execute-agent-workflow/SKILL.md
-    template: skills/execute-agent-workflow/SKILL.md.template
+  # workflow-orchestrator スキル（feature: agent_workflow.orchestrator_skill で条件生成）。
+  # agent_workflow.orchestrator_skill: true の場合のみ生成される。
+  # 6 段階標準ワークフロー（①〜⑥、①の退出ゲートを内包）の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+  - path: .cursor/skills/workflow-orchestrator/SKILL.md
+    template: skills/workflow-orchestrator/SKILL.md.template
     mode: render
-    feature: agent_workflow.execute_skill
+    feature: agent_workflow.orchestrator_skill
     required_sections:
-      - "name: execute-agent-workflow"
+      - "name: workflow-orchestrator"
       - "## 前提条件"
       - "Step Gate Matrix"
       - "## Context Budget 到達時の対応"
       - "## 進行中タスクレポートからの再開"
       - "## ベストプラクティス"
       - "## Gotchas"
+  # workflow-orchestrator config.yaml（ステップ別モデル設定 / mode: seed で PO 直接編集可）。
+  - path: .cursor/skills/workflow-orchestrator/config.yaml
+    template: skills/workflow-orchestrator/config.yaml.template
+    mode: seed
+    feature: agent_workflow.orchestrator_skill
+    required_sections:
+      - "models"
+      - "model_unavailable"
+  # workflow-orchestrator dispatch reference（analyst-brief.md 相当）。
+  # 各ステップの subagent 起動方式・モデルキー・step envelope 契約を定義する。
+  - path: .cursor/skills/workflow-orchestrator/references/worker-dispatch.md
+    template: skills/workflow-orchestrator/references/worker-dispatch.md.template
+    mode: render
+    feature: agent_workflow.orchestrator_skill
+    required_sections:
+      - "dispatch モード"
+      - "Subagent 起動方式"
+      - "config.yaml"
+      - "model"
+      - "モデル利用不可時"
+      - "step envelope"
   # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
   # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
   - path: .cursor/skills/agent-maintenance-docs/SKILL.md
@@ -1146,6 +1209,15 @@ outputs:
       - "禁止される表現パターン"
       - "許容される表現パターン"
       - "高影響領域の扱い"
+  - path: .cursor/skills/dual-thinking/references/workflow-triage.md
+    template: skills/dual-thinking/references/workflow-triage.md.template
+    mode: render
+    feature: dual_thinking
+    required_sections:
+      - "即時起動条件"
+      - "スコア起動条件"
+      - "triage_result"
+      - "失敗種別"
   # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
   # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。
@@ -1225,6 +1297,10 @@ project:
     build_cmd: "[要確認] Phase 1.65 で導出"
     lint_cmd: "[要確認] Phase 1.65 で導出"
     test_cmd: "[要確認] Phase 1.65 で導出"
+    # G-GEN porcelain チェック対象パス（決定 10）。
+    # gen_cmd 実行後 git status --porcelain -- <paths> で差分を検査する。
+    # 未定義（キー不在）= exit 2（安全側フォールバック禁止）。空リスト = gen 不要（スキップ）。
+    gen_artifact_paths:
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"

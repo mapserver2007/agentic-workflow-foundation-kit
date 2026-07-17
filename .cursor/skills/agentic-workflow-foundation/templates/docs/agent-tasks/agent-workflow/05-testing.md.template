@@ -1,4 +1,4 @@
-# ⑤ テスト実装
+# ④ テスト実装
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 5.1 テストの作成
+## 4.1 テストの作成
 
 タスクレポートのテスト計画に従ってテストを実装する。
 
@@ -15,13 +15,13 @@
 - 既存テストのスタイル・命名規則を踏襲する
 - テスト間の独立性を保つ（共有状態を排除する）
 
-## 5.2 テストの実行（コードゲート）
+## 4.2 テストの実行（コードゲート）
 
 [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の全ゲートを通す。
 
 {{#if agent_workflow.gate_scripts}}
 ```bash
-.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+.cursor/skills/session-handover/scripts/workflow-gate.sh step4
 ```
 {{else}}
 ```bash
@@ -43,7 +43,7 @@
 - lint 指摘を一括抑制する
 - 失敗しているテストをスキップする
 
-## 5.3 タスクレポートの更新
+## 4.3 タスクレポートの更新
 
 テスト実装完了後、`reports/{report}.md` のテスト計画セクションのチェックボックスを更新する。
 
@@ -54,10 +54,60 @@
 
 完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新する。
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（4.1〜4.3）。
+
+**許可書込み範囲**: test / report + step envelope。commit / push 禁止。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `report_path` | string | yes | タスクレポートのパス（テスト計画セクションを参照） |
+| `impl_summary` | string | yes | ③出力の実装サマリ |
+| `changed_files` | string[] | yes | ③出力の変更ファイル一覧 |
+
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step4.md` へ書き出す。
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | テスト結果 |
+| `step` | string | `"step4"` | 固定値 |
+| `gate_results` | object | — | 各ゲートの exit code（`{ gen: 0, build: 0, lint: 0, test: 0 }`） |
+| `test_summary` | string | — | テスト結果のサマリ |
+| `advisory_loop_count` | integer | — | 実行した Advisory ループ回数 |
+| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `gate_id` | string | — | `fatal` 時の失敗ゲート ID |
+| `stderr_summary` | string | — | `fatal` 時のエラー出力要約 |
+
+### Advisory ループ（worker 責務）
+
+worker は個別ゲート（build / lint / test）の Advisory ループを**上限 3 回**まで自律実行する:
+
+1. ゲート実行 → exit 1 → 修正 → 再実行（最大 3 回）
+2. 3 回以内に exit 0: `status: complete`
+3. 3 回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
+
+**重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step4` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
+
+### 終端状態と遷移
+
+- `complete`: オーケストレータは正式成果物（`gate_results` + 親による `workflow-gate.sh step4` PASS）を確認し⑤へ遷移する
+- `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
+- `blocked` (`advisory_loop_exceeded`): オーケストレータの選択肢 — (a) QUALITY_GATE §2 例外承認 → 通過 / (b) 追加情報付与で再 dispatch / (c) ユーザー報告 + 中断
+- `fatal` (exit 2): オーケストレータがユーザーに報告し例外承認導線を案内する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント
 
-- [04-implementation.md](04-implementation.md) — 前ステップ（実装）
-- [06-pr-review.md](06-pr-review.md) — 次ステップ（PR レビュー検証）
+- [03-implementation.md](03-implementation.md) — 前ステップ（実装）
+- [05-pr-review.md](05-pr-review.md) — 次ステップ（PR レビュー検証）
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 — コードゲートの定義

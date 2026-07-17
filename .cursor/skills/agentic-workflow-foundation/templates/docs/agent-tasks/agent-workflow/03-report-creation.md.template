@@ -1,4 +1,4 @@
-# ③ タスクレポートの作成
+# ② タスクレポートの作成
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 3.1 ファイル名の決定
+## 2.1 ファイル名の決定
 
 `docs/agent-tasks/reports/{report}.md`
 
@@ -21,7 +21,7 @@
 - slug 部分: タスクを簡潔に要約した英語フレーズ、ハイフン区切り、英数字とハイフンのみ、小文字
 - チケット番号はファイル名に含めない（レポート本文中にチケットシステムへのリンクを記載）
 
-## 3.2 タスクレポートの作成
+## 2.2 タスクレポートの作成
 
 ### 必須セクション
 
@@ -119,7 +119,7 @@
 ```
 {{/if}}
 
-## 3.3 タスクレポートの保存
+## 2.3 タスクレポートの保存
 
 `docs/agent-tasks/reports/{report}.md` に書き出す。
 
@@ -127,7 +127,7 @@
 >
 > セッション再開時に進行中キャンペーンを把握するには、`ls docs/agent-tasks/reports/*.md`（archives/ 除く）を実行する。
 
-## 3.4 ユーザーへの確認
+## 2.4 ユーザーへの確認
 
 ```markdown
 タスクレポートを作成しました：
@@ -139,10 +139,49 @@
 この内容で実装を進めてよろしいですか？
 ```
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（2.1〜2.4）。
+
+**許可書込み範囲**: task report + step envelope のみ。source は変更しない。commit / push 禁止。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `investigation_memo_path` | string | yes | ①出力の構造化調査メモパス |
+| `gate1_result` | enum | yes | `PASS`（①退出ゲート通過済み） |
+| `report_slug` | string | yes | レポートファイル名（`{{agent_workflow.report_slug_format}}`） |
+
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step2.md` へ書き出す。
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 作成結果 |
+| `step` | string | `"step2"` | 固定値 |
+| `report_path` | string | — | 作成されたレポートの相対パス |
+| `report_digest` | string | — | レポート内容のサマリ（親がユーザー承認を求める際に使用） |
+| `gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh step2-report` 相当の自己検査結果 |
+| `missing` | string[] | — | `incomplete` 時の未充足セクション名 |
+| `reason` | string | — | `blocked` / `fatal` 時の理由（`naming_conflict` / `gate_fail`） |
+
+### 終端状態と遷移
+
+- `complete`: オーケストレータは正式成果物（`report_path` の存在 + 親による `workflow-gate.sh step2-report` PASS）を確認し、ユーザーにレポートを提示して承認後③へ遷移する
+- `incomplete`: 必須セクションが不足。オーケストレータは `missing` を確認し追加情報付与で再 dispatch する
+- `blocked`: 命名衝突やゲート検査失敗。オーケストレータが状況を判断しユーザーに報告する
+- `fatal`: オーケストレータがユーザーに報告して停止する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント
 
-- [02-task-decision.md](02-task-decision.md) — 前ステップ（タスク確定の判定）
-- [04-implementation.md](04-implementation.md) — 次ステップ（実装）
+- [01-investigation.md](01-investigation.md) — 前ステップ（調査・分析）
+- [03-implementation.md](03-implementation.md) — 次ステップ（実装）
 - [AGENTS.md > Documentation Naming Convention](../../../AGENTS.md) — Meta/Domain 命名規約

@@ -1,14 +1,14 @@
-# ⑦ 完了報告
+# ⑥ 完了報告
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
 実装・テスト・レビューが完了した後、docs への仕様反映と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
 
-**前提条件**: ⑥ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
+**前提条件**: ⑤ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
 
 ---
 
-## 7.1 docs への仕様反映
+## 6.1 docs への仕様反映
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 PR レビュー完了後、`.cursor/skills/agent-maintenance-docs/SKILL.md` を読み込み実行する。
@@ -45,7 +45,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 
 反映完了後、タスクレポートの「docs への仕様反映」チェックボックスを `[x]` に更新する。
 
-## 7.2 完了条件の確認（QUALITY_GATE 6項目）
+## 6.2 完了条件の確認（QUALITY_GATE 6項目）
 
 タスクレポートの完了チェック 6 項目が全て `[x]` になっているか確認する。
 
@@ -56,7 +56,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 - [ ] docs への仕様反映（G-DOC-SPEC）
 - [ ] ADR 起票判定（設計次元 D-* 該当なら [docs/DECISIONS.md](../../DECISIONS.md) へ追記）
 
-## 7.3 archives 移動
+## 6.3 archives 移動
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 `agent-maintenance-docs` スキルは **docs 反映だけでなく archives 移動までを責任範囲**に持つ。完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
@@ -85,7 +85,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 
 archives 移動済み時点でタスクは**実質完了**とみなす。以降の工程（PR マージ / 本番反映）で発生した問題は元 reports を再編集せず、新規レポートとして起票する。
 
-## 7.4 ユーザーへの報告
+## 6.4 ユーザーへの報告
 
 ```markdown
 タスク実装が完了しました：
@@ -98,10 +98,10 @@ archives 移動済み時点でタスクは**実質完了**とみなす。以降�
 - 確認事項: {ユーザーに確認してほしい内容}
 ```
 
-## 7.5 例外: docs 反映後に追加コメントが付いた場合
+## 6.5 例外: docs 反映後に追加コメントが付いた場合
 
 {{#if code_review.enabled}}
-Step 6.7 で承認を取得して docs 反映まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
+Step 5.7 で承認を取得して docs 反映まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
 
 1. ユーザーが `agent-code-review` を **Mode B で再起動**する
 2. タスクレポートの `[x] PRレビュー検証完了` と `[x] docsへの仕様反映` を **`[ ]` に戻す**（再承認・再反映を強制）
@@ -116,7 +116,7 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 3. チェックボックスを再び `[x]` に更新する
 {{/if}}
 
-## 7.6 Gotchas 起票判定
+## 6.6 Gotchas 起票判定
 
 セッション中に以下のいずれかが発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) に運用ログを追記する。
 
@@ -130,11 +130,51 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 - YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
 ```
 
+{{#if agent_workflow.artifact}}
+---
+
+## Worker Contract
+
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（6.1〜6.6）。実体は `agent-maintenance-docs` スキルへの委譲。
+
+**許可書込み範囲**: Domain docs / archive + step envelope。commit / push 禁止。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `report_path` | string | yes | タスクレポートのパス |
+| `pr_url` | string | yes | PR の URL |
+| `review_approved` | boolean | yes | `true`（⑤完了の前提条件） |
+
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step6.md` へ書き出す。
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 完了報告結果 |
+| `step` | string | `"step6"` | 固定値 |
+| `docs_updated` | string[] | — | 仕様反映した Domain 層 docs パス一覧（反映不要の場合は空配列） |
+| `archive_path` | string | — | archives 移動後のレポートパス |
+| `archive_gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh archive` 相当の検査結果 |
+| `unchecked_items` | string[] | — | `incomplete` 時の未完了チェック項目 |
+| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `action` | string | — | `blocked` 時の推奨アクション |
+
+### 終端状態と遷移
+
+- `complete`: オーケストレータは正式成果物（`archive_path` の存在 + archive gate PASS）を確認し、ユーザーに完了報告する
+- `incomplete`: 完了チェック項目が不足。オーケストレータは `unchecked_items` を確認し対応する
+- `blocked` (`reason: post_completion_review`, `action: reopen_step5`): §6.5 対応。docs 反映後に追加レビューコメントが付いた場合。オーケストレータは⑤を Mode B で再開する
+- `fatal`: オーケストレータがユーザーに報告して停止する
+{{/if}}
+
 ---
 
 ## 関連ドキュメント
 
-- [06-pr-review.md](06-pr-review.md) — 前ステップ（PR レビュー検証）
+- [05-pr-review.md](05-pr-review.md) — 前ステップ（PR レビュー検証）
 {{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
 - [docs/GOTCHAS.md](../../GOTCHAS.md) — Gotchas 集約版

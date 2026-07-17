@@ -228,13 +228,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
        - `github_pr.enabled: true` → agent-github-pr スキルを生成
        - `github_issue.enabled: true` → agent-github-issue スキルと `bin/github-issue-{create,read}-safe` を生成
        - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
-       - `agent_workflow.enabled: true` → agent-workflow docs（7ステップ + index + best-practices）を生成
-       - `agent_workflow.execute_skill: true` → execute-agent-workflow スキルを生成
+       - `agent_workflow.enabled: true` → agent-workflow docs（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices）を生成
+       - `agent_workflow.orchestrator_skill: true` → workflow-orchestrator スキルを生成
        - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
        - `cross_repo_knowledge.enabled: true` → cross-repository-knowledge-link スキルと `bin/cross-repo-sync-safe` を生成
        - `dual_thinking.enabled: true` → dual-thinking スキルを生成（続けてモデル設定を 1 問で確認する）
        - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit / dual-thinking 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.execute_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `dual_thinking.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / execute-agent-workflow スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / dual-thinking スキルを生成しない
+     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.orchestrator_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `dual_thinking.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / workflow-orchestrator スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / dual-thinking スキルを生成しない
      - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
 
 - `context_budget`（最小コンテキストウィンドウ）: 使用するモデルの最小コンテキストウィンドウを PO に確認する。複数モデル併用時は最小のものを選ぶ。回答は `project.context_budget.min_context_window_tokens` に記録する。

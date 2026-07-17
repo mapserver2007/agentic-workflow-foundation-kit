@@ -1,0 +1,231 @@
+---
+name: workflow-orchestrator
+description: >-
+  What - AI エージェントがタスク実行依頼（バグ修正・パフォーマンス改善・リファクタリング・新機能開発等）を
+  受けた際に、6 段階（①〜⑥、①の退出ゲートを内包）の標準ワークフローに沿ってタスクを遂行する。
+  各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下の step 別ドキュメントに
+  Progressive Disclosure で分割されており、本スキルは全体の制御フローと Step Gate Matrix を担う。
+  Use when - 「タスクを実行して」「バグを修正して」「この機能を実装して」「リファクタして」
+  「パフォーマンス改善して」等の実装系タスク指示、または issue URL / タスクレポートを渡された場合。
+  Do NOT use for - (1) PR レビュー対応のみ（agent-code-review を使う）、
+  (2) PR 作成のみ（agent-github-pr を使う）、(3) issue 作成のみ（agent-github-issue を使う）、
+  (4) docs 反映のみ（agent-maintenance-docs を使う）、
+  (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Workflow Orchestrator
+
+AI エージェントがタスク実行依頼を受けた際の **6 段階標準ワークフロー**（①〜⑥、①の退出ゲートを内包）の制御スキル。
+
+各ステップの詳細手順は `docs/agent-tasks/agent-workflow/` 配下に Progressive Disclosure で分割されている。本スキルは全体の制御フロー・Step Gate Matrix・スキル連携を一元管理する。
+
+> **関連スキル**:
+{{#if code_review.enabled}}> - [agent-code-review](../agent-code-review/SKILL.md) — Step ⑤ PR レビュー検証
+{{/if}}{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
+{{/if}}{{#if github_issue.enabled}}> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+{{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
+{{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
+{{/if}}
+
+---
+
+## 前提条件
+
+スキル起動直後に以下を確認する。
+
+1. `AGENTS.md` を読み、Session Protocol / Boundaries / Documentation Navigation を確認済み
+2. セッション開始ゲート（`.cursor/skills/session-handover/scripts/session-start-gate.sh`）を実行済み
+3. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートの有無を把握済み
+4. [`config.yaml`](config.yaml) を実行設定の SoT として読む。ステップ別モデル・dispatch 方針はここから取得する
+
+---
+
+## ワークフロー
+
+### Step Gate Matrix
+
+| Step | 詳細ドキュメント | 入口条件 | 退出条件 | 対応ゲート |
+| --- | --- | --- | --- | --- |
+| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
+| **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step2`{{/if}} |
+| **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | Step ② 承認済み | コード変更完了 + レポート更新 | — |
+| **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → PR{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
+| **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | PR → 完了{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} |
+| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ 承認済み{{#if agent_workflow.gate_scripts}} + `workflow-gate.sh step6` PASS{{/if}} | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
+
+### Step ①: 調査・分析（退出ゲートを内包）
+
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
+
+1. ユーザーとの対話で問題・要件を把握する（親が担当）
+2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
+{{#if dual_thinking.enabled}}3. **調査深度トリアージ**: docs-first 完了後、[`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準でリスク信号を評価し、分析方式を決定する
+   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行（A/B subagent 並列起動 → 統合結果を investigation memo に書き出し）。**dual-thinking の `config.yaml` が SoT**（`step1_investigation` は不使用）
+   - `skipped`: [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
+   - `deferred`: Step ① worker を dispatch → worker 完走後に orchestrator がスコア起動条件を事後判定
+4. コードを調査し、根本原因 or 実装方針を特定する
+5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+{{else}}3. [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
+4. コードを調査し、根本原因 or 実装方針を特定する
+5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+{{/if}}
+
+退出ゲート（[①の判定チェックリスト](../../../docs/agent-tasks/agent-workflow/01-investigation.md)）:
+- 実現性が明確か
+- 影響範囲が特定できているか
+- 実装方針が決まっているか
+- 実装アプローチが立案されているか
+- 優先度が設定されているか
+
+**全条件を満たさない場合**: タスクレポートを作成せずユーザーに状況報告する。
+{{#if dual_thinking.enabled}}
+
+**deferred 再判定**: worker が investigation memo を返した後、orchestrator がスコア起動条件を事後評価する。条件合致時は orchestrator が C として dual-thinking を起動し investigation memo を上書きする。条件不合致時は `skipped`（理由: 再判定不合致）に遷移し、worker の memo をそのまま ② へ引き継ぐ。dual-thinking 起動失敗時は graceful skip（高影響カテゴリ該当時はユーザー通知）。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
+{{/if}}
+
+### Step ②: タスクレポートの作成
+
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step2_report`）。Step doc: [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md)。
+
+1. `docs/agent-tasks/reports/{yyyy-mm-dd-slug}.md` を作成する（必須 10 セクション）
+2. プレースホルダ `{XXX}` を残さない
+3. ユーザーに内容を提示して承認を得る
+{{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step2` で Step ② 完了条件を検証する
+5. `workflow-gate.sh step2-report` でレポート構造を検証する{{/if}}
+
+### Step ③: 実装の実行
+
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step3_implementation`）。Step doc: [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md)。
+
+- 既存実装パターンを踏襲する
+- `AGENTS.md > Boundaries` を遵守する（Always / Ask First / Never）
+- 設計次元 D-* を変更する判断が発生したら ADR を起票する
+
+### Step ④: テスト実装
+
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step4_testing`）。Step doc: [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md)。
+
+コードゲート:
+
+| ゲート | コマンド | 合格条件 |
+| --- | --- | --- |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | 差分なし |
+| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
+| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
+| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0 |
+
+{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` で一括検証する。{{/if}}
+
+**禁止事項**: テスト失敗の無視・lint 一括抑制・テスト skip（原因仮説の文章化が前提）。
+
+### Step ⑤: PR レビュー検証
+
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
+
+1. `agent-github-pr` スキルで PR を作成する
+2. `agent-code-review` スキルでレビュー指摘を取得・検証する
+3. ユーザーに検証結果を提示し承認後に返信・修正する
+4. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+{{#if agent_workflow.gate_scripts}}5. `workflow-gate.sh step6` で Step ⑥ 入口条件を検証する{{/if}}
+
+### Step ⑥: 完了報告
+
+[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step6_completion`）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。
+
+{{#if agent_workflow.maintenance_docs.enabled}}
+`agent-maintenance-docs` スキルに委譲する。スキルが以下を一貫して実行する:
+{{else}}
+以下を実行する:
+{{/if}}
+
+1. Domain 層 docs への仕様反映（G-DOC-SPEC）
+2. 完了チェック 6 項目の確認
+3. archives 移動（`git mv reports/{report}.md reports/archives/`）
+4. ユーザーへの完了報告
+
+---
+
+## Context Budget 到達時の対応
+
+`AGENTS.md > Context Budget Protocol` の Yellow / Red 到達時、ワークフローのどのステップにいても以下のルールに従う。詳細は [`docs/CONTEXT_BUDGET.md`](../../../docs/CONTEXT_BUDGET.md) を参照。
+
+| 警告レベル | 対応 |
+| --- | --- |
+| **Yellow** | 現在のステップを区切りまで完了し、タスクレポートの「追加調査が必要な項目」と「完了チェック」を最新化する。次セッションへの引き継ぎを準備する |
+| **Red** | 現在の作業を即時中断し、タスクレポートを最新化した上で handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を書き出す。同セッションで新ステップに進まない |
+
+**ステップ途中での中断ルール**:
+- 該当ステップのチェックを `[ ]` のまま残す
+- タスクレポートの「追加調査が必要な項目」に中断理由と再開ポイントを記録する
+- handoff manifest の「次セッションの推奨アクション」に再開ステップ番号を明記する
+
+---
+
+## 進行中タスクレポートからの再開
+
+セッション開始時に `docs/agent-tasks/reports/` 直下にレポートが存在する場合（= 進行中キャンペーン）:
+
+1. レポートを全体読み込みする
+2. 完了チェック 6 項目の状態から、どのステップまで完了しているかを判定する
+3. 未完了の最初のステップから再開する
+
+| 完了チェック状態 | 再開ステップ |
+| --- | --- |
+| 全て `[ ]` | Step ③（実装）から |
+| 実装完了 `[x]` のみ | Step ④（テスト）から |
+| テスト + コードゲート `[x]` | Step ⑤（PR レビュー）から |
+| PR レビュー `[x]` まで | Step ⑥（完了報告）から |
+
+---
+
+## ベストプラクティス
+
+[best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) に各段階の運用ベストプラクティスを集約している。
+
+---
+
+## Gotchas
+
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+>
+> `workflow-orchestrator` スキル運用中に発見した失敗・踏み外しの記録。
+
+### 起票トリガー
+
+1. ステップの順序を飛ばして実装に着手した（docs-first 違反）
+2. タスクレポート未作成のまま実装を進めた
+3. コードゲート未通過のまま PR を作成した
+4. レビュー完了承認なしに完了報告に進んだ
+
+### 記録フォーマット
+
+```text
+- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
+```
+
+### エントリ
+
+（現時点のエントリは無し）
+
+---
+
+## 関連ドキュメント
+
+- [config.yaml](config.yaml) — ステップ別モデル設定（SoT）
+- [references/worker-dispatch.md](references/worker-dispatch.md) — Subagent dispatch 契約
+- [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（6 段階概要）
+- [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
+- [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー検証
+- [agent-github-pr](../agent-github-pr/SKILL.md) — PR 作成
+- [agent-github-issue](../agent-github-issue/SKILL.md) — issue 読み取り
+- [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — docs 反映 + archives 移動
+- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
+- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）/ フェーズ境界
+{{#if dual_thinking.enabled}}- [dual-thinking](../dual-thinking/SKILL.md) — 多角評価スキル（Step ① トリアージで自動起動）
+- [references/workflow-triage.md](../dual-thinking/references/workflow-triage.md) — トリアージ基準の SoT
+{{/if}}

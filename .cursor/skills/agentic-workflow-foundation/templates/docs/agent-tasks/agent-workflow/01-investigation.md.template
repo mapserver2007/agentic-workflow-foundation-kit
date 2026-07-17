@@ -20,7 +20,7 @@
 
 ## 1.2 ドキュメントの参照
 
-> **AGENTS.md > Documentation Navigation の docs-first 原則**: コード調査（1.3）に進む前に、必ず本節の docs を先に確認する。コード検索を 1.2 より先に実行してはならない（仕様の推論をコードからしないため）。
+> **AGENTS.md > Documentation Navigation の docs-first 原則**: コード調査（1.{{#if dual_thinking.enabled}}4{{else}}3{{/if}}）に進む前に、必ず本節の docs を先に確認する。コード検索を 1.2 より先に実行してはならない（仕様の推論をコードからしないため）。
 
 `AGENTS.md > Documentation Navigation` の参照順序に従う。
 
@@ -30,13 +30,25 @@
 
 ### docs-first 参照記録
 
-調査中に参照した Domain 層 docs を記録する（Step ③ のレポート作成時に「関連する既存コード」セクションへ転記する）:
+調査中に参照した Domain 層 docs を記録する（Step ② のレポート作成時に「関連する既存コード」セクションへ転記する）:
 
 {{#each project.doc_navigation.domain}}
 - [ ] `{{this.path}}` — 参照した / 該当なし
 {{/each}}
 
-## 1.3 コードの調査
+{{#if dual_thinking.enabled}}
+## 1.3 調査深度トリアージ（dual-thinking 起動判定）
+
+docs-first 完了後、[`references/workflow-triage.md`](../../../.cursor/skills/dual-thinking/references/workflow-triage.md) の基準に従いリスク信号を評価する。§1.1 の対話結果と §1.2 の docs 参照結果を入力とし、即時起動条件をチェックして 3 分岐を返す。
+
+- `invoked`: 即時起動条件に合致 → orchestrator が C として dual-thinking を直接実行
+- `skipped`: 全信号なし → 通常の Step ① worker を dispatch
+- `deferred`: コード調査後に再判定が必要 → 通常の Step ① worker を dispatch し、worker 完走後に orchestrator がスコア起動条件を事後評価
+
+トリアージ結果: `triage_result: ________`（skipped / invoked / deferred + 理由を 1 行）
+
+{{/if}}
+## 1.{{#if dual_thinking.enabled}}4{{else}}3{{/if}} コードの調査
 
 > **必ず 1.2 ドキュメントの参照を完了してから実施する**。docs と矛盾する実装を発見した場合は docs を正として扱い、乖離をユーザーに報告する。
 
@@ -44,12 +56,12 @@
 - エラー発生箇所の特定
 - 関連する処理フローの確認
 - データモデル・スキーマの確認
-{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（③）に `[cross-repo]` 行として 1 行追記する
+{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（②）に `[cross-repo]` 行として 1 行追記する
 {{/if}}
 
 **重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
 
-## 1.4 根本原因・実装方針の特定
+## 1.{{#if dual_thinking.enabled}}5{{else}}4{{/if}} 根本原因・実装方針の特定
 
 タスクタイプに応じて分析すべき観点が異なる。
 
@@ -60,7 +72,7 @@
 | リファクタリング | コードの重複、複雑性、保守性、アーキテクチャ層越境の有無 |
 | 新機能開発 | 必要なコンポーネント、既存機能への影響 |
 
-## 1.5 ADR 起票判定（設計次元 D-*）
+## 1.{{#if dual_thinking.enabled}}6{{else}}5{{/if}} ADR 起票判定（設計次元 D-*）
 
 調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、タスクレポートに埋め込まず **[docs/DECISIONS.md](../../DECISIONS.md)** に ADR として起票する。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
 
@@ -74,9 +86,83 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 ---
 
+## 1.{{#if dual_thinking.enabled}}7{{else}}6{{/if}} 退出ゲート（タスク確定の判定）
+
+調査完了後、以下の全項目を検証する。すべてを満たした場合のみ Step ②（レポート作成）に進む。
+
+- [ ] **実現性**: タスクの実現方法が明確（証跡: 変更対象ファイルが 1 つ以上特定されている）
+- [ ] **影響範囲の明確化**: どの機能・ユーザーに影響するかが特定できている（証跡: 影響を受ける機能名 or コンポーネント名が列挙されている）
+- [ ] **実装方針の特定**: コード・ロジック・データのどこをどう変更すべきかが判明している（証跡: 変更内容が 1 文以上で記述されている）
+- [ ] **実装アプローチの立案**: どのように実装すべきかの方針が決まっている（証跡: 実装手順が順序付きで記述されている）
+- [ ] **優先度の決定**: High / Medium / Low の優先度が設定されている
+
+いずれかを満たさない場合は、タスクレポートを作成せずユーザーに状況を報告し、追加調査の方針を合意する。
+
+```markdown
+現在の調査状況：
+- {調査で判明していること}
+
+不明な点：
+- {特定できていない項目}
+
+追加で必要な情報：
+- {ユーザーに確認してほしいこと}
+```
+
+---
+
+{{#if agent_workflow.artifact}}
+## Worker Contract
+
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（1.1〜1.{{#if dual_thinking.enabled}}7{{else}}6{{/if}}）であり、本節は入出力 schema のみを定義する。
+
+**許可書込み範囲**: step envelope のみ。source / report は変更しない。commit / push 禁止。
+
+### 入力
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `task_request` | string | yes | タスク依頼テキスト or issue URL |
+| `doc_navigation` | string[] | no | 参照すべき Domain 層 docs パス一覧（省略時は AGENTS.md から取得） |
+
+### 出力（step envelope: YAML front matter + Markdown body）
+
+worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step1.md` へ書き出す。
+
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 調査結果 |
+| `step` | string | `"step1"` | 固定値 |
+| `gate_result` | enum | `PASS` / `INCOMPLETE` | 本節の退出ゲート 5 項目の判定結果 |
+| `missing` | string[] | — | `INCOMPLETE` 時の不足項目。`PASS` 時は空配列 |
+| `investigation_memo_path` | string | — | 構造化調査メモの相対パス（step envelope body 部を指してよい） |
+{{#if dual_thinking.enabled}}| `triage_result` | enum | `skipped` / `invoked` / `deferred` | 調査深度トリアージの判定結果 |
+{{/if}}| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+
+### 終端状態と遷移
+
+- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）を確認し②へ遷移する
+- `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
+- `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは step envelope を読み追加情報付与で再 dispatch する
+- `blocked`: オーケストレータが reason に応じてエスカレーション
+- `fatal`: オーケストレータがユーザーに報告して停止する
+
+### Markdown body（標準セクション構造）
+
+調査メモ本体。次の worker（②）が文脈として読む。通常分析・dual-thinking 分析のいずれでも同一構造を使用し、② への透過性を保証する。
+
+- `## 根本原因分析 / 実装方針候補` — 通常: worker 自身の分析 / dual-thinking: C が A/B の Evidence Ledger を統合した分析
+- `## 争点と判断根拠` — 検討した選択肢と採用/却下理由（いずれの方式でも「何を検討し、なぜ採用/却下したか」を記述）
+- `## 影響範囲` — 変更対象ファイル・コンポーネント・ユーザー影響
+- `## ADR 起票判定結果` — D-* 該当有無と判断根拠
+- `## docs-first 参照記録` — 参照した Domain 層 docs のチェックリスト
+{{/if}}
+
+---
+
 ## 関連ドキュメント
 
 - [AGENTS.md](../../../AGENTS.md) — Session Protocol / Documentation Navigation
 - [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票フォーマット
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) — フェーズ境界の定義
-- [02-task-decision.md](02-task-decision.md) — 次ステップ（タスク確定の判定）
+- [02-report-creation.md](02-report-creation.md) — 次ステップ（レポート作成）

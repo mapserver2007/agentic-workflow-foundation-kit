@@ -23,12 +23,12 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 | ゲート | コマンド | 合格条件 |
 | --- | --- | --- |
-| G-GEN | `{{project.quality_gate.gen_cmd}}` | exit 0 かつ **差分なし（生成物がコミット済み）** — 再生成後に `git status --porcelain` が空 |
+| G-GEN | `{{project.quality_gate.gen_cmd}}` | exit 0 かつ **生成対象パスに差分なし** — `git status --porcelain -- <gen_artifact_paths>` が空（`manifest.yaml > project.quality_gate.gen_artifact_paths` で対象を限定） |
 | G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
 | G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
 | G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
 
-**G-GEN の位置づけ（PR 前必須 / 条件付き）**: G-GEN は **生成物（OpenAPI bundle / 型 / client 等）に影響する変更を含む PR では前提必須**とする。再生成後に `git status --porcelain` が空であること（= 生成物のコミット漏れがないこと）を確認する。OpenAPI 定義・生成設定・生成スクリプトのいずれにも触れない変更（例: ドキュメントのみ / テストのみ）に限り G-GEN を省略してよく、その場合は PR 本文または追跡ドキュメントにその旨を1行記録する。
+**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は「gen 対象パスの変更検出 → 必要時だけ gen 実行 → 対象パスのみ `git status --porcelain` → build/lint/test」の順で実行する。gen 対象パスに変更がない場合は gen をスキップし build/lint/test のみ実行する。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:
 - 生成物に関わる変更: `{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
@@ -145,7 +145,7 @@ WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数
 {{#if agent_workflow.gate_scripts}}
 ### 1.7 ワークフローゲートディスパッチャー
 
-execute-agent-workflow のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
+workflow-orchestrator のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
 
 実行コマンド: `.cursor/skills/session-handover/scripts/workflow-gate.sh <step>`
 
@@ -156,14 +156,20 @@ execute-agent-workflow のフェーズ境界ゲートを統一インターフェ
 
 ```bash
 # 使用例
-.cursor/skills/session-handover/scripts/workflow-gate.sh step3
-.cursor/skills/session-handover/scripts/workflow-gate.sh step5
+.cursor/skills/session-handover/scripts/workflow-gate.sh step2
+.cursor/skills/session-handover/scripts/workflow-gate.sh step4
 .cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
 ```
 
 **設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（`{{project.quality_gate.build_cmd}}` 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
 
-**archive ゲート（G-ARCHIVE-CHECK-001）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）がすべて `[x]` であることを機械検査する。FAIL 時は未完了項目を列挙し exit 1 を返す。
+**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
+
+{{#if agent_workflow.artifact}}
+**artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。
+
+**redispatch ゲート（G-REDISPATCH-*）**: re-dispatch 前に partial artifact の `base_commit_sha` / `changed_files` / `untracked_files` を現在の working tree と照合する。差分不一致時は FAIL（exit 1）で re-dispatch を阻止する。
+{{/if}}
 {{/if}}
 
 ## 2. 例外承認フロー
@@ -232,16 +238,16 @@ execute-agent-workflow のフェーズ境界ゲートを統一インターフェ
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
-| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step3`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step5`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
-| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step6`（`session.verification.gate_command` 実行） |
-| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step7` + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step2`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（gen 対象変更を自動検出し必要時のみ gen 実行） |
+| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step5`（`session.verification.gate_command` 実行） |
+| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6` + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（生成物変更時は先に `{{project.quality_gate.gen_cmd}}`） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（gen 対象変更時は先に `{{project.quality_gate.gen_cmd}}` + porcelain チェック） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ 追跡ドキュメントの残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
 {{/if}}

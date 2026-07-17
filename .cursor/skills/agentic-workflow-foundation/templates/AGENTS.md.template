@@ -10,11 +10,13 @@
 
 - 主アウトプットと生成/検証ゲート: `{{project.quality_gate.gen_cmd}}` / `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 - 追跡ドキュメント: `{{project.tracking_artifact}}`（セッションごとの状態管理ファイル。`.gitignore` 対象・完了時は削除）
+{{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate が行う）{{/if}}
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
 - **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
 - **完了時削除**: 完了した追跡ドキュメントは削除する（残す価値のある情報は DECISIONS.md / GOTCHAS.md に抽出済み）
+{{#if agent_workflow.artifact}}- **step envelope の削除**: 前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。削除前にオーケストレータが `gate-artifact.py` で検証する（誤削除防止）。最終的な残存検査・削除は archive gate が行う{{/if}}
 
 ## Documentation Naming Convention
 
@@ -153,9 +155,9 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 {{#if agent_workflow.enabled}}
 ### タスク実行ワークフロー（agent_workflow 有効時）
-- **docs/agent-tasks/agent-workflow.md**: タスク実行ワークフロー index（7ステップ）
-{{#if agent_workflow.execute_skill}}- **`.cursor/skills/execute-agent-workflow/SKILL.md`**: 7 ステップ標準ワークフローの制御スキル
-{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/agent-maintenance-docs/SKILL.md`**: Step ⑦ docs 反映 + archives 移動
+- **docs/agent-tasks/agent-workflow.md**: タスク実行ワークフロー index（6 段階：①〜⑥、①の退出ゲートを内包）
+{{#if agent_workflow.orchestrator_skill}}- **`.cursor/skills/workflow-orchestrator/SKILL.md`**: 6 段階標準ワークフローの制御スキル
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/agent-maintenance-docs/SKILL.md`**: Step ⑥ docs 反映 + archives 移動
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン
 {{/if}}
