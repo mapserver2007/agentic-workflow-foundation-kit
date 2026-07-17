@@ -119,11 +119,11 @@ G-{GATE}-{CATEGORY}-{NNN}
 
 | 検査 ID | 内容 | 判定 / 出力 |
 | --- | --- | --- |
-| G-SESSION-HANDOFF-001 | `.cursor/.session/handoff-active.md` が残存していない | WARN（exit 0）で残存パス表示（新規チャットの sessionStart Hook が consume すべき） |
+| G-SESSION-HANDOFF-001 | `.cursor/.session/handoff-*.md`（consumed 除外）が残存していない | WARN（exit 0）で残存パス表示（新規チャットの sessionStart Hook が consume すべき） |
 | G-SESSION-STALE-001 | `{{project.tracking_artifact}}` がファイル mtime 基準で 24 時間以上未更新でない | WARN（exit 0）で停滞ファイル列挙（注意喚起のみ） |
 | G-SESSION-DONE-001 | 完了チェックがすべて `[x]` の追跡ドキュメントが残存していない | WARN（exit 0）で残存ファイル列挙（削除を促す） |
 | G-SESSION-RED-CONTINUE-001 | 前セッションの state に `last_warning_level: "red"` が残存していない | WARN（exit 0）で Red 後継続を検出し新規チャット推奨 |
-| G-SESSION-TRACKER-001 | CHECKPOINT 発火可能（prompt_count >= {{framework.budget_thresholds.checkpoint_interval_prompts}}）だが tracker.md が session 開始前から未更新でない | WARN（exit 0）で tracker 未更新を注意喚起 |
+| G-SESSION-TRACKER-001 | CHECKPOINT 発火可能（prompt_count >= {{framework.budget_thresholds.checkpoint_interval_prompts}}）だが追跡ドキュメントが session 開始前から未更新でない | WARN（exit 0）で追跡ドキュメント未更新を注意喚起 |
 
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
 

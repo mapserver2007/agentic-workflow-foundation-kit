@@ -58,8 +58,8 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
-  # 追跡ドキュメント（.cursor/.tracking/tracker.md）が満たすべき必須セクションの SoT。
-  # session-planning テンプレ（tracker.md 作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
+  # 追跡ドキュメント（.cursor/.tracking/tracker-{session_id}.md）が満たすべき必須セクションの SoT。
+  # session-planning テンプレ（追跡ドキュメント作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
   # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
     - "目的と完了条件"
@@ -101,7 +101,7 @@ framework:
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
-      adopted: "templates required_sections / handoff-active.md / Documentation Navigation / 追跡ドキュメント完了時削除"
+      adopted: "templates required_sections / handoff manifest / Documentation Navigation / 追跡ドキュメント完了時削除"
       not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
@@ -163,7 +163,7 @@ framework:
         role: "compact 直後の handoff 発火トリガー（one-shot marker）"
         lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
       - path: ".cursor/.session/pre-compact-{session_id}.md"
-        role: "preCompact 時の包括的構造化スナップショット（tracker.md + turns.jsonl 末尾 + state を統合した復旧用退避）"
+        role: "preCompact 時の包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state を統合した復旧用退避）"
         lifecycle: "compact-observer が preCompact 発火時に生成する。session-bootstrap.sh が次セッションで突合・注入に使用する"
       - path: ".cursor/.session/{session_id}.turns.jsonl"
         role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
@@ -177,15 +177,15 @@ framework:
     # 引き継ぎ失敗（mis-consume / history-reopen）と劣化ゾーンでの継続を防ぐ。
     forbidden_after_red:
       - action: "別の新規チャットを途中で開く"
-        reason: "目的の継続チャットより先に handoff-active.md を消費し、本来の再開チャットに引き継がれない（mis-consume）"
+        reason: "意図しない handoff manifest が選択され、本来の再開チャットに正しい文脈が引き継がれない（mis-consume）"
       - action: "Cursor の過去チャット履歴を開き直して再開したつもりになる"
         reason: "sessionStart Hook が期待通り再発火せず、handoff manifest が注入されない（history-reopen）"
       - action: "同セッションで「もう少しだけ」と続行する"
         reason: "Lost in the Middle の劣化ゾーンで実装を続けることになり、品質劣化の主要失敗モードに陥る"
     failure_modes:
       - id: "mis-consume"
-        symptom: "別チャットが handoff-active.md を先に消費し、本来の再開チャットに注入されない"
-        mitigation: "Red 後は目的の継続チャットを最初に開く。別タスクを挟む場合は active manifest を手動退避する"
+        symptom: "複数の handoff manifest が存在する場合に意図しないものが選択され、本来の文脈が再開チャットに注入されない"
+        mitigation: "セッション固有ファイル名により自動分離される。2件以上検出時は bootstrap がユーザー選択 UI で保護する"
       - id: "history-reopen"
         symptom: "過去チャット履歴を開き直しても sessionStart Hook が期待通り再発火しない場合がある"
         mitigation: "Cmd+N で新規チャットを開き、短文を1通送って bootstrap に注入させる"
@@ -221,9 +221,9 @@ framework:
       - "制約・ブロッカー・未完了の検証"
       - "次セッションの推奨アクション"
       - "復旧メモ"
-    # tracker.md = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + tracker.md へのポインタ。
-    # manifest に tracker.md と同じ情報を重複して書かない。
-    manifest_responsibility: "tracker.md が SoT。manifest は tracker.md へのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
+    # 追跡ドキュメント = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + 追跡ドキュメントへのポインタ。
+    # manifest に追跡ドキュメントと同じ情報を重複して書かない。
+    manifest_responsibility: "追跡ドキュメントが SoT。manifest は追跡ドキュメントへのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
     # 復旧時の行動制約（session-bootstrap.sh の注入テキストの SoT）。
     # AI が manifest を読んだ後に「記録」と「指示」を混同しないための安全策。
     recovery_constraints:
