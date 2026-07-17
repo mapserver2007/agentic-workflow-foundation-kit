@@ -16,14 +16,14 @@ CHECKPOINT ({{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 
 
 Yellow (manifest.yaml > framework.budget_thresholds 参照)
   → 追跡ドキュメントの判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
-  → handoff manifest に追跡ドキュメントの判断ログを転記 + 揮発情報を追記
+  → handoff manifest に追跡ドキュメントへのポインタと揮発情報を記載
 
 Red (manifest.yaml > framework.budget_thresholds 参照)
   → manifest 完成 + 読み戻し検証
   → 新規チャットへ移行
 ```
 
-この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が追跡ドキュメントに存在するため、Yellow/Red では転記と確認だけで済む。
+この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が追跡ドキュメントに存在するため、Yellow/Red ではポインタ付与と確認だけで済む。
 
 ## 重み付きプロンプトスコア（データ収集）
 

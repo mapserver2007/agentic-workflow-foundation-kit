@@ -555,6 +555,16 @@ def _run_dual_thinking_validator(manifest: dict) -> int:
     return validate_run(config_path)
 
 
+def _run_worker_contract_validator() -> int:
+    """Worker Contract 整合テストを実行する。fixture が存在しない場合は skip。"""
+    test_script = os.path.join(HERE, "test_worker_contract.py")
+    if not os.path.isfile(test_script):
+        print("[test_worker_contract] SKIP: test_worker_contract.py 不在")
+        return 0
+    rc = subprocess.call([sys.executable, test_script], cwd=ROOT)
+    return rc
+
+
 def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) -> int:
     if command in ("generate", "check"):
         args = [
@@ -578,7 +588,10 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
     if rc != 0:
         return rc
     if command == "audit" and manifest is not None:
-        return _run_dual_thinking_validator(manifest)
+        rc = _run_dual_thinking_validator(manifest)
+        if rc != 0:
+            return rc
+        return _run_worker_contract_validator()
     return 0
 
 
