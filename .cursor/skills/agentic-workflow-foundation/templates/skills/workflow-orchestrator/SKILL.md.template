@@ -34,12 +34,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ## 前提条件
 
-スキル起動直後に以下を確認する。
-
-1. `AGENTS.md` を読み、Session Protocol / Boundaries / Documentation Navigation を確認済み
-2. セッション開始ゲート（`.cursor/skills/session-handover/scripts/session-start-gate.sh`）を実行済み
-3. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートの有無を把握済み
-4. [`config.yaml`](config.yaml) を実行設定の SoT として読む。ステップ別モデル・dispatch 方針はここから取得する
+`AGENTS.md > Session Protocol` 完了が前提（AGENTS.md 確認・セッション開始ゲート実行・進行中レポート把握）。加えて [`config.yaml`](config.yaml) をステップ別モデル・dispatch 方針の SoT として読む。
 
 ---
 
@@ -62,30 +57,21 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
-{{#if dual_thinking.enabled}}3. **調査深度トリアージ**: docs-first 完了後、[`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準でリスク信号を評価し、分析方式を決定する
-   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行（A/B subagent 並列起動 → 統合結果を investigation memo に書き出し）。**dual-thinking の `config.yaml` が SoT**（`step1_investigation` は不使用）
+{{#if dual_thinking.enabled}}3. **調査深度トリアージ**: [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準で `triage_result` を決定する
+   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行。**dual-thinking の `config.yaml` が SoT**
    - `skipped`: [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
-   - `deferred`: Step ① worker を dispatch → worker 完走後に orchestrator がスコア起動条件を事後判定
+   - `deferred`: Step ① worker を dispatch → 完走後に orchestrator が事後判定
 4. コードを調査し、根本原因 or 実装方針を特定する
 5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
-6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を全て PASS。不合格時はレポートを作成せずユーザーに状況報告
 {{else}}3. [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
 4. コードを調査し、根本原因 or 実装方針を特定する
 5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
-6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を検証する
+6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を全て PASS。不合格時はレポートを作成せずユーザーに状況報告
 {{/if}}
 
-退出ゲート（[①の判定チェックリスト](../../../docs/agent-tasks/agent-workflow/01-investigation.md)）:
-- 実現性が明確か
-- 影響範囲が特定できているか
-- 実装方針が決まっているか
-- 実装アプローチが立案されているか
-- 優先度が設定されているか
-
-**全条件を満たさない場合**: タスクレポートを作成せずユーザーに状況報告する。
 {{#if dual_thinking.enabled}}
-
-**deferred 再判定**: worker が investigation memo を返した後、orchestrator がスコア起動条件を事後評価する。条件合致時は orchestrator が C として dual-thinking を起動し investigation memo を上書きする。条件不合致時は `skipped`（理由: 再判定不合致）に遷移し、worker の memo をそのまま ② へ引き継ぐ。dual-thinking 起動失敗時は graceful skip（高影響カテゴリ該当時はユーザー通知）。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
+**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
 {{/if}}
 
 ### Step ②: タスクレポートの作成
@@ -145,17 +131,11 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ## Context Budget 到達時の対応
 
-`AGENTS.md > Context Budget Protocol` の Yellow / Red 到達時、ワークフローのどのステップにいても以下のルールに従う。詳細は [`docs/CONTEXT_BUDGET.md`](../../../docs/CONTEXT_BUDGET.md) を参照。
+`AGENTS.md > Context Budget Protocol` に従う。詳細は [`docs/CONTEXT_BUDGET.md`](../../../docs/CONTEXT_BUDGET.md) を参照。
 
-| 警告レベル | 対応 |
-| --- | --- |
-| **Yellow** | 現在のステップを区切りまで完了し、タスクレポートの「追加調査が必要な項目」と「完了チェック」を最新化する。次セッションへの引き継ぎを準備する |
-| **Red** | 現在の作業を即時中断し、タスクレポートを最新化した上で handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を書き出す。同セッションで新ステップに進まない |
-
-**ステップ途中での中断ルール**:
-- 該当ステップのチェックを `[ ]` のまま残す
-- タスクレポートの「追加調査が必要な項目」に中断理由と再開ポイントを記録する
-- handoff manifest の「次セッションの推奨アクション」に再開ステップ番号を明記する
+- **Yellow**: 現ステップを区切りまで完了 → タスクレポート最新化 → 次セッション引き継ぎ準備
+- **Red**: 即時中断 → タスクレポート最新化 → handoff manifest 書き出し。新ステップに進まない
+- **中断時**: 未完了チェックは `[ ]` 維持、再開ポイントをレポート + handoff に記録
 
 ---
 
@@ -184,9 +164,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: ステップ順序飛ばし・レポート未作成のまま実装・ゲート未通過で PR 作成
+[docs/GOTCHAS.md](../../../docs/GOTCHAS.md) が SoT。スキル固有注意: ステップ順序飛ばし・レポート未作成のまま実装・ゲート未通過で PR 作成。
 
 ---
 
@@ -194,8 +172,3 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 - [config.yaml](config.yaml) — ステップ別モデル設定（SoT）
 - [references/worker-dispatch.md](references/worker-dispatch.md) — Subagent dispatch 契約
-- [docs/agent-tasks/agent-workflow.md](../../../docs/agent-tasks/agent-workflow.md) — ワークフロー index（6 段階概要）
-- [docs/agent-tasks/agent-workflow/best-practices.md](../../../docs/agent-tasks/agent-workflow/best-practices.md) — 運用ベストプラクティス
-{{#if dual_thinking.enabled}}- [dual-thinking](../dual-thinking/SKILL.md) — 多角評価スキル（Step ① トリアージで自動起動）
-- [references/workflow-triage.md](../dual-thinking/references/workflow-triage.md) — トリアージ基準の SoT
-{{/if}}
