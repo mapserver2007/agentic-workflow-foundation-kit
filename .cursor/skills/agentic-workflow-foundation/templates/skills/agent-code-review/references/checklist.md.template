@@ -12,7 +12,7 @@
 
 - [ ] **Step 2（A のみ）**: 入口=Mode A / Read=— / 禁止=タイムアウト時に Step 3 以降・Step 7 直行 / 退出=レビュー検出（タイムアウトは中断・ターン終了）
 - [ ] **Step 3**: 入口=Mode 確定 / Read=— / 禁止=`author.login` フィルタ・自動レビューツールラベル取得 / 退出=未解決・非 outdated・author 非依存で全件取得 + ID/種別記録
-- [ ] **Step 4**: 入口=Step 3 取得済み / Read=（詳細時 self-rebuttal.md）/ 禁止=`[REPO]` 出典外判定・Blind 省略・自己反論省略・challenge を反転要請と解釈 / 退出=全指摘 `judgment_final` + §4.3 記録
+- [ ] **Step 4**: 入口=Step 3 取得済み / Read=**judgment-protocol.md 全文（突入時必須）**（+ challenge/catalog 詳細時 self-rebuttal.md）/ 禁止=`[REPO]` 出典外判定・Blind 省略・自己反論省略・challenge を反転要請と解釈 / 退出=全指摘 `judgment_final` + §4.3 記録
 - [ ] **Step 5-6**: 入口=Step 4.3 記録済み / **Read=approval-loop.md 全文（突入ごと必須）** / 禁止=未読でグループ提示・分類・修正・reply 投稿・`pending`/`discuss` 記録 / 退出=全指摘分類実行 + 保留件数集計
 - [ ] **Post**: 入口=Step 5-6 完了 / Read=— / 禁止=保留 1 件以上・ゲート未 PASS で Step 6.7 へ / 退出=`apply` 有時 build/lint/test PASS + 保留 0 件
 - [ ] **Step 6.7**: 入口=保留 0 件 / **Read=review-completion.md 全文（着手前必須）** / 禁止=未読で AskQuestion・Step 7 / 退出=6.7-A は AskQuestion 提示後ターン終了
@@ -47,8 +47,8 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ### 1.2 Mode B 突入時の最小再読込（Lost in the middle 対策）
 
-- [ ] Mode B を選択した直後、SKILL.md 末尾の **「Mode B リマインダ要約」セクションのみ** を Read ツールで再読込した
-- [ ] フル再読込（SKILL.md 全体 / references/）は行っていない
+- [ ] Mode B を選択した直後、[mode-b-reminder.md](mode-b-reminder.md) を Read ツールで再注入した
+- [ ] フル再読込（SKILL.md 全体 / 他の references/）は行っていない
 - [ ] 再注入後、Step 2（自動レビュー待機）をスキップして Step 3 に直接進むことを確認した
 
 ---
@@ -87,264 +87,74 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ## 4. Step 4（妥当性検証）チェック
 
-### 4.1.0 判定根拠の出典制約（最優先・常時適用）
+> 完全手順は [judgment-protocol.md](judgment-protocol.md) を SoT とする。本チェックリストは各項目の **実施有無を検証する早見**。
 
-- [ ] 判定根拠として `[REPO]` 出典のみを使用している（実コード / `AGENTS.md` / プロジェクトのコーディング規約（存在する場合） / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装 / Blind 所感）
-- [ ] **`[CR]` 出典（指摘本文の言い回し / フレーミング語 / 自動レビューツールのラベル）を判定根拠として引用していない**
-- [ ] **`[USER]` 出典（ユーザー発言の語気 / challenge phrase）を判定根拠として引用していない**
-- [ ] 判定文章が「`AGENTS.md > X` に照らして〜」「`SKILL.md:N-M` を比較した結果〜」等、`[REPO]` 出典明示の形式になっている
+### Hard Stop
 
-### 4.1.1 Blind first read（独立所感の形成 / 必須）
+- [ ] Step 4 突入時に [judgment-protocol.md](judgment-protocol.md) を Read ツールで全文読込した
+- [ ] `judgment-protocol.md 読込済み` を処理予定またはレビューレポートのメモに記録した
 
-- [ ] 指摘本文・「Prompt for AI Agents」を読む **前**に該当ファイルを白紙状態で全体読み込みした
-- [ ] 「自分はここに何の問題を感じるか」を 1 行メモした（`[REPO blind] {ファイル:行} {所感}` 形式）
-- [ ] Blind 所感を §4.2.5 Phase 2 の追加検査項目として保持した
+### §4.1 コード検証
 
-### 4.1.2 指摘プロンプトとの照合
+- [ ] `[REPO]` 出典のみで判定（`[CR]` / `[USER]` を判定根拠に使用していない）
+- [ ] Blind first read を実施（指摘本文を読む前に該当ファイルを白紙で読み `[REPO blind]` 所感を記録）
+- [ ] Blind 所感と指摘内容を比較し、ズレ時は `[REPO]` 証跡のみで再評価
+- [ ] 必須照合（`AGENTS.md` / `.cursor/rules/01-critical-constraints.mdc` / コーディング規約）を実施
+- [ ] 追加照合（`DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md`）を実施
+- [ ] 自動生成物への直接編集でないか / 編集境界・永続性を確認
 
-- [ ] レビュアー種別に応じた検証起点を使用した:
-  - [ ] 自動レビューツール → 「Prompt for AI Agents」テキスト
-  - [ ] Human / OtherBot → 指摘本文そのもの
-- [ ] プロンプト/指摘が指摘する問題が実際にコード上に存在するか確認した（`[REPO]` 証跡で）
-- [ ] 同一ファイル内の類似コードと一貫性を検証した
-- [ ] **Blind 所感（4.1.1）と指摘内容を比較**:
-  - 一致 → 指摘の真偽判定に進む（§4.2 ①）
-  - ズレあり → どちらが妥当か `[REPO]` 証跡のみで再評価（`[CR]` フレーミングを判定根拠に取り込まない）
-- [ ] **必須照合**: 以下の 3 点に照合した
-  - [ ] `AGENTS.md`（Boundaries / Agent Role 優先順位）
-    - [ ] **シンプルさ（80/20）との整合**（過剰な抽象化・早すぎるリファクタを推奨する指摘は採用しない）
-    - [ ] **既存実装の踏襲必須**（既存パターンと異なる「Best Practice」適用を推奨する指摘は採用しない）
-  - [ ] `.cursor/rules/01-critical-constraints.mdc`
-  - [ ] プロジェクトのコーディング規約（存在する場合）
-- [ ] **追加照合（Meta 層）**: 以下の 3 点に照合した
-  - [ ] `docs/DECISIONS.md` — 既存 ADR と矛盾する指摘でないか
-  - [ ] `QUALITY_GATE.md` — 該当ゲートに反する指摘でないか
-  - [ ] `docs/GOTCHAS.md` — 過去の同カテゴリ失敗事例の再発でないか
+### §4.2 判定
 
-### 4.2 判定（3 段階 + ask_first 属性）
+- [ ] 自動レビューツールのラベルを取得・記録・引用していない
+- [ ] デフォルト「修正不要」起点で判定を始めた
+- [ ] ①〜④ の順序で `judgment_initial` を 3 段階のいずれかに確定
+- [ ] `ask_first` 属性を適切に付与（該当条件の詳細は [judgment-protocol.md §4.2](judgment-protocol.md) 参照）
 
-- [ ] **自動レビューツールラベル非依存**: `Critical` / `Major` / `Minor` / `Trivial` / `Quick win` 等のラベルを取得・記録・引用していない
-- [ ] **判定根拠の出典制約（§4.1.0）を遵守**: `[REPO]` 出典のみで判定 / `[CR]` `[USER]` を判定根拠に使用していない
-- [ ] **デフォルト「修正不要」起点**で判定を始めた（昇格には ③ フィルタ通過 + ④ 実害シナリオの記述が必要）
-- [ ] 判定フロー（SKILL.md §4.2）を ①〜④ の順序で実施し、`judgment_initial` を 3 段階のいずれかに必ず着地させた:
-  - ① 偽 → 修正不要（F0: 指摘自体が誤り を記録）
-  - ② Never / Always 違反 → 修正必須（GitHub 返信に「Boundaries 違反」明記）
-  - ② Ask First 該当 → `ask_first: true` マーク + ③ で暫定判定
-  - ③ 修正不要フィルタ（F1: YAGNI / F2: 既存実装踏襲 / F3: 80/20 不釣り合い / F4: 実害なし）いずれかに該当 → 修正不要 + フィルタ通過理由を必須記録
-  - ④ 実害シナリオ（機能不全 / データ破損 / セキュリティ / 規約違反）→ 修正必須
-  - ④ 実害なしで可読性 / 保守性 / 一貫性向上のみ → 修正推奨
-  - ④ 実害シナリオが書けない → ③ に戻して F4 で修正不要
-- [ ] `ask_first` 属性を付与した（以下いずれかに該当すれば `ask_first: true`）:
-  - (a) 既存条件: 新実装パターン導入 / 外部依存追加 / レイヤー責務超過 / DB スキーマ変更
-  - (b) §4.2.5 Phase 3 引き分け強制付与
-  - (c) §4.2.5 Phase 3「F4 候補あり + 修正推奨確定」強制付与（実害なし疑いの個別承認）
-  - 当てはまらなければ `ask_first: false`
-- [ ] `ask_first: true` の項目には**暫定判定（修正必須 / 推奨 / 不要のいずれか）+ Ask First 該当条件**を検証結果に明記した
+### §4.2.5 自己反論（詳細は [judgment-protocol.md §4.2.5](judgment-protocol.md) + [self-rebuttal.md](self-rebuttal.md)）
 
-### 4.2.5 自己反論ステップ（必須・バイアス除去のコア防御）
+- [ ] `judgment_initial` 確定直後に Phase 2 自己反論を実施（最強反論 3 件 + `[REPO]` 出典スタンプ必須）
+- [ ] `[CR]` / `[USER]` のみの反論を弾いた（無効反論）
+- [ ] ストローマンを排した（弱い反論を作って打ち倒す形式は無効）
+- [ ] Phase 3 で最強反論と初期根拠を比較し `judgment_final` を確定
+- [ ] F4 候補あり + 修正推奨確定 → `ask_first: true` 強制付与を確認
+- [ ] challenge phrase 検出時は Phase 3.5 を優先発動（`[REPO]` 新証跡なしに反転しない）
 
-> §4.2 ①〜④ で `judgment_initial` 確定 **直後**、`judgment_final` 確定 **前** に必ず実施。形式的消化（rubber-stamp）禁止。
->
-> **詳細リファレンス**: [self-rebuttal.md](self-rebuttal.md) — Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 5 ステップ全文 + 失敗パターン例
+### §4.3 記録
 
-#### Phase 1: 初期判定
-
-- [ ] §4.2 ①〜④ で `judgment_initial` を確定させた
-
-#### Phase 2: 自己反論（最強反論 3 件 + 各々具体証跡 + 出典スタンプ必須）
-
-- [ ] `judgment_initial` の **正反対の立場** に立った
-- [ ] 反論 3 件を挙げる **努力** をした（3 件未満の場合はその旨を Phase 3 で明記）
-- [ ] 各反論に **出典スタンプ `[REPO]`** を必須付与した
-- [ ] **`[CR]` / `[USER]` のみで構成された反論を弾いた**（無効反論）
-- [ ] 各反論に **具体証跡** を 1 つ以上付けた（operational 影響 / 既存救済手段 / 類似既存実装 / 実害シナリオ のいずれか）
-- [ ] **ストローマン**（弱い反論を作って打ち倒す形式）を排した
-- [ ] 反論候補方向を確認:
-  - `修正必須/推奨 → 修正不要` 方向: F0 / F1 / F2 / F3 / F4
-  - `修正不要 → 修正必須/推奨` 方向: Boundaries Never/Always 違反 / 機能不全 / データ破損 / セキュリティ / 規約違反 / 致命的保守性問題
-- [ ] **catalog P1〜P9** を参考に類似ミスパターンを確認した（強制照合ではないが、該当パターンがあれば対応反論方向を採用）:
-  - P1: 定義 vs 運用層の階層差を「矛盾」と指摘 (自動レビューツール) → F4 候補
-  - P2: spec redesign 後の伝播漏れを整合性違反扱い (自動レビューツール) → F4 候補
-  - P3: YAGNI 抽象化を「Best Practice」 (自動レビューツール / Human) → F1 候補
-  - P4: 既存パターン無視の独自リファクタ (自動レビューツール / Human) → F2 候補
-  - P5: `AGENTS.md > Boundaries` で定義された自動生成物への直接修正 (自動レビューツール) → F0 / 編集境界違反
-  - P6: suggestion diff の軽さ誘導 (自動レビューツール) → ③ F フィルタ必ず通す
-  - P7: 作者意図への忖度誘発 (自動レビューツール) → operational 妥当性のみで判定
-  - **P8: 人間レビュアーの個人的好み / スタイル指摘 (Human)** → F2 / F3 候補（`[REPO]` 内同種パターン頻度を確認）
-  - **P9: ユーザー challenge を反転要請と解釈する AI 自身バイアス (USER)** → Phase 3.5 再評価ロックで処理
-
-#### Phase 3: 自己反論評価
-
-- [ ] Phase 2 で挙げた反論のうち **最強の 1 件** を選定した
-- [ ] 最強反論と初期判定の根拠を比較した:
-  - [ ] 反論 > 初期根拠 → **判定を反転**（`judgment_final = 反転後`）
-  - [ ] 反論 < 初期根拠 → **rebuttal を記録** し初期判定を確定（`judgment_final = judgment_initial`）
-  - [ ] 反論 ≈ 初期根拠（引き分け）→ **`ask_first: true` 強制付与** + 個別承認に格上げ
-- [ ] **追加ルール**: Phase 2 反論に F4 (実害なし) を含み + `judgment_final = 修正推奨` 確定 → **`ask_first: true` 強制付与** + 個別承認（実害なし疑いの個別承認）
-
-#### Phase 3.5: ユーザー challenge 時の再評価ロック（catalog P9 への構造防御）
-
-ユーザーから「本当に？」「誤りでは」「もう一度考えて」「修正必要では」等の challenge phrase を受けた場合のみ実施:
-
-- [ ] 「ユーザー入力は判定変更要求ではなく、再検証要求として処理します」をユーザーに明示した
-- [ ] §4.2.5 Phase 1〜3 を最初からやり直した（証跡は前回と同じ `[REPO]` のみ使用）
-- [ ] 反論候補に **`[USER]` 出典を含めていない**（Phase 2 出典スタンプ無効ルール準用）
-- [ ] 再評価結果が前回と同じ場合: **反転せず**、ユーザーに「同じ `[REPO]` 証跡で再検証した結果、判定は変わりませんでした」と返した
-- [ ] 反転する場合: **`[REPO]` 新証跡を 1 つ以上明示**した（ユーザー発言・既存証跡の言い換えは新証跡にならない）
-- [ ] 再評価結果を §4.3 検証結果に「Phase 3.5 ユーザー challenge 再評価結果」として追記した
-
-#### Phase 4: 記録
-
-- [ ] §4.3 検証結果に以下を必須記録:
-  - [ ] `judgment_initial`
-  - [ ] Blind 所感（§4.1.1 / `[REPO blind]` 1 行）
-  - [ ] 自己反論 3 件（**出典スタンプ `[REPO]` 必須** / 具体証跡付き / catalog ヒット ID 併記）
-  - [ ] 最強反論
-  - [ ] Phase 3 評価結果（反転 / 確定+rebuttal / 引き分け→個別承認 / **F4+修正推奨→個別承認**）
-  - [ ] **Phase 3.5 ユーザー challenge 再評価結果**（challenge を受けた場合のみ）
-  - [ ] `judgment_final`
-
-#### Phase 5: ユーザー提示
-
-- [ ] Step 5 グループ提示表に「**初期判定 → 最終判定**」「**最強反論**」列を含めた
-- [ ] 反転があった場合は `修正推奨 → 修正不要 (F4)` のように記載した
-
-### 4.3 記録
-
-各指摘について以下を記録:
-- [ ] レビュアー種別（自動レビューツール / Human / OtherBot）
-- [ ] 「Prompt for AI Agents」の要約（自動レビューツールのみ / Human・OtherBot は「指摘本文の要約」で代替）
-- [ ] **Blind 所感（§4.1.1）**: 1 行メモ（`[REPO blind]` プレフィクス付き）
-- [ ] 検証で確認した内容（比較したコード、照合したルール / Meta 層ドキュメント）
-- [ ] `judgment_initial`（§4.2 ①〜④）: 修正必須 / 修正推奨 / 修正不要
-- [ ] **§4.2.5 自己反論ステップ結果**:
-  - [ ] 自己反論 3 件（**出典スタンプ `[REPO]` 必須** / 具体証跡付き / catalog ヒット ID 併記）
-  - [ ] 最強反論（1 件選定）
-  - [ ] Phase 3 評価（反転 / 確定+rebuttal / 引き分け→個別承認 / **F4+修正推奨→個別承認**）
-  - [ ] **Phase 3.5 ユーザー challenge 再評価結果**（challenge を受けた場合のみ / 結果: 反転 / 確定 / 不変 + 新証跡の有無）
-- [ ] `judgment_final`: 修正必須 / 修正推奨 / 修正不要
-- [ ] 属性: `ask_first: true/false` + Ask First 該当時は条件（含: Phase 3 引き分け強制付与 / **Phase 3 F4+修正推奨強制付与**）
-- [ ] **`judgment_final` 別の必須項目**:
-  - [ ] 修正必須 / 修正推奨 → **実害シナリオ**（修正しなかった場合の最悪ケース / 影響範囲）を 1〜2 文で明記
-  - [ ] 修正不要 → **修正不要フィルタ通過理由**（F0: 指摘自体が誤り / F1: YAGNI / F2: 既存実装踏襲 / F3: 80/20 不釣り合い / F4: 実害なし のどれに該当するか + 1 文の根拠）を明記
-- [ ] 修正内容 or 修正不要と判断した根拠
-- [ ] GitHub 返信用のコメント案
+- [ ] 各指摘について必須記録項目を全て記録（記録項目の詳細は [judgment-protocol.md §4.3](judgment-protocol.md) 参照）:
+  - レビュアー種別 / Blind 所感 / `judgment_initial` / 自己反論 3 件（`[REPO]` 出典付き）/ 最強反論 / Phase 3 評価 / `judgment_final` / `ask_first` / 実害シナリオ or フィルタ通過理由 / GitHub 返信用コメント案
 
 ---
 
-## 5-6. Step 5-6（判定グループ承認ループ + 横断アクション指定子）チェック
+## 5-6. Step 5-6（判定グループ承認ループ）チェック
 
-> 判定グループ（修正必須 → 修正推奨 → 修正不要）の順に提示するが、判定変更だけでなく **横断アクション指定子**（`apply` / `reply_only` / `pending` / `discuss` / `override`）で項目ごとに任意のアクションを指定できる。グループ提示中であっても他グループ項目への指定を許容する。
->
-> **テンプレ**: [group-presentation-templates.md](group-presentation-templates.md) — Pre 判定サマリ / Step 5-6.1 / 5-6.2 / 5-6.3 / 個別指定モード時の AI 処理予定確認テンプレ
+> 完全手順は [approval-loop.md](approval-loop.md) を SoT とする。本チェックリストは各項目の **実施有無を検証する早見**。
+> **テンプレ**: [group-presentation-templates.md](group-presentation-templates.md)
 
-### Hard Stop: `approval-loop.md` 読込確認
+### Hard Stop
 
-- [ ] Step 5-6 の Pre 判定サマリ提示前に [approval-loop.md](approval-loop.md) を Read ツールで全文読込した
+- [ ] Pre 判定サマリ提示前に [approval-loop.md](approval-loop.md) を Read ツールで全文読込した
 - [ ] `approval-loop.md 読込済み` を処理予定またはレビューレポートのメモに記録した
-- [ ] 未読状態で以下を実行していない:
-  - [ ] グループ提示開始
-  - [ ] ユーザー入力の `apply` / `reply_only` / `pending` / `discuss` / `override` 分類
-  - [ ] コード修正
-  - [ ] GitHub reply 投稿
-  - [ ] `pending` / `discuss` 記録
 
-### アクション語彙の確認
+### 不変条件の遵守
 
-- [ ] アクション語彙 5 種類を理解している:
-  - `apply`（修正実行 + reply 投稿）
-  - `reply_only`（reply 投稿のみ / コード修正なし）
-  - `pending`（保留 / GitHub reply 投稿なし / コード修正なし）
-  - `discuss`（追加情報提供 + Q&A モード / reply 投稿なし）
-  - `override:{修正必須\|修正推奨\|修正不要}`（判定変更 + アクション再指定が必要）
+- [ ] アクション語彙 5 種を正しく使い分けた（`apply` / `reply_only` / `pending` / `discuss` / `override`）
+- [ ] `pending` / `discuss` に GitHub reply を投稿していない
+- [ ] 個別指定モードで言及なし項目を全て `pending` とした
+- [ ] 個別指定モード検出時に AI 処理予定確認を 1 ターン挟んだ（修正実行 / reply 投稿 / 議論モード突入の前に再確認）
+- [ ] 各グループ提示に「初期 → 最終判定」「最強反論」列を含めた
+- [ ] `ask_first: true` 項目は個別承認を取った
+- [ ] `discuss` と Phase 3.5 の経路分離を遵守（challenge phrase 検出時は Phase 3.5 優先発動）
+- [ ] `override` 後にアクション再指定を取得した（自動で `apply` にしない）
+- [ ] GitHub reply 投稿は `apply` / `reply_only` 集合のみで実行
 
-### 入力モードの判定
+### Post: Quality Gate + 保留残数チェック
 
-- [ ] ユーザー入力を解析し、入力モードを判定した:
-  - **一括承認モード**: 包括語検出（「OK」「進めて」「全件 apply」「全件 pending」等）→ 既定アクション一律適用
-  - **個別指定モード**: 具体的 No 検出（「必須#2 apply」「No.5 議論」等）→ **言及なし項目は全て `pending`**
-- [ ] 既定アクションを把握している:
-  - 修正必須 → `apply`
-  - 修正推奨 → `apply`
-  - 修正不要 → `reply_only`
-  - `ask_first: true` → 個別確認に格上げ（既定なし）
-
-### Pre: 判定サマリ提示
-
-- [ ] 判定別件数（修正必須 / 修正推奨 / 修正不要）+ 各グループ内の Ask First 件数を一覧表示した
-- [ ] 「修正必須グループから順に進めます」と明示した
-- [ ] 「個別指定モードで言及なし項目は全て `pending` として扱う」を Pre 提示時に明示した
-
-### 各グループ共通の処理（修正必須 / 修正推奨 / 修正不要）
-
-#### Step 5: グループ提示 + ユーザー入力受付
-
-- [ ] グループ内全指摘を一覧提示（ファイル / 行 / 概要 / **初期 → 最終判定** / **最強反論** / 修正内容 / Ask First マーク）した
-- [ ] 入力例（一括承認 / 個別指定 / 議論 / 判定変更 / 他グループ項目指定）をテンプレ通り明示した
-- [ ] 「個別指定モードでは言及なし項目は全て `pending` として扱う」を提示文末に明記した
-- [ ] ユーザー入力を解析し、入力モード（一括 / 個別）を判定した
-
-#### Step 5.5: 個別指定モード検出時の AI 処理予定確認（必須）
-
-> 個別指定モード検出時のみ実施。修正実行 / reply 投稿 / 議論モード突入する**前に**1 ターン挟んで再確認する。
-
-- [ ] 処理予定（apply / reply_only / pending / discuss 件数 + 内訳）をユーザーに提示した
-- [ ] 言及なし項目を全て `pending` として処理予定に含めた
-- [ ] `ask_first: true` 項目への明示指定が無い場合、当該項目を「個別承認待ち」として処理予定に明示した
-- [ ] ユーザー再承認を待った（追加指定があれば再構成して再確認 / 「全件 apply で」なら一括承認モードへ切り替え）
-
-#### Step 6: アクション実行
-
-- [ ] アクション集合別に独立して実行した:
-  - [ ] `apply` 集合: 修正実行 + reply 投稿
-    - [ ] 修正前に関連ファイルを全体読み込みした
-    - [ ] 既存のコーディングパターンを踏襲した
-    - [ ] 修正後、該当ファイルの diff を `git diff -- <path>` で取得し、レポート用に記録した
-    - [ ] GitHub reply を投稿した（修正必須 / 修正推奨テンプレ）
-  - [ ] `reply_only` 集合: GitHub reply 投稿のみ（修正不要テンプレ / 該当する判定テンプレ）
-  - [ ] `pending` 集合: **何もしない**（コード修正なし / GitHub reply 投稿なし）。レビューレポートの「保留中の指摘」セクションに記録予定
-  - [ ] `discuss` 集合: AI が追加情報提供 + Q&A → ユーザー指示で `apply` / `reply_only` / `pending` に着地後実行
-- [ ] **`pending` / `discuss` 集合に対して GitHub reply を投稿していない**（最重要 / 「勝手に対応不要返答」防止）
-- [ ] ユーザーが他グループ項目を指定した場合、当該アクションを記録し当該グループの提示はスキップして次グループへ進んだ
-
-#### グループ別の追加確認
-
-- [ ] **修正必須グループ**: `ask_first: true` マーク付き項目は個別承認を取った
-- [ ] **修正推奨グループ**: スコープ外項目について「別 PR で対応 / 本 PR 内で対応」を `reply_only` で表現する選択肢を明示した
-- [ ] **修正不要グループ**: 既定アクションが `reply_only`（コード修正なし）であることを提示した / 個別に「やはり修正したい」項目があれば `override:推奨 + apply` で昇格できる選択肢を提示した
-
-### `discuss` モード（個別指定で `discuss` が指定された場合のみ）
-
-- [ ] `discuss` を「判定の再評価ではなく説明モード」として扱った（自己反論再実行ではない）
-- [ ] 該当コードの詳細展開（前後関係 / 呼び出し元 / 影響範囲 / `[REPO]` 出典付き）を提示した
-- [ ] 修正案の具体プレビュー（適用前の diff）を提示した（実ファイル変更はしない）
-- [ ] 修正による影響範囲（関連ファイル / テスト / 既存利用箇所）を提示した
-- [ ] 判定根拠の詳細展開（§4.3 検証結果のユーザー目線での再説明）を提示した
-- [ ] 想定 Q&A に先回りで回答した
-- [ ] ユーザーが `apply` / `reply_only` / `pending` のいずれかを指示した時点で議論終了し、指示されたアクションを実行した
-- [ ] **challenge phrase（「本当に？」「誤りでは」「もう一度考えて」等）が混入した場合は `discuss` ではなく Phase 3.5 ユーザー challenge 再評価ロックを優先発動した**（catalog P9 への構造防御）
-
-### Post: QUALITY_GATE 一括検証 + 保留残数チェック
-
-修正必須 / 修正推奨で `apply` を 1 件以上実行した場合のみ QUALITY_GATE 検証を実行（`reply_only` のみ / `pending` のみで終わった場合はスキップ可）:
-
-- [ ] `{{session.verification.gate_command}}` exit 0
-- [ ] 失敗時は当該グループの修正に巻き戻し、再修正後に再度ゲート確認した
-- [ ] 全ゲート PASS するまで Step 6.7（レビュー完了承認）に進まない
-
-#### 保留残数チェック（必須）
-
-- [ ] `pending` および `discuss` 中の未着地項目の件数を集計した
-- [ ] 保留 1 件以上残っている場合:
-  - [ ] レビューレポートに「保留中の指摘」セクションを必須記載することを確認した
-  - [ ] Step 6.7（レビュー完了承認）へ進まないことを確認した
-- [ ] 保留 0 件 / または保留打ち切り完了の場合のみ Step 6.7（レビュー完了承認）へ進んだ
-
-### 共通: GitHub reply 投稿
-
-- [ ] `bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{comment_id}.md` を使用（返信内容を一時ファイルに書き出してから wrapper に渡す）
-- [ ] **`apply` / `reply_only` 集合に対してのみ実行**（`pending` / `discuss` には投稿していない）
-- [ ] Ask First で「修正しない」判断に寄せた場合もその旨を返信済み
+- [ ] `apply` 1 件以上実行時に `{{session.verification.gate_command}}` を実行し全 PASS を確認
+- [ ] 失敗時は該当グループの修正に巻き戻した
+- [ ] 保留残数を集計（`pending` + `discuss` 未着地の件数）
+- [ ] 保留 1 件以上 → レビューレポートに「保留中の指摘」セクション記載予定 / Step 6.7 に進まない
+- [ ] 保留 0 件のみ Step 6.7（レビュー完了承認）へ進んだ
 
 ---
 
@@ -407,7 +217,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 ## 8. 共通原則
 
 - [ ] ローカルで CI が失敗した場合はユーザー対応（環境依存の可能性あり）
-- [ ] Mode B 突入時は SKILL.md 末尾の「Mode B リマインダ要約」セクションのみを再読込し、フル再読込はしない（コンテキストコスト管理）
+- [ ] Mode B 突入時は [mode-b-reminder.md](mode-b-reminder.md) を再注入し、SKILL.md 全体の再読込はしない（コンテキストコスト管理）
 - [ ] Step 5-6 突入時は Mode A / Mode B に関わらず [approval-loop.md](approval-loop.md) を必ず全文読込した
 - [ ] Step 6.7 着手前（§5-6 Post 完了直後）に [review-completion.md](review-completion.md) を必ず全文読込した
 - [ ] Step 6.7 承認回答受領後は、Step 7 または Step 3 への分岐を最初に実行した
@@ -417,8 +227,11 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 ## 関連ドキュメント
 
 - [SKILL.md](../SKILL.md) — スキル本体
+- [judgment-protocol.md](judgment-protocol.md) — Step 4 判定プロトコル詳細（§4.1〜§4.3 の SoT）
+- [approval-loop.md](approval-loop.md) — Step 5-6 承認ループ詳細（アクション語彙 / 入力モード / グループ処理の SoT）
 - [review-report-format.md](review-report-format.md) — レビューレポートのフォーマット
-- [review-completion.md](review-completion.md) — Step 6.7 レビュー完了承認 / Step 7 レポート作成詳細 + docs 反映後の例外フロー
-- [approval-loop.md](approval-loop.md) — Step 5-6 承認ループ詳細
+- [review-completion.md](review-completion.md) — Step 6.7 レビュー完了承認 / Step 7 レポート作成詳細
+- [mode-b-reminder.md](mode-b-reminder.md) — Mode B 再注入専用リマインダ
+- [self-rebuttal.md](self-rebuttal.md) — §4.2.5 自己反論詳細 / catalog P1〜P9 / Phase 3.5
 - [gh-commands.md](gh-commands.md) — wrapper コマンドリファレンス
 - [reply-templates.md](reply-templates.md) — GitHub 返信テンプレート

@@ -903,6 +903,18 @@ outputs:
       - "## ワークフロー"
       - "Step Gate Matrix"
       - "## Gotchas"
+  - path: .cursor/skills/agent-code-review/references/judgment-protocol.md
+    template: skills/agent-code-review/references/judgment-protocol.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "4.1 コード検証"
+      - "4.2 判定フロー"
+      - "4.2.5 自己反論ステップ"
+      - "4.3 検証結果の記録"
+      - "[REPO]"
+      - "Blind first read"
+      - "Phase 3.5"
   - path: .cursor/skills/agent-code-review/references/self-rebuttal.md
     template: skills/agent-code-review/references/self-rebuttal.md.template
     mode: render
@@ -911,6 +923,19 @@ outputs:
     template: skills/agent-code-review/references/approval-loop.md.template
     mode: render
     feature: code_review
+  - path: .cursor/skills/agent-code-review/references/mode-b-reminder.md
+    template: skills/agent-code-review/references/mode-b-reminder.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "Hard Stop"
+      - "不変条件"
+      - "Mode B 突入時のフロー"
+      - "judgment-protocol.md"
+      - "approval-loop.md"
+      - "review-completion.md"
+      - "Post Quality Gate"
+      - "Step 3 へ直接進む"
   - path: .cursor/skills/agent-code-review/references/gh-commands.md
     template: skills/agent-code-review/references/gh-commands.md.template
     mode: render
