@@ -201,25 +201,9 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
 >
-> `agent-github-pr` スキル運用中に発見した失敗・踏み外しの記録。
-
-### 起票トリガー
-
-1. PR タイトル・本文の自動生成が期待と大きく異なった
-2. wrapper の実行が失敗し、原因特定に時間がかかった
-3. ベースブランチの自動判定が誤っていた
-
-### 記録フォーマット
-
-```text
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連 PR or ブランチ}
-```
-
-### エントリ
-
-（現時点のエントリは無し）
+> スキル固有の注意: PR タイトル自動生成の期待乖離・wrapper 実行失敗・ベースブランチ自動判定誤り
 
 ---
 
@@ -227,5 +211,3 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 - [agent-code-review](../agent-code-review/SKILL.md) — PR 作成後のレビュー対応
 - [references/pr-commands.md](references/pr-commands.md) — wrapper コマンドリファレンス + git コマンド集
-- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
-- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）

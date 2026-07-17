@@ -302,28 +302,9 @@ Layer 1 Context が指示する docs 構造がある場合は**それに従う�
 
 ## Gotchas
 
-> 本スキルの運用で発生した「期待と違う」事例の記録。Observe → Amend → Evolve サイクルの入口。
-
-### 起票トリガー（再掲）
-
-1. 開発者から「期待と違う」等の不一致指摘を受けた
-2. 同じ問題で2回以上の修正が必要になった
-3. 本スキルの手順通りに作業したのに想定外の結果になった
-
-### 記録フォーマット
-
-```
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
-```
-
-### 想定されうる初期 Gotcha 候補（実際に観測されたら追記）
-
-- CLAUDE.md が `@AGENTS.md` を参照しているのに AGENTS.md が不在 → §3.1 パターンB に従い「CLAUDE.md 単独」として扱う
-- 最新ブランチがコミット日時的に古い feature ブランチで、main/master より古い情報を拾う → wrapper のブランチ選択で `origin/main` を無視する挙動が裏目に出たケース
-- `clone_base_path` が OS 再起動で消え、毎セッションで初回 clone が走る → `/tmp/` 使用時の意図した設計だが、体感コストが高い場合は永続パスに変更する
-- AI が wrapper を経由せず直接 git コマンドを実行する → guard-git-write.sh での deny / 本スキルの Step 2 手順の再確認
-
-（現時点のエントリは無し）
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
+>
+> スキル固有の注意: CLAUDE.md 単独パターン（AGENTS.md 不在時）・古い feature ブランチからの取得・`clone_base_path` 消失・wrapper 経由せず直接 git 実行
 
 ---
 

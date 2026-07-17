@@ -31,12 +31,7 @@
 
 ### 合格条件
 
-| ゲート | コマンド | 合格条件 |
-| --- | --- | --- |
-| G-GEN | `{{project.quality_gate.gen_cmd}}` | 差分なし（生成物がコミット済み） |
-| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
-| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
-| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
+[`docs/QUALITY_GATE.md §1.1`](../../QUALITY_GATE.md) の G-GEN / G-BUILD / G-LINT / G-TEST が全て exit 0 であること。
 
 **禁止事項**（AGENTS.md > Boundaries と整合）:
 - テストの一部失敗を黙って無視する

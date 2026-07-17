@@ -203,25 +203,9 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
 >
-> `agent-github-issue` スキル運用中に発見した失敗・踏み外しの記録。
-
-### 起票トリガー
-
-1. Issue の固定フォーマット整形が期待と大きく異なった
-2. wrapper の実行が失敗し、原因特定に時間がかかった
-3. read モードでリンクファイルの取得に失敗した
-
-### 記録フォーマット
-
-```text
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連 Issue or URL}
-```
-
-### エントリ
-
-（現時点のエントリは無し）
+> スキル固有の注意: Issue フォーマット整形の期待乖離・wrapper 実行失敗・read モードのリンク取得失敗
 
 ---
 
@@ -231,5 +215,3 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
 - [agent-code-review](../agent-code-review/SKILL.md) — PR レビュー対応
 - [references/issue-format.md](references/issue-format.md) — AI agent 向け固定 issue フォーマット
 - [references/issue-commands.md](references/issue-commands.md) — wrapper コマンドリファレンス
-- `AGENTS.md` — Boundaries / Agent Role / Session Protocol
-- `docs/QUALITY_GATE.md` — Quality Gate（検証ゲート）

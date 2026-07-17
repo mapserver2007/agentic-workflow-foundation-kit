@@ -55,10 +55,7 @@ disable-model-invocation: true
 
 #### 反映対象ドキュメント（G-DOC-SPEC スコープ）
 
-対象（`project.doc_navigation.domain` に列挙された Domain 層 md ファイル）:
-{{#each project.doc_navigation.domain}}
-- [`{{this.path}}`](../../../{{this.path}}) — {{this.desc}}
-{{/each}}
+対象は [`AGENTS.md > Documentation Navigation > Domain 層`](../../../AGENTS.md) に列挙された Domain 層 md ファイル（`project.doc_navigation.domain`）。
 
 除外:
 - **Meta 層**: `DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`
@@ -130,26 +127,6 @@ docs 反映 + archives 移動が完了しました：
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md)
-
-### 反映判定
-
-1. LLM がコードから読み取れる情報まで docs に反映してノイズを増やした
-2. 反映不要の判定を怠り、全 docs を無条件で更新した
-3. Meta 層（AGENTS.md）を直接編集して Boundaries 違反になった
-
-### archives 移動
-
-1. 完了チェック 6 項目が揃う前に archives 移動した
-2. `git mv` ではなく手動コピー＋削除で移動し、git 履歴が切れた
-3. 複数レポート処理時に別レポートを誤移動した
-
-### 記録フォーマット
-
-```text
-- YYYY-MM-DD: {症状} / {原因} / {再発防止策} / {関連ファイル or spec リンク}
-```
-
-### エントリ
-
-(現時点のエントリは無し)
+> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
+>
+> スキル固有の注意: LLM 可読情報の過剰反映・Meta 層の直接編集・archive 前の検査漏れ
