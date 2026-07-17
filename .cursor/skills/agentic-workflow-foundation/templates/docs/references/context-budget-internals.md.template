@@ -11,19 +11,19 @@ CHECKPOINT → Yellow → Red は段階的に品質保証が強化される設�
 
 ```
 CHECKPOINT ({{framework.budget_thresholds.checkpoint_interval_prompts}} prompts ごと)
-  → AI が tracker.md の「セッション判断ログ」を最新化
+  → AI が追跡ドキュメントの「セッション判断ログ」を最新化
   → 「まだ注意力が高いうちの高品質な記録」として蓄積
 
-Yellow (45 prompts 等)
-  → tracker.md の判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
-  → handoff manifest に tracker.md の判断ログを転記 + 揮発情報を追記
+Yellow (manifest.yaml > framework.budget_thresholds 参照)
+  → 追跡ドキュメントの判断ログを確認・補完（CHECKPOINT で既に書いてあればほぼ完成済み）
+  → handoff manifest に追跡ドキュメントの判断ログを転記 + 揮発情報を追記
 
-Red (90 prompts 等)
+Red (manifest.yaml > framework.budget_thresholds 参照)
   → manifest 完成 + 読み戻し検証
   → 新規チャットへ移行
 ```
 
-この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が tracker.md に存在するため、Yellow/Red では転記と確認だけで済む。
+この設計により、Yellow/Red 到達時に「劣化した AI が一から判断構造を思い出す」必要がない。CHECKPOINT で既に高品質な記録が追跡ドキュメントに存在するため、Yellow/Red では転記と確認だけで済む。
 
 ## 重み付きプロンプトスコア（データ収集）
 
@@ -62,7 +62,7 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 | セクション | 内容 | サイズ制限 |
 |---|---|---|
 | compact 情報 | trigger / usage% / tokens / prompt_count / timestamp | — |
-| tracker.md | 追跡ドキュメントの内容 | 先頭 4096 bytes |
+| 追跡ドキュメント | 追跡ドキュメントの内容 | 先頭 4096 bytes |
 | turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 末尾 20 行 |
 | state | prompt_count / shell_bytes / weighted_prompt_score 等の累積指標 | 全体 |
 
@@ -83,7 +83,7 @@ Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.
 
 ## 注入サイズ上限
 
-`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は先頭のみ注入し「tracker.md を Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
+`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は先頭のみ注入し「追跡ドキュメントを Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
 
 ## スナップショット突合
 
@@ -114,7 +114,7 @@ MemPalace が同じ `preCompact` に登録されている場合、hooks.json の
 
 | 関心事 | kit | MemPalace |
 |---|---|---|
-| 判断構造の構造化退避 | tracker.md + handoff manifest（SoT） | × |
+| 判断構造の構造化退避 | 追跡ドキュメント + handoff manifest（SoT） | × |
 | transcript の verbatim 退避 | × | palace（mine） |
 | compact 直前の token% 記録 | compact-observer（state に書く） | × |
 | compact 検知後の handoff 促進 | pending-handoff → stop で followup | pending-save → stop で followup |

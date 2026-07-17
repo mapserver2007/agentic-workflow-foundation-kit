@@ -143,7 +143,7 @@ SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
   echo "- prompt_count: ${PROMPT_COUNT}"
   echo "- at: ${NOW_ISO}"
   echo ""
-  echo "## tracker.md"
+  echo "## 追跡ドキュメント"
   if [[ -f "$TRACKER" ]]; then
     head -c 4096 "$TRACKER"
   fi

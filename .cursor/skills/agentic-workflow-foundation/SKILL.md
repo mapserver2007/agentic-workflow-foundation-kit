@@ -156,7 +156,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **目的**: LLM のコンテキストウィンドウは有限かつ揮発的であり、長時間セッションでは判断・進捗・制約が文脈から落ちる。これを防ぐため作業状態を外部化し、新規チャットで再構築する旨を書く。
 - **根拠**: 上記の統一設計書概念から派生した運用名であることを1行で示す。
 - **発火条件**: `framework.budget_thresholds` の `prompt_count` / `shell_bytes` を proxy 指標とし、OR 判定で Yellow / Red を判定する旨を書く。
-- **AI の行動**: Yellow では追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し区切りを準備する。Red では `framework.handoff.active_manifest_path`（`.cursor/.session/handoff-active.md`）に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する。
+- **AI の行動**: Yellow では追跡ドキュメントの「次セッションTODO / 追加調査が必要な項目」を更新し区切りを準備する。Red では `framework.handoff.active_manifest_path`（`.cursor/.session/handoff-{session_id}.md`）に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する。
 - **詳細委譲**: 詳細手順・閾値・失敗モードは `docs/CONTEXT_BUDGET.md` を SoT とし、Hook 技術詳細は `.cursor/hooks/README.md` を参照する旨を書く（AGENTS には短い規範のみ置き、内容を二重管理しない）。
 
 > 重複防止: この節は新規 Meta doc（例: `docs/CONTEXT_BUDGET_PROTOCOL.md`）として切り出さない。詳細 doc の役割は既に `docs/CONTEXT_BUDGET.md` が担っており、`AGENTS.md` には Layer 1 の短い入口だけを置く方針とする。
@@ -259,20 +259,20 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 **(2) 自動導出（質問不要）**
 
-- `tracking_artifact`: 全 `workflow_pattern` 共通で `.cursor/.tracking/tracker.md`（固定値）。
+- `tracking_artifact`: 全 `workflow_pattern` 共通で `.cursor/.tracking/tracker-{session_id}.md`。
 - `name`: (1) の AskQuestion で「指定なし」が選ばれた場合のフォールバックとして、コピー先（実行先）リポジトリのディレクトリ名から自動導出する。PO が名前を入力した場合は (1) の入力値を優先する。
 - `slug`: 確定した `name` から導出する。
 - `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
 - `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run gen` / `pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
 
-全 `workflow_pattern` 共通で `tracking_artifact` は `.cursor/.tracking/tracker.md`（固定値）。
+全 `workflow_pattern` 共通で `tracking_artifact` は `.cursor/.tracking/tracker-{session_id}.md`。
 
 | ACCD 軸 | 自動採用する軽量実装 | 意図的に非採用とする BAS 固有の重い機構 |
 | --- | --- | --- |
 | A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
 | B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `session-start-gate.sh` / `guard-git-write.sh` / 軽量検査ID（`G-{GATE}-{CAT}-{NNN}`） | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
 | C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル / dual-thinking（A/B 並列分析 + C 独立裁定） | engine / model resolver による異モデル強制 |
-| D 段階的圧縮 | `templates required_sections` / `handoff-active.md` / Documentation Navigation / 追跡ドキュメント完了時削除 | 提案書 7 ステップパイプライン |
+| D 段階的圧縮 | `templates required_sections` / handoff manifest / Documentation Navigation / 追跡ドキュメント完了時削除 | 提案書 7 ステップパイプライン |
 | E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
 
 > 重量型は、上記 3 workflow pattern ではなく、経営課題分析のように入力 / 出力のバリエーションが広く、複数 PO・仮説並列生成・異モデル批判・構造化状態管理が必要な「経営型」で検討する。本プロジェクトで軽量実装だけが選ばれるのは意図した設計であり、問題ではない。

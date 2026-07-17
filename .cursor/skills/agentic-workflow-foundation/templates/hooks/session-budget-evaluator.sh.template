@@ -160,10 +160,10 @@ fi
 
 # 判定優先順位 3: token% で判定されなかった場合は proxy OR 判定にフォールバック
 if [[ "$LEVEL_SOURCE" == "proxy" ]]; then
-  Y_PROMPT="$(jq -r '.yellow.prompt_count // 45' <<<"$THRESHOLDS")"
-  Y_BYTES="$(jq -r '.yellow.shell_bytes // 1048576' <<<"$THRESHOLDS")"
-  R_PROMPT="$(jq -r '.red.prompt_count // 90' <<<"$THRESHOLDS")"
-  R_BYTES="$(jq -r '.red.shell_bytes // 5242880' <<<"$THRESHOLDS")"
+  Y_PROMPT="$(jq -r '.yellow.prompt_count // 35' <<<"$THRESHOLDS")"
+  Y_BYTES="$(jq -r '.yellow.shell_bytes // 768000' <<<"$THRESHOLDS")"
+  R_PROMPT="$(jq -r '.red.prompt_count // 70' <<<"$THRESHOLDS")"
+  R_BYTES="$(jq -r '.red.shell_bytes // 4194304' <<<"$THRESHOLDS")"
 
   if (( PROMPTS >= R_PROMPT )) || (( SHELL_BYTES >= R_BYTES )); then
     LEVEL="red"
@@ -281,7 +281,7 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（$TRACKER_FILE）の「次セッションTODO」「セッション判断ログ」を最新化する（tracker.md が SoT）。
+1. 追跡ドキュメント（$TRACKER_FILE）の「次セッションTODO」「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。
 2. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
@@ -292,16 +292,16 @@ AI への指示:
    ## 次セッションの推奨アクション
    ## 復旧メモ
 3. 書き出し後、Read で manifest を読み返し上記見出しが全て存在することを確認せよ。欠落があれば追記してから完了とする。
-4. manifest には tracker.md と重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（tracker.md 未反映の判断・直近の依頼）のみ記載する。
+4. manifest には追跡ドキュメントと重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（追跡ドキュメント未反映の判断・直近の依頼）のみ記載する。
 5. ユーザーへの応答は次の趣旨だけ短く伝える: 「Red しきい値に到達しました。新規チャット (Cmd+N) を開いて会話を継続してください。前回の作業状態は自動的に引き継がれます。」
 6. 新規実装の受理は停止し、次セッションに委譲する。"
 else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化する（tracker.md が SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
+1. 追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
 2. 追跡ドキュメントの「次セッションTODO」を最新化する。
-3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には tracker.md の判断ログをそのまま転記し、tracker.md 未反映の揮発情報のみ追記する。
+3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には追跡ドキュメントの判断ログをそのまま転記し、追跡ドキュメント未反映の揮発情報のみ追記する。
 4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
 5. Red 到達時は強制ハンドオフが発火する。"
 fi

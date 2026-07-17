@@ -57,7 +57,7 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
   → preCompact Hook → session-compact-observer.sh
   → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
   → 包括的構造化スナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
-    （tracker.md + turns.jsonl 末尾 20 行 + state を統合）
+    （追跡ドキュメント + turns.jsonl 末尾 20 行 + state を統合）
   → user_message でユーザーに compact 発生を通知
 [AI 応答完了]
   → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
@@ -108,7 +108,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 | 優先度 | 条件 | 判定方式 | should_emit |
 |---|---|---|---|
-| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → tracker.md 再読 + handoff 指示 | **bypass**（即発火） |
+| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → 追跡ドキュメント再読 + handoff 指示 | **bypass**（即発火） |
 | 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
 | 3 | token% なし or 鮮度切れ | proxy OR 判定（prompt_count / shell_bytes） | 通常遷移制御 |
 | 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
@@ -120,7 +120,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
 2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
 3. マーカー内の token% で Yellow/Red を判定し、should_emit を bypass して即座に handoff followup を発火
-4. compact 直後の followup には **tracker.md の再読** を明示的に指示する（compact で in-context が要約されたため）
+4. compact 直後の followup には **追跡ドキュメントの再読** を明示的に指示する（compact で in-context が要約されたため）
 
 ## 閾値
 
@@ -213,10 +213,10 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 {{framework.handoff.manifest_responsibility}}。
 
-### tracker.md のプランファイル連携
+### 追跡ドキュメントのプランファイル連携
 
-プランファイル（`.cursor/plans/*.plan.md`）駆動のタスクでは、tracker.md にタスク分解（todos）を重複して書かない。
-tracker.md はプランファイルへのポインタ + セッション判断ログ + ブロッカーのみを記載する。
+プランファイル（`.cursor/plans/*.plan.md`）駆動のタスクでは、追跡ドキュメントにタスク分解（todos）を重複して書かない。
+追跡ドキュメントはプランファイルへのポインタ + セッション判断ログ + ブロッカーのみを記載する。
 
 例:
 
