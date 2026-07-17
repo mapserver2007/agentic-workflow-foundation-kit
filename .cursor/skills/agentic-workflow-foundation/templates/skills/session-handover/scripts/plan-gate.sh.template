@@ -34,14 +34,14 @@ if [[ -z "$TRACKING" || "$TRACKING" == \[* ]]; then
 fi
 
 find_tracking_documents() {
-  if [[ "$TRACKING" == */* ]]; then
-    local candidate="$PROJECT_DIR/$TRACKING"
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-    fi
-    return
+  local tracking_dir
+  tracking_dir="$(dirname "$PROJECT_DIR/$TRACKING")"
+  local tracking_base
+  tracking_base="$(basename "$TRACKING")"
+  local tracking_pattern="${tracking_base//\{session_id\}/*}"
+  if [[ -d "$tracking_dir" ]]; then
+    find "$tracking_dir" -maxdepth 1 -type f -name "$tracking_pattern" 2>/dev/null
   fi
-  find "$PROJECT_DIR" -type f -name "$TRACKING" 2>/dev/null
 }
 
 # 追跡ドキュメント列挙
