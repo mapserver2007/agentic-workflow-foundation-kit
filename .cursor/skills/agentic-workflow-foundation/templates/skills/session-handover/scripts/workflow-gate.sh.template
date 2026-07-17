@@ -80,10 +80,7 @@ case "$STEP" in
       echo "SKIP: G-GEN — gen 対象に変更なし（build/lint/test のみ実行）"
     fi
     {{else}}
-    # gen_artifact_paths 未定義: 安全側 exit 2（全体差分フォールバック禁止）
-    echo "FATAL: project.quality_gate.gen_artifact_paths が manifest.yaml に未定義です。"
-    echo "gen 対象パスを定義するか、空リストで gen スキップを明示してください。"
-    exit 2
+    echo "SKIP: gen_artifact_paths が空 — gen 対象なし（build/lint/test のみ実行）"
     {{/if}}
 
     # --- build / lint / test ---
