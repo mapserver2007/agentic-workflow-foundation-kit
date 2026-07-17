@@ -1,0 +1,56 @@
+# 同期コマンド詳細
+
+> Step 1（同期）突入時にこの reference を Read する。未読のまま wrapper 実行に進まない。
+
+## wrapper による同期実行
+
+対象リポジトリに対して、**全自動・ユーザー確認なし**で以下を実行する。
+
+```bash
+bin/cross-repo-sync-safe sync .cursor/skills/cross-repository-knowledge-link/config.json {name}
+```
+
+wrapper が内部で以下を実行する:
+- clone 済み判定（`{clone_base_path}/{name}/.git` の存在確認）
+- 未 clone の場合: `git_protocol` に応じた URL で `git clone`
+- clone 済みの場合: `git fetch --all --prune`
+- 最新ブランチの自動特定（コミット日時が最新のリモートブランチを選択、`origin/HEAD` 除外）
+- ブランチ切り替え + pull
+
+## 同期結果の確認
+
+wrapper は JSON で結果を返す:
+
+```json
+{"name":"repo-name","branch":"main","commit_short":"a1b2c3d","commit_date":"2026-06-23 ...","commit_msg":"..."}
+```
+
+同期したブランチ名とコミットハッシュをユーザーに簡潔に伝える。
+
+## 同期前のステータス確認（任意）
+
+同期前に現在の状態を確認する場合:
+
+```bash
+bin/cross-repo-sync-safe status .cursor/skills/cross-repository-knowledge-link/config.json {name}
+```
+
+## 追跡ドキュメントへの参照記録（呼び出し元の責務）
+
+本スキルの **入力契約には `{ticket}` の受け渡しがない** ため、本スキル自身は `docs/agent-tasks/reports/{ticket}-*.md` への書き込みを行わない。
+
+代わりに、**呼び出し元（タスク実行ワークフロー等）の責務として**、本スキルが返したコミット情報を、自分の追跡ドキュメントに以下の書式で 1 行追記する:
+
+```markdown
+- [cross-repo] {name}@{branch} ({commit_short}): {読み取った主要ファイル or 得た知見の 1 行要約}
+```
+
+## エラーハンドリング詳細
+
+| エラー | 対処 |
+|--------|------|
+| wrapper exit 2（致命的） | config.json の設定を確認するようユーザーに案内 |
+| wrapper exit 1（操作失敗） | ネットワーク / 認証設定を確認するようユーザーに案内 |
+| clone/pull 失敗 | 関連リポジトリの知識なしで可能な範囲で回答 |
+| AGENTS.md 不在 | パターン B の CLAUDE.md フォールバックへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
+| CLAUDE.md も不在 | パターン C のコードサーチへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |

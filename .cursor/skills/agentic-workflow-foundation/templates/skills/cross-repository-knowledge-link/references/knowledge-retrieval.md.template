@@ -1,0 +1,99 @@
+# 知識参照詳細
+
+> Step 2（探索）突入時にこの reference を Read する。未読のまま 3 段フォールバックの詳細手順に進まない。
+
+## Layer 1 Context の 3 段フォールバック
+
+「CLAUDE.md / AGENTS.md 統合運用パターン」に準拠し、以下の優先順で Layer 1 Context を特定する。
+
+```bash
+ls {clone_base_path}/{name}/AGENTS.md
+ls {clone_base_path}/{name}/CLAUDE.md
+```
+
+### パターン A: AGENTS.md が存在する場合
+
+1. AGENTS.md を全文読み込む:
+   ```
+   Read: {clone_base_path}/{name}/AGENTS.md
+   ```
+2. AGENTS.md に記載されたドキュメント構造に従い、必要な docs を読み込む
+3. 特に以下を優先的に確認:
+   - 仕様書（spec.md 等）
+   - アーキテクチャ（architecture.md 等）
+   - API定義（api.md, proto/ 等）
+4. AGENTS.md が `@CLAUDE.md` のような明示参照を含む場合は、参照先の CLAUDE.md も追加で読み込む
+
+### パターン B: AGENTS.md が不在で CLAUDE.md のみ存在する場合
+
+1. CLAUDE.md を全文読み込む:
+   ```
+   Read: {clone_base_path}/{name}/CLAUDE.md
+   ```
+2. CLAUDE.md に記載された「ドキュメント構造」「参照順序」等に従って docs を読み込む
+3. CLAUDE.md が `@AGENTS.md` 参照を含むのに AGENTS.md が存在しない場合は、壊れた参照として扱い**「CLAUDE.md 単独」で進める**
+4. パターン A と同じ 3 項目（仕様書 / アーキテクチャ / API 定義）を優先的に確認する
+
+### パターン C: AGENTS.md も CLAUDE.md も存在しない場合
+
+Layer 1 Context が一切ないため、以下のコードサーチで直接構造・仕様を把握する。
+
+#### フェーズ 1: リポジトリ全体像の把握
+
+1. ルートディレクトリ構成を確認:
+   ```bash
+   ls -la {clone_base_path}/{name}/
+   ```
+2. `README.md` があれば全文読み込む
+3. 技術スタック把握:
+   - `go.mod` / `package.json` / `Cargo.toml` / `pyproject.toml` 等があれば読み込む
+
+#### フェーズ 2: アーキテクチャ・エントリポイントの確認
+
+4. 主要ディレクトリの構造を確認
+5. エントリポイントを読み込む
+6. トップレベルサブディレクトリ一覧を確認し、ドメイン知識を推測する
+
+#### フェーズ 3: インターフェース・仕様のコードサーチ
+
+7. proto 定義や OpenAPI 定義があれば読み込む（API インターフェースが最も仕様を反映している）
+8. Grep でユーザーの質問に関連するキーワードを検索
+9. テストファイルをサンプリングしてドメイン知識・期待動作を把握
+
+## docs の読み順（Meta / Domain 2 層モデル）
+
+Layer 1 Context が指示する docs 構造がある場合は**それに従うのが最優先**。指示がない場合は以下の 2 層に沿って読み順を決める。
+
+### Meta 層（判断フレームワーク・運用ルール / 大文字ファイル）
+
+「相手リポの**判断基準・運用ルール・既知の落とし穴**を知りたい」動機で発動したときに優先的に読む。
+
+- `DECISIONS.md` — 設計判断の時系列記録（ADR）
+- `QUALITY_GATE.md` — 品質ゲート定義
+- `GOTCHAS.md` — 既知の失敗パターン
+- `AGENT_RUNBOOK.md` — AI エージェント運用フレームワーク
+- `RUNBOOK.md` / `docs/runbooks/` — 運用手順書
+- `README.md` — セットアップ・開発開始までの最短経路
+
+### Domain 層（このリポ固有の業務仕様 / kebab-case ファイル）
+
+「相手リポの**業務仕様・実装詳細**を知りたい」動機で発動したときに優先的に読む。
+
+- `spec.md` / `docs/spec/*.md` — 機能仕様
+- `architecture.md` — アーキテクチャ設計
+- `api.md` / `proto/` / `openapi/` — API 定義
+- `data-models.md` — データモデル / スキーマ
+- `workflows.md` — 処理フロー
+- `coding-standards.md` — コーディング規約
+
+### 判定に迷うケース
+
+- 呼び出し動機が「仕様理解」か「障害調査」かで優先度を切り替える
+  - **仕様理解** → Domain 層優先（`spec.md` → `architecture.md` → `api.md`）
+  - **障害調査** → Meta 層優先（`runbooks/` → `GOTCHAS.md` → `DECISIONS.md`）
+
+## 知識の活用
+
+読み込んだ情報をもとに、ユーザーの質問・タスクに回答する。
+
+**重要**: 関連リポジトリの知識を参照するたびに、必ず同期（[`references/sync-commands.md`](sync-commands.md)）を先に実行して最新化すること。既に clone 済みでも `bin/cross-repo-sync-safe sync` は毎回実行する（wrapper 内部で fetch + 最新ブランチ切り替えを行う）。

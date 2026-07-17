@@ -1230,14 +1230,44 @@ outputs:
     required_sections:
       - "name: cross-repository-knowledge-link"
       - "## 発動条件"
-      - "## 実行フロー"
-      - "cross-repo-sync-safe"
       - "## 安全対策"
+      - "cross-repo-sync-safe"
+      - "## 実行フロー"
+      - "Step Gate Matrix"
+      - "Hard Stop"
+      - "## 関連スキル"
       - "## Gotchas"
   - path: .cursor/skills/cross-repository-knowledge-link/config.json
     template: skills/cross-repository-knowledge-link/config.json.template
     mode: seed
     feature: cross_repo_knowledge
+  - path: .cursor/skills/cross-repository-knowledge-link/references/sync-commands.md
+    template: skills/cross-repository-knowledge-link/references/sync-commands.md.template
+    mode: render
+    feature: cross_repo_knowledge
+    required_sections:
+      - "cross-repo-sync-safe"
+      - "エラーハンドリング詳細"
+      - "追跡ドキュメント"
+  - path: .cursor/skills/cross-repository-knowledge-link/references/knowledge-retrieval.md
+    template: skills/cross-repository-knowledge-link/references/knowledge-retrieval.md.template
+    mode: render
+    feature: cross_repo_knowledge
+    required_sections:
+      - "3 段フォールバック"
+      - "パターン A"
+      - "パターン B"
+      - "パターン C"
+      - "Meta / Domain 2 層"
+  - path: .cursor/skills/cross-repository-knowledge-link/references/repository-admin.md
+    template: skills/cross-repository-knowledge-link/references/repository-admin.md.template
+    mode: render
+    feature: cross_repo_knowledge
+    required_sections:
+      - "config.json"
+      - "バリデーション"
+      - "追加フロー"
+      - "無効化フロー"
   - path: bin/cross-repo-sync-safe
     template: bin/cross-repo-sync-safe.template
     mode: render

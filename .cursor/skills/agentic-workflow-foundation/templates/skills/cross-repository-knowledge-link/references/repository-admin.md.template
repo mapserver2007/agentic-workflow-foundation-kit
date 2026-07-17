@@ -1,0 +1,34 @@
+# リポジトリ管理詳細
+
+> Step 3（管理）突入時にこの reference を Read する。未読のまま config.json 編集に進まない。
+
+## config.json の設定値
+
+config.json から以下の値を取得し、各ステップで使用する:
+
+- `{clone_base_path}`: `clone_base_path` フィールドの値（リポジトリのクローン先ベースパス）
+- `{github_org}`: `github_org` フィールドの値
+- `{git_protocol}`: `git_protocol` フィールドの値（`ssh` または `https`）
+
+## 設定のバリデーション
+
+- `repositories` 配列の各エントリの `name` が `^[A-Za-z0-9._-]+$` に一致することを確認
+- バリデーション失敗時は処理を中断し、config.json の修正をユーザーに依頼
+
+## リポジトリの追加フロー
+
+ユーザーが「関連リポジトリを追加したい」と明示的に指示した場合に実行する。
+
+1. ユーザーにリポジトリ情報を入力してもらう:
+   - `name`: リポジトリ名（例: `my-service`）
+   - `description`: 説明
+   - `relation`: 本リポジトリとの関連
+2. `config.json` の `repositories` 配列に新エントリを追加（`active: true`）
+3. 同期 + 知識参照を実行
+
+## リポジトリの無効化フロー
+
+1. 現在の active リポジトリ一覧を提示し、AskQuestion で無効化対象を選択してもらう
+2. `config.json` で対象リポジトリの `active` を `false` に変更
+
+**重要**: config.json の `repositories` からエントリを物理削除するのではなく、`active: false` で無効化する。
