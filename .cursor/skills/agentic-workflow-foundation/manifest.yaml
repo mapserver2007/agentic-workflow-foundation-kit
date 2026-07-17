@@ -656,6 +656,8 @@ outputs:
     mode: render
     required_sections:
       - "fail_open"
+      - "判定優先順位"
+      - "仕組みの全体像"
   - path: .cursor/hooks.json
     template: hooks.json.template
     mode: render
@@ -712,12 +714,11 @@ outputs:
       - "handoff-{session_id}.md"
       - "## 生成根拠"
       - "## なぜ必要か"
-      - "## 構成"
-      - "## 各指標の更新タイミング"
+      - "## ユーザーが実際にやること"
+      - "## 失敗モード"
       - "## チェックリスト"
       - "## 参考リンク"
       - "並行セッション対応"
-      - "各指標が近似するもの（proxy の意味）"
       - "context-budget-internals.md"
   - path: docs/references/context-budget-internals.md
     template: docs/references/context-budget-internals.md.template
@@ -730,6 +731,7 @@ outputs:
       - "将来拡張候補"
       - "意図的に採用しない設計"
       - "閾値の決定根拠"
+      - "tracker と handoff manifest"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template

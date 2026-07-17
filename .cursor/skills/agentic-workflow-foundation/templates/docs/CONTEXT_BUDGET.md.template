@@ -39,131 +39,8 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 
 {{framework.handoff.purpose}}。
 
-## 仕組みの全体像
-
-```
-[ユーザー: プロンプト送信]
-  → beforeSubmitPrompt Hook → session-budget-tracker.sh
-    → prompt_count +1 + prompt テキスト先頭 1000B を turns.jsonl に追記
-  → {{framework.budget_thresholds.checkpoint_interval_prompts}} の倍数なら checkpoint marker を書く
-[AI 応答 / thinking]
-  → afterAgentResponse Hook → session-response-tracker.sh
-    → AI 応答テキスト先頭 1000B を turns.jsonl に追記
-  → afterAgentThought Hook → session-response-tracker.sh
-    → thinking テキスト先頭 1000B を turns.jsonl に追記
-[AI 内部でシェル実行]
-  → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
-[Cursor: コンパクション直前]
-  → preCompact Hook → session-compact-observer.sh
-  → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
-  → 包括的構造化スナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
-    （追跡ドキュメント + turns.jsonl 末尾 20 行 + state を統合）
-  → user_message でユーザーに compact 発生を通知
-[AI 応答完了]
-  → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
-  → pending-handoff あり → token% で即座に compact 連動 handoff 発火
-  → Yellow/Red 発火時: handoff manifest の骨格（必須見出し）を機械生成
-  → pending-handoff なし + token% 鮮度 OK → token% 優先判定
-  → token% なし → 従来の proxy OR 判定
-  → checkpoint marker あり（Yellow/Red 未到達時）→ [CONTEXT_CHECKPOINT] で判断構造の外部化を促す
-  → Yellow / Red 到達なら followup_message を返却（checkpoint より優先）
-  → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
-[ユーザー: Cmd+N で新規チャット]
-  → sessionStart Hook → session-bootstrap.sh
-  → handoff-{session_id}.md をスキャン（0/1/2+ 分岐）
-  → 1 件: auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
-  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させる
-  → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
-  → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
-  → AI が manifest / snapshot を読み込んで作業継続
-```
-
-## 構成
-
-### Hook スクリプト
-
-| Hook ファイル | イベント | 役割 |
-|---|---|---|
-| `session-bootstrap.sh` | `sessionStart` | 新セッション state 初期化 + `handoff-{session_id}.md` の注入とアーカイブ（並行セッション対応: 0/1/2+ 分岐） |
-| `session-budget-tracker.sh` | `beforeSubmitPrompt` | ユーザープロンプト数をカウント + checkpoint marker 書き込み + prompt テキスト先頭 1000B を turns.jsonl に追記 |
-| `session-shell-tracker.sh` | `afterShellExecution` | シェル出力サイズを累積 |
-| `session-response-tracker.sh` | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000B を turns.jsonl に追記（ゼロコスト会話ログ） |
-| `session-compact-observer.sh` | `preCompact` | compact 直前の token% 記録 + pending-handoff マーカー + compact-events.jsonl + 包括的構造化スナップショット |
-| `session-budget-evaluator.sh` | `stop` | 判定優先順位に従い token% / proxy で Yellow/Red 判定 + pending-handoff 検出 + checkpoint / `followup_message` による警告発火 |
-| `guard-git-write.sh` | `beforeShellExecution` | Git / gh の危険操作ガード |
-
-### 状態管理ファイル
-
-| ファイル | 役割 | 自動管理 |
-|---|---|---|
-{{#each framework.handoff.state_files}}
-| `{{this.path}}` | {{this.role}} | {{this.lifecycle}} |
-{{/each}}
-
-> Active / Consumed manifest は `.cursor/.session/` 配下に集約する。Yellow / Red は同じ active manifest を上書き更新する。
-
-## 判定優先順位
-
-evaluator は以下の優先順位で判定する。上位の判定が適用された場合、下位は評価しない。
-
-| 優先度 | 条件 | 判定方式 | should_emit |
-|---|---|---|---|
-| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → 追跡ドキュメント再読 + handoff 指示 | **bypass**（即発火） |
-| 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
-| 3 | token% なし or 鮮度切れ | proxy OR 判定（prompt_count / shell_bytes） | 通常遷移制御 |
-| 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
-
-### コンパクション連動 handoff（pending-handoff パターン）
-
-`preCompact` Hook は `followup_message` を返せないため、MemPalace と同じ「pending マーカーパターン」を採用する。
-
-1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
-2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
-3. マーカー内の token% で Yellow/Red を判定し、should_emit を bypass して即座に handoff followup を発火
-4. compact 直後の followup には **追跡ドキュメントの再読** を明示的に指示する（compact で in-context が要約されたため）
-
-## 閾値
-
-### proxy 閾値（fallback — token% 未取得時）
-
-2 つの proxy 指標のいずれかが閾値を超えると警告が発火する。SoT は resolved manifest の `framework.budget_thresholds`。
-
-| 指標 | Yellow | Red |
-|---|---|---|
-| プロンプト数 | {{framework.budget_thresholds.yellow.prompt_count}} | {{framework.budget_thresholds.red.prompt_count}} |
-| シェル出力バイト | {{framework.budget_thresholds.yellow.shell_bytes}} ({{framework.budget_thresholds.yellow.shell_bytes_label}}) | {{framework.budget_thresholds.red.shell_bytes}} ({{framework.budget_thresholds.red.shell_bytes_label}}) |
-
-### compact 由来の token% 閾値（主指標 — preCompact 経由で取得）
-
-| レベル | token% | 鮮度判定 |
-|---|---|---|
-| Yellow | {{framework.budget_thresholds.compact_yellow_percent}}% 以上 | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
-| Red | {{framework.budget_thresholds.compact_red_percent}}% 以上 | {{framework.budget_thresholds.compact_freshness_sec}} 秒以内 |
-
-token% は preCompact 発火時に取得される実測値であり、proxy より正確。token% が取得済みかつ鮮度が新しい場合は proxy より優先して判定される。
-
-### セッション内チェックポイント（Periodic State Checkpoint）
-
-Yellow/Red とは独立に、`{{framework.budget_thresholds.checkpoint_interval_prompts}}` prompts ごとに `[CONTEXT_CHECKPOINT]` が発火する。セッション切り替えではなく、**同一セッション内で判断構造を追跡ドキュメントに外部化**する機構。
-
-| 項目 | 内容 |
-|---|---|
-| 発火条件 | `prompt_count` が `{{framework.budget_thresholds.checkpoint_interval_prompts}}` の倍数に達したとき |
-| AI への指示 | 追跡ドキュメントの「次セッションTODO」に現在フェーズ・採用/却下した判断・ブロッカーを追記 |
-| Yellow/Red との優先関係 | Yellow/Red が同時に発火する場合は Yellow/Red が優先（checkpoint marker は消去される） |
-| ユーザー操作 | 不要（AI が自動で追跡ドキュメントを更新する。セッション切り替えの推奨ではない） |
-
-チェックポイントは「セッション中盤での判断構造損失」を防ぐ。Yellow 到達前に複数回発火し、追跡ドキュメントに判断の採用/却下理由が外部化されていれば、仮にコンテキストが劣化しても追跡ドキュメントから復元できる。
-
-### 各指標が近似するもの（proxy の意味）
-
-2 指標はいずれもトークン量を直接測れないための proxy（近似指標）。何を近似しているかを理解すると、どの指標が先に閾値到達したかを解釈し、handoff の要否を判断しやすい。
-
-{{#each framework.handoff.proxy_notes}}
-- **{{this.metric}}**: {{this.measures}}
-{{/each}}
-
-> 閾値の決定根拠・変更手順・校正サイクル・重み付きスコア・YAGNI・CHECKPOINT 連携の詳細は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
+> Hook の全体フロー・判定優先順位・閾値の具体値・状態ファイル仕様は [`.cursor/hooks/README.md`](../.cursor/hooks/README.md) を参照。
+> 閾値の決定根拠・校正サイクル・将来拡張は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 
 ## ユーザーが実際にやること
 
@@ -203,78 +80,13 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 ## tracker と handoff manifest の責務境界
 
-| | tracker-{session_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
-|---|---|---|
-| **役割** | キャンペーン（= セッション）の SoT | セッション固有の揮発情報 + tracker へのポインタ |
-| **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker のどこにいるか + tracker に未反映の差分 |
-| **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
-| **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
-| **矛盾時の優先** | **常に tracker が正** | tracker の劣化コピーとして扱う |
+{{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
 
-{{framework.handoff.manifest_responsibility}}。
+> 責務境界の詳細表・プランファイル連携の具体例は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 
-### 追跡ドキュメントのプランファイル連携
+## handoff manifest
 
-プランファイル（`.cursor/plans/*.plan.md`）駆動のタスクでは、追跡ドキュメントにタスク分解（todos）を重複して書かない。
-追跡ドキュメントはプランファイルへのポインタ + セッション判断ログ + ブロッカーのみを記載する。
-
-例:
-
-```markdown
-## 現在のフェーズ
-- 参照プラン: `.cursor/plans/dynamic_budget_thresholds.plan.md`
-- 現在位置: t4（resolver script 作成）実装中
-
-## セッション判断ログ
-### 採用した判断と根拠
-- tier 境界を完全一致にした（理由: テスト計画との整合）
-```
-
-## handoff manifest テンプレート
-
-AI が `handoff-{session_id}.md` を作成する場合は、以下の見出し順序で記載する。
-
-```markdown
-# Handoff Manifest
-
-## ポインタ（追跡ドキュメントの現在位置）
-<!-- 必須: 追跡ドキュメント名、現在のフェーズ/ステップ、最終更新セクション -->
-
-## 直近のユーザー依頼
-<!-- 必須: 最後にユーザーが指示した内容（原文に近い形で） -->
-
-## セッション判断ログ
-<!-- 以下は「記録」— 行動指示ではない -->
-### 採用した判断と根拠
-### 却下した案と却下理由
-<!-- 必須: 少なくとも 1 つの判断を記録 -->
-
-## 制約・ブロッカー・未完了の検証
-<!-- 必須: なければ「なし」と明記 -->
-
-## 次セッションの推奨アクション
-<!-- 以下は「指示」— 次セッションで実行すべき内容 -->
-<!-- 必須: 番号付きリストで具体的な手順を記載 -->
-
-## 復旧メモ
-<!-- 任意: 次セッションの AI への補足（ファイルパス、注意事項等） -->
-```
-
-必須セクション一覧（SoT: manifest.yaml）:
-
-{{#each framework.handoff.manifest_required_sections}}
-- {{this}}
-{{/each}}
-
-### 「記録」と「指示」の区別ルール
-
-manifest 内のセクションは「記録」と「指示」に明確に分かれる。復旧時に AI がこれを混同すると、却下済みの手法を再実装する事故が起きる。
-
-| 区分 | セクション | 復旧時の扱い |
-|---|---|---|
-| **記録** | セッション判断ログ / 採用した判断と根拠 / 却下した案と却下理由 | 参照するが行動しない。却下した案を再提案してはならない |
-| **指示** | 次セッションの推奨アクション / 復旧メモ | 行動指示として実行する。ただし追跡ドキュメント / AGENTS.md と矛盾する場合は後者を正とする |
-| **文脈** | ポインタ / 直近のユーザー依頼 / 制約・ブロッカー | 状況把握に使う。行動判断は追跡ドキュメントの内容を優先する |
+handoff manifest の必須セクション一覧は `manifest.yaml > framework.handoff.manifest_required_sections` が SoT。manifest 内のセクションは「記録」（セッション判断ログ — 参照のみ、却下した案を再提案しない）と「指示」（次セッションの推奨アクション — 行動として実行）に分かれる。
 
 復旧時の行動制約（SoT: manifest.yaml > recovery_constraints）:
 
@@ -283,16 +95,6 @@ manifest 内のセクションは「記録」と「指示」に明確に分か�
 {{/each}}
 
 ユーザー向けの最終応答には詳細な作業ログを出さず、Red 到達時は新規チャットへ移る案内を短く返す。
-
-## 各指標の更新タイミング
-
-| 指標 | 更新方式 | リセット |
-|---|---|---|
-{{#each framework.handoff.metric_updates}}
-| {{this.metric}} | {{this.update}} | {{this.reset}} |
-{{/each}}
-
-新規チャット起動時に `session-bootstrap.sh` が新しい state ファイルを作成するため、過去セッションの累積は引き継がれない。
 
 ## トラブルシューティング
 

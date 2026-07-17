@@ -206,7 +206,7 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（$TRACKER_FILE）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（${TRACKER_FILE}）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
@@ -227,7 +227,7 @@ AI への指示:
 AI への指示:
 1. コンパクションにより会話コンテキストが要約されました。
    序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（$TRACKER_FILE）を Read し、現在のフェーズ・制約を再確認せよ。
+2. 追跡ドキュメント（${TRACKER_FILE}）を Read し、現在のフェーズ・制約を再確認せよ。
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す準備をする。
@@ -246,7 +246,7 @@ if [[ "$LEVEL" == "none" ]] || ! should_emit; then
   if [[ -f "$CHECKPOINT_MARKER" ]]; then
     CP_COUNT="$(cat "$CHECKPOINT_MARKER" 2>/dev/null)" || CP_COUNT="?"
     rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
-    CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過。追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化せよ: (1) 現在のフェーズと直近完了作業 (2) 採用した判断と根拠 (3) 却下した案と理由 (4) ブロッカー・制約。作業は継続してよい。ユーザーへの言及は不要。"
+    CP_MSG="[CONTEXT_CHECKPOINT] ${CP_COUNT} prompts 経過。追跡ドキュメント（${TRACKER_FILE}）の「セッション判断ログ」を最新化せよ: (1) 現在のフェーズと直近完了作業 (2) 採用した判断と根拠 (3) 却下した案と理由 (4) ブロッカー・制約。作業は継続してよい。ユーザーへの言及は不要。"
     jq -n --arg m "$CP_MSG" '{ followup_message: $m }'
     exit 0
   fi
@@ -281,7 +281,7 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（$TRACKER_FILE）の「次セッションTODO」「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。
+1. 追跡ドキュメント（${TRACKER_FILE}）の「次セッションTODO」「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。
 2. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
@@ -299,7 +299,7 @@ else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（$TRACKER_FILE）の「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
+1. 追跡ドキュメント（${TRACKER_FILE}）の「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
 2. 追跡ドキュメントの「次セッションTODO」を最新化する。
 3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には追跡ドキュメントと重複する詳細を書かない。ポインタで参照し、追跡ドキュメント未反映の揮発情報のみ追記する。
 4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」

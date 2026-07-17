@@ -18,6 +18,65 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
+## 仕組みの全体像
+
+```
+[ユーザー: プロンプト送信]
+  → beforeSubmitPrompt Hook → session-budget-tracker.sh
+    → prompt_count +1 + prompt テキスト先頭 1000B を turns.jsonl に追記
+  → {{framework.budget_thresholds.checkpoint_interval_prompts}} の倍数なら checkpoint marker を書く
+[AI 応答 / thinking]
+  → afterAgentResponse Hook → session-response-tracker.sh
+    → AI 応答テキスト先頭 1000B を turns.jsonl に追記
+  → afterAgentThought Hook → session-response-tracker.sh
+    → thinking テキスト先頭 1000B を turns.jsonl に追記
+[AI 内部でシェル実行]
+  → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
+[Cursor: コンパクション直前]
+  → preCompact Hook → session-compact-observer.sh
+  → token% を state に記録 + compact-events.jsonl に追記 + pending-handoff マーカー作成
+  → 包括的構造化スナップショットを .cursor/.session/pre-compact-{session_id}.md に自動退避
+    （追跡ドキュメント + turns.jsonl 末尾 20 行 + state を統合）
+  → user_message でユーザーに compact 発生を通知
+[AI 応答完了]
+  → stop Hook → session-budget-evaluator.sh (判定優先順位に従い閾値判定)
+  → pending-handoff あり → token% で即座に compact 連動 handoff 発火
+  → Yellow/Red 発火時: handoff manifest の骨格（必須見出し）を機械生成
+  → pending-handoff なし + token% 鮮度 OK → token% 優先判定
+  → token% なし → 従来の proxy OR 判定
+  → checkpoint marker あり（Yellow/Red 未到達時）→ [CONTEXT_CHECKPOINT] で判断構造の外部化を促す
+  → Yellow / Red 到達なら followup_message を返却（checkpoint より優先）
+  → AI が裏で追跡ドキュメント / manifest 更新 + ユーザーに Cmd+N を促す
+[ユーザー: Cmd+N で新規チャット]
+  → sessionStart Hook → session-bootstrap.sh
+  → handoff-{session_id}.md をスキャン（0/1/2+ 分岐）
+  → 1 件: auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させる
+  → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
+  → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
+  → AI が manifest / snapshot を読み込んで作業継続
+```
+
+## 判定優先順位
+
+evaluator は以下の優先順位で判定する。上位の判定が適用された場合、下位は評価しない。
+
+| 優先度 | 条件 | 判定方式 | should_emit |
+|---|---|---|---|
+| 1 | `pending-handoff` マーカーあり（compact 直後） | token% で Yellow/Red → 追跡ドキュメント再読 + handoff 指示 | **bypass**（即発火） |
+| 2 | state に `last_compact_usage_percent` あり + 鮮度 OK | token% で Yellow/Red（proxy より優先） | 通常遷移制御 |
+| 3 | token% なし or 鮮度切れ | proxy OR 判定（prompt_count / shell_bytes） | 通常遷移制御 |
+| 4 | いずれの閾値にも未到達 | checkpoint marker → CHECKPOINT followup / なければ素通り | — |
+
+### コンパクション連動 handoff（pending-handoff パターン）
+
+`preCompact` Hook は `followup_message` を返せないため、MemPalace と同じ「pending マーカーパターン」を採用する。
+
+1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
+2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
+3. マーカー内の token% で Yellow/Red を判定し、should_emit を bypass して即座に handoff followup を発火
+4. compact 直後の followup には **追跡ドキュメントの再読** を明示的に指示する（compact で in-context が要約されたため）
+
 ## 設計原則
 
 - **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。正規ワークフロー（`git commit` / `git push -u origin HEAD`）には干渉しない。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能（PAT 未設定のため `gh` 直接実行は認証不可）。
@@ -99,6 +158,24 @@ compact が短期間に繰り返される場合、compact 後も急速にコン�
 | **Red** | `[CONTEXT_BUDGET=RED]` を `followup_message` で通知 | `.cursor/.session/handoff-{session_id}.md` に handoff manifest を書き出し、同セッションで新規実装を続けず新規チャットへ誘導する |
 
 Yellow/Red が checkpoint と同時に発火する場合は Yellow/Red が優先され、checkpoint marker は消去される。重複通知は `last_warning_level` フィールドで抑止される（`none` → `yellow` → `red` の昇格時のみ通知）。
+
+### 各指標が近似するもの（proxy の意味）
+
+2 指標はいずれもトークン量を直接測れないための proxy（近似指標）。
+
+{{#each framework.handoff.proxy_notes}}
+- **{{this.metric}}**: {{this.measures}}
+{{/each}}
+
+### 各指標の更新タイミング
+
+| 指標 | 更新方式 | リセット |
+|---|---|---|
+{{#each framework.handoff.metric_updates}}
+| {{this.metric}} | {{this.update}} | {{this.reset}} |
+{{/each}}
+
+新規チャット起動時に `session-bootstrap.sh` が新しい state ファイルを作成するため、過去セッションの累積は引き継がれない。
 
 ## ローカルテスト手順
 
@@ -192,6 +269,6 @@ Hook が Cursor IDE で正しく認識されているかの確認手順。
 |---|---|
 | [`AGENTS.md > Context Budget Protocol`](../../AGENTS.md) | Layer 1 のコンテキスト予算ポリシー（Yellow/Red の AI 行動規範） |
 | [`docs/QUALITY_GATE.md §2.1`](../../docs/QUALITY_GATE.md) | Hook 強制範囲の SoT（guard-git-write.sh の deny/ask 対象定義） |
-| [`docs/CONTEXT_BUDGET.md`](../../docs/CONTEXT_BUDGET.md) | Context Budget Auto-Handoff の詳細手順・失敗モード |
+| [`docs/CONTEXT_BUDGET.md`](../../docs/CONTEXT_BUDGET.md) | Context Budget Auto-Handoff の利用者ガイド（ユーザー操作・失敗モード・パス規約） |
 | [`docs/DECISIONS.md`](../../docs/DECISIONS.md) | Hook 設計に関する ADR 記録 |
 | [`.cursor/hooks.json`](../hooks.json) | Hook 登録設定本体（version / イベント / timeout / loop_limit） |
