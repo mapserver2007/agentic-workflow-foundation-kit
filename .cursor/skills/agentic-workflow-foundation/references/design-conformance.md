@@ -24,7 +24,7 @@
 - `## Documentation Naming Convention`: §12 semantic 2層モデル（Meta=大文字 / Domain=kebab-case）。
 - `## Agent Role` / `## Boundaries`: §13.3 宣言的制約 + bas Interaction Principles。
 - `## Session Protocol`: 3構成要素（追跡ドキュメント/検証ゲート/再開プロトコル）の手続き SoT。
-- `## Gotchas`: 原則8 自己改善サイクルの入口（起票トリガー必須）。
+- `## Gotchas`: 原則8 自己改善サイクルのナビゲーションポインタ（`docs/GOTCHAS.md` への直接追記フローを参照）。
 
 ### .cursor/rules/02-agent-conduct.mdc（bas Agent Conduct）
 - `Humble` / `Cautious` / `Thorough` / `Selective`: bas の4行動原則。各原則が宣言的制約として存在すること。
@@ -83,14 +83,12 @@
 - `## 大規模タスクの検知`: セッション分割の発火条件。
 - `## パターン選択フロー`: `workflow_pattern` と追跡ドキュメントの対応。
 - `## 追跡ドキュメント`: セッションをまたぐ作業状態の SoT。
-- `## Gotchas`: 運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/session-handover/SKILL.md（Layer 3 セッション管理）
 - `name: session-handover`: Cursor skill としての識別子。
 - `## 検証ゲート`: 完了宣言前のゲート実行記録。
 - `## リンク衛生`: 再開に必要な一次情報の保全。
 - `## 再開プロトコル`: 中断/圧縮後の復旧手順。
-- `## Gotchas`: 運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/session-handover/scripts/verification-gate.sh
 - `session.verification.gate_command`: 生成済み root `manifest.yaml` の検証コマンドが展開されていること。
@@ -104,14 +102,12 @@
 - `name: decisions-record`: Cursor skill としての識別子。
 - `D-BOUNDARY`: ADR 起票対象の設計次元を含むこと。
 - `Alternatives Considered`: 判断理由を復元可能にすること。
-- `## Gotchas`: ADR 運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
 - `name: agent-maintenance-docs`: Cursor skill としての識別子。
 - `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。
 - `G-DOC-SPEC`: Domain 層ドキュメント仕様反映ゲートのスコープ定義。
 - `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
-- `## Gotchas`: 反映判定 / archives 移動の運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/dual-thinking/SKILL.md（feature: dual_thinking）
 - `name: dual-thinking`: Cursor skill としての識別子。
@@ -119,7 +115,6 @@
 - `## 応答の契約`: 応答品質基準（一次証跡優先の採用順位）と禁止事項が定義されていること。
 - `応答品質の基準`: 一次証跡の直接性 → 問いへの適合性 → 再現可能性 → A/B の一致、の採用順位。
 - `高影響領域`: `config.yaml > high_impact_categories` を SoT とする判断基準。
-- `## Gotchas`: 独立性違反・暗黙フォールバック・同一モデル時の品質保証示唆等の運用失敗の Observe → Amend → Evolve 入口。
 
 ### .cursor/skills/dual-thinking/config.yaml（feature: dual_thinking / seed）
 - `models`: A（推進分析）/ B（反証分析）のモデル割り当てが定義されていること。C（裁定者）はスキルを呼び出す親エージェントであり、そのモデルは呼び出し時に選択する。SKILL.md の起動前チェックが config.yaml から A/B のモデル設定を読み込み、同一モデル時は `MODEL_HOMOGENEOUS` を記録する前提。

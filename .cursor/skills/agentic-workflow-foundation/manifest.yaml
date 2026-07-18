@@ -105,7 +105,7 @@ framework:
       not_adopted: "提案書 7 ステップパイプライン"
     - id: E
       name: 自律的進化
-      adopted: "GOTCHAS.md 集約 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
+      adopted: "GOTCHAS.md 直接記録 / DECISIONS.md(ADR) / Hook 昇格パス（同一違反3回観測）"
       not_adopted: "仮説シミュレーション全タスク必須化"
   agent_conduct:
     - id: Humble
@@ -574,7 +574,6 @@ outputs:
       - "## Session Protocol"
       - "## Context Budget Protocol"
       - "## Boundaries"
-      - "## Gotchas"
   - path: CLAUDE.md
     template: CLAUDE.md.template
     mode: render
@@ -798,7 +797,6 @@ outputs:
       - "## 追跡ドキュメントの存在保証"
       - "## パターン選択フロー"
       - "## 追跡ドキュメント"
-      - "## Gotchas"
   - path: .cursor/skills/session-handover/SKILL.md
     template: skills/session-handover/SKILL.md.template
     mode: render
@@ -807,7 +805,6 @@ outputs:
       - "## 検証ゲート"
       - "## リンク衛生"
       - "## 再開プロトコル"
-      - "## Gotchas"
   - path: .cursor/skills/session-handover/scripts/verification-gate.sh
     template: skills/session-handover/scripts/verification-gate.sh.template
     mode: render
@@ -890,7 +887,6 @@ outputs:
       - "name: decisions-record"
       - "D-BOUNDARY"
       - "Alternatives Considered"
-      - "## Gotchas"
   # agent-code-review スキル（feature: code_review で条件生成）。
   # code_review.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .cursor/skills/agent-code-review/SKILL.md
@@ -902,7 +898,6 @@ outputs:
       - "## 前提条件"
       - "## ワークフロー"
       - "Step Gate Matrix"
-      - "## Gotchas"
   - path: .cursor/skills/agent-code-review/references/judgment-protocol.md
     template: skills/agent-code-review/references/judgment-protocol.md.template
     mode: render
@@ -974,7 +969,6 @@ outputs:
       - "name: agent-github-pr"
       - "## 前提条件"
       - "github-pr-create-safe"
-      - "## Gotchas"
   - path: .cursor/skills/agent-github-pr/references/pr-commands.md
     template: skills/agent-github-pr/references/pr-commands.md.template
     mode: render
@@ -993,7 +987,6 @@ outputs:
       - "## 前提条件"
       - "github-issue-create-safe"
       - "github-issue-read-safe"
-      - "## Gotchas"
   - path: .cursor/skills/agent-github-issue/references/issue-format.md
     template: skills/agent-github-issue/references/issue-format.md.template
     mode: render
@@ -1142,7 +1135,6 @@ outputs:
       - "## Context Budget 到達時の対応"
       - "## 進行中タスクレポートからの再開"
       - "## ベストプラクティス"
-      - "## Gotchas"
   # workflow-orchestrator config.yaml（ステップ別モデル設定 / mode: seed で PO 直接編集可）。
   - path: .cursor/skills/workflow-orchestrator/config.yaml
     template: skills/workflow-orchestrator/config.yaml.template
@@ -1175,7 +1167,6 @@ outputs:
       - "## 責務範囲"
       - "G-DOC-SPEC"
       - "責務境界テーブル"
-      - "## Gotchas"
   # dual-thinking スキル（feature: dual_thinking で条件生成）。
   # dual_thinking.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .cursor/skills/dual-thinking/SKILL.md
@@ -1261,7 +1252,6 @@ outputs:
       - "Step Gate Matrix"
       - "Hard Stop"
       - "## 関連スキル"
-      - "## Gotchas"
   - path: .cursor/skills/cross-repository-knowledge-link/config.json
     template: skills/cross-repository-knowledge-link/config.json.template
     mode: seed

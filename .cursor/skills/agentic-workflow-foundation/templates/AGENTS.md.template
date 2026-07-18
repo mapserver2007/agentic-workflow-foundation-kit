@@ -81,14 +81,14 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 1. 追跡ドキュメントの「完了チェック / 次セッションTODO / 残作業」を最新化
 2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: `{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}` / `{{project.quality_gate.test_cmd}}`
 3. 設計次元 D-* を変更する判断が発生した場合は **即時** `docs/DECISIONS.md` に ADR を追記
-4. 失敗・踏み外しの学びが発生した場合は `## Gotchas` 起票トリガーを確認し、該当すれば追記
+4. 失敗・踏み外しの学びが発生した場合は `docs/GOTCHAS.md` の起票トリガーを確認し、未追記なら同ファイルに直接追記（検知時に即追記済みなら確認のみ）
 5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-{session_id}.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
 
 ### セッション再開
 
 1. 追跡ドキュメントの最終チェック位置から再開
 2. 「次セッションTODO」「追加調査が必要な項目」を優先処理
-3. 前セッションの Gotchas / DECISIONS 追記を読み直して文脈を復元
+3. 前セッションの `docs/GOTCHAS.md` / `docs/DECISIONS.md` 追記を読み直して文脈を復元
 
 ## Context Budget Protocol
 
@@ -122,7 +122,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 ## Gotchas
 
-> 集約先: [docs/GOTCHAS.md](docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT。セッション中に起票条件に該当する事象が発生した場合は `docs/GOTCHAS.md` の手順に従い追記する。
+> SoT: [docs/GOTCHAS.md](docs/GOTCHAS.md)。起票トリガー 3 条件に該当する事象を検知した時点で、同ファイルに直接追記する。Session Protocol 手順4 で追記漏れを最終確認する。
 
 ## Documentation Navigation
 
@@ -131,7 +131,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - **CLAUDE.md**: `@AGENTS.md` 参照（Claude Code / Codex CLI 併用時の文脈統一）
 - **docs/DECISIONS.md**: ADR（設計判断記録）
 - **docs/QUALITY_GATE.md**: 必須ゲート / 例外承認フロー / フェーズ境界
-- **docs/GOTCHAS.md**: 失敗事例集約版
+- **docs/GOTCHAS.md**: 失敗事例記録
 - **docs/AGENT_RUNBOOK.md**: AI エージェント運用フレームワーク（起動/停止/復旧/観測）
 - **docs/CONTEXT_BUDGET.md**: Context Budget Auto-Handoff の使い方 / handoff manifest パス規約の SoT
 

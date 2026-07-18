@@ -208,7 +208,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
   - [ ] **保留中の指摘セクション**（保留 0 件の場合は「該当なし」と明記 / 保留 1 件以上で Step 7 に進んだ場合は「打ち切り完了」の経緯を記載）
   - [ ] **レビュー完了承認セクション**（`## レビュー完了承認` / `承認状態: 承認取得済み` を Step 6.7 の承認に基づき記載）
   - [ ] ビルド・テスト結果（`{{session.verification.gate_command}}` の結果）
-  - [ ] **Gotchas 起票候補**（AGENTS.md > Gotchas 起票トリガー 3 条件に該当する指摘）
+  - [ ] **Gotchas 起票候補**（docs/GOTCHAS.md 起票トリガー 3 条件に該当する指摘）
   - [ ] **ADR 起票候補**（docs/DECISIONS.md 起票トリガー 4 条件に該当する指摘）
 - [ ] チャットにサマリ出力した（Mode メタデータ + グループ別対応結果 + Ask First 判断記録 + 保留件数 + ビルド結果）
 

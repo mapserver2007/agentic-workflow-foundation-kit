@@ -209,18 +209,6 @@ Mode B 選択直後に [references/mode-b-reminder.md](references/mode-b-reminde
 
 ---
 
-## Gotchas
-
-> 集約先: `docs/GOTCHAS.md` — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: レビュー判定の誤り（誤「修正不要」/ 見落とし）・同カテゴリの繰り返しミス・wrapper 仕様変更による手順不動作
-
-### エントリ
-
-（現時点のエントリは無し）
-
----
-
 ## L3 リファレンス一覧
 
 | ファイル | 内容 |
@@ -240,5 +228,5 @@ Mode B 選択直後に [references/mode-b-reminder.md](references/mode-b-reminde
 
 ## 関連ドキュメント
 
-- `docs/GOTCHAS.md` — スキル横断の失敗事例集約（Gotchas 起票先）
+- `docs/GOTCHAS.md` — 失敗事例記録（直接追記先）
 - `docs/DECISIONS.md` — ADR 運用ガイド（起票候補の参照先）

@@ -184,7 +184,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 3. 結果を処理する:
    - exit 0: PR URL を出力し、完了メッセージを表示する
-   - exit 1: API エラーの内容をユーザーに報告する
+   - exit 1: API エラーの内容をユーザーに報告する（ベースブランチ自動判定の誤りが原因の場合あり — Step 1 のブランチ選択を再確認）
    - exit 2: GitHub App の認証エラー。セットアップを案内する
 
 4. 成功時の出力:
@@ -196,14 +196,6 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
    - 自動レビューツールのレビューを待つ場合は agent-code-review（Mode A）を実行してください
    - 人間レビュアーのレビュー後は agent-code-review（Mode B）で対応できます
    ```
-
----
-
-## Gotchas
-
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: PR タイトル自動生成の期待乖離・wrapper 実行失敗・ベースブランチ自動判定誤り
 
 ---
 
