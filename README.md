@@ -250,13 +250,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-response-tracker.sh`、`session-compact-observer.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`verification-gate.sh`、`session-start-gate.sh`、`plan-gate.sh`、`workflow-gate.sh`、`archive-gate.sh`、`gate-report.py`、`gate-adr.py`、`gate-artifact.py`、`gate-redispatch.py`、`.cursor/skills/decisions-record/SKILL.md` |
+| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py`、`.cursor/skills/decisions-record/SKILL.md` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |
 | Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
-| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md`、`config.yaml`、`references/worker-dispatch.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
-| Optional Dual Thinking | `.cursor/skills/dual-thinking/SKILL.md`、`config.yaml`、`README.md`、`references/**` |
+| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md`、`.cursor/skills/workflow-orchestrator/config.yaml`、`.cursor/skills/workflow-orchestrator/references/worker-dispatch.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
+| Optional Dual Thinking | `.cursor/skills/dual-thinking/SKILL.md`、`.cursor/skills/dual-thinking/config.yaml`、`.cursor/skills/dual-thinking/README.md`、`.cursor/skills/dual-thinking/references/**` |
 | Optional Cross-Repo | `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
