@@ -430,11 +430,14 @@ github_issue:
 #
 #   orchestrator_skill: true の場合、.cursor/skills/workflow-orchestrator/SKILL.md を生成する。
 #   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
+#   maintenance_gotchas.enabled: true の場合、.cursor/skills/maintenance-gotchas-workflow/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
   enabled: true
   report_slug_format: "yyyy-mm-dd-slug"
   maintenance_docs:
+    enabled: true
+  maintenance_gotchas:
     enabled: true
   gate_scripts: true
   orchestrator_skill: true
@@ -688,6 +691,7 @@ outputs:
     required_sections:
       - "起票トリガー"
       - "Observe"
+      - "Evolve-A"
   - path: docs/QUALITY_GATE.md
     template: docs/QUALITY_GATE.md.template
     mode: render
@@ -1167,6 +1171,20 @@ outputs:
       - "## 責務範囲"
       - "G-DOC-SPEC"
       - "責務境界テーブル"
+  # maintenance-gotchas-workflow スキル（feature: agent_workflow.maintenance_gotchas で条件生成）。
+  # agent_workflow.maintenance_gotchas.enabled: true の場合のみ生成される。
+  # GOTCHAS.md のエントリを解析し、メタ層プロセス改善修復を独立パイプラインとして実行する。
+  - path: .cursor/skills/maintenance-gotchas-workflow/SKILL.md
+    template: skills/maintenance-gotchas-workflow/SKILL.md.template
+    mode: render
+    feature: agent_workflow.maintenance_gotchas
+    required_sections:
+      - "name: maintenance-gotchas-workflow"
+      - "## 実行フロー"
+      - "## 修復対象の判定基準"
+      - "## 修復種別別検証マトリクス"
+      - "## 責務境界テーブル"
+      - "## Context Budget 到達時の対応"
   # dual-thinking スキル（feature: dual_thinking で条件生成）。
   # dual_thinking.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .cursor/skills/dual-thinking/SKILL.md

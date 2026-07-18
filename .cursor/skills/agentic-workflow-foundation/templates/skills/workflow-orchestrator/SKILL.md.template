@@ -10,7 +10,8 @@ description: >-
   Do NOT use for - (1) PR レビュー対応のみ（agent-code-review を使う）、
   (2) PR 作成のみ（agent-github-pr を使う）、(3) issue 作成のみ（agent-github-issue を使う）、
   (4) docs 反映のみ（agent-maintenance-docs を使う）、
-  (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）。
+  (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）{{#if agent_workflow.maintenance_gotchas.enabled}}、
+  (6) GOTCHAS エントリのメタ層修復（maintenance-gotchas-workflow を使う）{{/if}}。
 ---
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
@@ -26,6 +27,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{/if}}{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
 {{/if}}{{#if github_issue.enabled}}> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
 {{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}> - [maintenance-gotchas-workflow](../maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
 {{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
 {{/if}}
@@ -126,6 +128,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 2. 完了チェック 6 項目の確認
 3. archives 移動（`git mv reports/{report}.md reports/archives/`）
 4. ユーザーへの完了報告
+{{#if agent_workflow.maintenance_gotchas.enabled}}5. Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
+{{/if}}
 
 ---
 
