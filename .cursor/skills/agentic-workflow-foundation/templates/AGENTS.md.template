@@ -123,6 +123,8 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 ## Gotchas
 
 > SoT: [docs/GOTCHAS.md](docs/GOTCHAS.md)。起票トリガー 3 条件に該当する事象を検知した時点で、同ファイルに直接追記する。Session Protocol 手順4 で追記漏れを最終確認する。
+{{#if agent_workflow.maintenance_gotchas.enabled}}> Evolve-A（個別修復）: [`maintenance-gotchas-workflow`](.cursor/skills/maintenance-gotchas-workflow/SKILL.md) でエントリの再発防止策をメタ層に適用し、デリバリまで完結させる。
+{{/if}}
 
 ## Documentation Navigation
 
@@ -140,6 +142,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 - **docs/agent-tasks/agent-workflow.md**: タスク実行ワークフロー index（6 段階：①〜⑥、①の退出ゲートを内包）
 {{#if agent_workflow.orchestrator_skill}}- **`.cursor/skills/workflow-orchestrator/SKILL.md`**: 6 段階標準ワークフローの制御スキル
 {{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/agent-maintenance-docs/SKILL.md`**: Step ⑥ docs 反映 + archives 移動
+{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- **`.cursor/skills/maintenance-gotchas-workflow/SKILL.md`**: GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン
 {{/if}}

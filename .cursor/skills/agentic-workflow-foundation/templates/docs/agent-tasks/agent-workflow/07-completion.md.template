@@ -116,6 +116,9 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 ## 6.6 Gotchas 起票判定
 
 セッション中に起票条件に該当する事象が発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) の起票トリガー・記録フォーマットに従い追記する。
+{{#if agent_workflow.maintenance_gotchas.enabled}}
+修復可能な gotcha エントリが存在する場合は、[`maintenance-gotchas-workflow`](../../../.cursor/skills/maintenance-gotchas-workflow/SKILL.md) で Evolve-A（個別修復）として対応可能であることをユーザーに案内する。
+{{/if}}
 
 {{#if agent_workflow.artifact}}
 ---
@@ -163,6 +166,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 - [05-pr-review.md](05-pr-review.md) — 前ステップ（PR レビュー検証）
 {{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
+{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- [.cursor/skills/maintenance-gotchas-workflow/SKILL.md](../../../.cursor/skills/maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（Evolve-A）
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
 - [docs/GOTCHAS.md](../../GOTCHAS.md) — 失敗事例記録
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — フェーズ境界ゲート

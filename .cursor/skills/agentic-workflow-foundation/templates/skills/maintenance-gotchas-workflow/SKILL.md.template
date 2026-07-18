@@ -1,0 +1,166 @@
+---
+name: maintenance-gotchas-workflow
+description: >-
+  GOTCHAS.md に記録された失敗事例・再発防止策を解析し、メタ層
+  （Hook/ゲート/manifest/template/docs）のプロセス改善修復を実行する。
+  agent-github-pr / agent-code-review と連携してデリバリ（コミット→PR→レビュー）
+  まで自前で完結させる。
+  Observe - Amend - Evolve サイクルの Evolve-A（個別修復）フェーズを担う。
+  workflow-orchestrator とは独立した単体メンテナンスワークフローとして動作する。
+  Use when - 「Gotchas を修復」「再発防止策を適用」「GOTCHAS 改善」
+  「Gotchas の解消」等の指示。
+  Do NOT use for - (1) Gotcha の起票（セッション中の即時直接追記）、
+  (2) アプリケーション層のコード実装（本スキルの対象外）、
+  (3) エントリの並べ替え・記録フォーマット変更のみ（Evolve-B 閾値到達時に限定）、
+  (4) Domain 層 docs 反映のみ（agent-maintenance-docs）。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# maintenance-gotchas-workflow
+
+GOTCHAS.md のエントリを解析し、**メタ層のプロセス改善修復**を独立パイプラインとして実行するスキル。修復後は `agent-github-pr` / `agent-code-review` と連携してデリバリ（コミット → PR → レビュー）まで自前で完結させる。
+
+> **関連スキル**:
+{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Phase 5 PR 作成
+{{/if}}{{#if code_review.enabled}}> - [agent-code-review](../agent-code-review/SKILL.md) — Phase 6 レビュー対応
+{{/if}}> - [workflow-orchestrator](../workflow-orchestrator/SKILL.md) — アプリ層実装タスク（本スキルの対象外）
+
+---
+
+## 前提条件
+
+1. `agent_workflow.maintenance_gotchas.enabled: true`
+2. `docs/GOTCHAS.md` にエントリが存在すること
+3. `AGENTS.md > Session Protocol` 完了が前提
+
+---
+
+## 実行フロー
+
+### Phase 1: GOTCHAS.md 解析
+
+`docs/GOTCHAS.md` を全体読み込みし、各エントリから以下を抽出する:
+- 症状（何が起きたか）
+- 原因（なぜ起きたか）
+- 再発防止策（どう防ぐか）
+- 関連ファイル（どこを変えるか）
+
+昇華済みエントリ（`~~...~~` マーク付き）は処理対象から除外する。
+
+### Phase 2: 修復対象の判定と優先度付け
+
+各エントリを「修復対象の判定基準テーブル」に従い分類する:
+- **actionable**: 本スキルが直接実行可能なメタ層修復
+- **not-actionable**: アプリケーション層の変更が必要 / 設計判断の記録 / 外部依存の制約 / 監視目的の記録
+
+actionable エントリに対し影響範囲・修正コスト・再発頻度で優先度を付与し、**ユーザーに修復候補リストを提示して承認を得る**。
+
+### Phase 3: 修復の実行
+
+ユーザー承認済みの修復候補を実行する:
+1. 変更前に関連ファイルを全体読み込みする（`AGENTS.md > Boundaries > Always`）
+2. 修復種別に応じた変更を実行する
+3. 変更内容を diff として提示し、ユーザー承認を得る
+
+### Phase 4: 検証
+
+「修復種別別検証マトリクス」に従いゲートを実行する。全ゲート通過後にのみ Phase 5 に進む。ゲート失敗時は修正して再実行する（Advisory ループ）。
+
+### Phase 5: コミット + PR 作成
+
+1. 修復内容をコミットする（ユーザー承認後。`AGENTS.md > Boundaries > Ask First`）
+2. {{#if github_pr.enabled}}`agent-github-pr` スキルに従い PR を作成する{{else}}PR を作成する{{/if}}
+3. PR 本文に修復対象の GOTCHAS エントリを明記する
+
+### Phase 6: レビュー対応 + 昇華処理
+
+1. {{#if code_review.enabled}}`agent-code-review` スキルに従いレビュー指摘を取得・検証する{{else}}レビュー指摘を取得・検証する{{/if}}
+2. 指摘への返答・修正を実行する
+   - コード変更を伴う修正: Phase 3（修復実行 + diff 承認）→ Phase 4（検証）に戻る
+   - 検証のみで対応可能: Phase 4 に直行する
+3. レビュー完了承認をユーザーから取得する
+4. **昇華処理**: 修復完了したエントリを `docs/GOTCHAS.md` で昇華済みマークに置換する:
+   ```
+   - YYYY-MM-DD: ~~{元の症状}~~ → 昇華済み ({昇華先パス or 修復内容1行要約}) [修復日: YYYY-MM-DD]
+   ```
+5. 修復件数・修復内容サマリ・残存エントリ（not-actionable）・運用情報の更新をユーザーに報告する
+
+---
+
+## 修復対象の判定基準
+
+再発防止策の記述内容と関連ファイルからアクション種別を決定する:
+
+| 種別 | 対象 | 判定 |
+| --- | --- | --- |
+| ゲート/Hook 修正 | `guard-git-write.sh` / `workflow-gate.sh` 等への deny ルール追加・検査項目追加 | **本スキルが直接実行** |
+| 設定/manifest 変更 | `manifest.yaml` / `config.yaml` / テンプレートの修正 | **本スキルが直接実行**（Ask First。変更後 G-GEN + 自己検証ゲート必須） |
+| Meta 層 docs 修正（render 生成物） | `AGENTS.md` / `QUALITY_GATE.md` 等の render mode 生成物 | manifest / templates 経由で再生成（「設定/manifest 変更」と同じ扱い） |
+| Meta 層 docs 修正（seed / 直接追記対象） | `GOTCHAS.md` / `DECISIONS.md` 等の seed mode / append-log | 既存プロトコルに従い直接編集。**本スキルが直接実行** |
+| Domain 層 docs 修正 | 仕様の明確化、手順の追加 | **本スキルが直接実行** |
+| テスト追加 | リグレッションテスト、エッジケーステスト（テスト対象が既存で、テストファイルの追加/修正のみ） | **本スキルが直接実行** |
+| アプリケーションコード修正 | ソースコードのバリデーション追加、ロジック修正等 | **本スキルの対象外**（not-actionable） |
+| not-actionable | 設計判断の記録、外部依存の制約、監視目的の記録 | 修復せず残存 |
+
+---
+
+## 修復種別別検証マトリクス
+
+| 修復種別 | 必須検証 |
+| --- | --- |
+| ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`） |
+| 設定/manifest 変更 | G-GEN（`{{project.quality_gate.gen_cmd}}`） + 自己検証ゲート（`run_resolved_engine.py audit`） + G-BUILD + G-LINT + G-TEST |
+| Meta 層 docs 修正（seed / 直接追記） | リンク検証 + 構造検証（見出し階層の整合） |
+| Domain 層 docs 修正 | リンク検証 + 構造検証（見出し階層の整合） |
+| テスト追加 | G-TEST（追加テストが PASS + 既存テスト非破壊） |
+
+修復が複数種別にまたがる場合は、該当する全種別の必須検証の和集合を実行する。
+
+---
+
+## 責務境界テーブル
+
+| 対象 | 本スキルの責務 | 責務外（理由） |
+| --- | --- | --- |
+| `docs/GOTCHAS.md` のエントリ解析・昇華処理 | 解析・修復判定・昇華 | — |
+| メタ層ファイル修正（Hook/ゲート/manifest/template/docs） | 直接実行（diff 提示 + ユーザー承認必須） | — |
+| manifest.yaml / templates の修正 | 直接実行（Ask First。変更後 G-GEN + audit 必須） | — |
+| アプリケーションソースコードの修正 | — | 本スキルの対象外（not-actionable として分類） |
+| `AGENTS.md` の直接編集 | — | Never 抵触。manifest 経由で再生成 |
+| `docs/DECISIONS.md` への ADR 起票 | — | D-* 変更時は起票を促す |
+| Gotcha の新規起票 | — | セッション中の即時直接追記（Session Protocol） |
+| PR 作成 | `agent-github-pr` スキル参照で実行 | — |
+| レビュー対応 | `agent-code-review` スキル参照で実行 | — |
+
+---
+
+## 安全制約
+
+- **ユーザー承認必須**: Phase 2 で修復候補リストを提示し、承認なしに修復を実行しない
+- **コード変更時のレビュー契約**: 変更を伴う修復は commit 前にユーザーに diff を提示し承認を得る
+- **Meta 層変更は Ask First**: manifest.yaml / templates / framework.* の変更を伴う場合はユーザーに明示的に確認
+- **品質ゲート通過がデリバリの前提**: 検証マトリクスのゲート未通過のまま Phase 5（PR 作成）に進まない
+- **昇華はレビュー完了後のみ**: PR レビュー完了承認前に GOTCHAS.md のエントリを昇華処理しない
+
+---
+
+## Context Budget 到達時の対応
+
+`AGENTS.md > Context Budget Protocol` に従う。
+
+- **Yellow**: 現 Phase を区切りまで完了 → 追跡ドキュメントに処理対象エントリと進行 Phase を記録 → 次セッション引き継ぎ準備
+- **Red**: 即時中断 → 追跡ドキュメントに中断ポイントを記録 → handoff manifest 書き出し。新 Phase に進まない
+- **中断時**: 修復途中のコード変更がある場合は diff を追跡ドキュメントに記録し、未コミットの変更を保全する
+
+### セッション再開時の Phase 判定
+
+中断後の再開時は、追跡ドキュメントに記録された進行 Phase から再開する。
+
+| 追跡ドキュメントの状態 | 再開 Phase |
+| --- | --- |
+| 修復候補リスト未承認 | Phase 2（判定 + 承認）から |
+| 修復実行中（diff 未承認） | Phase 3（修復実行）から |
+| 修復完了・検証未実施 | Phase 4（検証）から |
+| 検証通過・未コミット | Phase 5（コミット + PR 作成）から |
+| PR 作成済み・レビュー中 | Phase 6（レビュー対応）から |
