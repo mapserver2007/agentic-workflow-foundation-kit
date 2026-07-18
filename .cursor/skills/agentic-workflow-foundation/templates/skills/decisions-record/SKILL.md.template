@@ -85,9 +85,3 @@ disable-model-invocation: true
 
 {影響・フォローアップ}
 ```
-
-## Gotchas
-
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: 重要判断がチャットだけに残る・ADR 対象外の過剰記録・Alternatives Considered 不在

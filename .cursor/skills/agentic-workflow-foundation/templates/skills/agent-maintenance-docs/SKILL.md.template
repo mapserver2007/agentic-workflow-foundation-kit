@@ -117,16 +117,10 @@ docs 反映 + archives 移動が完了しました：
 | `AGENTS.md` | — | Meta 層生成物。SoT は manifest → templates（Never 抵触） |
 | `docs/tech-stack.md` | — | SoT は `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`。逆流禁止 |
 | `docs/DECISIONS.md` | — | ADR 起票は `decisions-record` スキルの責務 |
-| `docs/GOTCHAS.md` | — | Gotchas 起票は workflow-orchestrator Step ⑥ 直轄の判断 |
+| `docs/GOTCHAS.md` | — | Gotchas 追記は検知時に即直接追記。Session Protocol 手順4 / Step ⑥ §6.6 で最終確認 |
 | `docs/QUALITY_GATE.md` | — | Meta 層生成物 |
 | `docs/AGENT_RUNBOOK.md` | — | Meta 層生成物 |
 | archives 移動 | `git mv` 実行 | — |
 | コード実装 | — | Step ③ の責務 |
 | テスト実装 | — | Step ④ の責務 |
 | PR レビュー | — | `agent-code-review` の責務 |
-
-## Gotchas
-
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: LLM 可読情報の過剰反映・Meta 層の直接編集・archive 前の検査漏れ

@@ -86,7 +86,7 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 - [AGENTS.md](../../AGENTS.md) — AI エージェントガイド全体 / Session Protocol / Gotchas / Boundaries
 - [docs/DECISIONS.md](../DECISIONS.md) — ADR 起票フォーマットとトリガー
 - [docs/QUALITY_GATE.md](../QUALITY_GATE.md) — フェーズ境界別ゲート / 例外承認フロー
-- [docs/GOTCHAS.md](../GOTCHAS.md) — スキル横断の失敗事例集約
+- [docs/GOTCHAS.md](../GOTCHAS.md) — 失敗事例記録
 - [docs/AGENT_RUNBOOK.md](../AGENT_RUNBOOK.md) — AI エージェント運用フレームワーク
 - [README.md](README.md) — クイックスタートガイド
 

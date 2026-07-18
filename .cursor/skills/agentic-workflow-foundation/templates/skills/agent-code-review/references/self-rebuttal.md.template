@@ -55,7 +55,7 @@ Phase 2 で反論を考える際の **参考リスト**（強制照合ではな�
 | **P8** | 人間レビュアーの「個人的好み」「スタイル指摘」（出典が `[CR]` ではなく `[USER]` 方向の主観） | Human | F2 / F3: 既存実装の踏襲 / 80/20 不釣り合いで評価。`[REPO]` 内の同種パターン頻度を確認 |
 | **P9** | ユーザー challenge（「本当に？」「誤りでは」「もう一度考えて」）を **判定反転要請** と解釈してしまう AI 自身バイアス | AI 内部（USER 入力起点） | challenge は「再検証要求」であり「反転要請」ではない。§4.2.5 Phase 3.5 の再評価ロックで処理し、`[REPO]` 新証跡なしに反転しない |
 
-> このリストは Observe → Amend → Evolve サイクルで継続成長させる。新規ミスパターンを発見したら SKILL.md 末尾の `## Gotchas` へ起票し、集約経由で本表を更新する。
+> このリストは Observe → Amend → Evolve サイクルで継続成長させる。新規ミスパターンを発見したら `docs/GOTCHAS.md` に直接追記し、蓄積後に本表への反映を検討する（5件蓄積で構造リファクタリング閾値）。
 >
 > 注意: catalog は **強制照合ではなく参考資料**。catalog に無いパターンも Phase 2 で同様に「最強反論を 3 件」考える義務は変わらない。
 
@@ -100,4 +100,4 @@ Phase 2 で反論を考える際の **参考リスト**（強制照合ではな�
 - [SKILL.md §4.1.1 Blind first read](../SKILL.md) — 独立所感の形成
 - [checklist.md §4.2.5 Phase 1〜5](checklist.md) — 各 Phase の運用チェック項目
 - [review-report-format.md](review-report-format.md) — Phase 4 必須記録のレポートテンプレ
-- [SKILL.md ## Gotchas](../SKILL.md) — catalog 成長元のスキル横断学習ログ
+- [docs/GOTCHAS.md](../../../../docs/GOTCHAS.md) — catalog 成長元の失敗事例記録

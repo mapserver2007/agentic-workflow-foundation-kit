@@ -2,7 +2,7 @@
 
 AI エージェント（Cursor Agent など）を開発プロジェクトに組み込むための基盤ファイル群を、**統一設計書 + seed manifest + templates + project manifest** から決定論的に生成・監査するツールキットです。
 
-このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル、GitHub 連携スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
+このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル、GitHub 連携スキル、多角評価スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
 
 **本リポジトリは dogfooding 構成**です。キット本体（`.cursor/skills/agentic-workflow-foundation` / `agentic-workflow-engine`）に加え、ルート直下に `manifest.yaml` と生成物（`AGENTS.md`、`docs/`、`bin/` 等）が同居しています。生成物の変更は manifest / templates 経由の再生成が正規ルートです。
 
@@ -12,11 +12,12 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue`、`workflow-orchestrator`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
+| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `agent-code-review`、`agent-github-pr`、`agent-github-issue`、`workflow-orchestrator`、`agent-maintenance-docs`、`cross-repository-knowledge-link`、`dual-thinking` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む） |
 | Project Docs (Meta) | `docs/tech-stack.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices + README）、`docs/agent-tasks/reports/`、`workflow-orchestrator`、`agent-maintenance-docs` |
+| Multi-perspective | 任意の `.cursor/skills/dual-thinking/**`（A/B 並列分析 + C 統合裁定） |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
@@ -116,7 +117,7 @@ agentic-workflow-foundation-kit/
         │   │   │                             # decisions-record, agent-code-review,
         │   │   │                             # agent-github-pr, agent-github-issue,
         │   │   │                             # workflow-orchestrator, agent-maintenance-docs,
-        │   │   │                             # cross-repository-knowledge-link
+        │   │   │                             # cross-repository-knowledge-link, dual-thinking
         │   │   └── bin/                      # _github-app-auth.sh, github-*-safe,
         │   │                                 # cross-repo-sync-safe
         │   ├── references/
@@ -142,7 +143,7 @@ agentic-workflow-foundation-kit/
                                                # decisions-record, agent-code-review,
                                                # agent-github-pr, agent-github-issue,
                                                # workflow-orchestrator, agent-maintenance-docs,
-                                               # cross-repository-knowledge-link
+                                               # cross-repository-knowledge-link, dual-thinking
 ```
 
 ## 主要スキル
@@ -156,7 +157,7 @@ agentic-workflow-foundation-kit/
 
 | スキル | 役割 |
 | --- | --- |
-| `session-planning` | 追跡ドキュメント（`.cursor/.tracking/tracker.md`）の作成・更新 |
+| `session-planning` | 追跡ドキュメント（`.cursor/.tracking/tracker-{session_id}.md`）の作成・更新 |
 | `session-handover` | セッション開始/終了ゲート、handoff、検証ゲート |
 | `decisions-record` | ADR（`docs/DECISIONS.md`）の起票 |
 | `workflow-orchestrator` | 6 段階標準タスク実行ワークフロー（①〜⑥、①の退出ゲートを内包） |
@@ -165,6 +166,23 @@ agentic-workflow-foundation-kit/
 | `agent-github-pr` | PR 作成 |
 | `agent-github-issue` | Issue 作成・読み取り |
 | `cross-repository-knowledge-link` | 関連リポジトリの docs / コード参照 |
+| `dual-thinking` | A/B 並列分析 + C 統合裁定による多角評価（通常のチャット返答と同じ体裁） |
+
+## 本リポジトリの dogfooding 既定
+
+ルート `manifest.yaml` では、オプション機能がすべて有効化されています（生成先プロジェクトでは Phase 1.5 の AskQuestion で個別に決定）。
+
+| 設定キー | 既定値 | 生成物 |
+| --- | --- | --- |
+| `code_review.enabled` | `true` | `agent-code-review`、`bin/github-pr-{reviews,comment,reply}-safe` |
+| `github_pr.enabled` | `true` | `agent-github-pr` |
+| `github_issue.enabled` | `true` | `agent-github-issue`、`bin/github-issue-{create,read}-safe` |
+| `coderabbit.enabled` | `true` | `.coderabbit.yaml` |
+| `agent_workflow.enabled` | `true` | `docs/agent-tasks/**`、`workflow-orchestrator`、`agent-maintenance-docs`、各種 gate スクリプト |
+| `dual_thinking.enabled` | `true` | `dual-thinking`（`config.yaml` + references） |
+| `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
+
+> 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の `pnpm run *` は tech stack 設計書から導出される **生成先プロジェクト向け contract** です。
 
 ## 生成ワークフロー
 
@@ -172,7 +190,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 
 1. **Phase 1**: seed manifest / templates / resolver を変更する必要がある場合だけ更新する
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
-3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review / GitHub PR / GitHub Issue / agent workflow / cross-repo スキル生成有無を確定する
+3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review / GitHub PR / GitHub Issue / agent workflow / dual thinking / cross-repo スキル生成有無を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
 5. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
 6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
@@ -232,12 +250,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-response-tracker.sh`、`session-compact-observer.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/tech-stack.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`verification-gate.sh`、`session-start-gate.sh`、`plan-gate.sh`、`workflow-gate.sh`、`archive-gate.sh`、`gate-report.py`、`gate-adr.py`、`.cursor/skills/decisions-record/SKILL.md` |
+| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`verification-gate.sh`、`session-start-gate.sh`、`plan-gate.sh`、`workflow-gate.sh`、`archive-gate.sh`、`gate-report.py`、`gate-adr.py`、`gate-artifact.py`、`gate-redispatch.py`、`.cursor/skills/decisions-record/SKILL.md` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |
 | Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
-| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
+| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md`、`config.yaml`、`references/worker-dispatch.md`、任意の `.cursor/skills/agent-maintenance-docs/SKILL.md` |
+| Optional Dual Thinking | `.cursor/skills/dual-thinking/SKILL.md`、`config.yaml`、`README.md`、`references/**` |
 | Optional Cross-Repo | `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
@@ -247,8 +266,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
-- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/SKILL.md` — `agent_workflow.enabled: true` の場合のみ
+- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/**`、各種 workflow gate スクリプト — `agent_workflow.enabled: true` の場合のみ
 - `.cursor/skills/agent-maintenance-docs/SKILL.md` — `agent_workflow.maintenance_docs.enabled: true` の場合のみ
+- `.cursor/skills/dual-thinking/**` — `dual_thinking.enabled: true` の場合のみ
 - `.cursor/skills/cross-repository-knowledge-link/**` と `bin/cross-repo-sync-safe` — `cross_repo_knowledge.enabled: true` の場合のみ
 
 Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。
@@ -261,7 +281,7 @@ Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初�
 | --- | --- | --- |
 | 1. Context | 目的・判断基準・運用入口 | `AGENTS.md`、`CLAUDE.md`、`docs/*` |
 | 2. Constraints | 常時適用される制約 | `.cursor/rules/*.mdc` |
-| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`workflow-orchestrator`、`agent-code-review`、`agent-maintenance-docs`、`cross-repository-knowledge-link` |
+| 3. Capabilities | 必要時に呼び出す専門手順 | `session-planning`、`session-handover`、`decisions-record`、`workflow-orchestrator`、`agent-code-review`、`agent-maintenance-docs`、`cross-repository-knowledge-link`、`dual-thinking` |
 | 4. Automation | ツール実行前後・セッション境界の自動処理 | `.cursor/hooks/*`、`.cursor/hooks.json` |
 | 5. Delegation | 子エージェントへの委譲 | 本キットでは生成しない。Cursor 組み込み Subagent を利用する |
 
@@ -275,7 +295,7 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### root manifest の責務を分ける
 
-root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。手編集してよいのは、Phase 1.5 / 1.55 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit`、`agent_workflow`、`cross_repo_knowledge` などの per-project 値です。
+root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。手編集してよいのは、Phase 1.5 / 1.55 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit`、`agent_workflow`、`dual_thinking`、`cross_repo_knowledge` などの per-project 値です。
 
 ### upstream docs は immutable input
 
@@ -287,7 +307,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### Context Budget は Hook で観測する
 
-生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`prompt_count`、`shell_bytes`、compact イベントを proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest を使った新規チャット移行を促します。技術詳細は `docs/CONTEXT_BUDGET.md` と `.cursor/hooks/README.md` を参照。
+生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`prompt_count`、`shell_bytes`、compact イベントを proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を使った新規チャット移行を促します。技術詳細は `docs/CONTEXT_BUDGET.md` と `.cursor/hooks/README.md` を参照。
 
 ## 前提条件
 

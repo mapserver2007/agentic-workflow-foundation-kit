@@ -164,5 +164,5 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 - [05-pr-review.md](05-pr-review.md) — 前ステップ（PR レビュー検証）
 {{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
-- [docs/GOTCHAS.md](../../GOTCHAS.md) — Gotchas 集約版
+- [docs/GOTCHAS.md](../../GOTCHAS.md) — 失敗事例記録
 - [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — フェーズ境界ゲート

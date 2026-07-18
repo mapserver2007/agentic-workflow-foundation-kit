@@ -37,7 +37,7 @@ description: >
 - `name` は `^[A-Za-z0-9._-]+$` でバリデーション済みの値のみ使用（wrapper が検証）
 - 知識参照のたびに `bin/cross-repo-sync-safe sync` を毎回実行する（clone 済みでも省略しない）
 - 同期失敗時は関連リポの知識なしで可能な範囲で回答する
-- exit code: `0` = 成功 / `1` = 操作失敗（ネットワーク/認証を確認案内）/ `2` = 致命的エラー（config.json 確認案内）
+- exit code: `0` = 成功 / `1` = 操作失敗（ネットワーク/認証を確認案内）/ `2` = 致命的エラー（config.json 確認案内。`clone_base_path` 消失を含む）
 
 ## 実行フロー
 
@@ -86,9 +86,3 @@ config.json を読み込み、`active: true` のリポジトリから必要な�
 | --- | --- |
 | 上流（入口） | タスク実行ワークフローの調査フェーズ / PR レビュー時に暗黙的に呼び出される |
 | 下流（出口） | 取得した仕様と本リポ側 docs との差分反映が必要な場合は docs 更新スキルに委譲 |
-
-## Gotchas
-
-> 集約先: [docs/GOTCHAS.md](../../../docs/GOTCHAS.md) — 起票トリガー・記録フォーマットの SoT
->
-> スキル固有の注意: CLAUDE.md 単独パターン（AGENTS.md 不在時）・古い feature ブランチからの取得・`clone_base_path` 消失・wrapper 経由せず直接 git 実行
