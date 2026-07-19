@@ -7,7 +7,7 @@ fixture 検証を行う。
 
 検査対象:
   - STEP_REQUIRED_FIELDS ⊆ step doc 出力フィールド（静的検査）
-  - 正常系 fixture (step1〜4,6 × complete) → exit 0
+  - 正常系 fixture (step1〜4 × complete) → exit 0
   - 異常系 fixture (blocked/fatal reason有無、complete必須フィールド欠落、不正status/step) → exit 1
   - 共通必須フィールド (status, step) の存在・値域チェック
   - blocked/fatal 時の reason 必須チェック
@@ -55,10 +55,6 @@ STEP_DOC_OUTPUT_FIELDS = {
     "step4": {
         "status", "step", "gate_results", "test_summary",
         "advisory_loop_count", "reason", "gate_id", "stderr_summary",
-    },
-    "step6": {
-        "status", "step", "doc_maintenance_file", "archive_path",
-        "archive_gate_result", "unchecked_items", "reason", "action",
     },
 }
 
@@ -118,11 +114,6 @@ def test_step4_complete():
     assert rc == 0, "step4-complete should PASS"
 
 
-def test_step6_complete():
-    rc = check_artifact(str(FIXTURES_DIR / "step6-complete.md"), json_mode=True)
-    assert rc == 0, "step6-complete should PASS"
-
-
 def test_blocked_with_reason():
     rc = check_artifact(str(FIXTURES_DIR / "blocked-with-reason.md"), json_mode=True)
     assert rc == 0, "blocked with reason should PASS"
@@ -171,7 +162,6 @@ def main() -> int:
         test_step2_complete,
         test_step3_complete,
         test_step4_complete,
-        test_step6_complete,
         test_blocked_with_reason,
         test_blocked_no_reason_fails,
         test_fatal_with_reason,

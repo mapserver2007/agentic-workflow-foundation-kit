@@ -84,7 +84,8 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する
 {{/if}}
 2. **ファイル移動**: `git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
-   - archives 移動完了をもってキャンペーン完了とする（進行中キャンペーンの SoT は `reports/` 直下のファイル存在）
+{{#if code_review.report.enabled}}   - **レビューレポートの同梱**: 対応する `{report}-review.md` が存在する場合は `git add` → `git mv docs/agent-tasks/reports/{report}-review.md docs/agent-tasks/reports/archives/` で archives/ へ移動し、タスクレポートと同一コミットに含める
+{{/if}}   - archives 移動完了をもってキャンペーン完了とする（進行中キャンペーンの SoT は `reports/` 直下のファイル存在）
 3. 次の pending レポートへ（複数レポート処理時）
 
 この手順により [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3「完了報告 → アーカイブ」フェーズ境界の出口条件を満たす。
@@ -102,8 +103,8 @@ archives 移動済み時点でタスクは**実質完了**とみなす。以降�
 - タスクレポート: {archives 移動後のファイルパス}
 - 実装内容: {概要}
 - テスト: {実装したテストの概要}
-{{#if code_review.enabled}}- レビュー: {レビューレポートのファイルパス}（Step ⑤ 中に段階的に作成済み・Step 7 で最終確定済み）
-{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- docs 反映: {maintenance-docs/ 起票ファイルパス or「反映不要と判定」}
+{{#if code_review.enabled}}- レビュー: {レビューレポートのファイルパス}（Step ⑤ 中に段階的に作成済み・`agent-code-review` の Step 7 で最終確定済み）
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- docs 起票: {maintenance-docs/ 起票ファイルパス or「反映不要と判定」}
 {{else}}- docs 反映: {反映したドキュメント or「コードから判断可能なため反映不要」}
 {{/if}}- ADR: {採用した設計判断のトピック名（詳細は docs/DECISIONS.md を参照）or「該当なし」}
 - 確認事項: {ユーザーに確認してほしい内容}
@@ -115,7 +116,7 @@ docs 反映起票ファイルが存在する場合は、`maintenance-docs-workfl
 ## 6.5 例外: PR に追加レビューコメントが付いた場合
 
 {{#if code_review.enabled}}
-Step 5.7 で承認を取得して完了報告まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
+前ステップの §5.7 で承認を取得して完了報告まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
 
 1. ユーザーが `agent-code-review` を **Mode B で再起動**する
 2. タスクレポートの `[x] PRレビュー検証完了` を **`[ ]` に戻す**（再承認を強制）
@@ -134,46 +135,6 @@ Step 5.7 で承認を取得して完了報告まで進んだ後に、PR へ新�
 セッション中に起票条件に該当する事象が発生した場合、[docs/GOTCHAS.md](../../GOTCHAS.md) の起票トリガー・記録フォーマットに従い追記する。
 {{#if agent_workflow.maintenance_gotchas.enabled}}
 修復可能な gotcha エントリが存在する場合は、[`maintenance-gotchas-workflow`](../../../.cursor/skills/maintenance-gotchas-workflow/SKILL.md) で Evolve-A（個別修復）として対応可能であることをユーザーに案内する。
-{{/if}}
-
-{{#if agent_workflow.artifact}}
----
-
-## Worker Contract
-
-本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（6.1〜6.6）。
-
-**許可書込み範囲**: maintenance-docs/ + archive + step envelope。commit / push 禁止。
-
-### 入力
-
-| フィールド | 型 | 必須 | 説明 |
-| --- | --- | --- | --- |
-| `report_path` | string | yes | タスクレポートのパス |
-| `pr_url` | string | yes | PR の URL |
-| `review_approved` | boolean | yes | `true`（⑤完了の前提条件） |
-
-### 出力（step envelope: YAML front matter + Markdown body）
-
-worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step6.md` へ書き出す。
-
-| フィールド | 型 | 値域 | 説明 |
-| --- | --- | --- | --- |
-| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 完了報告結果 |
-| `step` | string | `"step6"` | 固定値 |
-| `doc_maintenance_file` | string \| null | — | 作成した maintenance-docs/ 起票ファイルパス（反映不要と判定した場合は null） |
-| `archive_path` | string | — | archives 移動後のレポートパス |
-| `archive_gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh archive` 相当の検査結果 |
-| `unchecked_items` | string[] | — | `incomplete` 時の未完了チェック項目 |
-| `reason` | string | — | `blocked` / `fatal` 時の理由 |
-| `action` | string | — | `blocked` 時の推奨アクション |
-
-### 終端状態と遷移
-
-- `complete`: オーケストレータは正式成果物（`archive_path` の存在 + archive gate PASS）を確認し、ユーザーに完了報告する
-- `incomplete`: 完了チェック項目が不足。オーケストレータは `unchecked_items` を確認し対応する
-- `blocked` (`reason: post_completion_review`, `action: reopen_step5`): §6.5 対応。完了報告後に追加レビューコメントが付いた場合。オーケストレータは⑤を Mode B で再開する
-- `fatal`: オーケストレータがユーザーに報告して停止する
 {{/if}}
 
 ---

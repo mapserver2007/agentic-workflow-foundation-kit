@@ -161,7 +161,7 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 
 **設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（`{{project.quality_gate.build_cmd}}` 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
 
-**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
+**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 
 {{#if agent_workflow.artifact}}
 **artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 VALID_STATUSES = {"complete", "incomplete", "blocked", "fatal"}
-VALID_STEPS = {"step1", "step2", "step3", "step4", "step6"}
+VALID_STEPS = {"step1", "step2", "step3", "step4"}
 
 COMMON_REQUIRED = ["status", "step"]
 
@@ -24,7 +24,6 @@ STEP_REQUIRED_FIELDS = {
     "step2": ["report_path"],
     "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
     "step4": ["gate_results", "test_summary", "advisory_loop_count"],
-    "step6": ["doc_maintenance_file", "archive_path", "archive_gate_result"],
 }
 
 NULLABLE_FIELDS = {"doc_maintenance_file"}

@@ -80,7 +80,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step2_report`）。Step doc: [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md)。
 
-1. `docs/agent-tasks/reports/{yyyy-mm-dd-slug}.md` を作成する（必須 10 セクション）
+1. `docs/agent-tasks/reports/{{agent_workflow.report_slug_format}}.md` を作成する（必須 10 セクション）
 2. プレースホルダ `{XXX}` を残さない
 3. ユーザーに内容を提示して承認を得る
 {{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step2` で Step ② 完了条件を検証する
@@ -120,7 +120,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ⑥: 完了報告
 
-[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step6_completion`）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 以下を実行する:

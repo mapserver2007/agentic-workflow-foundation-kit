@@ -12,9 +12,7 @@ models:
   step3_implementation: "{{#if agent_workflow.models.step3_implementation}}{{agent_workflow.models.step3_implementation}}{{else}}gpt-5.6-terra-medium{{/if}}"
   # Step ④ テスト
   step4_testing: "{{#if agent_workflow.models.step4_testing}}{{agent_workflow.models.step4_testing}}{{else}}composer-2.5-fast{{/if}}"
-  # Step ⑥ 完了報告
-  step6_completion: "{{#if agent_workflow.models.step6_completion}}{{agent_workflow.models.step6_completion}}{{else}}composer-2.5-fast{{/if}}"
-  # Step ⑤ は config 対象外（親モデルをそのまま使用 / 決定 12）
+  # Step ⑤⑥ は config 対象外（親モデルをそのまま使用）
 
 execution:
   # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）

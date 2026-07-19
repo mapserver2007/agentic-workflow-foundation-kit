@@ -165,7 +165,6 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 ### Step 5-6 レビューレポート即時更新（レポート出力設定 `true` 時）
 
 - [ ] `apply` 実行後: アクション実行記録・修正内容・GitHub返信内容をレポートに `StrReplace` で記入した
-- [ ] `apply` 実行後: レビューレポートの更新分をコード修正と同じコミットに同梱した
 - [ ] `reply_only` 実行後: アクション実行記録・GitHub返信内容を記入した
 - [ ] `pending` 記録時: 「保留中の指摘」セクションに即時追記した
 - [ ] `discuss` 突入時: アクション実行記録を記入した（着地後に更新）
@@ -184,7 +183,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 > 前提: §5-6 Post の保留残数チェックで「保留 0 件」を確認済み。Step 5-6 の指摘単位承認とは別に、レビューフェーズ全体の完了承認をユーザー（PO）から取得する。
 >
-> **詳細リファレンス**: [review-completion.md](review-completion.md) — Step 6.7-A 再取得手順 / Step 6.7-B 強制再開 / Step 7 の手順 + サマリテンプレ / docs 反映後の例外フロー
+> **詳細リファレンス**: [review-completion.md](review-completion.md) — Step 6.7-A 再取得手順 / Step 6.7-B 強制再開 / Step 7 の手順 + サマリテンプレ / 完了報告後の例外フロー
 
 ### Hard Stop: `review-completion.md` 読込確認
 
@@ -197,13 +196,13 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 - [ ] 承認前に GitHub を 1 回再取得した（`bin/github-pr-reviews-safe` / Step 3 同条件 / author フィルタなし）
   - [ ] 新規コメントが見つかった場合は承認を求めず Step 3 へ戻った
 - [ ] `AskQuestion` で完了承認を求めた（2 択 + Other）:
-  - [ ] 「承認する（docs 反映へ進む）」→ 次ターン冒頭で Step 6.7-B を実行する選択肢として提示した
+  - [ ] 「承認する（完了報告へ進む）」→ 次ターン冒頭で Step 6.7-B を実行する選択肢として提示した
   - [ ] 「新規のレビューコメントを取得して」→ 次ターン冒頭で Step 3 へループバックする選択肢として提示した
 - [ ] AskQuestion 提示後は承認待ちでターンを終了した（AI はポーリング不可 / このターンでは Step 7 に進まない）
 
 ### Step 6.7-B: 承認回答受領後の強制再開
 
-- [ ] ユーザーが「承認する（docs 反映へ進む）」を選択した次ターンでは、最初の処理として Step 7 を実行した
+- [ ] ユーザーが「承認する（完了報告へ進む）」を選択した次ターンでは、最初の処理として Step 7 を実行した
 - [ ] Step 7 完了前に final response を返していない
 - [ ] Step 7 完了前に追加確認・別作業・説明のみの応答を挟んでいない
 - [ ] レビューレポートに `## レビュー完了承認` / `承認状態: 承認取得済み` を記録した

@@ -434,7 +434,7 @@ github_issue:
 # ------------------------------------------------------------
 agent_workflow:
   enabled: true
-  report_slug_format: "yyyy-mm-dd-slug"
+  report_slug_format: "TICKET-{number}-{slug}"
   maintenance_docs:
     enabled: true
   maintenance_gotchas:
@@ -486,13 +486,12 @@ agent_workflow:
       cmd: "archive-gate.sh"
   # ステップ別モデル設定（PO 決定値）。
   # config.yaml テンプレートがこの値を seed 初期値として使い、生成後は PO が直接 config.yaml を編集できる。
-  # Step ⑤（PR レビュー）は親直接実行のため config 対象外（決定 12）。
+  # Step ⑤⑥ は親直接実行のため config 対象外。
   models:
     step1_investigation: "claude-4.6-opus-high-thinking"
     step2_report: "composer-2.5-fast"
     step3_implementation: "gpt-5.6-terra-medium"
     step4_testing: "composer-2.5-fast"
-    step6_completion: "composer-2.5-fast"
   # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）
   model_unavailable: "ABORT"
   # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
@@ -1078,7 +1077,7 @@ outputs:
       - "コードの調査"
       - "ADR 起票判定"
   - path: docs/agent-tasks/agent-workflow/02-report-creation.md
-    template: docs/agent-tasks/agent-workflow/03-report-creation.md.template
+    template: docs/agent-tasks/agent-workflow/02-report-creation.md.template
     mode: render
     feature: agent_workflow
     required_sections:
@@ -1086,14 +1085,14 @@ outputs:
       - "プレースホルダ禁止"
       - "進行中キャンペーン"
   - path: docs/agent-tasks/agent-workflow/03-implementation.md
-    template: docs/agent-tasks/agent-workflow/04-implementation.md.template
+    template: docs/agent-tasks/agent-workflow/03-implementation.md.template
     mode: render
     feature: agent_workflow
     required_sections:
       - "既存実装の踏襲"
       - "設計判断が発生した場合"
   - path: docs/agent-tasks/agent-workflow/04-testing.md
-    template: docs/agent-tasks/agent-workflow/05-testing.md.template
+    template: docs/agent-tasks/agent-workflow/04-testing.md.template
     mode: render
     feature: agent_workflow
     required_sections:
@@ -1101,7 +1100,7 @@ outputs:
       - "合格条件"
       - "禁止事項"
   - path: docs/agent-tasks/agent-workflow/05-pr-review.md
-    template: docs/agent-tasks/agent-workflow/06-pr-review.md.template
+    template: docs/agent-tasks/agent-workflow/05-pr-review.md.template
     mode: render
     feature: agent_workflow
     required_sections:
@@ -1109,7 +1108,7 @@ outputs:
       - "指摘の検証"
       - "レビュー完了承認"
   - path: docs/agent-tasks/agent-workflow/06-completion.md
-    template: docs/agent-tasks/agent-workflow/07-completion.md.template
+    template: docs/agent-tasks/agent-workflow/06-completion.md.template
     mode: render
     feature: agent_workflow
     required_sections:

@@ -111,7 +111,7 @@ else
   fi
   while IFS= read -r f; do
     [[ -n "$f" ]] && targets+=("$f")
-  done < <(find "$REPORTS_DIR" -maxdepth 1 -name "*.md" -type f 2>/dev/null | sort)
+  done < <(find "$REPORTS_DIR" -maxdepth 1 -name "*.md" ! -name "*-review.md" -type f 2>/dev/null | sort)
 fi
 
 if (( ${#targets[@]} == 0 )); then
