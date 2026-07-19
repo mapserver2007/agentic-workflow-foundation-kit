@@ -9,7 +9,7 @@ description: >-
   「パフォーマンス改善して」等の実装系タスク指示、または issue URL / タスクレポートを渡された場合。
   Do NOT use for - (1) PR レビュー対応のみ（agent-code-review を使う）、
   (2) PR 作成のみ（agent-github-pr を使う）、(3) issue 作成のみ（agent-github-issue を使う）、
-  (4) docs 反映のみ（agent-maintenance-docs を使う）、
+  (4) docs 反映のみ（maintenance-docs-workflow を使う）、
   (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）{{#if agent_workflow.maintenance_gotchas.enabled}}、
   (6) GOTCHAS エントリのメタ層修復（maintenance-gotchas-workflow を使う）{{/if}}。
 ---
@@ -26,7 +26,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{#if code_review.enabled}}> - [agent-code-review](../agent-code-review/SKILL.md) — Step ⑤ PR レビュー検証
 {{/if}}{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Step ⑤ PR 作成
 {{/if}}{{#if github_issue.enabled}}> - [agent-github-issue](../agent-github-issue/SKILL.md) — issue の読み取り（入力として使用）
-{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [agent-maintenance-docs](../agent-maintenance-docs/SKILL.md) — Step ⑥ docs 反映 + archives 移動
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [maintenance-docs-workflow](../maintenance-docs-workflow/SKILL.md) — 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}> - [maintenance-gotchas-workflow](../maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
 {{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
@@ -93,6 +93,10 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 - 既存実装パターンを踏襲する
 - `AGENTS.md > Boundaries` を遵守する（Always / Ask First / Never）
 - 設計次元 D-* を変更する判断が発生したら ADR を起票する
+{{#if agent_workflow.maintenance_docs.enabled}}- コード変更が Domain 層 docs の記述と乖離を生む場合、`docs/agent-tasks/maintenance-docs/{slug}.md` を作成する（反映要否判定基準・テンプレートは [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を参照）
+- 起票ファイルとコード変更は同一コミットに含める
+- レビュー指摘による実装修正時は起票ファイルも追従更新する
+{{/if}}
 
 ### Step ④: テスト実装
 
@@ -119,16 +123,20 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step6_completion`）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。
 
 {{#if agent_workflow.maintenance_docs.enabled}}
-`agent-maintenance-docs` スキルに委譲する。スキルが以下を一貫して実行する:
+以下を実行する:
 {{else}}
 以下を実行する:
 {{/if}}
 
-1. Domain 層 docs への仕様反映（G-DOC-SPEC）
+{{#if agent_workflow.maintenance_docs.enabled}}1. maintenance-docs/ 起票ファイルの最終確認（起票ファイルが存在する場合は最終実装状態との整合を確認。反映不要と判定した場合は起票ファイルを削除）
+2. 完了チェック 6 項目の確認
+3. archives 移動（`git mv reports/{report}.md reports/archives/`）
+4. ユーザーへの完了報告（docs 反映が必要な場合は `maintenance-docs-workflow` の起動を案内）
+{{else}}1. Domain 層 docs への仕様反映（G-DOC-SPEC）
 2. 完了チェック 6 項目の確認
 3. archives 移動（`git mv reports/{report}.md reports/archives/`）
 4. ユーザーへの完了報告
-{{#if agent_workflow.maintenance_gotchas.enabled}}5. Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
+{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}5. Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
 {{/if}}
 
 ---

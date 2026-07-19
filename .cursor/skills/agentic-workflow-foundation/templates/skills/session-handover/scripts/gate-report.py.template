@@ -34,7 +34,7 @@ COMPLETION_ITEMS = [
     "テスト完了",
     "コードゲート通過",
     "PRレビュー検証完了",
-    "docs への仕様反映",
+    "maintenance-docs/ 起票判定",
     "ADR 起票判定",
 ]
 
@@ -167,7 +167,7 @@ def main():
                 print(msg)
             sys.exit(2)
         for f in sorted(Path(reports_dir).glob("*.md")):
-            if f.is_file():
+            if f.is_file() and not f.name.endswith("-review.md"):
                 targets.append(str(f))
 
     if not targets:

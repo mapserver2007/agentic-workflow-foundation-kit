@@ -141,7 +141,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 ### タスク実行ワークフロー（agent_workflow 有効時）
 - **docs/agent-tasks/agent-workflow.md**: タスク実行ワークフロー index（6 段階：①〜⑥、①の退出ゲートを内包）
 {{#if agent_workflow.orchestrator_skill}}- **`.cursor/skills/workflow-orchestrator/SKILL.md`**: 6 段階標準ワークフローの制御スキル
-{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/agent-maintenance-docs/SKILL.md`**: Step ⑥ docs 反映 + archives 移動
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/maintenance-docs-workflow/SKILL.md`**: 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- **`.cursor/skills/maintenance-gotchas-workflow/SKILL.md`**: GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン

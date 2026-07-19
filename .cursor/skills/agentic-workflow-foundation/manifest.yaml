@@ -1113,10 +1113,9 @@ outputs:
     mode: render
     feature: agent_workflow
     required_sections:
-      - "docs への仕様反映"
+      - "maintenance-docs/"
       - "完了条件の確認"
       - "archives 移動"
-      - "G-DOC-SPEC"
   - path: docs/agent-tasks/agent-workflow/best-practices.md
     template: docs/agent-tasks/agent-workflow/best-practices.md.template
     mode: render
@@ -1160,17 +1159,27 @@ outputs:
       - "model"
       - "モデル利用不可時"
       - "step envelope"
-  # agent-maintenance-docs スキル（feature: agent_workflow.maintenance_docs で条件生成）。
+  # maintenance-docs-workflow スキル（feature: agent_workflow.maintenance_docs で条件生成）。
   # agent_workflow.maintenance_docs.enabled: true の場合のみ生成される。
-  - path: .cursor/skills/agent-maintenance-docs/SKILL.md
-    template: skills/agent-maintenance-docs/SKILL.md.template
+  # docs/agent-tasks/maintenance-docs/ を入力キューとして Domain 層 docs メンテナンスを独立パイプラインで実行する。
+  - path: .cursor/skills/maintenance-docs-workflow/SKILL.md
+    template: skills/maintenance-docs-workflow/SKILL.md.template
     mode: render
     feature: agent_workflow.maintenance_docs
     required_sections:
-      - "name: agent-maintenance-docs"
-      - "## 責務範囲"
-      - "G-DOC-SPEC"
-      - "責務境界テーブル"
+      - "name: maintenance-docs-workflow"
+      - "## 実行フロー"
+      - "## 反映判定基準"
+      - "## 責務境界テーブル"
+      - "## Context Budget 到達時の対応"
+  - path: docs/agent-tasks/maintenance-docs/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow.maintenance_docs
+  - path: docs/agent-tasks/maintenance-docs/archives/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: agent_workflow.maintenance_docs
   # maintenance-gotchas-workflow スキル（feature: agent_workflow.maintenance_gotchas で条件生成）。
   # agent_workflow.maintenance_gotchas.enabled: true の場合のみ生成される。
   # GOTCHAS.md のエントリを解析し、メタ層プロセス改善修復を独立パイプラインとして実行する。

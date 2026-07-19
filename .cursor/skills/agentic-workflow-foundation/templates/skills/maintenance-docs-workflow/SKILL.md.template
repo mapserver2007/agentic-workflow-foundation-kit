@@ -1,0 +1,189 @@
+---
+name: maintenance-docs-workflow
+description: >-
+  docs/agent-tasks/maintenance-docs/ に蓄積された起票ファイルを入力キューとして、
+  Domain 層ドキュメントへの仕様反映を独立パイプラインとして実行する。
+  agent-github-pr / agent-code-review と連携してデリバリ（コミット→PR→レビュー）
+  まで自前で完結させる。workflow-orchestrator とは独立した単体メンテナンスワークフロー。
+  Use when - 「docs を反映して」「仕様を反映して」「maintenance-docs 実行」
+  「docs 更新タスクを処理して」等の指示。
+  Do NOT use for - (1) コード実装（workflow-orchestrator Step ③）、
+  (2) Meta 層（AGENTS.md / QUALITY_GATE.md 等）の編集（manifest 経由で再生成）、
+  (3) GOTCHAS エントリのメタ層修復（maintenance-gotchas-workflow）、
+  (4) archives 移動のみ（workflow-orchestrator Step ⑥）、
+  (5) 起票ファイルの作成（Step ③ 実装時に作成する）。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# maintenance-docs-workflow
+
+`docs/agent-tasks/maintenance-docs/` に蓄積された起票ファイルを入力キューとして、**Domain 層ドキュメントへの仕様反映**を独立パイプラインで実行するスキル。修正後は `agent-github-pr` / `agent-code-review` と連携してデリバリ（コミット → PR → レビュー）まで自前で完結させる。
+
+> **関連スキル**:
+{{#if github_pr.enabled}}> - [agent-github-pr](../agent-github-pr/SKILL.md) — Phase 5 PR 作成
+{{/if}}{{#if code_review.enabled}}> - [agent-code-review](../agent-code-review/SKILL.md) — Phase 6 レビュー対応
+{{/if}}> - [workflow-orchestrator](../workflow-orchestrator/SKILL.md) — コード実装タスク（本スキルの対象外。Step ③ で起票ファイルを作成）
+{{#if agent_workflow.maintenance_gotchas.enabled}}> - [maintenance-gotchas-workflow](../maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（並列構造の姉妹スキル）
+{{/if}}
+
+---
+
+## 前提条件
+
+1. `agent_workflow.maintenance_docs.enabled: true`
+2. `docs/agent-tasks/maintenance-docs/` に未処理の起票ファイル（`*.md`、`archives/` 除く）が存在すること
+3. `AGENTS.md > Session Protocol` 完了が前提
+
+---
+
+## 実行フロー
+
+### Phase 1: maintenance-docs/ スキャン
+
+`docs/agent-tasks/maintenance-docs/` 内の `*.md` ファイル（`archives/` 除く）を一覧し、各ファイルから以下を抽出する:
+
+- YAML front matter: `status`, `source_type`, `source`, `target_docs`, `change_type`
+- 本文: コード変更の要約、影響を受ける docs セクション、期待する反映内容
+
+`status: pending` のファイルのみ処理対象とする。`source`（PR URL / report パス）を参照してコード変更の詳細を把握する。
+
+起票ファイルテンプレートの全文定義は [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を SoT として参照する（二重定義しない）。
+
+### Phase 2: 反映対象の判定と優先度付け
+
+各起票ファイルの `target_docs` に列挙された Domain 層 docs を全体読み込みし、「反映判定基準」に従い反映要否を判定する:
+
+- **反映必要**: 起票ファイルの「期待する反映内容」に基づき修正候補を特定
+- **反映不要**: 「コードから判断可能なため反映不要」と判定
+
+修正候補リストをユーザーに提示し、**変更規模を確認する**:
+
+- **軽微**（typo・リンク修正・1文追記）: fast path（Phase 5 は commit only・Phase 6 はレビュー対応なし）
+- **重要**（仕様変更・複数 docs 更新）: フルパス（PR 作成 + レビュー対応）
+
+### Phase 3: docs 更新の実行
+
+ユーザー承認済みの修正候補を実行する:
+
+1. 変更前に対象 docs を全体読み込みする（`AGENTS.md > Boundaries > Always`）
+2. docs を更新する
+3. 変更内容を diff として提示し、ユーザー承認を得る
+
+### Phase 4: 検証
+
+変更規模に応じた検証を実行する:
+
+| 変更規模 | 必須検証 |
+| --- | --- |
+| **軽微** | リンク検証 + 構造検証（見出し階層の整合） |
+| **重要** | リンク検証 + 構造検証 + コードゲート（`{{project.quality_gate.build_cmd}}` / `{{project.quality_gate.lint_cmd}}`） |
+
+全ゲート通過後にのみ Phase 5 に進む。ゲート失敗時は修正して再実行する（Advisory ループ）。
+
+### Phase 5: コミット + PR 作成
+
+変更規模に応じてデリバリ経路を分岐する:
+
+- **軽微**（fast path）: 直接 commit のみ（ユーザー承認後。`AGENTS.md > Boundaries > Ask First`）
+- **重要**（フルパス）: {{#if github_pr.enabled}}`agent-github-pr` スキルに従い PR を作成する{{else}}PR を作成する{{/if}}。PR 本文に処理対象の起票ファイルを明記する
+
+### Phase 6: レビュー対応 + 完了処理
+
+変更規模に応じてレビュー対応を分岐する:
+
+**重要（フルパス）の場合:**
+1. {{#if code_review.enabled}}`agent-code-review` スキルに従いレビュー指摘を取得・検証する{{else}}レビュー指摘を取得・検証する{{/if}}
+2. 指摘への返答・修正を実行する
+   - docs 修正を伴う場合: Phase 3（docs 更新 + diff 承認）→ Phase 4（検証）に戻る
+   - 検証のみで対応可能: Phase 4 に直行する
+3. レビュー完了承認をユーザーから取得する
+
+**軽微（fast path）の場合:**
+- レビュー対応なし。直接完了処理に進む
+
+**完了処理（共通）:**
+1. 処理済みファイルを `docs/agent-tasks/maintenance-docs/archives/` へ移動（`git mv`）
+2. 移動をコミットする（ユーザー承認後）
+3. 処理結果をユーザーに報告する:
+   - 処理件数・反映した docs 一覧
+   - 反映不要と判定したファイル（理由付き）
+   - `maintenance-docs/` の残存ファイル数
+
+---
+
+## 反映判定基準
+
+### 反映が必要な情報
+
+- ビジネス上の意思決定・設計意図（「なぜそうしたか」）
+- 外部システムとの暗黙の契約（コードだけではわからない挙動）
+- 運用上の制約・注意点
+- PR レビューで合意した仕様変更
+
+### 反映が不要な情報
+
+- コードを読めば明らかな実装詳細
+- 技術的な動作の説明（関数名・変数名から明らか）
+- バグ修正（仕様通りの動作に戻しただけ）
+- リファクタリング（外部仕様に影響しない）
+
+### 反映対象ドキュメント（G-DOC-SPEC スコープ）
+
+対象: [`AGENTS.md > Documentation Navigation > Domain 層`](../../../AGENTS.md) に列挙された Domain 層 md ファイル
+
+除外:
+- Meta 層（`DECISIONS.md` / `GOTCHAS.md` / `QUALITY_GATE.md` / `AGENT_RUNBOOK.md` / `AGENTS.md`）
+- 証跡系（`docs/agent-tasks/reports/`）
+- タスクキュー（`docs/agent-tasks/maintenance-docs/`）
+- gen 系（`docs/gen/`）
+- 調査系（`docs/investigations/`）
+
+---
+
+## 責務境界テーブル
+
+| 対象 | 本スキルの責務 | 責務外（理由） |
+| --- | --- | --- |
+| Domain 層 docs の仕様反映 | Phase 3 で直接実行（diff 提示 + ユーザー承認必須） | — |
+| `maintenance-docs/` 起票ファイルのスキャン | Phase 1 で実行 | — |
+| 処理済みファイルの archives 移動 | Phase 6 完了処理で実行 | — |
+| PR 作成 | `agent-github-pr` スキル参照で実行 | — |
+| レビュー対応 | `agent-code-review` スキル参照で実行 | — |
+| `AGENTS.md` の直接編集 | — | Never 抵触。manifest 経由で再生成 |
+| `docs/tech-stack.md` の直接編集 | — | SoT は `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`。逆流禁止 |
+| Meta 層 docs の編集 | — | Meta 層生成物。SoT は manifest → templates |
+| コード実装 | — | workflow-orchestrator Step ③ の責務 |
+| 起票ファイルの作成 | — | Step ③ 実装時に作成 / PR レビュー所見 / ユーザー手動 |
+| タスクレポートの archives 移動 | — | workflow-orchestrator Step ⑥ の責務 |
+
+---
+
+## 安全制約
+
+- **ユーザー承認必須**: Phase 2 で修正候補リストを提示し、承認なしに docs 更新を実行しない
+- **変更時のレビュー契約**: docs 変更は commit 前にユーザーに diff を提示し承認を得る
+- **品質ゲート通過がデリバリの前提**: 検証のゲート未通過のまま Phase 5（コミット / PR 作成）に進まない
+- **反映不要判定の記録**: 反映不要と判定した場合はその理由を Phase 6 の報告に含める
+
+---
+
+## Context Budget 到達時の対応
+
+`AGENTS.md > Context Budget Protocol` に従う。
+
+- **Yellow**: 現 Phase を区切りまで完了 → 追跡ドキュメントに処理対象ファイルと進行 Phase を記録 → 次セッション引き継ぎ準備
+- **Red**: 即時中断 → 追跡ドキュメントに中断ポイントを記録 → handoff manifest 書き出し。新 Phase に進まない
+- **中断時**: docs 更新途中の変更がある場合は diff を追跡ドキュメントに記録し、未コミットの変更を保全する
+
+### セッション再開時の Phase 判定
+
+中断後の再開時は、追跡ドキュメントに記録された進行 Phase から再開する。
+
+| 追跡ドキュメントの状態 | 再開 Phase |
+| --- | --- |
+| 修正候補リスト未承認 | Phase 2（判定 + 承認）から |
+| docs 更新中（diff 未承認） | Phase 3（docs 更新）から |
+| 更新完了・検証未実施 | Phase 4（検証）から |
+| 検証通過・未コミット | Phase 5（コミット + PR 作成）から |
+| PR 作成済み・レビュー中 | Phase 6（レビュー対応）から |

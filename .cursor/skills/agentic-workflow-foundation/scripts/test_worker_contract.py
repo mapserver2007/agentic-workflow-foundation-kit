@@ -57,7 +57,7 @@ STEP_DOC_OUTPUT_FIELDS = {
         "advisory_loop_count", "reason", "gate_id", "stderr_summary",
     },
     "step6": {
-        "status", "step", "docs_updated", "archive_path",
+        "status", "step", "doc_maintenance_file", "archive_path",
         "archive_gate_result", "unchecked_items", "reason", "action",
     },
 }

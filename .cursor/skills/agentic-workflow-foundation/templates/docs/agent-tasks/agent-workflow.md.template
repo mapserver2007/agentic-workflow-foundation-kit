@@ -11,7 +11,7 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 > **関連スキル**: [`agent-code-review`](../../.cursor/skills/agent-code-review/SKILL.md)（Step ⑤ PR レビュー検証）
 {{/if}}
 {{#if agent_workflow.maintenance_docs.enabled}}
-> **関連スキル**: [`agent-maintenance-docs`](../../.cursor/skills/agent-maintenance-docs/SKILL.md)（Step ⑥ docs 反映 + archives 移動）
+> **関連スキル**: [`maintenance-docs-workflow`](../../.cursor/skills/maintenance-docs-workflow/SKILL.md)（独立 docs メンテナンスパイプライン）
 {{/if}}
 
 ---

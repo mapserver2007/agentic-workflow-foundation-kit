@@ -40,6 +40,70 @@
 
 D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 / 値チューニングの選択 / リネーム / docs 整理 等）は ADR 起票せず PR 説明で完結。
 
+{{#if agent_workflow.maintenance_docs.enabled}}
+## 3.5 docs 反映起票ファイルの作成（maintenance-docs/ 起票）
+
+コード変更が Domain 層 docs の記述と乖離を生む場合、`docs/agent-tasks/maintenance-docs/{slug}.md` を作成する。
+
+### 反映要否の判定基準
+
+以下のいずれかに該当するコード変更を検知した場合、起票ファイルを作成する:
+
+- 新規 API / エンドポイントの追加 → `docs/api.md`
+- データモデル / スキーマ変更 → `docs/data-models.md`
+- アーキテクチャ構成の変更 → `docs/architecture.md`
+- ワークフロー / 状態遷移の変更 → `docs/workflows.md`
+- 仕様の振る舞い変更 → `docs/spec.md` / `docs/spec/*.md`
+- 技術スタック追加・バージョン変更 → `docs/tech-stack.md`
+- コーディング規約に影響する変更 → `docs/coding-standards.md`
+
+### 起票ファイルテンプレート
+
+```markdown
+---
+status: pending
+created: YYYY-MM-DD
+source_type: step6 | review | manual
+source: "{PR URL / report path / 手動の場合は空}"
+target_docs:
+  - "{docs/spec.md}"
+  - "{docs/api.md}"
+change_type: feature | behavior | api | config | architecture | deprecation
+---
+
+# {docs 修正内容の概要}
+
+## コード変更の要約
+
+{この docs 更新が必要になったコード変更の概要。Step ③ 起票の場合はタスクレポートの実装内容を要約}
+
+## 影響を受ける docs セクション
+
+| 対象 docs | セクション | 変更種別 |
+|---|---|---|
+| {docs/spec.md} | {§ 機能仕様} | {追加 / 修正 / 削除} |
+
+## 期待する反映内容
+
+{どのような記述を追加/修正/削除すべきか — 可能な範囲で具体的に}
+
+## 反映判定の根拠
+
+以下のいずれかに該当する情報を反映対象とする（該当するものにチェック）:
+
+- [ ] ビジネス上の意思決定・設計意図（「なぜそうしたか」）
+- [ ] 外部システムとの暗黙の契約（コードだけではわからない挙動）
+- [ ] 運用上の制約・注意点
+- [ ] PR レビューで合意した仕様変更
+```
+
+### 運用ルール
+
+- 起票ファイルとコード変更は**同一コミット**に含める（1 回の push で自動レビュー対象に入る）
+- レビュー指摘による実装修正が docs に影響する場合は起票ファイルも**追従更新**する
+- `slug` はコード変更の内容を要約した kebab-case 文字列とする（例: `add-user-auth-api`）
+- 反映不要と判断した場合は起票ファイルを作成しない（Step ⑥ で最終確認する）
+{{/if}}
 {{#if agent_workflow.artifact}}
 ---
 
@@ -47,7 +111,7 @@ D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 
 
 本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（3.1〜3.4）。
 
-**許可書込み範囲**: source / test / report + step envelope。commit / push 禁止。
+**許可書込み範囲**: source / test / report / maintenance-docs/ + step envelope。commit / push 禁止。
 
 ### 入力
 

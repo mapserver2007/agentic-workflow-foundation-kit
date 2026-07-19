@@ -1,7 +1,7 @@
 ---
 status: complete
 step: step6
-docs_updated: true
+doc_maintenance_file: null
 archive_path: docs/agent-tasks/reports/archives/test-report.md
 archive_gate_result: PASS
 ---

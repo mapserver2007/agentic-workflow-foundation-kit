@@ -16,7 +16,7 @@
 - [ ] **Step 5-6**: 入口=Step 4.3 記録済み / **Read=approval-loop.md 全文（突入ごと必須）** / 禁止=未読でグループ提示・分類・修正・reply 投稿・`pending`/`discuss` 記録 / 退出=全指摘分類実行 + 保留件数集計
 - [ ] **Post**: 入口=Step 5-6 完了 / Read=— / 禁止=保留 1 件以上・ゲート未 PASS で Step 6.7 へ / 退出=`apply` 有時 build/lint/test PASS + 保留 0 件
 - [ ] **Step 6.7**: 入口=保留 0 件 / **Read=review-completion.md 全文（着手前必須）** / 禁止=未読で AskQuestion・Step 7 / 退出=6.7-A は AskQuestion 提示後ターン終了
-- [ ] **Step 7**: 入口=**6.7-B 承認回答受領済み** / Read=— / 禁止=承認なし実行・Step 7 完了前の final response / 退出=承認記録→レポート作成完了
+- [ ] **Step 7**: 入口=**6.7-B 承認回答受領済み** / Read=— / 禁止=承認なし実行・Step 7 完了前の final response / 退出=承認記録更新→ヘッダ統計確定→完全性検証→レポート最終確定完了
 - [ ] **横断（全 Step）**: GitHub reply は `apply` / `reply_only` 集合のみ。`pending` / 未着地 `discuss` には reply もコード修正もしない
 
 ---
@@ -83,6 +83,14 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 > Mode B では前回 Mode A 完了後に追加された未解決指摘のみが残るため、同じクエリで自然に「新規分のみ」が取得される。前回対応分を保持する追加メタデータは不要。
 
+### 3.1 レビューレポート骨格作成（レポート出力設定 `true` 時）
+
+- [ ] Mode A: レビューレポートファイル（`{{code_review.report.output_dir}}/{レポートファイル名}-review.md`）を `Write` で新規作成した
+- [ ] Mode B: 既存レビューレポートを `StrReplace` で更新した（ヘッダ Mode → `B`、統計 → `TBD` 再初期化、承認状態 → `未承認（新規コメント取得待ち）`）
+- [ ] 全指摘を `## 未分類（判定待ち）` セクションに `### 指摘 C-{commentId}: {ファイル:行}` 形式で配置した
+- [ ] ヘッダ統計（指摘総数・アクション集計・保留件数）を `TBD` で初期化した
+- [ ] `## レビュー完了承認` を `承認状態: レビュー進行中`（Mode A）/ `未承認（新規コメント取得待ち）`（Mode B）で初期化した
+
 ---
 
 ## 4. Step 4（妥当性検証）チェック
@@ -124,6 +132,12 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 - [ ] 各指摘について必須記録項目を全て記録（記録項目の詳細は [judgment-protocol.md §4.3](judgment-protocol.md) 参照）:
   - レビュアー種別 / Blind 所感 / `judgment_initial` / 自己反論 3 件（`[REPO]` 出典付き）/ 最強反論 / Phase 3 評価 / `judgment_final` / `ask_first` / 実害シナリオ or フィルタ通過理由 / GitHub 返信用コメント案
 
+### §4.3+ レビューレポート段階更新（レポート出力設定 `true` 時）
+
+- [ ] 各指摘の `judgment_final` 確定後、レビューレポートを `StrReplace` で更新した
+- [ ] 該当指摘を `## 未分類（判定待ち）` から分類グループ（修正必須 / 修正推奨 / 修正不要）へ移動した
+- [ ] 判定結果・Blind 所感・自己反論結果・検証結果を記入した
+
 ---
 
 ## 5-6. Step 5-6（判定グループ承認ループ）チェック
@@ -147,6 +161,14 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 - [ ] `discuss` と Phase 3.5 の経路分離を遵守（challenge phrase 検出時は Phase 3.5 優先発動）
 - [ ] `override` 後にアクション再指定を取得した（自動で `apply` にしない）
 - [ ] GitHub reply 投稿は `apply` / `reply_only` 集合のみで実行
+
+### Step 5-6 レビューレポート即時更新（レポート出力設定 `true` 時）
+
+- [ ] `apply` 実行後: アクション実行記録・修正内容・GitHub返信内容をレポートに `StrReplace` で記入した
+- [ ] `apply` 実行後: レビューレポートの更新分をコード修正と同じコミットに同梱した
+- [ ] `reply_only` 実行後: アクション実行記録・GitHub返信内容を記入した
+- [ ] `pending` 記録時: 「保留中の指摘」セクションに即時追記した
+- [ ] `discuss` 突入時: アクション実行記録を記入した（着地後に更新）
 
 ### Post: Quality Gate + 保留残数チェック
 
@@ -190,26 +212,21 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ---
 
-## 7. Step 7（レビューレポート作成）チェック
+## 7. Step 7（レビューレポート最終確定）チェック
 
-> 前提: §5-6 Post の保留残数チェックで「保留 0 件」を確認済み + **Step 6.7-B でレビュー完了承認回答を受領済み**。保留 1 件以上残っている場合は Step 6.7 に進まず、保留解消ターンに持ち越す。
+> 前提: §5-6 Post の保留残数チェックで「保留 0 件」を確認済み + **Step 6.7-B でレビュー完了承認回答を受領済み**。保留 1 件以上残っている場合は Step 6.7 に進まず、保留解消ターンに持ち越す。レポートファイルは Step 3 で骨格作成済み・Step 4〜Step 6 で段階的に更新済み。
 
 - [ ] §5-6 Post の保留残数チェックで保留 0 件を確認済み（保留 1 件以上残っている場合は Step 6.7 に進まない）
 - [ ] **Step 6.7-B でレビュー完了承認回答を受領済み**（承認なしでは Step 7 に進まない）
 - [ ] 承認回答受領後、この Step 7 を完了するまで final response を返していない
-- [ ] レポートファイル名を特定した（ブランチ名から識別子抽出 / PR 番号ベース）
-- [ ] `{{code_review.report.output_dir}}` ディレクトリが存在しない場合は作成した
-- [ ] `Write` ツールで `{{code_review.report.output_dir}}/{レポートファイル名}-review.md` を出力した
-- [ ] レポートに以下を含める:
-  - [ ] **Mode メタデータ**（A: 初回 / B: 追加コメント対応）+ **保留件数 / discuss 完了件数**
-  - [ ] **対応グループの順序記録**（修正必須 → 修正推奨 → 修正不要）
-  - [ ] 全指摘（3 段階 + ask_first 属性付き + アクション実行記録 `apply` / `reply_only` / `pending` / `discuss` / `override`）
-  - [ ] Ask First マーク付き項目のユーザー判断記録
-  - [ ] **保留中の指摘セクション**（保留 0 件の場合は「該当なし」と明記 / 保留 1 件以上で Step 7 に進んだ場合は「打ち切り完了」の経緯を記載）
-  - [ ] **レビュー完了承認セクション**（`## レビュー完了承認` / `承認状態: 承認取得済み` を Step 6.7 の承認に基づき記載）
-  - [ ] ビルド・テスト結果（`{{session.verification.gate_command}}` の結果）
-  - [ ] **Gotchas 起票候補**（docs/GOTCHAS.md 起票トリガー 3 条件に該当する指摘）
-  - [ ] **ADR 起票候補**（docs/DECISIONS.md 起票トリガー 4 条件に該当する指摘）
+- [ ] `## レビュー完了承認` を `StrReplace` で `承認状態: 承認取得済み` + 承認日時に更新した
+- [ ] ヘッダ統計の `TBD` を確定値に `StrReplace` で置換した（指摘総数・アクション集計・保留件数）
+- [ ] 完全性の最終検証を実施した:
+  - [ ] 全指摘のアクション実行記録が充足している
+  - [ ] **保留中の指摘セクション**が正確（保留 0 件 → 「該当なし」）
+  - [ ] ビルド・テスト結果（`{{session.verification.gate_command}}` の結果）が記載済み
+  - [ ] **Gotchas 起票候補**（docs/GOTCHAS.md 起票トリガー 3 条件に該当する指摘）が記載済み
+  - [ ] **ADR 起票候補**（docs/DECISIONS.md 起票トリガー 4 条件に該当する指摘）が記載済み
 - [ ] チャットにサマリ出力した（Mode メタデータ + グループ別対応結果 + Ask First 判断記録 + 保留件数 + ビルド結果）
 
 ---
