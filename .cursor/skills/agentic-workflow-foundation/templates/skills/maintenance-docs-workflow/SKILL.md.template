@@ -48,7 +48,7 @@ description: >-
 
 `status: pending` のファイルのみ処理対象とする。`source`（PR URL / report パス）を参照してコード変更の詳細を把握する。
 
-起票ファイルテンプレートの全文定義は [04-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を SoT として参照する（二重定義しない）。
+起票ファイルテンプレートの全文定義は [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を SoT として参照する（二重定義しない）。
 
 ### Phase 2: 反映対象の判定と優先度付け
 

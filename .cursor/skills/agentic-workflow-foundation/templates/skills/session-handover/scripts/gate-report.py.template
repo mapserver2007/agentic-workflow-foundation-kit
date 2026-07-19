@@ -34,7 +34,7 @@ COMPLETION_ITEMS = [
     "テスト完了",
     "コードゲート通過",
     "PRレビュー検証完了",
-    "docs への仕様反映",
+    "maintenance-docs/ 起票判定",
     "ADR 起票判定",
 ]
 
