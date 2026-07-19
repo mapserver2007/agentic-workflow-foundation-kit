@@ -35,6 +35,9 @@ reviews:
 {{#each coderabbit.path_filters}}
     - "{{this}}"
 {{/each}}
+{{#if code_review.report.enabled}}
+    - "!{{code_review.report.output_dir}}/*-review.md"
+{{/if}}
 
   path_instructions:
 {{#each coderabbit.path_instructions}}

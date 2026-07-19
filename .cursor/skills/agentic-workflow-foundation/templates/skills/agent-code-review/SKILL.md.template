@@ -45,6 +45,20 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 - **フォーマット**: [references/review-report-format.md](references/review-report-format.md) を参照（完全テンプレート + 判定カテゴリ別記述要件 + Gotchas / ADR 起票候補ブロック）
 
+### 段階的作成（レポート出力設定 `true` 時）
+
+レビューレポートは Step 7 で一括作成するのではなく、**レビュー証跡が発生するたびに段階的に作成・更新**する。自動レビューツールの再発火（レポート単体コミットによる CodeRabbit 等のインクリメンタルレビュー再トリガー）を構造的に防止するための設計。
+
+| タイミング | 操作 | 更新内容 |
+|---|---|---|
+| Step 3 完了時 | `Write`（新規作成） | メタ情報 + 取得した指摘一覧の骨格。ヘッダ統計は `TBD`。`## レビュー完了承認` は `承認状態: レビュー進行中` |
+| Step 4 各指摘判定完了時 | `StrReplace`（更新） | 該当指摘の判定結果・Blind所感・自己反論結果・検証結果を記入し、分類グループへ移動 |
+| Step 5-6 `apply` 実行時 | `StrReplace`（更新）+ **コード修正コミットに同梱** | アクション実行記録・修正内容・GitHub返信内容 |
+| Step 5-6 `reply_only` / `pending` / `discuss` 時 | `StrReplace`（更新） | アクション実行記録・保留セクション即時更新 |
+| Step 7（最終確定） | `StrReplace`（確定） | ヘッダ統計の `TBD` → 確定値、`承認状態: 承認取得済み`、完全性の最終検証 |
+
+> **コミット同梱**: `apply` 時のコード修正コミットにレビューレポートの更新分を含めることで、レポート単体のコミットを排除する。Step 7 最終確定分は docs 反映（Step ⑥）のコミットに同梱するか、path_filters 除外済みのため単独コミットでも安全。
+
 ---
 
 ## ワークフロー
@@ -64,7 +78,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 | **5-6 グループ承認ループ** | Step 4.3 記録済み | **[`approval-loop.md`](references/approval-loop.md) 全文（突入ごと必須）** | 未読でグループ提示・アクション分類・コード修正・GitHub reply 投稿・`pending`/`discuss` 記録 | 全指摘が `apply`/`reply_only`/`pending`/`discuss着地` に分類され実行済み | 新規コメント検出 → Step 3 |
 | **Post** | Step 5-6 完了 | — | 保留 1 件以上 / ゲート未 PASS で Step 6.7 へ進む | `apply` 有時 Quality Gate PASS + **保留 0 件** | ゲート失敗 → 該当グループ修正へ |
 | **6.7 完了承認** | Post で保留 0 件 | **[`review-completion.md`](references/review-completion.md) 全文（着手前必須）** | 未読で AskQuestion / Step 7 | 6.7-A: 再取得→AskQuestion 提示後**ターン終了** | 新規コメント → Step 3 |
-| **7 レポート作成** | **6.7-B で承認回答受領済み** | — | 承認なしで実行 / Step 7 完了前に final response | レビューレポート作成（レポート出力設定に従う） | 「新規取得」選択 → Step 3 |
+| **7 レポート最終確定** | **6.7-B で承認回答受領済み** | — | 承認なしで実行 / Step 7 完了前に final response | レビューレポート最終確定（承認記録更新 + ヘッダ統計確定 + 完全性検証） | 「新規取得」選択 → Step 3 |
 
 > **共通の投稿可否ルール（全 Step 横断 / 暗記必須）**: GitHub reply を投稿してよいのは `apply` / `reply_only` 集合のみ。`pending` と未着地 `discuss` には reply もコード修正もしない（「勝手に対応不要返答」防止の核心）。
 
@@ -145,6 +159,12 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 クエリ全文・パース方法・ID 抽出ロジックは [references/gh-commands.md §3](references/gh-commands.md) を参照。
 
+#### Step 3 完了時: レビューレポート骨格作成（レポート出力設定 `true` 時）
+
+指摘取得完了後、レビューレポートファイル（`{{code_review.report.output_dir}}/{レポートファイル名}-review.md`）を `Write` で新規作成する。Mode B の場合は既存ファイルを `StrReplace` で更新する（ヘッダの Mode を `B` に変更、ヘッダ統計を `TBD` に再初期化、`## レビュー完了承認` を `未承認（新規コメント取得待ち）` に戻す）。
+
+骨格にはメタ情報（PR 番号・Mode・ブランチ）+ 取得した全指摘を `## 未分類（判定待ち）` セクションに配置する。フォーマット詳細は [references/review-report-format.md](references/review-report-format.md) を参照。
+
 ### Step 4: 各指摘の妥当性を検証
 
 > **Hard Stop: `judgment-protocol.md` 読込必須**: Step 4 突入時に [references/judgment-protocol.md](references/judgment-protocol.md) を Read ツールで全文読込する。未読のまま判定を開始することは禁止。読込後、処理予定またはレビューレポートのメモに `judgment-protocol.md 読込済み` を記録してから判定へ進む。
@@ -161,6 +181,10 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 - **自動レビューツールのラベル非依存**: `Critical` / `Major` 等のラベルは取得・記録・引用すべて禁止。判定は AI が `[REPO]` 証跡のみで単独で行う
 - **Phase 3.5 ユーザー challenge 再評価ロック**: challenge phrase（「本当に？」「誤りでは」等）を「反転要請」と解釈禁止。`[REPO]` 新証跡なしに判定を反転しない
 - **`discuss` と Phase 3.5 の経路分離**: challenge phrase 検出時は Phase 3.5 が優先発動し、`discuss` には入らない
+
+#### Step 4 各指摘判定完了時: レビューレポート更新（レポート出力設定 `true` 時）
+
+各指摘の `judgment_final` 確定後、レビューレポートを `StrReplace` で更新する。`## 未分類（判定待ち）` セクションから該当指摘を分類グループ（修正必須 / 修正推奨 / 修正不要）へ移動し、判定結果・Blind 所感・自己反論結果・検証結果を記入する。詳細は [references/judgment-protocol.md](references/judgment-protocol.md) Phase 4 を参照。
 
 ### Step 5-6: 判定グループ承認ループ（横断アクション指定子対応）
 
@@ -189,14 +213,17 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 - **Step 6.7-A**: GitHub 再取得（新規あれば Step 3 へ）→ `AskQuestion` で完了承認を提示 → **ターン終了**（Step 7 に進まない）
 - **Step 6.7-B**: 「承認する」選択の**次ターン冒頭で Step 7 を強制実行**（Step 7 完了まで final response 禁止）。「新規取得」選択時は Step 3 へ
 
-### Step 7: レビューレポート作成
+### Step 7: レビューレポート最終確定
 
 > **前提**: Step 6.7-B で承認回答受領済み。承認なしでは本 Step に進まない。
 
 **状態遷移（不変条件）** — 手順全文・サマリテンプレは [references/review-completion.md](references/review-completion.md) が SoT:
 
-- レポート出力設定に従い `{{code_review.report.output_dir}}/{レポートファイル名}-review.md` またはチャットにサマリを出力
-- レポートには全指摘 + ビルド結果 + Gotchas/ADR 候補 + `## レビュー完了承認`（`承認状態: 承認取得済み`）を含める
+- レポートファイルは Step 3 で骨格作成済み・Step 4〜Step 6 で段階的に更新済み。本 Step では最終確定のみを行う
+- `## レビュー完了承認` の `承認状態` を `レビュー進行中` → `承認取得済み` に更新し、承認日時を記録する
+- ヘッダ統計（指摘総数・アクション集計・保留件数）の `TBD` を確定値に置換する
+- 完全性の最終検証（全指摘のアクション記録・Gotchas/ADR 候補ブロック・ビルド結果の充足）を行う
+- チャットにサマリを出力する
 - 例外フロー（docs 反映後の追加コメント → Mode B 再起動）も review-completion.md に集約
 
 ---
@@ -221,7 +248,7 @@ Mode B 選択直後に [references/mode-b-reminder.md](references/mode-b-reminde
 | [references/self-rebuttal.md](references/self-rebuttal.md) | §4.2.5 自己反論ステップ詳細（Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 + 失敗パターン例） |
 | [references/approval-loop.md](references/approval-loop.md) | Step 5-6 承認ループ詳細（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認） |
 | [references/group-presentation-templates.md](references/group-presentation-templates.md) | グループ提示・AI 処理予定確認テンプレ集（Pre 判定サマリ / Step 5-6.1 / 5-6.2 / 5-6.3 / 個別指定モード処理予定確認） |
-| [references/review-completion.md](references/review-completion.md) | Step 6.7 レビュー完了承認 / Step 7 レポート作成詳細（6.7-A 再取得 / 6.7-B 強制再開 / Step 7 の手順 + サマリテンプレ） |
+| [references/review-completion.md](references/review-completion.md) | Step 6.7 レビュー完了承認 / Step 7 レポート最終確定詳細（6.7-A 再取得 / 6.7-B 強制再開 / Step 7 の最終確定手順 + サマリテンプレ） |
 | [references/mode-b-reminder.md](references/mode-b-reminder.md) | Mode B 再注入専用リマインダ（Lost in the middle 対策 / 判定ルール・Step 順序・Hard Stop の要約） |
 
 ---

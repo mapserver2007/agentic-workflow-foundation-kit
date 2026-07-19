@@ -167,7 +167,7 @@ def main():
                 print(msg)
             sys.exit(2)
         for f in sorted(Path(reports_dir).glob("*.md")):
-            if f.is_file():
+            if f.is_file() and not f.name.endswith("-review.md"):
                 targets.append(str(f))
 
     if not targets:
