@@ -8,10 +8,10 @@
 |------|--------|------------|---------------|------------------|
 | ① | subagent dispatch | step1_investigation | generalPurpose | step envelope のみ。source / report は変更しない |
 | ② | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
-| ③ | subagent dispatch | step3_implementation | generalPurpose | source / test / report + step envelope。commit / push 禁止 |
+| ③ | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。commit / push 禁止 |
 | ④ | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
 | ⑤ | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
-| ⑥ | subagent dispatch | step6_completion | generalPurpose | Domain docs / archive + step envelope。commit / push 禁止 |
+| ⑥ | subagent dispatch | step6_completion | generalPurpose | maintenance-docs/ + archive + step envelope。commit / push 禁止 |
 
 ## Subagent 起動方式
 

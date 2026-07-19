@@ -111,6 +111,20 @@ if (( ${#tracked[@]} == 0 )); then
   echo "[PASS] 進行中の追跡ドキュメントなし (G-SESSION-STALE-001 / G-SESSION-DONE-001)"
 fi
 
+{{#if agent_workflow.maintenance_docs.enabled}}
+# --- maintenance-docs/ 未処理ファイルの検知 (INFO) ---
+MAINT_DOCS_DIR="$ROOT/docs/agent-tasks/maintenance-docs"
+if [[ -d "$MAINT_DOCS_DIR" ]]; then
+  maint_count=0
+  for f in "$MAINT_DOCS_DIR"/*.md; do
+    [[ -f "$f" ]] && (( maint_count++ ))
+  done
+  if (( maint_count > 0 )); then
+    echo "[INFO] 未処理の docs 更新タスクが ${maint_count} 件あります (maintenance-docs/)"
+  fi
+fi
+{{/if}}
+
 if (( fail != 0 )); then
   echo "=== session-start gate: FAIL ==="
   exit 1

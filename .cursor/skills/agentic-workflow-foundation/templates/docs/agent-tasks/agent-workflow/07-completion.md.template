@@ -2,19 +2,30 @@
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
-実装・テスト・レビューが完了した後、docs への仕様反映と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
+実装・テスト・レビューが完了した後、maintenance-docs/ 起票ファイルの最終確認と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
 
 **前提条件**: ⑤ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
 
 ---
 
-## 6.1 docs への仕様反映
+## 6.1 maintenance-docs/ 起票ファイルの最終確認
 
 {{#if agent_workflow.maintenance_docs.enabled}}
-PR レビュー完了後、`.cursor/skills/agent-maintenance-docs/SKILL.md` を読み込み実行する。
+`docs/agent-tasks/maintenance-docs/` に起票ファイルが存在する場合、最終実装状態との整合を確認する。
+
+1. 起票ファイルの内容が最終実装状態を正確に反映しているか確認する
+2. レビュー指摘による実装修正で docs 影響が変わった場合は起票ファイルを更新する
+3. 反映不要と判定した場合は起票ファイルを削除する
+
+起票ファイルのテンプレート全文・反映要否判定基準は [03-implementation.md](03-implementation.md) §3.5 を参照。
+
+起票ファイルが存在しない場合は、改めて反映要否を判定する:
+- 反映が必要: 起票ファイルを新規作成する
+- 反映不要: 作成せずに次に進む
+
+判定完了後、タスクレポートの「maintenance-docs/ 起票判定」チェックボックスを `[x]` に更新する。
 {{else}}
 PR レビュー完了後、以下の原則に従い Domain 層ドキュメントへの仕様反映を行う。
-{{/if}}
 
 **最重要原則**: **LLM がコードから判断できる情報は反映不要**。
 
@@ -41,6 +52,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 - 調査系（`docs/investigations/`）
 
 反映完了後、タスクレポートの「docs への仕様反映」チェックボックスを `[x]` に更新する。
+{{/if}}
 
 ## 6.2 完了条件の確認（QUALITY_GATE 6項目）
 
@@ -50,13 +62,14 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 - [ ] テスト完了（G-TEST / `{{project.quality_gate.test_cmd}}` PASS）
 - [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN / `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}}`）
 - [ ] PRレビュー検証完了
-- [ ] docs への仕様反映（G-DOC-SPEC）
-- [ ] ADR 起票判定（設計次元 D-* 該当なら [docs/DECISIONS.md](../../DECISIONS.md) へ追記）
+{{#if agent_workflow.maintenance_docs.enabled}}- [ ] maintenance-docs/ 起票判定（G-DOC-SPEC）
+{{else}}- [ ] docs への仕様反映（G-DOC-SPEC）
+{{/if}}- [ ] ADR 起票判定（設計次元 D-* 該当なら [docs/DECISIONS.md](../../DECISIONS.md) へ追記）
 
 ## 6.3 archives 移動
 
 {{#if agent_workflow.maintenance_docs.enabled}}
-`agent-maintenance-docs` スキルは **docs 反映だけでなく archives 移動までを責任範囲**に持つ。完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
+完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{else}}
 完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{/if}}
@@ -90,27 +103,30 @@ archives 移動済み時点でタスクは**実質完了**とみなす。以降�
 - 実装内容: {概要}
 - テスト: {実装したテストの概要}
 {{#if code_review.enabled}}- レビュー: {レビューレポートのファイルパス}
-{{/if}}- docs 反映: {反映したドキュメント or「コードから判断可能なため反映不要」}
-- ADR: {採用した設計判断のトピック名（詳細は docs/DECISIONS.md を参照）or「該当なし」}
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- docs 反映: {maintenance-docs/ 起票ファイルパス or「反映不要と判定」}
+{{else}}- docs 反映: {反映したドキュメント or「コードから判断可能なため反映不要」}
+{{/if}}- ADR: {採用した設計判断のトピック名（詳細は docs/DECISIONS.md を参照）or「該当なし」}
 - 確認事項: {ユーザーに確認してほしい内容}
 ```
+{{#if agent_workflow.maintenance_docs.enabled}}
+docs 反映起票ファイルが存在する場合は、`maintenance-docs-workflow` の起動を案内する。
+{{/if}}
 
-## 6.5 例外: docs 反映後に追加コメントが付いた場合
+## 6.5 例外: PR に追加レビューコメントが付いた場合
 
 {{#if code_review.enabled}}
-Step 5.7 で承認を取得して docs 反映まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
+Step 5.7 で承認を取得して完了報告まで進んだ後に、PR へ新規レビューコメントが付くことがある。AI は新規コメントを自律検知できないため、本フローの起点は人間トリガー（ユーザーが `agent-code-review` を Mode B で再起動）となる。
 
 1. ユーザーが `agent-code-review` を **Mode B で再起動**する
-2. タスクレポートの `[x] PRレビュー検証完了` と `[x] docsへの仕様反映` を **`[ ]` に戻す**（再承認・再反映を強制）
+2. タスクレポートの `[x] PRレビュー検証完了` を **`[ ]` に戻す**（再承認を強制）
 3. レビューレポートの承認状態を「未承認（新規コメント取得待ち）」に戻す
 4. `agent-code-review` の指摘取得ステップから再実行 → 検証 → 承認
-5. 承認後に docs を再反映し、チェックボックスを再び `[x]` に更新する
+5. 承認後にチェックボックスを再び `[x]` に更新する
 {{else}}
-docs 反映後に PR へ新規レビューコメントが付いた場合:
+完了報告後に PR へ新規レビューコメントが付いた場合:
 
-1. タスクレポートの `[x] PRレビュー検証完了` と `[x] docsへの仕様反映` を **`[ ]` に戻す**
-2. 新規コメントに対応し、レビュー完了後に再度 docs 反映を行う
-3. チェックボックスを再び `[x]` に更新する
+1. タスクレポートの `[x] PRレビュー検証完了` を **`[ ]` に戻す**
+2. 新規コメントに対応し、レビュー完了後にチェックボックスを再び `[x]` に更新する
 {{/if}}
 
 ## 6.6 Gotchas 起票判定
@@ -125,9 +141,9 @@ docs 反映後に PR へ新規レビューコメントが付いた場合:
 
 ## Worker Contract
 
-本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（6.1〜6.6）。実体は `agent-maintenance-docs` スキルへの委譲。
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（6.1〜6.6）。
 
-**許可書込み範囲**: Domain docs / archive + step envelope。commit / push 禁止。
+**許可書込み範囲**: maintenance-docs/ + archive + step envelope。commit / push 禁止。
 
 ### 入力
 
@@ -145,7 +161,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | --- | --- | --- | --- |
 | `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 完了報告結果 |
 | `step` | string | `"step6"` | 固定値 |
-| `docs_updated` | string[] | — | 仕様反映した Domain 層 docs パス一覧（反映不要の場合は空配列） |
+| `doc_maintenance_file` | string \| null | — | 作成した maintenance-docs/ 起票ファイルパス（反映不要と判定した場合は null） |
 | `archive_path` | string | — | archives 移動後のレポートパス |
 | `archive_gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh archive` 相当の検査結果 |
 | `unchecked_items` | string[] | — | `incomplete` 時の未完了チェック項目 |
@@ -156,7 +172,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 - `complete`: オーケストレータは正式成果物（`archive_path` の存在 + archive gate PASS）を確認し、ユーザーに完了報告する
 - `incomplete`: 完了チェック項目が不足。オーケストレータは `unchecked_items` を確認し対応する
-- `blocked` (`reason: post_completion_review`, `action: reopen_step5`): §6.5 対応。docs 反映後に追加レビューコメントが付いた場合。オーケストレータは⑤を Mode B で再開する
+- `blocked` (`reason: post_completion_review`, `action: reopen_step5`): §6.5 対応。完了報告後に追加レビューコメントが付いた場合。オーケストレータは⑤を Mode B で再開する
 - `fatal`: オーケストレータがユーザーに報告して停止する
 {{/if}}
 
@@ -165,7 +181,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 ## 関連ドキュメント
 
 - [05-pr-review.md](05-pr-review.md) — 前ステップ（PR レビュー検証）
-{{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/agent-maintenance-docs/SKILL.md](../../../.cursor/skills/agent-maintenance-docs/SKILL.md) — docs 仕様反映 + archives 移動スキル
+{{#if agent_workflow.maintenance_docs.enabled}}- [.cursor/skills/maintenance-docs-workflow/SKILL.md](../../../.cursor/skills/maintenance-docs-workflow/SKILL.md) — 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- [.cursor/skills/maintenance-gotchas-workflow/SKILL.md](../../../.cursor/skills/maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（Evolve-A）
 {{/if}}- [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票ガイド
 - [docs/GOTCHAS.md](../../GOTCHAS.md) — 失敗事例記録

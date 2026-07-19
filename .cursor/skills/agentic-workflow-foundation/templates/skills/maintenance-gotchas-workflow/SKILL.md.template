@@ -12,7 +12,7 @@ description: >-
   Do NOT use for - (1) Gotcha の起票（セッション中の即時直接追記）、
   (2) アプリケーション層のコード実装（本スキルの対象外）、
   (3) エントリの並べ替え・記録フォーマット変更のみ（Evolve-B 閾値到達時に限定）、
-  (4) Domain 層 docs 反映のみ（agent-maintenance-docs）。
+  (4) Domain 層 docs 反映のみ（maintenance-docs-workflow）。
 ---
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
