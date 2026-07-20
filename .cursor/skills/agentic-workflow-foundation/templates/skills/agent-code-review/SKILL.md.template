@@ -38,12 +38,37 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 レポート出力設定: **{{code_review.report.enabled}}**
 レポート出力先: `{{code_review.report.output_dir}}`
 
-- `true` の場合: `{output_dir}/{pr-number}-review.md` にレビューレポートを保存
+- `true` かつ **進行中タスクレポートが存在する場合**: `{output_dir}/{task-report-stem}-review.md` にレビューレポートを保存
+- `true` かつ **進行中タスクレポートが存在しない場合**（単独実行）: レビューレポートファイルは作成しない。チャットにレビュー結果サマリを出力するのみ
 - `false` の場合: チャットにレビュー結果サマリを出力するのみ
 
 レビュー結果は全指摘 1 ファイルでまとめて出力する。これは人間がコミット前に AI の修正判断を確認するための資料。
 
 - **フォーマット**: [references/review-report-format.md](references/review-report-format.md) を参照（完全テンプレート + 判定カテゴリ別記述要件 + Gotchas / ADR 起票候補ブロック）
+
+### 命名解決規則
+
+レビューレポートのファイル名は、進行中タスクレポートから決定論的に導出する。`{task-report-stem}` = タスクレポートの拡張子なしファイル名（例: `TICKET-123-fix-auth-bug`）。
+
+| 経路 | 命名 |
+|---|---|
+| ワークフロー経由（タスクレポートあり） | `{task-report-stem}-review.md` |
+| 単独実行（タスクレポートなし） | レポートファイルを作成しない（チャットサマリのみ） |
+
+**解決手順（Step 3 骨格作成の直前に実行）**:
+
+1. `{{code_review.report.output_dir}}/` 直下を Glob し、`*-review.md` 以外の `.md` ファイル（= タスクレポート）を列挙する
+2. **1 件**: そのファイルの stem に `-review.md` を付加してレビューレポートのファイル名を決定する
+3. **複数件**: PR 番号で照合を試み、一意に特定できなければユーザーに選択を求める
+4. **0 件**: 単独実行と判定し、レビューレポートは作成しない（レポート出力設定を `false` 相当として扱う）
+
+**Mode B でのレポート検索**:
+
+1. `{{code_review.report.output_dir}}/` 直下の `*-review.md` を Glob する
+2. 各ファイルのヘッダ `- PR: #N` 行を Read し、PR 番号が一致するファイルを特定する
+3. **1 件一致**: そのファイルを `StrReplace` で更新する
+4. **0 件**: エラーとして原因を通知し中断する（フォールバックはしない）
+5. **複数件**: ユーザーに選択を求める
 
 ### 段階的作成（レポート出力設定 `true` 時）
 
@@ -161,7 +186,10 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 #### Step 3 完了時: レビューレポート骨格作成（レポート出力設定 `true` 時）
 
-指摘取得完了後、レビューレポートファイル（`{{code_review.report.output_dir}}/{レポートファイル名}-review.md`）を `Write` で新規作成する。Mode B の場合は既存ファイルを `StrReplace` で更新する（ヘッダの Mode を `B` に変更、ヘッダ統計を `TBD` に再初期化、`## レビュー完了承認` を `未承認（新規コメント取得待ち）` に戻す）。
+指摘取得完了後、**命名解決規則**（§「レビューレポート > 命名解決規則」）に従いレビューレポートのファイル名を解決する。
+
+- **タスクレポートが存在する場合**: レビューレポートファイル（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）を `Write` で新規作成する。Mode B の場合は既存ファイルを `StrReplace` で更新する（ヘッダの Mode を `B` に変更、ヘッダ統計を `TBD` に再初期化、`## レビュー完了承認` を `未承認（新規コメント取得待ち）` に戻す）。
+- **タスクレポートが存在しない場合**（単独実行）: レビューレポートファイルは作成しない。以降の Step 4〜Step 7 ではレポート更新操作をスキップし、Step 7 でチャットにサマリのみ出力する。
 
 骨格にはメタ情報（PR 番号・Mode・ブランチ）+ 取得した全指摘を `## 未分類（判定待ち）` セクションに配置する。フォーマット詳細は [references/review-report-format.md](references/review-report-format.md) を参照。
 

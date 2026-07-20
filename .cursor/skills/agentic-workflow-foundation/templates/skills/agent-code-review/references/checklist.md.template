@@ -85,8 +85,15 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ### 3.1 レビューレポート骨格作成（レポート出力設定 `true` 時）
 
-- [ ] Mode A: レビューレポートファイル（`{{code_review.report.output_dir}}/{レポートファイル名}-review.md`）を `Write` で新規作成した
-- [ ] Mode B: 既存レビューレポートを `StrReplace` で更新した（ヘッダ Mode → `B`、統計 → `TBD` 再初期化、承認状態 → `未承認（新規コメント取得待ち）`）
+- [ ] **命名解決**: `{{code_review.report.output_dir}}/` 直下を Glob し、`*-review.md` 以外の `.md` ファイル（= タスクレポート）を列挙した
+  - [ ] **1 件**: stem に `-review.md` を付加してファイル名を決定した（`{task-report-stem}-review.md`）
+  - [ ] **複数件**: PR 番号で照合を試み、一意に特定できなければユーザーに選択を求めた
+  - [ ] **0 件（単独実行）**: レビューレポートファイルは作成せず、以降の Step でレポート更新操作をスキップすることを確認した
+- [ ] Mode A（タスクレポートあり）: レビューレポートファイル（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）を `Write` で新規作成した
+- [ ] Mode B: **PR メタデータ検索**で既存レビューレポートを特定した（`*-review.md` の `- PR: #N` 行で照合）
+  - [ ] 1 件一致 → `StrReplace` で更新した（ヘッダ Mode → `B`、統計 → `TBD` 再初期化、承認状態 → `未承認（新規コメント取得待ち）`）
+  - [ ] 0 件 → エラーとして原因を通知し中断した（フォールバックなし）
+  - [ ] 複数件 → ユーザーに選択を求めた
 - [ ] 全指摘を `## 未分類（判定待ち）` セクションに `### 指摘 C-{commentId}: {ファイル:行}` 形式で配置した
 - [ ] ヘッダ統計（指摘総数・アクション集計・保留件数）を `TBD` で初期化した
 - [ ] `## レビュー完了承認` を `承認状態: レビュー進行中`（Mode A）/ `未承認（新規コメント取得待ち）`（Mode B）で初期化した
