@@ -28,6 +28,9 @@ STEP_REQUIRED_FIELDS = {
         "spec_consistency_gate",
         "feasibility_gate",
         "blocking_open_issues",
+        "non_blocking_issues",
+        "acceptance_criteria_status",
+        "resolved_issues",
     ],
     "step2": ["report_path"],
     "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
@@ -165,6 +168,17 @@ def check_artifact(filepath: str, json_mode: bool = False):
                 "msg": f"analysis_depth '{depth}' は不正です。退出時は standard/deep のみ許容",
             })
             fail = True
+
+    # --- ゲート値 PASS 検証（step1 complete 時）---
+    if step == "step1" and status == "complete":
+        for gate_field in ("gate_result", "requirement_gate", "spec_consistency_gate", "feasibility_gate"):
+            if fm.get(gate_field) not in (None, "PASS"):
+                results.append({
+                    "id": "G-ARTIFACT-RA-GATE-001",
+                    "level": "FAIL",
+                    "msg": f"{gate_field} が 'PASS' 以外（{fm.get(gate_field)!r}）なのに status=complete",
+                })
+                fail = True
 
     if not fail:
         results.append({

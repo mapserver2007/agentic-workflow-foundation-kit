@@ -44,7 +44,7 @@ STEP_DOC_OUTPUT_FIELDS = {
         "investigation_memo_path", "analysis_depth",
         "requirement_gate", "spec_consistency_gate", "feasibility_gate",
         "blocking_open_issues", "non_blocking_issues",
-        "resolved_issues", "reason",
+        "acceptance_criteria_status", "resolved_issues", "reason",
     },
     "step2": {
         "status", "step", "report_path", "report_digest",

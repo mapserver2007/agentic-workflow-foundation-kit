@@ -385,10 +385,6 @@ def _process_ifs(text: str, root: dict) -> str:
                 depth += 1
                 pos = next_if + 6
                 continue
-            if depth == 1 and else_pos is None:
-                next_else = text.find("{{else}}", pos)
-                if next_else != -1 and next_else < next_endif:
-                    else_pos = next_else
             depth -= 1
             if depth == 0:
                 endif_end = next_endif + len("{{/if}}")

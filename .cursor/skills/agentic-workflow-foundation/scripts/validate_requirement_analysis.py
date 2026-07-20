@@ -35,6 +35,8 @@ CONFIG_REL = os.path.join(
 
 REQUIRED_MODELS_KEYS = ("normalize", "depth_triage", "standard_investigation")
 
+PLACEHOLDER_MARKERS = ("[要確認]",)
+
 REQUIRED_EXECUTION_KEYS = (
     "score_threshold",
     "max_gate_retries",
@@ -64,6 +66,8 @@ def validate(config: dict) -> list[tuple[str, str]]:
         val = models.get(key)
         if not val or not isinstance(val, str) or not val.strip():
             failures.append(("G-RA-CONFIG-001", f"models.{key} が未設定または空"))
+        elif val.strip() in PLACEHOLDER_MARKERS:
+            failures.append(("G-RA-CONFIG-001", f"models.{key} が未確認プレースホルダのまま（{val!r}）"))
 
     execution = config.get("execution")
     if not isinstance(execution, dict):

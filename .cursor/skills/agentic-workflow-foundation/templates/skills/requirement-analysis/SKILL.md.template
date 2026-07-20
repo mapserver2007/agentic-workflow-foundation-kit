@@ -49,8 +49,8 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 | --- | --- | --- |
 | 要求正規化 | Subagent | 定型処理・コンテキスト保護 |
 | Gate A 判定 | Subagent（正規化結果に含む） | 正規化と同時に完全性検査 |
-| docs-first 参照 | Subagent（standard）/ 親（deep） | standard: worker 内完結 / deep: 親が C として起動するため |
-| Gate B 判定 | Subagent（standard）/ 親（deep） | docs 参照後の整合判定 |
+| docs-first 参照 | 分析深度判定 Subagent（初回）/ 親（deep 経路で C 起動前に再実施） | standard: 初回結果を採用 / deep: 親が C として起動するため再確認 |
+| Gate B 判定 | 分析深度判定 Subagent（初回）/ 親（deep 経路で再実施） | docs 参照後の整合判定 |
 | 分析深度判定 | Subagent | 判定ロジックの隔離 |
 | standard 調査 | Subagent | 標準フロー |
 | deep 分析 | 親が dual-thinking 起動 | 親 = C 役（統合裁定者） |

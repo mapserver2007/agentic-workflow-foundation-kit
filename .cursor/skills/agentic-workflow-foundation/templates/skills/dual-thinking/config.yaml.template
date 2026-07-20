@@ -29,7 +29,7 @@ execution:
 # SoT: manifest.yaml > requirement_analysis.high_impact_categories（requirement_analysis 有効時）
 #       manifest.yaml > dual_thinking.high_impact_categories（requirement_analysis 無効時）
 high_impact_categories:
-{{#if requirement_analysis.high_impact_categories}}
+{{#if requirement_analysis.enabled}}
 {{#each requirement_analysis.high_impact_categories}}  - "{{this}}"
 {{/each}}
 {{else}}{{#if dual_thinking.high_impact_categories}}

@@ -537,7 +537,7 @@ dual_thinking:
       - "実モデル割当（Cursor Subagent API が返さない）"
       - "A/B の相互非参照（プロセス間隔離を外部観測できない）"
       - "別プロセス実行（Subagent 起動の内部実装に依存）"
-  high_impact_categories:
+  high_impact_categories: &high_impact_categories
     - "security_or_authorization"
     - "secret_or_sensitive_data"
     - "data_deletion_or_migration"
@@ -563,14 +563,7 @@ requirement_analysis:
     score_threshold: 2
     max_gate_retries: 3
     model_unavailable: "ABORT"
-  high_impact_categories:
-    - "security_or_authorization"
-    - "secret_or_sensitive_data"
-    - "data_deletion_or_migration"
-    - "breaking_external_api"
-    - "irreversible_architecture"
-    - "unapproved_cost_or_schedule"
-    - "must_requirement_conflict"
+  high_impact_categories: *high_impact_categories
 #   Phase 1.5 の AskQuestion で生成有無を決定する。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。

@@ -164,7 +164,7 @@
 {{#if requirement_analysis.enabled}}
 ### 入口条件
 
-Step ② の入口条件は以下をすべて検証する:
+Step ② の入口条件は以下をすべて検証する（オーケストレータが Step① envelope を読み取って検証する。Step② worker の入力ではない）:
 
 - `step1_gate_result: PASS`
 - `requirement_gate: PASS`

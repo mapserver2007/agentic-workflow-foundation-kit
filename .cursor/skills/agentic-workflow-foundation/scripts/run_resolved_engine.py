@@ -669,6 +669,9 @@ def main(argv=None) -> int:
                 rc = _cleanup_legacy_skill_dir()
                 if rc != 0:
                     return rc
+                rc = _cleanup_legacy_workflow_triage(manifest)
+                if rc != 0:
+                    return rc
                 return 0
             return 0
     except genlib.YamlError as e:

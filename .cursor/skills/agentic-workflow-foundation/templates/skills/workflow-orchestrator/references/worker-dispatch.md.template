@@ -83,3 +83,5 @@
 ## モデル利用不可時の挙動
 
 指定モデルが利用できない場合は、worker 起動前に親が **ABORT** する。フォールバックは行わない。ユーザーに `config.yaml` の該当モデルスラグを修正するよう案内して中止する。起動済み worker の実行時致命エラーは Worker Contract の `status: fatal` として扱う。
+
+**例外（Step① deep 経路のみ）**: dual-thinking モデル利用不可の場合は、`requirement-analysis/references/analysis-depth.md` の「deep 起動の前提条件と失敗時動作」に従い、親がユーザーに継続可否を確認する。承認時は standard へフォールバックし、拒否時は `status: blocked` とする。
