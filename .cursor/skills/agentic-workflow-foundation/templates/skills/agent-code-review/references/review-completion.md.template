@@ -97,7 +97,7 @@ Step 5-6 のグループ承認は **指摘単位**の承認だが、本ステッ
 - {該当なし or 候補一覧}
 
 ### レビューレポート
-詳細: `{{code_review.report.output_dir}}/{ファイル名}-review.md`
+詳細: `{{code_review.report.output_dir}}/{task-report-stem}-review.md`
 コミット前に内容を確認してください。
 ```
 

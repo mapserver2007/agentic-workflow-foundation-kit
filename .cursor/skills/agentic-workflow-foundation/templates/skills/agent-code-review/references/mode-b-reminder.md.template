@@ -31,15 +31,21 @@ Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ル�
 
 ## Mode B 突入時のフロー
 
-1. 本ファイルを読み終えたら、**既存レビューレポートを `StrReplace` で更新**してから Step 3 へ進む:
+1. 本ファイルを読み終えたら、**既存レビューレポートを PR メタデータ検索で特定**する:
+   - `{{code_review.report.output_dir}}/` 直下の `*-review.md` を Glob する
+   - 各ファイルのヘッダ `- PR: #N` 行を Read し、PR 番号が一致するファイルを特定する
+   - **1 件一致**: そのファイルを以降の更新対象とする
+   - **0 件**: エラーとして原因を通知しスキルを中断する（フォールバックはしない。ユーザーは Mode A からやり直す）
+   - **複数件**: ユーザーに選択を求める
+2. 特定したレビューレポートを `StrReplace` で更新してから Step 3 へ進む:
    - ヘッダの Mode を `B（追加コメント対応）` に更新
    - ヘッダ統計を `TBD` に再初期化
    - `## レビュー完了承認` を `承認状態: 未承認（新規コメント取得待ち）` に戻す
-2. **Step 3 へ直接進む**（Step 2 スキップ）
-3. `bin/github-pr-reviews-safe` で `isResolved=false isOutdated=false` 取得（**author フィルタなし**）
-4. 取得した新規指摘を既存レポートの `## 未分類（判定待ち）` に `StrReplace` で追記（コメント ID アンカーにより既存指摘との重複を防止）
-5. **Step 4 突入前に [judgment-protocol.md](judgment-protocol.md) を Read**
-6. Blind first read → 判定 → 自己反論 → `judgment_final` 確定（確定ごとにレポートを `StrReplace` で更新）
-7. **Step 5-6 突入前に [approval-loop.md](approval-loop.md) を Read**
-8. グループ承認ループ実行（アクション実行ごとにレポートを `StrReplace` で更新）→ Post → 保留 0 件なら Step 6.7 へ
-9. **Step 6.7 着手前に [review-completion.md](review-completion.md) を Read** → 完了承認 → Step 7（レポート最終確定）
+3. **Step 3 へ直接進む**（Step 2 スキップ）
+4. `bin/github-pr-reviews-safe` で `isResolved=false isOutdated=false` 取得（**author フィルタなし**）
+5. 取得した新規指摘を既存レポートの `## 未分類（判定待ち）` に `StrReplace` で追記（コメント ID アンカーにより既存指摘との重複を防止）
+6. **Step 4 突入前に [judgment-protocol.md](judgment-protocol.md) を Read**
+7. Blind first read → 判定 → 自己反論 → `judgment_final` 確定（確定ごとにレポートを `StrReplace` で更新）
+8. **Step 5-6 突入前に [approval-loop.md](approval-loop.md) を Read**
+9. グループ承認ループ実行（アクション実行ごとにレポートを `StrReplace` で更新）→ Post → 保留 0 件なら Step 6.7 へ
+10. **Step 6.7 着手前に [review-completion.md](review-completion.md) を Read** → 完了承認 → Step 7（レポート最終確定）
