@@ -12,7 +12,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`dual-thinking` |
+| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`dual-thinking`、`agent-kaizen` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む）、workflow / artifact / archive ゲート |
 | Project Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
@@ -119,7 +119,7 @@ agentic-workflow-foundation-kit/
         │   │   │                             # agent-github-pr, agent-github-issue,
         │   │   │                             # workflow-orchestrator, requirement-analysis,
         │   │   │                             # maintenance-*-workflow, cross-repository-
-        │   │   │                             # knowledge-link, dual-thinking
+        │   │   │                             # knowledge-link, dual-thinking, agent-kaizen
         │   │   └── bin/                      # _github-app-auth.sh, github-*-safe,
         │   │                                 # cross-repo-sync-safe
         │   ├── references/
@@ -148,7 +148,7 @@ agentic-workflow-foundation-kit/
                                                # requirement-analysis, maintenance-*-workflow,
                                                # agent-code-review, agent-github-pr,
                                                # agent-github-issue, cross-repository-
-                                               # knowledge-link, dual-thinking
+                                               # knowledge-link, dual-thinking, agent-kaizen
 ```
 
 ## 主要スキル
@@ -174,6 +174,7 @@ agentic-workflow-foundation-kit/
 | [`agent-github-issue`](.cursor/skills/agent-github-issue/SKILL.md) | GitHub App wrapper 経由の Issue 作成・読み取り |
 | [`cross-repository-knowledge-link`](.cursor/skills/cross-repository-knowledge-link/SKILL.md) | 登録済み関連リポジトリの docs / コード参照 |
 | [`dual-thinking`](.cursor/skills/dual-thinking/SKILL.md) | A/B 並列分析 + C 統合裁定による多角評価 |
+| [`agent-kaizen`](.cursor/skills/agent-kaizen/SKILL.md) | kit 内部の manifest→生成物チェーンの整合性検査（18 評価観点） |
 
 ## 本リポジトリの dogfooding 既定
 
@@ -190,6 +191,7 @@ agentic-workflow-foundation-kit/
 | `agent_workflow.maintenance_gotchas.enabled` | `true` | `maintenance-gotchas-workflow` |
 | `dual_thinking.enabled` | `true` | `dual-thinking`（`config.yaml` + references） |
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
+| `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
 > 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の `pnpm run *` は tech stack 設計書から導出される **生成先プロジェクト向け contract** です。
 
@@ -267,6 +269,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/{reports,maintenance-docs}/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/requirement-analysis/**`、任意の `.cursor/skills/maintenance-{docs,gotchas}-workflow/**` |
 | Optional Dual Thinking | `.cursor/skills/dual-thinking/SKILL.md`、`.cursor/skills/dual-thinking/config.yaml`、`.cursor/skills/dual-thinking/README.md`、`.cursor/skills/dual-thinking/references/**` |
 | Optional Cross-Repo | `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
+| Optional Agent Kaizen | `.cursor/skills/agent-kaizen/SKILL.md`、`.cursor/skills/agent-kaizen/config.yaml`、`.cursor/skills/agent-kaizen/references/**` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
 各オプション出力の条件:
@@ -281,6 +284,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.cursor/skills/maintenance-gotchas-workflow/**` — `agent_workflow.maintenance_gotchas.enabled: true` の場合のみ
 - `.cursor/skills/dual-thinking/**` — `dual_thinking.enabled: true` の場合のみ
 - `.cursor/skills/cross-repository-knowledge-link/**` と `bin/cross-repo-sync-safe` — `cross_repo_knowledge.enabled: true` の場合のみ
+- `.cursor/skills/agent-kaizen/**` — `agent_kaizen.enabled: true` の場合のみ
 
 Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。
 
@@ -292,7 +296,7 @@ Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初�
 | --- | --- | --- |
 | 1. Context | 目的・判断基準・運用入口 | `AGENTS.md`、`CLAUDE.md`、`docs/*` |
 | 2. Constraints | 常時適用される制約 | `.cursor/rules/*.mdc` |
-| 3. Capabilities | 必要時に呼び出す専門手順 | `session-*`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-*-workflow`、GitHub 連携、`cross-repository-knowledge-link`、`dual-thinking` |
+| 3. Capabilities | 必要時に呼び出す専門手順 | `session-*`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-*-workflow`、GitHub 連携、`cross-repository-knowledge-link`、`dual-thinking`、`agent-kaizen` |
 | 4. Automation | ツール実行前後・セッション境界の自動処理 | `.cursor/hooks/*`、`.cursor/hooks.json` |
 | 5. Delegation | 子エージェントへの委譲 | 本キットでは生成しない。Cursor 組み込み Subagent を利用する |
 
