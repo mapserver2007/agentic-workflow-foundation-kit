@@ -571,6 +571,27 @@ requirement_analysis:
     - "irreversible_architecture"
     - "unapproved_cost_or_schedule"
     - "must_requirement_conflict"
+# ------------------------------------------------------------
+# (2m) agent_kaizen — kit 内部整合性検査スキル（オプション生成）
+#   kit 本体の manifest→生成物チェーンの整合性を検査し、defect を検出する。
+#   検査結果サマリと改善プランファイルを .cursor/plans/ に出力する。
+#   enabled: true の場合のみ outputs[] の feature: agent_kaizen エントリが生成対象になる。
+# ------------------------------------------------------------
+agent_kaizen:
+  enabled: true
+  models:
+    depth_triage: "composer-2.5-fast"
+    standard_analysis: "composer-2.5-fast"
+  execution:
+    score_threshold: 2
+    model_unavailable: "ABORT"
+  high_impact_perspectives:
+    - "SAFE"
+    - "FAIL"
+    - "CONC"
+    - "SESS"
+    - "NDST"
+
 #   Phase 1.5 の AskQuestion で生成有無を決定する。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
@@ -1386,6 +1407,70 @@ outputs:
       - "cross-repo-sync-safe"
       - "validate_name"
       - "clone_base_path"
+  # agent-kaizen スキル（feature: agent_kaizen で条件生成）。
+  # agent_kaizen.enabled: true の場合のみ生成される。
+  # kit 内部の manifest→生成物チェーンの整合性を検査し、defect を .cursor/plans/ に出力する。
+  - path: .cursor/skills/agent-kaizen/SKILL.md
+    template: skills/agent-kaizen/SKILL.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "name: agent-kaizen"
+      - "## 検査対象"
+      - "## ワークフロー"
+      - "## 出力契約"
+      - "## 安全制約"
+      - "読み取り専用"
+  - path: .cursor/skills/agent-kaizen/config.yaml
+    template: skills/agent-kaizen/config.yaml.template
+    mode: seed
+    feature: agent_kaizen
+    required_sections:
+      - "models"
+      - "depth_triage"
+      - "standard_analysis"
+      - "execution"
+      - "high_impact_perspectives"
+  - path: .cursor/skills/agent-kaizen/references/analysis-depth.md
+    template: skills/agent-kaizen/references/analysis-depth.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "## 分析深度 enum"
+      - "## deep 即時起動条件"
+      - "## deferred 判定"
+      - "## standard / deep 契約"
+  - path: .cursor/skills/agent-kaizen/references/perspectives.md
+    template: skills/agent-kaizen/references/perspectives.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "G-KIT-SOT"
+      - "G-KIT-SAFE"
+      - "G-KIT-NDST"
+  - path: .cursor/skills/agent-kaizen/references/finding-schema.md
+    template: skills/agent-kaizen/references/finding-schema.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "G-KIT-{PERSPECTIVE}-{NNN}"
+      - "adoption_gate"
+  - path: .cursor/skills/agent-kaizen/references/severity-criteria.md
+    template: skills/agent-kaizen/references/severity-criteria.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "採用基準"
+      - "Critical"
+      - "non_degrading"
+  - path: .cursor/skills/agent-kaizen/references/output-templates.md
+    template: skills/agent-kaizen/references/output-templates.md.template
+    mode: render
+    feature: agent_kaizen
+    required_sections:
+      - "kaizen-summary"
+      - "kaizen-plan"
+      - "Plan Mode 互換"
   - path: .gitignore
     template: gitignore.block.template
     mode: marker
