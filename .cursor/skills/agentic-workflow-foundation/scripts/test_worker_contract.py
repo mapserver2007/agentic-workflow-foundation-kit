@@ -41,7 +41,10 @@ FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
 STEP_DOC_OUTPUT_FIELDS = {
     "step1": {
         "status", "step", "gate_result", "missing",
-        "investigation_memo_path", "triage_result", "reason",
+        "investigation_memo_path", "analysis_depth",
+        "requirement_gate", "spec_consistency_gate", "feasibility_gate",
+        "blocking_open_issues", "non_blocking_issues",
+        "acceptance_criteria_status", "resolved_issues", "reason",
     },
     "step2": {
         "status", "step", "report_path", "report_digest",
@@ -142,6 +145,30 @@ def test_complete_missing_field_fails():
     )
 
 
+def test_step1_blocking_issues_fails():
+    rc = check_artifact(str(FIXTURES_DIR / "step1-blocking-issues.md"), json_mode=True)
+    assert rc == 1, (
+        "step1 complete with non-empty blocking_open_issues should FAIL "
+        "(G-ARTIFACT-RA-BLOCKING-001)"
+    )
+
+
+def test_step1_deferred_exit_fails():
+    rc = check_artifact(str(FIXTURES_DIR / "step1-deferred-exit.md"), json_mode=True)
+    assert rc == 1, (
+        "step1 complete with analysis_depth=deferred should FAIL "
+        "(G-ARTIFACT-RA-DEPTH-001)"
+    )
+
+
+def test_step1_missing_gate_fails():
+    rc = check_artifact(str(FIXTURES_DIR / "step1-missing-gate.md"), json_mode=True)
+    assert rc == 1, (
+        "step1 complete with missing requirement_gate should FAIL "
+        "(G-ARTIFACT-STEP-FIELD-001)"
+    )
+
+
 def test_invalid_status_fails():
     rc = check_artifact(str(FIXTURES_DIR / "invalid-status.md"), json_mode=True)
     assert rc == 1, "invalid status 'success' should FAIL (G-ARTIFACT-STATUS-001)"
@@ -167,6 +194,9 @@ def main() -> int:
         test_fatal_with_reason,
         test_fatal_no_reason_fails,
         test_complete_missing_field_fails,
+        test_step1_blocking_issues_fails,
+        test_step1_deferred_exit_fails,
+        test_step1_missing_gate_fails,
         test_invalid_status_fails,
         test_invalid_step_fails,
     ]

@@ -377,14 +377,14 @@ def _process_ifs(text: str, root: dict) -> str:
             next_endif = text.find("{{/if}}", pos)
             if next_endif == -1:
                 raise RenderError(f"{{{{#if {path}}}}} に対応する {{{{/if}}}} がない")
+            if depth == 1 and else_pos is None:
+                next_else = text.find("{{else}}", pos)
+                if next_else != -1 and next_else < next_endif and (next_if == -1 or next_else < next_if):
+                    else_pos = next_else
             if next_if != -1 and next_if < next_endif:
                 depth += 1
                 pos = next_if + 6
                 continue
-            if depth == 1:
-                next_else = text.find("{{else}}", pos)
-                if else_pos is None and next_else != -1 and next_else < next_endif:
-                    else_pos = next_else
             depth -= 1
             if depth == 0:
                 endif_end = next_endif + len("{{/if}}")

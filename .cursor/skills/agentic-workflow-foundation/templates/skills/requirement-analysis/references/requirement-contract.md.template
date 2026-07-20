@@ -1,0 +1,148 @@
+# 要求分析契約
+
+> requirement-analysis スキルの 3 段階ガード・Issue Ledger・退出契約の SoT。
+
+## 3 段階ガード
+
+Step ① では以下の 3 段階ガードを順番に実行し、blocking な問題が残る限り Step ② へ進めない。
+
+### Gate A — 要求完全性
+
+目的、対象/対象外、期待動作、現在動作、受入条件、影響対象、制約、優先度、未決定事項、要求文内部の矛盾を検査する。
+
+#### タスク種別対応マトリクス
+
+| 検査項目 | バグ修正 | 新機能 | リファクタリング | パフォーマンス改善 |
+| --- | --- | --- | --- | --- |
+| 目的 | 必須 | 必須 | 必須 | 必須 |
+| 対象/対象外 | 必須 | 必須 | 必須 | 必須 |
+| 期待動作 | 必須 | 必須 | 任意 | 必須 |
+| 現在動作 | 必須 | N/A | 任意 | 必須 |
+| 再現手順 | 必須 | N/A | N/A | 任意 |
+| 受入条件 | 必須 | 必須 | 必須 | 必須 |
+| 影響対象 | 必須 | 必須 | 必須 | 必須 |
+| 制約 | 任意 | 必須 | 任意 | 必須 |
+| 優先度 | 必須 | 必須 | 必須 | 必須 |
+
+- N/A 項目の不在は INCOMPLETE としない
+- 任意項目の不在は non-blocking warning として Issue Ledger に記録する
+
+### Gate B — 仕様整合性
+
+docs-first で仕様、アーキテクチャ、API、データモデル、ワークフロー、ADR、Boundaries との矛盾・SoT 間不整合を検査する。
+
+### Gate C — 実現性・コード整合性
+
+コード調査後に以下を検査する。**standard 経路と deep 経路の両方で親が直接実施する**（standard 経路では調査 Subagent 完走後、deep 経路では dual-thinking 完了後に親が実施）。
+
+- 変更箇所
+- 依存関係
+- 外部サービス
+- データ移行
+- テスト可能性
+- ロールバック
+- 並行性・性能制約
+- docs と実装の乖離
+
+### パス別ゲート適用マトリクス
+
+| 経路 | Gate A | Gate B | Gate C | 備考 |
+| --- | --- | --- | --- | --- |
+| standard | 実施 | 実施 | 調査 Subagent 後に親が実施 | 標準フロー |
+| deep（即時） | 実施 | 実施 | dual-thinking 後に親が実施 | Dual → GateC → Memo |
+| deferred → standard | 実施 | 実施 | 調査 Subagent 後に親が実施 | 事後再判定で standard 確定 |
+| deferred → deep | 実施 | 実施 | dual-thinking 後に親が実施 | 事後再判定で deep 確定 |
+
+---
+
+## Issue Ledger
+
+各ガードは問題を共通 Issue Ledger へ記録する。
+
+```yaml
+issues:
+  - id: RA-001
+    gate: A
+    type: missing_requirement
+    summary: 失敗時の期待動作が未定義
+    evidence: Jira本文に記載なし
+    impact: エラーハンドリングとテストケースを確定できない
+    resolution_owner: user | agent | external
+    blocking: true
+    status: open
+    resolution: null
+    resolved_evidence: null
+```
+
+### type 値域
+
+`missing_requirement` | `ambiguity` | `internal_conflict` | `spec_conflict` | `undecided` | `dependency_unknown` | `feasibility_risk` | `evidence_missing`
+
+### blocking の意味
+
+- `blocking: true` — 実装方針・影響範囲・受入条件・テスト計画を変え得る問題。1 件でも open なら `gate_result: INCOMPLETE` として停止
+- `blocking: false` — 後工程で差し替え可能な軽微な未確定事項（エラーメッセージ文言、UI ラベル等）。Memo に記録し warning として進行可
+
+### Issue 状態遷移
+
+| 初期状態 | イベント | 遷移先 | 必須証跡 |
+| --- | --- | --- | --- |
+| `open` | ユーザー回答で解消 | `resolved` | `resolution` + `resolved_evidence` 非空 |
+| `open` | 追加調査で解消 | `resolved` | `resolution` + `resolved_evidence` 非空 |
+| `open` | ユーザーがリスク承認 | `waived` | `resolution` に承認理由。ADR 起票が必要な場合は ADR-ID を記録 |
+| `open` | 外部依存で解決不能 | `blocked_external` | `resolution` に外部依存先と待ち条件 |
+| `open` | blocking を false に変更 | `open`（blocking=false） | 変更理由を resolution に記録 |
+
+`blocked_external` の open issue が blocking=true で残る場合、Step ① は `status: blocked` で終了する。
+
+### 停止条件と再試行上限
+
+- **ゲートあたりの最大再試行回数**: `config.yaml > execution.max_gate_retries`（デフォルト: {{#if requirement_analysis.execution.max_gate_retries}}{{requirement_analysis.execution.max_gate_retries}}{{else}}3{{/if}}）
+- 上限到達時: `status: incomplete`、`reason: gate_retry_exceeded` で Step ① を終了し、ユーザーに報告
+- ユーザーが追加情報を提供できない場合: `status: blocked`、`reason: user_cannot_resolve` で終了
+
+---
+
+## Step ① 退出契約
+
+Step ① 退出時は次の契約をすべて満たす。
+
+```yaml
+status: complete
+gate_result: PASS
+requirement_gate: PASS
+spec_consistency_gate: PASS
+feasibility_gate: PASS
+analysis_depth: standard | deep
+blocking_open_issues: []
+non_blocking_issues: [{id, summary, gate}]
+acceptance_criteria_status: complete
+investigation_memo_path: .cursor/.artifacts/{slug}--step1.md
+resolved_issues: [{id, resolution, resolved_evidence}]
+```
+
+退出時の `analysis_depth` は `standard | deep` のみを許容する。`deferred` は中間状態であり、事後再判定により `standard` または `deep` へ正規化してから退出する。
+
+### 既存退出ゲート 5 項目との関係
+
+既存の退出ゲート 5 項目（実現性・影響範囲・実装方針・実装アプローチ・優先度）は維持する。退出条件は AND 合成:
+
+```
+(gate_result: PASS)
+  AND (requirement_gate: PASS)
+  AND (spec_consistency_gate: PASS)
+  AND (feasibility_gate: PASS)
+  AND (既存5項目チェックリスト全PASS)
+  AND (blocking_open_issues: [])
+```
+
+### deferred の終端正規化
+
+| 初期状態 | イベント | 退出時の値 |
+| --- | --- | --- |
+| `deferred` | worker 完走 + スコア条件合致 → deep 実行完了 | `deep` |
+| `deferred` | worker 完走 + スコア条件不合致 | `standard` |
+| `deferred` | deep 起動失敗 + ユーザー承認で standard 継続 | `standard` |
+| `deferred` | handoff でセッション跨ぎ | `deferred` 維持（次セッションで再判定） |
+
+handoff 時のみ `deferred` が envelope に残り得る。再開セッションは再判定から再開する。

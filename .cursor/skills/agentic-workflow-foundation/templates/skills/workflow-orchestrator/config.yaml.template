@@ -4,8 +4,13 @@
 # mode: seed のため、再生成時に既存の編集内容は上書きされません。
 
 models:
-  # Step ① 調査・分析（skipped/deferred 時の worker。invoked 時は dual-thinking config が優先）
+{{#if requirement_analysis.enabled}}
+  # Step ① のモデル設定は requirement-analysis/config.yaml に移管されています。
+  # 参照: .cursor/skills/requirement-analysis/config.yaml
+{{else}}
+  # Step ① 調査・分析（requirement_analysis 無効時のみ。有効時は requirement-analysis/config.yaml が SoT）
   step1_investigation: "{{#if agent_workflow.models.step1_investigation}}{{agent_workflow.models.step1_investigation}}{{else}}claude-4.6-opus-high-thinking{{/if}}"
+{{/if}}
   # Step ② レポート作成
   step2_report: "{{#if agent_workflow.models.step2_report}}{{agent_workflow.models.step2_report}}{{else}}composer-2.5-fast{{/if}}"
   # Step ③ 実装
