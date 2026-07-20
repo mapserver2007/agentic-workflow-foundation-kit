@@ -1,0 +1,63 @@
+---
+name: agent-kaizen
+description: >-
+  kit 内部の manifest→生成物チェーンの整合性を検査し、defect を検出する。
+  検査結果サマリと改善プランファイルを .cursor/plans/ に出力する。
+  18 評価観点を Deterministic→Analytic の順で検査する。
+  「整合性検査」「kaizen」「kit 検査」「defect 検出」等の指示で使う。
+  Do NOT use for: SoT 再現度の採点(evaluate-agentic-workflow を使う)、
+  基盤ファイルの生成・メンテナンス(agentic-workflow-foundation を使う)、
+  Domain 層業務仕様の評価。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# agent-kaizen
+
+kit 本体、生成チェーン、Hook・品質ゲート、Domain 層 docs の内部整合性を読み取り専用で検査する。結果はサマリと 1 Finding 単位の改善プランとして `.cursor/plans/` に出力する。
+
+実行前に [config.yaml](config.yaml) を読み、Subagent のモデルと失敗時方針を確定する。
+
+## 検査対象
+
+- **kit 本体**: root/seed manifest、resolver、renderer/engine、templates、scripts、fixtures、Hook、wrapper、品質ゲート
+- **生成ファイル**: resolved manifest の有効な `outputs[]` 全件（render / marker / seed）
+- **Domain 層 docs**: `AGENTS.md > Documentation Navigation > Domain 層` に列挙された docs
+- **agent-kaizen 自身**: 生成済み SKILL、references と、その生成元 template
+
+## ワークフロー
+
+1. **前提確認**
+   - `AGENTS.md` と `docs/QUALITY_GATE.md` を読み、Python 3.x / PyYAML と公式 audit の readonly 経路を確認する。
+   - `git status --porcelain` を検査前スナップショットとして保存する。
+2. **検査実行**
+   - [perspectives.md](references/perspectives.md) の 18 観点をすべて、Deterministic → Analytic の順で検査する。深度によって観点を省略しない。
+   - Deterministic: inventory・リンク、SoT チェーン双方向、公式 audit、既存テスト、権限・shebang・余剰ファイル・marker block を照合する。
+   - Deterministic 完了後、Subagent（`config.yaml > models.depth_triage`）で [analysis-depth.md](references/analysis-depth.md) に従い深度を判定する。
+   - `standard`: Subagent（`config.yaml > models.standard_analysis`）が全 18 観点を意味的に照合する。
+   - `deep`: 親が [dual-thinking](../dual-thinking/SKILL.md) を C 役として起動し、A/B の独立分析を統合する。
+   - `deferred`: standard 完走後に親がスコア条件を再判定し、該当時は deep へ遷移する。
+3. **Finding 統合**
+   - [severity-criteria.md](references/severity-criteria.md) の採用基準 5 条件をすべて満たす候補だけを採用し、Critical / High / Medium と Track A〜D を付与する。
+   - [finding-schema.md](references/finding-schema.md) に従って ID と証拠、実害、修正先、検証方法を確定する。
+4. **出力・非破壊性確認**
+   - [output-templates.md](references/output-templates.md) に従ってサマリと Finding 別プランを出力する。
+   - 検査後の `git status --porcelain` を検査前と比較し、検査対象への差分があれば非破壊性違反として報告する。
+
+## 出力契約
+
+- サマリ: `.cursor/plans/kaizen-summary-{YYYYMMDD-HHmmss}.md`
+- 改善プラン: `.cursor/plans/kaizen-plan-{finding-id}.plan.md`（1 Finding 1 ファイル、Plan Mode 互換）
+- Finding の正本は [finding-schema.md](references/finding-schema.md)、書式の正本は [output-templates.md](references/output-templates.md) とする。
+
+## 安全制約
+
+- **読み取り専用**: kit・生成ファイル・Domain docs・agent-kaizen 自身を変更しない
+- **出力境界**: 永続書込みは `.cursor/plans/kaizen-summary-*` と `.cursor/plans/kaizen-plan-*` のみ
+- **復元禁止**: 検査対象を自動修正・復元・cleanup しない
+- **Git 操作禁止**: agent-kaizen 実行中に add / commit / push / reset 等を行わない
+- **公式ゲートの安全実行**: `run_resolved_engine.py audit` の readonly 経路のみ使用
+- **品質非劣化**: 改善プランの提案は機能削除・ゲート緩和・fail-open 化等に抵触しない
+- **実行主体**: Subagent は検査対象と `.cursor/plans/` を変更しない。親だけが Finding を再検証して出力する
+- **モデル失敗**: 指定モデルを利用できない場合は暗黙に代替せず、`config.yaml > execution.model_unavailable` に従う
+- Context Budget 到達時は `AGENTS.md > Context Budget Protocol` に従い、検査済み Finding と中断位置を外部化する。

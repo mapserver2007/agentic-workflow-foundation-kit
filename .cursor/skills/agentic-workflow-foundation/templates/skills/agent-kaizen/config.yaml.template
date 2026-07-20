@@ -1,0 +1,29 @@
+# agent-kaizen 実行設定
+#
+# このファイルを直接編集してモデルや実行パラメータを変更できます。
+# mode: seed のため、再生成時に既存の編集内容は上書きされません。
+
+models:
+  # 分析深度判定 Subagent
+  depth_triage: "{{#if agent_kaizen.models.depth_triage}}{{agent_kaizen.models.depth_triage}}{{else}}composer-2.5-fast{{/if}}"
+  # standard 意味分析 Subagent
+  standard_analysis: "{{#if agent_kaizen.models.standard_analysis}}{{agent_kaizen.models.standard_analysis}}{{else}}composer-2.5-fast{{/if}}"
+
+execution:
+  # standard 完走後に deep へ昇格する信号数
+  score_threshold: {{#if agent_kaizen.execution.score_threshold}}{{agent_kaizen.execution.score_threshold}}{{else}}2{{/if}}
+  # モデル利用不可時の方針: ABORT（即終了）
+  model_unavailable: "{{#if agent_kaizen.execution.model_unavailable}}{{agent_kaizen.execution.model_unavailable}}{{else}}ABORT{{/if}}"
+
+# 候補を検出した場合に deep を優先する高影響 perspective
+high_impact_perspectives:
+{{#if agent_kaizen.high_impact_perspectives}}
+{{#each agent_kaizen.high_impact_perspectives}}  - "{{this}}"
+{{/each}}
+{{else}}
+  - "SAFE"
+  - "FAIL"
+  - "CONC"
+  - "SESS"
+  - "NDST"
+{{/if}}

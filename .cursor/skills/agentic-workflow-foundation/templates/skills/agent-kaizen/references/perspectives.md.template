@@ -1,0 +1,142 @@
+# 評価観点と検査 ID 対応表
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+agent-kaizen の 18 評価観点の定義と、Track・Phase・検査 ID プレフィックスの対応。
+
+## Track 分類
+
+| Track | 対象領域 |
+| --- | --- |
+| **A** | 生成パイプライン（manifest / resolver / template / 生成物 / audit） |
+| **B** | Meta/Domain 文書と Skill |
+| **C** | Hook・品質ゲート |
+| **D** | 監査・テスト自身 |
+
+## 評価観点一覧
+
+### §5.1 Source of Truth（SOT）
+
+- **Track**: A
+- **Phase**: D（Deterministic） + A（Analytic）
+- **検査 ID プレフィックス**: `G-KIT-SOT`
+- **検査内容**: root manifest、seed manifest、template、生成物の責務が一意か。同じ設定が複数箇所に複製される場合、同期方法が機械化されているか。生成物から修正元を逆引きできるか
+
+### §5.2 Idempotency / Drift（IDEM）
+
+- **Track**: A
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-IDEM`
+- **検査内容**: 同一入力で同一出力になるか。内容以外の実行権限や余剰ファイルも drift として検出するか。feature 無効化後の旧生成物を検出できるか。audit/check が入力ファイルを書き換えないか
+
+### §5.3 Renderer 健全性（REND）
+
+- **Track**: A
+- **Phase**: A（Analytic）
+- **検査 ID プレフィックス**: `G-KIT-REND`
+- **検査内容**: 未解決変数や条件式 typo を fail にできるか。YAML block literal、引用、Markdown table を壊さないか。required sections が単なる substring ではなく構造として存在するか
+
+### §5.4 安全境界（SAFE）
+
+- **Track**: C
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-SAFE`
+- **検査内容**: Never 操作が構文の変形でも deny されるか。`git -C`、`command`、`env`、絶対パスなどを正規化するか。Hook の「deterministic」という主張と実装が一致するか
+
+### §5.5 Fail-open / Fail-closed（FAIL）
+
+- **Track**: C
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-FAIL`
+- **検査内容**: 必須設定の欠落を skip と誤認しないか。未知の入力を安全側に倒すか。fatal と通常の検査不合格を exit code で区別するか
+
+### §5.6 実行可能性（EXEC）
+
+- **Track**: B
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-EXEC`
+- **検査内容**: 文書にあるコマンドがそのリポジトリで実行できるか。package manager / package.json / dependency が存在するか。Session Protocol が開始から終了まで完走できるか
+
+### §5.7 Workflow 状態遷移（FLOW）
+
+- **Track**: B
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-FLOW`
+- **検査内容**: Step 番号と phase boundary が一意か。dispatcher、Matrix、詳細文書の対応が一致するか。entrance / exit gate の実行タイミングが明確か
+
+### §5.8 Artifact 構造（ARTF）
+
+- **Track**: B
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-ARTF`
+- **検査内容**: Markdown 見出し、対象節、front matter 型を検査しているか。status / enum を完全一致で検査するか。本文、配列、理由欄の非空性を検査するか
+
+### §5.9 Feature dependency（FEAT）
+
+- **Track**: A
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-FEAT`
+- **検査内容**: 親 feature の無効化が子 feature へ伝播するか。feature 条件付き output と文書リンクが同じ条件に従うか。cleanup 後に dead link が残らないか
+
+### §5.10 Cross-platform（XPLAT）
+
+- **Track**: C
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-XPLAT`
+- **検査内容**: macOS / Linux の双方で利用するコマンドが存在するか。`flock`、`stat`、`date` 等の差異を考慮しているか。UTF-8 の byte count と文字数を混同していないか
+
+### §5.11 Concurrency / Atomicity（CONC）
+
+- **Track**: C
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-CONC`
+- **検査内容**: state 更新が lock 付き read-modify-write か。marker 削除が durable write 成功後か。temporary file と rename が安全な順序で使われるか
+
+### §5.12 Session isolation（SESS）
+
+- **Track**: C
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-SESS`
+- **検査内容**: session ID を使って state、tracker、snapshot、handoff を対応付けているか。別セッションの snapshot を注入しないか。consumed 状態が永続化されるか
+
+### §5.13 文書・命名整合性（NAME）
+
+- **Track**: B
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-NAME`
+- **検査内容**: kit の実体と Domain 文書の技術スタックが一致するか。Skill 名、成果物 path、参照先が canonical name に統一されているか。同名見出しの重複や旧名称の残存がないか
+
+### §5.14 Test adequacy（TEST）
+
+- **Track**: D
+- **Phase**: A
+- **検査 ID プレフィックス**: `G-KIT-TEST`
+- **検査内容**: 正常系だけでなく不正入力を検査するか。標準 test runner で全テストが discovery されるか。fixture が実際の gate から参照されるか。PASS の保証範囲が出力上明示されているか
+
+### §5.15 Wrapper / marker integrity（WRAP）
+
+- **Track**: A
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-WRAP`
+- **検査内容**: bin/ wrapper の実行権限・shebang が OS に適合するか。deny 時案内先 wrapper が実在するか。`.gitignore` / `.cursorignore` の marker ブロックが manifest の `marker_id` と一致するか
+
+### §5.16 Resolver pipeline contract（RSLV）
+
+- **Track**: A
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-RSLV`
+- **検査内容**: 各 `resolve_*.py` の入出力契約が定義通りか。root overlay が seed default を正しく上書きするか。resolver の実行順序依存が壊れていないか
+
+### §5.17 Environment precondition（ENVP）
+
+- **Track**: D
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-ENVP`
+- **検査内容**: Python 3.x / PyYAML / jq / pnpm など必要な外部依存が存在するか。shell スクリプトが想定する coreutils コマンドが対象 OS に存在するか
+
+### §5.18 Inspection non-destructiveness（NDST）
+
+- **Track**: D
+- **Phase**: D
+- **検査 ID プレフィックス**: `G-KIT-NDST`
+- **検査内容**: audit / check が入力ファイルを書き換えないか。検査前後の `git status --porcelain` に差分が発生しないか。temporary file の生成・削除がクリーンアップされるか

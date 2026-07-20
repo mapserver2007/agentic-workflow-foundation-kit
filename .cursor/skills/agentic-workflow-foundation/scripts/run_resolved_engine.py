@@ -32,6 +32,7 @@ ROOT_OVERLAY_KEYS = (
     "cross_repo_knowledge",
     "dual_thinking",
     "requirement_analysis",
+    "agent_kaizen",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
@@ -651,9 +652,10 @@ def main(argv=None) -> int:
     parser.add_argument("--root-manifest", default=os.path.join(ROOT, "manifest.yaml"))
     args = parser.parse_args(argv)
 
-    rc = _migrate_root_manifest_file(args.root_manifest)
-    if rc != 0:
-        return rc
+    if args.command == "generate":
+        rc = _migrate_root_manifest_file(args.root_manifest)
+        if rc != 0:
+            return rc
 
     if args.command == "bootstrap":
         try:

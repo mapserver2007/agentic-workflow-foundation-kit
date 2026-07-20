@@ -1,0 +1,114 @@
+# 出力テンプレート
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+agent-kaizen が `.cursor/plans/` に出力するファイルのテンプレート定義。
+
+## 検査結果サマリ
+
+ファイル名: `kaizen-summary-{YYYYMMDD-HHmmss}.md`
+
+```markdown
+# agent-kaizen 検査結果サマリ
+
+- 実施日: {timestamp}
+- 対象: {リポジトリ名}
+- 検査前 git status snapshot: {行数}行
+- 検査後 git status snapshot: {行数}行
+- 非破壊性: {PASS / FAIL}
+
+## 集計
+
+| 重大度 | 件数 |
+| --- | --- |
+| Critical | {N} |
+| High | {N} |
+| Medium | {N} |
+| **合計** | **{N}** |
+
+## Track 別集計
+
+| Track | 対象領域 | 検査観点数 | Finding 数 |
+| --- | --- | --- | --- |
+| A: 生成パイプライン | manifest / resolver / template / 生成物 | {N} | {N} |
+| B: Meta/Domain 文書と Skill | AGENTS.md / docs / skills | {N} | {N} |
+| C: Hook・品質ゲート | hooks / gate scripts | {N} | {N} |
+| D: 監査・テスト自身 | audit / test / fixture | {N} | {N} |
+
+## Finding リスト
+
+| ID | Severity | Track | Title | Fix Target |
+| --- | --- | --- | --- | --- |
+| {finding.id} | {finding.severity} | {finding.track} | {finding.title} | {finding.fix_target} |
+
+## 改善プランファイル一覧
+
+| Finding ID | ファイル |
+| --- | --- |
+| {finding.id} | `.cursor/plans/kaizen-plan-{finding-id}.plan.md` |
+
+## 検査方法の限界
+
+{今回の検査で対象外とした領域・手法の記述}
+```
+
+## 改善プランファイル
+
+ファイル名: `kaizen-plan-{finding-id}.plan.md`（Plan Mode 互換形式）
+
+```markdown
+---
+name: kaizen-{finding-id}
+overview: "{finding.title}（{finding.severity}）"
+todos:
+  - id: fix
+    content: "{fix_target} を修正: {fix_description}"
+    status: pending
+  - id: verify
+    content: "検証: {verification}"
+    status: pending
+  - id: adoption-review
+    content: "Adoption Gate 5 条件の自己レビュー"
+    status: pending
+isProject: false
+---
+
+# {finding.title}
+
+- Finding ID: {finding.id}
+- Perspective: {finding.perspective}
+- Severity: {finding.severity}
+- Track: {finding.track}
+
+## Evidence
+
+{evidence の詳細。各 evidence 要素を以下の形式で記述:}
+
+- **ファイル**: `{evidence.file}` {evidence.line があれば "(L{line})"}
+- **観測事実**: {evidence.observation}
+
+## Fix Target
+
+{修正対象の SoT ファイルパスと修正内容の詳細}
+
+> 注: 修正先は生成物ではなく SoT（manifest / template / engine / test）を指す
+
+## Verification
+
+{修正後に実行する検証手順。具体的なコマンドを含める}
+
+## Adoption Gate
+
+- [ ] 証拠がある（ファイル・行・実行結果）
+- [ ] 実害を説明できる（実行停止 / false pass / 誤操作 / 状態欠落 / 保守コスト）
+- [ ] 意図的仕様ではない（docs / manifest の契約と照合済み）
+- [ ] 修正先を特定できる（生成物ではなく SoT を指す）
+- [ ] 品質を落とさず修正できる（機能削除・skip・抑制なし）
+```
+
+## 出力規約
+
+- サマリと改善プランのみを `.cursor/plans/` に出力する
+- `.cursor/plans/` 以外への永続書込みを行わない
+- 既存の `kaizen-summary-*` / `kaizen-plan-*` は上書きしない（タイムスタンプで一意）
+- Plan Mode 互換 frontmatter の `isProject` は常に `false`

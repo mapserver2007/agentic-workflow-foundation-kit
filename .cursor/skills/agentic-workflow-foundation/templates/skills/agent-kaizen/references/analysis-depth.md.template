@@ -1,0 +1,37 @@
+# 分析深度判定
+
+> agent-kaizen の分析深度判定基準の SoT。Deterministic 検査完了後に適用する。
+
+## 分析深度 enum
+
+`standard | deep` の 2 値。`deferred` は中間状態であり、出力前に必ず `standard` または `deep` へ正規化する。
+
+## deep 即時起動条件
+
+以下のいずれかを Deterministic 検査で確認した場合は `deep` とする。
+
+1. Never・credential・不可逆操作に関わる安全境界の迂回
+2. audit の PASS と negative test または実体が矛盾
+3. 検査実行による入力ファイルの変更
+4. `config.yaml > high_impact_perspectives` の候補が複数 Track に影響
+
+## deferred 判定
+
+即時条件には該当しないが、次の信号を意味分析なしで確定できない場合は `deferred` とする。standard 完走後、該当数が `config.yaml > execution.score_threshold` 以上なら deep へ遷移する。
+
+- 根本原因候補が複数
+- 文書上の意図的仕様か defect か判別不能
+- 複数 Track にまたがる
+- cross-platform・並行性・永続化の実害確認が必要
+- Critical / High の重大度候補
+
+## standard / deep 契約
+
+- **standard**: `config.yaml > models.standard_analysis` の単一 readonly Subagent が 18 観点をすべて分析する。
+- **deep**: 親が dual-thinking を C 役として起動し、A/B の独立分析を統合する。
+- どちらも検査対象・採用基準・Finding schema は同一とし、deep は観点追加ではなく独立分析と反証を追加する。
+- Subagent は候補と証拠だけを返し、Finding の採否・重大度・永続出力は親が確定する。
+
+## モデル利用不可時
+
+指定モデルを利用できない場合は暗黙に代替しない。`config.yaml > execution.model_unavailable` が `ABORT` なら中断し、利用できないモデル名と設定変更先を報告する。
