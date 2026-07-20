@@ -29,7 +29,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{/if}}{{#if agent_workflow.maintenance_docs.enabled}}> - [maintenance-docs-workflow](../maintenance-docs-workflow/SKILL.md) — 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}> - [maintenance-gotchas-workflow](../maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
-{{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — Step ① 調査深度トリアージで自動起動時に使用
+{{#if requirement_analysis.enabled}}> - [requirement-analysis](../requirement-analysis/SKILL.md) — Step ① 要求分析（3 段階ガード + 分析深度判定）
+{{/if}}{{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — {{#if requirement_analysis.enabled}}deep 経路で親が起動{{else}}Step ① 調査深度トリアージで自動起動時に使用{{/if}}
 {{/if}}
 
 ---
@@ -55,7 +56,21 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ①: 調査・分析（退出ゲートを内包）
 
-[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
+{{#if requirement_analysis.enabled}}[`requirement-analysis`](../requirement-analysis/SKILL.md) スキルに従い 3 段階ガード + 分析深度判定で要求分析を実行する。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
+
+1. ユーザーとの対話で問題・要件を把握する（親が担当）
+2. **要求正規化**: Subagent（`requirement-analysis/config.yaml > models.normalize`）で要求を構造化する
+3. **Gate A（要求完全性）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親がユーザーに質問
+4. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する
+5. **Gate B（仕様整合性）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親がユーザーに質問
+6. **分析深度判定**: Subagent（`requirement-analysis/config.yaml > models.depth_triage`）で判定
+   - `standard`: 調査 Subagent（`requirement-analysis/config.yaml > models.standard_investigation`）を dispatch
+   - `deep`: 親が [dual-thinking](../dual-thinking/SKILL.md) を C 役として起動。**dual-thinking の `config.yaml` が SoT**
+   - `deferred`: standard 調査 Subagent を dispatch → 完走後に親がスコア起動条件を事後判定
+7. **Gate C（実現性・コード整合性）**: コード調査後に親が直接実施。`INCOMPLETE` → 親がユーザーに質問
+8. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
+9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + blocking_open_issues空。不合格時はユーザーに状況報告
+{{else}}[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
@@ -71,10 +86,13 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 5. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
 6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を全て PASS。不合格時はレポートを作成せずユーザーに状況報告
 {{/if}}
-
-{{#if dual_thinking.enabled}}
-**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
 {{/if}}
+
+{{#if requirement_analysis.enabled}}
+**deferred 再判定**: worker 完走後、親がスコア起動条件を事後判定する。詳細は [`references/analysis-depth.md`](../requirement-analysis/references/analysis-depth.md) を参照。
+{{else}}{{#if dual_thinking.enabled}}
+**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
+{{/if}}{{/if}}
 
 ### Step ②: タスクレポートの作成
 
@@ -161,7 +179,10 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 | 完了チェック状態 | 再開ステップ |
 | --- | --- |
-| 全て `[ ]` | Step ③（実装）から |
+{{#if requirement_analysis.enabled}}| Step① envelope が `status: incomplete` + `analysis_depth: deferred` | Step① 再判定から再開（deferred → standard/deep を事後判定） |
+| Step① envelope が `status: incomplete`（deferred 以外） | Step① を Gate 不合格の問題解消ループから再開 |
+| Step① envelope なし + handoff に Step① 途中記録あり | Step① を最初から再実行 |
+{{/if}}| 全て `[ ]` | Step ③（実装）から |
 | 実装完了 `[x]` のみ | Step ④（テスト）から |
 | テスト + コードゲート `[x]` | Step ⑤（PR レビュー）から |
 | PR レビュー `[x]` まで | Step ⑥（完了報告）から |

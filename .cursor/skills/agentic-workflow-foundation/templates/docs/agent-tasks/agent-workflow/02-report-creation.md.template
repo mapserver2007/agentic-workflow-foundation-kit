@@ -154,8 +154,25 @@
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | `investigation_memo_path` | string | yes | ①出力の構造化調査メモパス |
-| `gate1_result` | enum | yes | `PASS`（①退出ゲート通過済み） |
+{{#if requirement_analysis.enabled}}| `step1_gate_result` | enum | yes | `PASS`（① 退出ゲート通過済み） |
 | `report_slug` | string | yes | レポートファイル名（`{{agent_workflow.report_slug_format}}`） |
+| `analysis_depth` | enum | yes | `standard` / `deep`（レポートの分析手法記録用） |
+{{else}}| `gate1_result` | enum | yes | `PASS`（①退出ゲート通過済み） |
+| `report_slug` | string | yes | レポートファイル名（`{{agent_workflow.report_slug_format}}`） |
+{{/if}}
+
+{{#if requirement_analysis.enabled}}
+### 入口条件
+
+Step ② の入口条件は以下をすべて検証する:
+
+- `step1_gate_result: PASS`
+- `requirement_gate: PASS`
+- `spec_consistency_gate: PASS`
+- `feasibility_gate: PASS`
+- `blocking_open_issues: []`
+- `investigation_memo_path` が存在する
+{{/if}}
 
 ### 出力（step envelope: YAML front matter + Markdown body）
 

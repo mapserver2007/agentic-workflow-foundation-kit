@@ -31,6 +31,7 @@ ROOT_OVERLAY_KEYS = (
     "agent_workflow",
     "cross_repo_knowledge",
     "dual_thinking",
+    "requirement_analysis",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
@@ -555,6 +556,41 @@ def _run_dual_thinking_validator(manifest: dict) -> int:
     return validate_run(config_path)
 
 
+def _run_requirement_analysis_validator(manifest: dict) -> int:
+    """requirement_analysis が有効なら静的契約検査を実行する。無効時は skip。"""
+    if not _is_feature_enabled(manifest, "requirement_analysis"):
+        return 0
+    config_path = os.path.join(
+        ROOT, ".cursor", "skills", "requirement-analysis", "config.yaml",
+    )
+    if not os.path.isfile(config_path):
+        print("[validate_requirement_analysis] SKIP: config.yaml 不在（feature 有効だが未生成）")
+        return 0
+    from validate_requirement_analysis import run as validate_run
+    return validate_run(config_path)
+
+
+def _cleanup_legacy_workflow_triage(manifest: dict) -> int:
+    """requirement_analysis 有効時に旧 workflow-triage.md を安全に削除する。"""
+    if not _is_feature_enabled(manifest, "requirement_analysis"):
+        return 0
+    triage_path = os.path.join(
+        ROOT, ".cursor", "skills", "dual-thinking", "references", "workflow-triage.md",
+    )
+    if not os.path.isfile(triage_path):
+        return 0
+    with open(triage_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "agentic-workflow-foundation" not in content and "即時起動条件" not in content:
+        print(
+            f"WARN: {triage_path} に生成マーカーがありません。手動で確認してください。",
+        )
+        return 0
+    os.remove(triage_path)
+    print(f"[cleanup] 旧ファイルを削除: {triage_path}（requirement-analysis へ移管済み）")
+    return 0
+
+
 def _run_worker_contract_validator() -> int:
     """Worker Contract 整合テストを実行する。fixture が存在しない場合は skip。"""
     test_script = os.path.join(HERE, "test_worker_contract.py")
@@ -589,6 +625,9 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
         return rc
     if command == "audit" and manifest is not None:
         rc = _run_dual_thinking_validator(manifest)
+        if rc != 0:
+            return rc
+        rc = _run_requirement_analysis_validator(manifest)
         if rc != 0:
             return rc
         return _run_worker_contract_validator()
@@ -627,7 +666,10 @@ def main(argv=None) -> int:
                 rc = _cleanup_legacy_workflow_docs()
                 if rc != 0:
                     return rc
-                return _cleanup_legacy_skill_dir()
+                rc = _cleanup_legacy_skill_dir()
+                if rc != 0:
+                    return rc
+                return 0
             return 0
     except genlib.YamlError as e:
         print(f"FATAL: {e}", file=sys.stderr)

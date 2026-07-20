@@ -1,0 +1,119 @@
+---
+name: requirement-analysis
+disable-model-invocation: true
+description: >-
+  What - Step ① に内包される要求分析を統括する内部スキル。要求完全性・仕様整合性・実現性の
+  3 段階ガード、分析深度に応じた standard Subagent / dual-thinking 分岐、Step ② 向け共通
+  Investigation Memo 出力を一つの契約に統合する。workflow-orchestrator から明示的に呼ばれる。
+  Use when - workflow-orchestrator の Step ① で requirement-analysis が起動される場合。
+  Do NOT use for - (1) ユーザーによる直接起動（内部スキルのため）、
+  (2) Step ② 以降の分析（各ステップ固有のスキルを使う）、
+  (3) dual-thinking の直接起動（deep 経路で親が起動する）。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Requirement Analysis
+
+Step ① の要求分析を 3 段階ガード + 分析深度判定で統括する内部スキル。
+
+> **参照ドキュメント**:
+> - [references/requirement-contract.md](references/requirement-contract.md) — 3 段階ガード・Issue Ledger・退出契約
+> - [references/analysis-depth.md](references/analysis-depth.md) — 分析深度判定基準
+> - [references/investigation-memo.md](references/investigation-memo.md) — Step ② 向け共通出力契約
+> - [config.yaml](config.yaml) — モデル設定・実行パラメータ
+
+---
+
+## 全体フロー
+
+```
+要求テキスト
+  → 要求正規化 Subagent
+  → Gate A（要求完全性）
+  → docs-first 参照
+  → Gate B（仕様整合性）
+  → 分析深度判定 Subagent
+  → standard 経路: 調査 Subagent → Gate C（親直接実施）
+  / deep 経路: 親が dual-thinking 起動 → Gate C（親直接実施）
+  → 共通 Investigation Memo
+  → 親が Step① 契約検証
+  → Step① envelope 出力
+```
+
+---
+
+## 親 / Subagent 境界
+
+| 処理 | 実行主体 | 理由 |
+| --- | --- | --- |
+| 要求正規化 | Subagent | 定型処理・コンテキスト保護 |
+| Gate A 判定 | Subagent（正規化結果に含む） | 正規化と同時に完全性検査 |
+| docs-first 参照 | Subagent（standard）/ 親（deep） | standard: worker 内完結 / deep: 親が C として起動するため |
+| Gate B 判定 | Subagent（standard）/ 親（deep） | docs 参照後の整合判定 |
+| 分析深度判定 | Subagent | 判定ロジックの隔離 |
+| standard 調査 | Subagent | 標準フロー |
+| deep 分析 | 親が dual-thinking 起動 | 親 = C 役（統合裁定者） |
+| Gate C 判定 | 親 | コード整合性は実装コンテキスト依存 |
+| Issue Ledger 管理 | 親 | ユーザー対話の窓口 |
+| Step① 契約検証 | 親 | 最終 schema・証跡検証 |
+| envelope 書込み | 親 | 最終 envelope は親が確定 |
+
+---
+
+## ガード失敗時の問題解消ループ
+
+1. ガードが `INCOMPLETE` を返した場合、親は Issue Ledger を確認する
+2. `blocking: true` の open issue があれば、ユーザーに質問する
+3. ユーザー回答を受けて issue を `resolved` に遷移する
+4. 再度同一ゲートを実行する
+5. 最大再試行回数（`config.yaml > execution.max_gate_retries`）を超えた場合は `status: incomplete` で終了する
+
+---
+
+## 分析深度と経路
+
+### standard 経路
+
+1. 分析深度判定 Subagent が `standard` を返す
+2. 調査 Subagent（`config.yaml > models.standard_investigation`）を dispatch
+3. Subagent は Investigation Memo 構造で結果を返す
+4. 親が Gate C を実施
+5. 親が Investigation Memo を確定し envelope を書く
+
+### deep 経路
+
+1. 分析深度判定 Subagent が `deep` を返す
+2. 親が [dual-thinking](../dual-thinking/SKILL.md) を C 役として起動する
+3. dual-thinking は Investigation Memo 構造で結果を出力する
+4. 親が Gate C を実施
+5. 親が Investigation Memo を確定し envelope を書く
+
+### deferred 経路
+
+1. 分析深度判定 Subagent が `deferred` を返す
+2. standard 調査 Subagent を dispatch する
+3. Subagent 完走後、親がスコア起動条件を事後判定する
+4. スコア条件合致: deep 経路へ遷移（dual-thinking 起動）
+5. スコア条件不合致: standard として確定
+
+### deep 起動失敗時
+
+- `dual_thinking.enabled: false`: deep 判定されても standard に降格し警告
+- モデル利用不可: ユーザーに継続可否を確認。承認→standard 続行、拒否→blocked
+
+---
+
+## 中間 Subagent の制約
+
+- 要求正規化 Subagent・分析深度判定 Subagent は envelope を書かない
+- 最終 envelope は親が書く
+- Subagent から dual-thinking を入れ子起動しない
+
+---
+
+## 関連ドキュメント
+
+- [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) — Step ① 詳細手順
+- [workflow-orchestrator](../workflow-orchestrator/SKILL.md) — ワークフロー制御
+- [dual-thinking](../dual-thinking/SKILL.md) — deep 経路で起動

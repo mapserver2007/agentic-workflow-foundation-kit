@@ -4,6 +4,24 @@
 
 ## dispatch モード一覧
 
+{{#if requirement_analysis.enabled}}
+| Step | Sub-step | モード | config キー | subagent_type | 書込み責務境界 |
+|------|----------|--------|------------|---------------|------------------|
+| ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 正規化済み要求のみ返却。envelope 書込みなし |
+| ① | 深度判定 | subagent dispatch | requirement_analysis.models.depth_triage | generalPurpose | depth 結果のみ返却。envelope 書込みなし |
+| ① | standard 調査 | subagent dispatch | requirement_analysis.models.standard_investigation | generalPurpose | step envelope body（Investigation Memo） |
+| ① | deep 分析 | 親が dual-thinking 起動 | dual-thinking config が SoT | — | step envelope body（Investigation Memo） |
+| ① | Gate 不合格 | 親が質問 | — | — | Issue Ledger 更新 |
+| ① | Gate C 検査 | 親直接実行 | — | — | standard: 調査 Subagent 完走後 / deep: dual-thinking 完了後 |
+| ② | — | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
+| ③ | — | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。commit / push 禁止 |
+| ④ | — | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
+| ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
+| ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
+
+> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は envelope を書かない。最終 envelope は親が書く。Subagent から dual-thinking を入れ子起動しない。
+
+{{else}}
 | Step | モード | config キー | subagent_type | 書込み責務境界 |
 |------|--------|------------|---------------|------------------|
 | ① | subagent dispatch | step1_investigation | generalPurpose | step envelope のみ。source / report は変更しない |
@@ -12,12 +30,13 @@
 | ④ | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
 | ⑤ | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
+{{/if}}
 
 ## Subagent 起動方式
 
 各 subagent dispatch ステップで、orchestrator は以下を実行する:
 
-1. `config.yaml > models.{config_key}` からモデルスラグを取得する
+1. `config.yaml > models.{config_key}` からモデルスラグを取得する{{#if requirement_analysis.enabled}}（Step ① は `requirement-analysis/config.yaml` が SoT）{{/if}}
 2. Cursor の `Task` ツールを以下のパラメータで起動する:
    - `model`: config.yaml から取得したモデルスラグ
    - `subagent_type`: dispatch モード一覧の値
@@ -41,18 +60,25 @@
 
 | Step | 正式成果物・検証 |
 |------|------------------|
-| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
-| ② | `report_path` の存在 + 親による `workflow-gate.sh step2-report` PASS |
+{{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` |
+{{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
+{{/if}}| ② | `report_path` の存在 + 親による `workflow-gate.sh step2-report` PASS |
 | ③ | `changed_files` / `untracked_files` と working tree の照合 |
 | ④ | `gate_results` + 親による `workflow-gate.sh step4` PASS |
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
 
-## Step ① の dual-thinking 優先ルール
+## Step ① の分析深度優先ルール
 
+{{#if requirement_analysis.enabled}}
+- `analysis_depth: standard`: requirement-analysis/config.yaml > models.standard_investigation が SoT
+- `analysis_depth: deep`: dual-thinking config.yaml が SoT → standard_investigation は不使用
+- `deferred`: standard 調査を実行 → 完走後に親がスコア起動条件を事後判定して standard/deep を確定
+{{else}}
 - triage_result = `invoked`: dual-thinking config.yaml が SoT → step1_investigation は不使用
 - triage_result = `skipped` / `deferred`: step1_investigation が SoT
 - `deferred` 再判定で起動: dual-thinking config に切替
+{{/if}}
 
 ## モデル利用不可時の挙動
 

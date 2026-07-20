@@ -6,8 +6,9 @@ description: >-
   C（統合裁定・親エージェント）が統合し、通常のチャット返答と同じ体裁で結果を返す。
   内部の A/B 分析プロセスはユーザーに表示しない。
   Use when - 「多角的に考えて」「慎重に検討して」「dual-thinking で回答して」
-  「この方針を客観的に評価して」等の明示指示、
-  または workflow-orchestrator Step ① の調査深度トリアージで自動起動条件に合致した場合。
+  「この方針を客観的に評価して」等の明示指示{{#if requirement_analysis.enabled}}、
+  または requirement-analysis deep 経路で親が起動する場合{{else}}、
+  または workflow-orchestrator Step ① の調査深度トリアージで自動起動条件に合致した場合{{/if}}。
   Do NOT use for - (1) コード diff のレビュー（agent-code-review を使う）、
   (2) 軽微な質問（変数名・フォーマット等の即答可能なもの）、(3) 既に PO が確定済みの方針の再審。
 disable-model-invocation: true
@@ -27,7 +28,7 @@ disable-model-invocation: true
 2. 起動前に指定モデルが利用可能であることを確認する。利用不可なら対象モデル名と config.yaml の修正を伝えて `model_unavailable` に従い中止し、暗黙フォールバックしない。
 3. 基盤 audit の G-DT-* は設定構造・異モデル要求・再審予算・停止方針を検査する。詳細は [`docs/QUALITY_GATE.md §4.1`](../../../docs/QUALITY_GATE.md) を参照する。
 4. 実モデル割当、A/B の相互非参照、別プロセス実行は Cursor API から外部観測できない。検証済み・保証済みと表現しない。例外は [`references/verification-flags.md`](references/verification-flags.md) に従って記録する。
-5. **ワークフロー自動起動時**も config.yaml の設定（モデル・予算・停止方針）に従う。トリアージ基準は [`references/workflow-triage.md`](references/workflow-triage.md) を SoT とする。
+5. **ワークフロー{{#if requirement_analysis.enabled}}deep 経路{{else}}自動起動{{/if}}時**も config.yaml の設定（モデル・予算・停止方針）に従う。{{#if requirement_analysis.enabled}}分析深度判定基準は [`requirement-analysis/references/analysis-depth.md`](../requirement-analysis/references/analysis-depth.md) を SoT とする。{{else}}トリアージ基準は [`references/workflow-triage.md`](references/workflow-triage.md) を SoT とする。{{/if}}
 
 ---
 

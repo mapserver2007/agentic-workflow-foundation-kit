@@ -1,0 +1,51 @@
+# Investigation Memo 契約
+
+> Step ② 向け共通 Investigation Memo の構造定義。standard 調査 Subagent と dual-thinking は同一構造を出力する。
+
+## 必須セクション
+
+standard 経路・deep 経路のいずれでも、Investigation Memo は以下の見出し構造を持つ。方式固有の分析過程は Step ② へ漏らさず、一次証跡との整合のみを親が検証する。
+
+1. `## 正規化済み要求` — Gate A 通過後の構造化された要求記述
+2. `## 確定済み受入条件` — 具体的な受入条件のリスト（テスト可能な形式）
+3. `## 根本原因分析 / 実装方針候補` — 通常: worker 自身の分析 / dual-thinking: C が A/B の Evidence Ledger を統合した分析
+4. `## 争点と判断根拠` — 検討した選択肢と採用/却下理由
+5. `## 影響範囲` — 変更対象ファイル・コンポーネント・ユーザー影響
+6. `## 変更対象ファイル` — 具体的なファイルパスと変更概要のリスト
+7. `## 実装手順` — 順序付きの実装ステップ
+8. `## テスト観点` — テストすべき観点・エッジケース
+9. `## ADR 起票判定結果` — D-* 該当有無と判断根拠
+10. `## docs-first 参照記録` — 参照した Domain 層 docs のチェックリスト
+11. `## Issue Ledger` — 解決済み Issue の一覧（完全な Ledger 履歴）
+12. `## non-blocking issues` — 警告として記録された未解決の軽微な問題
+
+---
+
+## Step ② Worker との契約
+
+Step ② Worker はこの Memo のみから必須 10 セクションのタスクレポートを作成し、プレースホルダや未確認の仮定を残さない。
+
+### Memo → レポート変換対応表
+
+| Memo セクション | レポートセクション |
+| --- | --- |
+| 正規化済み要求 | 概要 / 問題の説明 |
+| 確定済み受入条件 | 受入条件 |
+| 根本原因分析 / 実装方針候補 | 根本原因分析 |
+| 争点と判断根拠 | 検討した代替案 |
+| 影響範囲 | 影響範囲 |
+| 変更対象ファイル | 関連する既存コード |
+| 実装手順 | 実装計画 |
+| テスト観点 | テスト計画 |
+| ADR 起票判定結果 | （ADR がある場合は参照リンクを追記） |
+| docs-first 参照記録 | 関連する既存コード |
+| Issue Ledger | 争点と判断根拠に統合 |
+| non-blocking issues | リスクと未決定事項 |
+
+---
+
+## Issue Ledger の格納場所
+
+- **open/resolved/waived**: Step① envelope の YAML front matter に `resolved_issues` と `non_blocking_issues` を配列で記録。完全な Ledger 履歴は Investigation Memo body に記載
+- **退出時検査**: `gate-artifact.py` が `blocking_open_issues: []` を検査。空でなければ FAIL
+- **Step② への引き渡し**: Step② Worker は Memo body の Issue Ledger を参照し、解決済み判断を「争点と判断根拠」セクションに反映する

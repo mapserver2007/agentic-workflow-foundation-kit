@@ -1,0 +1,70 @@
+# 分析深度判定
+
+> requirement-analysis スキルの分析深度判定基準の SoT。Gate B 通過後に実施する。
+
+## 分析深度 enum
+
+`standard | deep` の 2 値。`deferred` は中間状態であり、退出前に必ず `standard` または `deep` へ正規化する。
+
+---
+
+## deep 即時起動条件
+
+以下の**いずれか 1 件**に該当する場合、`analysis_depth: deep` を返す。
+
+1. **要求と既存仕様の矛盾**: 要求文の内容が `docs/` 配下の仕様ドキュメントと矛盾している
+2. **high_impact_categories 該当**: manifest に定義された高影響カテゴリに該当する
+3. **受入条件未定義 + 実装候補複数**: タスクの受入条件が未定義であり、かつ実装方針の候補が複数存在する
+
+### high_impact_categories（SoT: manifest.yaml）
+
+{{#if requirement_analysis.high_impact_categories}}
+{{#each requirement_analysis.high_impact_categories}}- `{{this}}`
+{{/each}}
+{{else}}
+- `security_or_authorization`
+- `secret_or_sensitive_data`
+- `data_deletion_or_migration`
+- `breaking_external_api`
+- `irreversible_architecture`
+- `unapproved_cost_or_schedule`
+- `must_requirement_conflict`
+{{/if}}
+
+---
+
+## deferred 判定
+
+即時起動条件に該当せず、スコア起動条件の判定にコード調査が必要な場合は `deferred` を返す。standard 調査 Subagent 完走後に親がスコア起動条件を事後判定する。
+
+### スコア起動条件
+
+`config.yaml > execution.score_threshold` 件以上で deep（デフォルト: {{#if requirement_analysis.execution.score_threshold}}{{requirement_analysis.execution.score_threshold}}{{else}}2{{/if}}）:
+
+| 信号 | 判定に必要な情報 |
+| --- | --- |
+| 影響コンポーネントが複数 | docs + コード調査 |
+| 既存テストから期待動作を一意に復元できない | コード調査 |
+| 根本原因候補が複数 | コード調査 |
+| 非機能要件が関わる | 要求文 + docs |
+| 関連リポジトリ・外部サービスとの整合確認が必要 | docs + コード調査 |
+| 変更のロールバックが困難 | docs + コード調査 |
+
+---
+
+## deep 起動の前提条件と失敗時動作
+
+- **`dual_thinking.enabled: true`**: deep 経路で dual-thinking を起動する
+- **`dual_thinking.enabled: false`**: deep 判定されても `standard` に降格し、ユーザーに「このタスクは dual-thinking による深い分析が推奨されますが、dual-thinking が無効のため standard 分析で続行します」と警告する
+- **deep 起動失敗**（モデル利用不可等）: `gate_result: INCOMPLETE` とし、毎回ユーザーに継続可否を確認する。承認された場合は standard で続行し `analysis_depth: standard` とする。拒否された場合は `status: blocked` で終了する
+
+---
+
+## triage_result → analysis_depth 移行マッピング
+
+| 旧フィールド（triage_result） | 新フィールド（analysis_depth） |
+| --- | --- |
+| `skipped` | `standard` |
+| `invoked` | `deep` |
+| `deferred` → 再判定合致 | `deep` |
+| `deferred` → 再判定不合致 | `standard` |
