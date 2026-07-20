@@ -1,0 +1,125 @@
+---
+name: agent-kaizen
+description: >-
+  kit 内部の manifest→生成物チェーンの整合性を検査し、defect を検出する。
+  検査結果サマリと改善プランファイルを .cursor/plans/ に出力する。
+  18 評価観点で Phase D(Deterministic)→ Phase A(Analytic) の 2 段階検査を実行する。
+  「整合性検査」「kaizen」「kit 検査」「consistency check」「defect 検出」等の指示で使う。
+  Do NOT use for: SoT 再現度の採点(evaluate-agentic-workflow を使う)、
+  基盤ファイルの生成・メンテナンス(agentic-workflow-foundation を使う)、
+  Domain 層業務仕様の評価。
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# agent-kaizen
+
+kit 本体・manifest→resolver→template→生成物チェーン・Hook/品質ゲート・Domain 層 docs の **内部整合性を検査** し、defect を検出する読み取り専用スキル。検査結果サマリと 1 Finding 単位の改善プランを `.cursor/plans/` に出力する。
+
+> **関連スキル**:
+> - [agentic-workflow-foundation](../agentic-workflow-foundation/SKILL.md) — 基盤ファイルの生成・メンテナンス（本スキルは検査のみ）
+> - [evaluate-agentic-workflow](~/.cursor/skills/evaluate-agentic-workflow/SKILL.md) — upstream SoT との再現度採点（別責務）
+
+---
+
+## 前提条件
+
+1. `AGENTS.md > Session Protocol` 完了が前提
+2. Python 3.x / PyYAML が利用可能
+3. kit の公式 audit（`run_resolved_engine.py audit`）が readonly 経路で実行可能
+
+---
+
+## 検査対象
+
+- **kit 本体**: root/seed manifest、resolver、renderer/engine、templates、scripts、fixtures、Hook、wrapper、品質ゲート
+- **生成ファイル**: resolved manifest の有効な `outputs[]` 全件（render / marker / seed）
+- **Domain 層 docs**: `AGENTS.md > Documentation Navigation > Domain 層` に列挙された docs
+- **agent-kaizen 自身**: 生成済み SKILL、references と、その生成元 template
+
+---
+
+## ワークフロー（4 Phase）
+
+| Phase | 目的 | 手段 |
+| --- | --- | --- |
+| **0: 前提確認** | 監査基準と環境の固定 | `AGENTS.md` / `QUALITY_GATE.md` 読込、`git status --porcelain` スナップショット、環境前提確認 |
+| **1: 検査実行** | Deterministic → Analytic の順で defect 候補を収集 | 公式 audit（readonly）、ファイル inventory、SoT チェーン照合、意味的照合 |
+| **2: Finding 統合** | 誤検出除外と重大度判定 | [severity-criteria.md](references/severity-criteria.md) の採用基準 5 条件 + 重大度 3 段階 |
+| **3: 出力生成** | サマリ + Finding 別プランファイル出力 | [output-templates.md](references/output-templates.md) に従い `.cursor/plans/` へ書出し |
+
+### Phase 0: 前提確認
+
+1. `AGENTS.md` と `docs/QUALITY_GATE.md` を全文読み込み、監査基準を固定する
+2. `git status --porcelain` で検査前のワーキングツリー状態をスナップショットする
+3. Python 3.x / PyYAML の存在を確認する（不在時は中断して報告）
+
+### Phase 1: 検査実行
+
+[references/perspectives.md](references/perspectives.md) の 18 評価観点に基づき、**Deterministic（Phase D）→ Analytic（Phase A）** の順で検査する。
+
+**Phase D（Deterministic）**:
+1. ファイル inventory（glob）と Documentation Navigation のリンク確認
+2. SoT チェーン双方向照合（root manifest → resolved → template → 生成物）
+3. 公式 audit 実行（`run_resolved_engine.py audit` — readonly 経路のみ）
+4. 既存テスト実行（`test_*.py` の直接実行）
+5. 実行権限・shebang・余剰ファイル・marker block の照合
+
+**Phase A（Analytic）**:
+1. 文書契約と実体の意味的照合（コマンド↔script、パス↔ファイル、Step 番号↔dispatcher）
+2. Hook 迂回構文の adversarial 検査（`git -C`、`command`、`env` 等の変形構文）
+3. 構造ゲートの false pass 検査（全文 substring 依存のロジック特定）
+4. OS・並行性・永続化の確認（`flock` 不在、lock なし read-modify-write）
+5. 誤検出候補の別手段での再確認
+
+### Phase 2: Finding 統合
+
+1. [severity-criteria.md](references/severity-criteria.md) の採用基準（5 条件すべて充足）で候補をフィルタする
+2. 重大度を 3 段階（Critical / High / Medium）で判定する
+3. Track（A: 生成パイプライン / B: Meta/Domain 文書と Skill / C: Hook・品質ゲート / D: 監査・テスト自身）に分類する
+4. Finding ID を `G-KIT-{PERSPECTIVE}-{NNN}` 形式で採番する（[finding-schema.md](references/finding-schema.md) 参照）
+
+### Phase 3: 出力生成
+
+1. `.cursor/plans/kaizen-summary-{YYYYMMDD-HHmmss}.md` にサマリを出力する
+2. 各 Finding に対して `.cursor/plans/kaizen-plan-{finding-id}.plan.md` を出力する（Plan Mode 互換形式）
+3. `git status --porcelain` で検査後の状態を確認し、Phase 0 のスナップショットとの差分がゼロであることを保証する
+4. 差分が発生した場合は非破壊性違反として報告する
+
+---
+
+## 出力契約
+
+- **Finding ID**: `G-KIT-{PERSPECTIVE}-{NNN}`（[finding-schema.md](references/finding-schema.md) 参照）
+- **改善プランファイル**: Plan Mode 互換 frontmatter（`name/overview/todos/isProject`）+ Evidence / Fix Target / Verification / Adoption Gate セクション
+- **Adoption Gate 5 条件**: 証拠あり・実害あり・非意図的・修正先特定済み・品質非劣化
+
+---
+
+## 既存スキルとの責務分離
+
+| スキル | 責務 | 入力 | 出力先 |
+| --- | --- | --- | --- |
+| `evaluate-agentic-workflow` | SoT（統一設計書）との再現度採点 | Meta 層 × SoT | `tmp/` |
+| **`agent-kaizen`** | kit 内部の整合性 defect 検出 | manifest / template / engine / 生成物 / Hook / gate | `.cursor/plans/` |
+| `agentic-workflow-foundation` | 基盤ファイルの生成・メンテナンス | manifest.yaml / templates | 生成物 |
+
+---
+
+## 安全制約
+
+- **読み取り専用**: kit・生成ファイル・Domain docs・agent-kaizen 自身を変更しない
+- **出力境界**: 永続書込みは `.cursor/plans/kaizen-summary-*` と `.cursor/plans/kaizen-plan-*` のみ
+- **復元禁止**: 検査対象を自動修正・復元・cleanup しない
+- **Git 操作禁止**: agent-kaizen 実行中に add / commit / push / reset 等を行わない
+- **公式ゲートの安全実行**: `run_resolved_engine.py audit` の readonly 経路のみ使用
+- **品質非劣化**: 改善プランの提案は機能削除・ゲート緩和・fail-open 化等に抵触しない
+
+---
+
+## Context Budget 到達時の対応
+
+`AGENTS.md > Context Budget Protocol` に従う。
+
+- **Yellow**: 現 Phase を区切りまで完了 → 検査済み Finding を `.cursor/plans/` に出力 → 未検査の観点を追跡ドキュメントに記録
+- **Red**: 即時中断 → 検査済み Finding のみ出力 → handoff manifest に中断ポイントを記録。新 Phase に進まない

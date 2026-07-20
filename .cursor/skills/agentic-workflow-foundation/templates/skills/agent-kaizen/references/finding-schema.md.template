@@ -1,0 +1,76 @@
+# Finding 出力スキーマ
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+agent-kaizen が出力する Finding の機械出力契約。
+
+## Finding ID 形式
+
+```
+G-KIT-{PERSPECTIVE}-{NNN}
+```
+
+- `G-KIT-`: agent-kaizen 固定プレフィックス
+- `{PERSPECTIVE}`: [perspectives.md](perspectives.md) の検査 ID プレフィックス（例: `SOT`, `IDEM`, `SAFE`）
+- `{NNN}`: 同 perspective 内の連番（001 起点）
+
+## Finding 構造
+
+各 Finding は以下のフィールドを持つ:
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `id` | string | Yes | `G-KIT-{PERSPECTIVE}-{NNN}` |
+| `perspective` | string | Yes | 対応する評価観点（例: `§5.1`） |
+| `track` | enum | Yes | `A` / `B` / `C` / `D` |
+| `severity` | enum | Yes | `Critical` / `High` / `Medium` |
+| `title` | string | Yes | 簡潔な defect 名（1 行） |
+| `evidence` | list | Yes | 観測事実のリスト（各要素に `file`, `line`(任意), `observation`） |
+| `fix_target` | string | Yes | 修正先（manifest / template / engine / test）。生成物ではなく SoT を指す |
+| `fix_description` | string | Yes | 修正内容の概要 |
+| `verification` | string | Yes | 修正後の検証手順 |
+| `adoption_gate` | object | Yes | 5 条件のチェック結果 |
+
+## evidence 要素
+
+```yaml
+- file: "対象ファイルの相対パス"
+  line: 行番号（任意。特定できない場合は省略可）
+  observation: "観測した事実（推測ではなく事実を記述する）"
+```
+
+## adoption_gate
+
+Finding として採用するためにすべて `true` である必要がある:
+
+```yaml
+adoption_gate:
+  has_evidence: true      # 証拠がある（ファイル・行・実行結果・再現ケース）
+  has_impact: true        # 実害を説明できる（実行停止 / false pass / 誤操作 / 状態欠落 / 保守コスト）
+  not_intentional: true   # 意図的仕様ではない（docs / manifest の契約と照合済み）
+  fix_identified: true    # 修正先を特定できる（生成物ではなく SoT を指す）
+  non_degrading: true     # 品質を落とさず修正できる（機能削除・skip・抑制なし）
+```
+
+## YAML 表現例
+
+```yaml
+id: "G-KIT-SOT-001"
+perspective: "§5.1"
+track: "A"
+severity: "High"
+title: "budget_thresholds が root overlay で上書きされていない"
+evidence:
+  - file: "manifest.yaml"
+    line: 119
+    observation: "project.context_budget に budget_thresholds の overlay が定義されていない"
+fix_target: "manifest.yaml > project.context_budget"
+fix_description: "root manifest の project.context_budget に budget_thresholds のオーバーライド値を追加する"
+verification: "run_resolved_engine.py audit 実行後に resolved manifest で上書き値を確認"
+adoption_gate:
+  has_evidence: true
+  has_impact: true
+  not_intentional: true
+  fix_identified: true
+  non_degrading: true
+```
