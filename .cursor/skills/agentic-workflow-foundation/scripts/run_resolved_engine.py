@@ -428,6 +428,16 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
     outputs = manifest.get("outputs") or []
     filtered = []
     for out in outputs:
+        # requirement-analysis が workflow の深度判定を担う場合、旧
+        # workflow-triage.md は生成しない。generate 後の legacy cleanup と
+        # outputs カタログが矛盾すると audit/check が失敗するため、解決済み
+        # manifest の段階で除外する。
+        if (
+            out.get("path")
+            == ".cursor/skills/dual-thinking/references/workflow-triage.md"
+            and _is_feature_enabled(manifest, "requirement_analysis")
+        ):
+            continue
         feature = out.get("feature")
         if feature is None:
             filtered.append(out)
