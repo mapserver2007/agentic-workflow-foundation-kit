@@ -13,13 +13,13 @@
 **命名規約**: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
 
 **例**:
-- `reports/2026-06-22-cancel-order-error-handling.md`
-- `reports/2026-06-23-master-sync-retry-logic.md`
+- `reports/TICKET-123-cancel-order-error-handling.md`
+- `reports/TICKET-456-master-sync-retry-logic.md`
 
 ### 命名ガイドライン（AGENTS.md > Documentation Naming Convention に準拠）
 - `reports/` 配下は **Domain 層** として kebab-case で命名する
-- slug 部分: タスクを簡潔に要約した英語フレーズ、ハイフン区切り、英数字とハイフンのみ、小文字
-- チケット番号はファイル名に含めない（レポート本文中にチケットシステムへのリンクを記載）
+- `TICKET-{number}`: チケット管理サービスのチケット番号。チケットがない場合は日付ベース（`TICKET-20260722`）で代替する
+- `{slug}`: タスクを簡潔に要約した英語フレーズ、ハイフン区切り、英数字とハイフンのみ、小文字
 
 ## 2.2 タスクレポートの作成
 

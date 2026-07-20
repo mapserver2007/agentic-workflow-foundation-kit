@@ -17,7 +17,7 @@
 
 - 格納場所: `reports/`（進行中） / `reports/archives/`（完了済み）
 - 命名規則: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
-- 例: `reports/2026-06-22-cancel-order-error-handling.md`
+- 例: `reports/TICKET-123-cancel-order-error-handling.md`
 
 ## クイックスタート
 
