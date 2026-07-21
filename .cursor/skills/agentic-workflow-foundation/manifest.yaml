@@ -1258,6 +1258,7 @@ outputs:
     required_sections:
       - "name: deep-thinking"
       - "## 内部フロー"
+      - "コンテキスト収集"
       - "## 応答の契約"
       - "表示しない内部情報"
   - path: .cursor/skills/deep-thinking/config.yaml
@@ -1284,6 +1285,7 @@ outputs:
     required_sections:
       - "Evidence Ledger"
       - "相補分析の視点指示"
+      - "プロジェクトコンテキスト"
   - path: .cursor/skills/deep-thinking/references/verification-flags.md
     template: skills/deep-thinking/references/verification-flags.md.template
     mode: render
