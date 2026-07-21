@@ -164,7 +164,7 @@ agentic-workflow-foundation-kit/
 | --- | --- |
 | [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{session_id}.md`）の作成・更新 |
 | [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive ゲート |
-| [`decisions-record`](.cursor/skills/decisions-record/SKILL.md) | ADR（`docs/DECISIONS.md`）の起票 |
+| [`decisions-record`](.cursor/skills/decisions-record/SKILL.md) | 設計判断記録（`docs/DECISIONS.md`）の起票 |
 | [`workflow-orchestrator`](.cursor/skills/workflow-orchestrator/SKILL.md) | 6 段階標準タスク実行ワークフロー（①〜⑥）の制御 |
 | [`requirement-analysis`](.cursor/skills/requirement-analysis/SKILL.md) | Step ①の要求正規化、3段階ガード、分析深度判定 |
 | [`maintenance-docs-workflow`](.cursor/skills/maintenance-docs-workflow/SKILL.md) | 起票キューから Domain 層 docs を反映する独立パイプライン |
@@ -193,7 +193,7 @@ agentic-workflow-foundation-kit/
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
-> 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の `pnpm run *` は tech stack 設計書から導出される **生成先プロジェクト向け contract** です。
+> 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の backend command（`pnpm run *`）は tech stack 設計書から導出される生成先プロジェクト向け contract です。AI・docs・gate scripts は `bin/quality-gate <subcmd>` を公開入口として使用し、backend command を直接実行しません。
 
 ## 生成ワークフロー
 
@@ -241,14 +241,20 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 # 生成
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 
-# 冪等性ドライラン
-python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py check
+# 冪等性ドライラン（wrapper 経由）
+bin/quality-gate check
 
-# 監査
-python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit
+# 監査（wrapper 経由）
+bin/quality-gate audit
+
+# kit 全自己検証（audit + foundation script tests）
+bin/quality-gate self
+
+# 下流プロジェクトの検証（build → lint → test）
+bin/quality-gate verify
 ```
 
-`agentic-workflow-engine/scripts/generate.py` と `audit.py` を直接呼ぶのは、エンジン単体の検証時だけです。通常の foundation 生成では `run_resolved_engine.py` が upstream metadata と root manifest overlay を解決してから engine を呼びます。
+`agentic-workflow-engine/scripts/generate.py` と `audit.py` を直接呼ぶのは、エンジン単体の検証時だけです。通常の foundation 生成では `run_resolved_engine.py` が upstream metadata と root manifest overlay を解決してから engine を呼びます。`bin/quality-gate` は公開入口であり、AI・docs・gate scripts はこの wrapper 経由で検証を実行します。
 
 ## 生成物
 
