@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""validate_dual_thinking.py の fixture テスト。
+"""validate_deep_thinking.py の fixture テスト。
 
 検査対象:
   - 有効設定 → PASS
-  - A/B 同一モデル → G-DT-MODEL-001
-  - 空モデル → G-DT-CONFIG-001
-  - 無効な再審予算（0 / 負 / 非整数） → G-DT-BUDGET-001
-  - 無効な停止方針 → G-DT-POLICY-001
-  - 実行部の必須キー欠落 → G-DT-CONFIG-001
+  - A/B 同一モデル → G-DEEP-MODEL-001
+  - 空モデル → G-DEEP-CONFIG-001
+  - 無効な再審予算（0 / 負 / 非整数） → G-DEEP-BUDGET-001
+  - 無効な停止方針 → G-DEEP-POLICY-001
+  - 実行部の必須キー欠落 → G-DEEP-CONFIG-001
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from validate_dual_thinking import validate  # noqa: E402
+from validate_deep_thinking import validate  # noqa: E402
 
 VALID_CONFIG = {
     "models": {
@@ -73,7 +73,7 @@ def test_valid_config():
 def test_same_model_fails():
     cfg = _with(**{"models.analyst_b": "composer-2.5-fast"})
     failures = validate(cfg)
-    assert "G-DT-MODEL-001" in _ids(failures), f"same model should trigger G-DT-MODEL-001: {failures}"
+    assert "G-DEEP-MODEL-001" in _ids(failures), f"same model should trigger G-DEEP-MODEL-001: {failures}"
 
 
 def test_same_model_allowed_when_not_required():
@@ -82,7 +82,7 @@ def test_same_model_allowed_when_not_required():
         "execution.require_distinct_models": False,
     })
     failures = validate(cfg)
-    assert "G-DT-MODEL-001" not in _ids(failures), (
+    assert "G-DEEP-MODEL-001" not in _ids(failures), (
         f"same model should be allowed when require_distinct_models=false: {failures}"
     )
 
@@ -90,65 +90,65 @@ def test_same_model_allowed_when_not_required():
 def test_empty_model_fails():
     cfg = _with(**{"models.analyst_a": ""})
     failures = validate(cfg)
-    assert "G-DT-CONFIG-001" in _ids(failures), f"empty model should trigger G-DT-CONFIG-001: {failures}"
+    assert "G-DEEP-CONFIG-001" in _ids(failures), f"empty model should trigger G-DEEP-CONFIG-001: {failures}"
 
 
 def test_missing_model_key_fails():
     cfg = _with(**{"models.analyst_b": _DELETE})
     failures = validate(cfg)
-    assert "G-DT-CONFIG-001" in _ids(failures)
+    assert "G-DEEP-CONFIG-001" in _ids(failures)
 
 
 def test_zero_budget_fails():
     cfg = _with(**{"execution.max_rounds": 0})
     failures = validate(cfg)
-    assert "G-DT-BUDGET-001" in _ids(failures), f"zero budget should trigger G-DT-BUDGET-001: {failures}"
+    assert "G-DEEP-BUDGET-001" in _ids(failures), f"zero budget should trigger G-DEEP-BUDGET-001: {failures}"
 
 
 def test_negative_budget_fails():
     cfg = _with(**{"execution.max_rebuttal_turns_per_issue": -1})
     failures = validate(cfg)
-    assert "G-DT-BUDGET-001" in _ids(failures)
+    assert "G-DEEP-BUDGET-001" in _ids(failures)
 
 
 def test_string_budget_fails():
     cfg = _with(**{"execution.max_issues_per_round": "abc"})
     failures = validate(cfg)
-    assert "G-DT-BUDGET-001" in _ids(failures)
+    assert "G-DEEP-BUDGET-001" in _ids(failures)
 
 
 def test_invalid_model_unavailable_fails():
     cfg = _with(**{"execution.model_unavailable": "FALLBACK"})
     failures = validate(cfg)
-    assert "G-DT-POLICY-001" in _ids(failures), (
-        f"invalid model_unavailable should trigger G-DT-POLICY-001: {failures}"
+    assert "G-DEEP-POLICY-001" in _ids(failures), (
+        f"invalid model_unavailable should trigger G-DEEP-POLICY-001: {failures}"
     )
 
 
 def test_invalid_stop_when_fails():
     cfg = _with(**{"execution.stop_when": "NEVER"})
     failures = validate(cfg)
-    assert "G-DT-POLICY-001" in _ids(failures)
+    assert "G-DEEP-POLICY-001" in _ids(failures)
 
 
 def test_missing_execution_key_fails():
     cfg = _with(**{"execution.stop_when": _DELETE})
     failures = validate(cfg)
-    assert "G-DT-CONFIG-001" in _ids(failures)
+    assert "G-DEEP-CONFIG-001" in _ids(failures)
 
 
 def test_missing_models_section():
     cfg = dict(VALID_CONFIG)
     del cfg["models"]
     failures = validate(cfg)
-    assert "G-DT-CONFIG-001" in _ids(failures)
+    assert "G-DEEP-CONFIG-001" in _ids(failures)
 
 
 def test_missing_execution_section():
     cfg = dict(VALID_CONFIG)
     del cfg["execution"]
     failures = validate(cfg)
-    assert "G-DT-CONFIG-001" in _ids(failures)
+    assert "G-DEEP-CONFIG-001" in _ids(failures)
 
 
 def main() -> int:
@@ -180,7 +180,7 @@ def main() -> int:
             print(f"  ERROR: {t.__name__}: {e}", file=sys.stderr)
             failed += 1
 
-    print(f"[test_validate_dual_thinking] {passed}/{passed + failed} passed")
+    print(f"[test_validate_deep_thinking] {passed}/{passed + failed} passed")
     return 0 if failed == 0 else 1
 
 

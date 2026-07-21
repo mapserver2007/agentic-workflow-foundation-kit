@@ -220,7 +220,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
 | ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
 
-- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `dual_thinking`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `dual_thinking` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`dual_thinking` のモデル設定は有効化後に別途 1 論点で確認する。
+- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`deep_thinking` のモデル設定は有効化後に別途 1 論点で確認する。
 
   **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
      - Yes → 以下を固定値で一括設定する
@@ -232,9 +232,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
        - `agent_workflow.orchestrator_skill: true` → workflow-orchestrator スキルを生成
        - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
        - `cross_repo_knowledge.enabled: true` → cross-repository-knowledge-link スキルと `bin/cross-repo-sync-safe` を生成
-       - `dual_thinking.enabled: true` → dual-thinking スキルを生成（続けてモデル設定を 1 問で確認する）
-       - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit / dual-thinking 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.orchestrator_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `dual_thinking.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / workflow-orchestrator スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / dual-thinking スキルを生成しない
+       - `deep_thinking.enabled: true` → deep-thinking スキルを生成（続けてモデル設定を 1 問で確認する）
+       - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit / deep-thinking 個別設定の個別質問は行わない
+     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.orchestrator_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `deep_thinking.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / workflow-orchestrator スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / deep-thinking スキルを生成しない
      - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
 
 - `context_budget`（最小コンテキストウィンドウ）: 使用するモデルの最小コンテキストウィンドウを PO に確認する。複数モデル併用時は最小のものを選ぶ。回答は `project.context_budget.min_context_window_tokens` に記録する。
@@ -245,17 +245,17 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
   - `その他（カスタム入力）` — 数値をトークン単位で入力 → 入力値を `min_context_window_tokens` に設定
   - Phase 1.55 で `resolve_budget_thresholds.py` がこの値から `framework.budget_thresholds` を決定論的に算出する
 
-- `dual_thinking.models`（多角評価スキルの A/B モデル設定）: 推奨スキル一括確認で `dual_thinking.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。C はスキルを呼び出す親エージェントであり、そのモデルはスキル呼び出し時に選択するため、この設定対象に含めない。
+- `deep_thinking.models`（多角評価スキルの A/B モデル設定）: 推奨スキル一括確認で `deep_thinking.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。C はスキルを呼び出す親エージェントであり、そのモデルはスキル呼び出し時に選択するため、この設定対象に含めない。
 
   **多角評価 A/B モデル設定確認**: 「A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C（裁定者）はスキル呼び出し時に選択した親エージェントのモデルで実行されます。」
      - デフォルト（推奨）: `A: composer-2.5-fast` / `B: gpt-5.6-terra-medium`（GPT-5.6 Terra）
      - AskQuestion の選択肢は以下の固定構成で提示する:
        - A（推奨）: A=`composer-2.5-fast` / B=`gpt-5.6-terra-medium`（GPT-5.6 Terra）
        - B: その他（カスタム入力）
-     - 推奨を選択 → `manifest.yaml > dual_thinking.models` にデフォルト値を設定する
-     - カスタム入力 → PO が指定した値を `dual_thinking.models.{analyst_a,analyst_b}` に設定する。利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
+     - 推奨を選択 → `manifest.yaml > deep_thinking.models` にデフォルト値を設定する
+     - カスタム入力 → PO が指定した値を `deep_thinking.models.{analyst_a,analyst_b}` に設定する。利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
      - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
-     - `dual_thinking.enabled: false`（推奨スキル一括確認で No）の場合はこの質問をスキップする
+     - `deep_thinking.enabled: false`（推奨スキル一括確認で No）の場合はこの質問をスキップする
 
 **(2) 自動導出（質問不要）**
 
@@ -271,7 +271,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 | --- | --- | --- |
 | A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
 | B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `session-start-gate.sh` / `guard-git-write.sh` / 軽量検査ID（`G-{GATE}-{CAT}-{NNN}`） | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
-| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル / dual-thinking（A/B 並列分析 + C 独立裁定） | engine / model resolver による異モデル強制 |
+| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル / deep-thinking（A/B 並列分析 + C 独立裁定） | engine / model resolver による異モデル強制 |
 | D 段階的圧縮 | `templates required_sections` / handoff manifest / Documentation Navigation / 追跡ドキュメント完了時削除 | 提案書 7 ステップパイプライン |
 | E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
 

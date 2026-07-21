@@ -33,7 +33,7 @@ docs-first で仕様、アーキテクチャ、API、データモデル、ワー
 
 ### Gate C — 実現性・コード整合性
 
-コード調査後に以下を検査する。**standard 経路と deep 経路の両方で親が直接実施する**（standard 経路では調査 Subagent 完走後、deep 経路では dual-thinking 完了後に親が実施）。
+コード調査後に以下を検査する。**standard 経路と deep 経路の両方で親が直接実施する**（standard 経路では調査 Subagent 完走後、deep 経路では deep-thinking 完了後に親が実施）。
 
 - 変更箇所
 - 依存関係
@@ -49,9 +49,9 @@ docs-first で仕様、アーキテクチャ、API、データモデル、ワー
 | 経路 | Gate A | Gate B | Gate C | 備考 |
 | --- | --- | --- | --- | --- |
 | standard | 実施 | 実施 | 調査 Subagent 後に親が実施 | 標準フロー |
-| deep（即時） | 実施 | 実施 | dual-thinking 後に親が実施 | Dual → GateC → Memo |
+| deep（即時） | 実施 | 実施 | deep-thinking 後に親が実施 | Dual → GateC → Memo |
 | deferred → standard | 実施 | 実施 | 調査 Subagent 後に親が実施 | 事後再判定で standard 確定 |
-| deferred → deep | 実施 | 実施 | dual-thinking 後に親が実施 | 事後再判定で deep 確定 |
+| deferred → deep | 実施 | 実施 | deep-thinking 後に親が実施 | 事後再判定で deep 確定 |
 
 ---
 

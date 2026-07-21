@@ -5,7 +5,7 @@
 
 ## 概要
 
-Step ① の docs-first（§1.2）完了後、main agent がリスク信号を評価し、条件合致時に `dual-thinking` を自動起動する。dual-thinking は ① の代替ではなく補助であり、main agent が要求正規化・証跡インベントリ作成・退出ゲート判定を一貫して担う。
+Step ① の docs-first（§1.2）完了後、main agent がリスク信号を評価し、条件合致時に `deep-thinking` を自動起動する。deep-thinking は ① の代替ではなく補助であり、main agent が要求正規化・証跡インベントリ作成・退出ゲート判定を一貫して担う。
 
 ---
 
@@ -14,7 +14,7 @@ Step ① の docs-first（§1.2）完了後、main agent がリスク信号を�
 | 値 | 意味 | 後続フロー |
 |---|---|---|
 | `skipped` | 全信号なし、または起動失敗後の skip | 通常の Step ① worker を dispatch |
-| `invoked` | 即時起動条件に合致 | orchestrator が C として dual-thinking を直接実行 |
+| `invoked` | 即時起動条件に合致 | orchestrator が C として deep-thinking を直接実行 |
 | `deferred` | コード調査後に再判定が必要 | 通常の Step ① worker を dispatch → worker 完走後に orchestrator が再判定 |
 
 `skipped` の場合は理由を 1 行で記録する（例: `skipped: 信号なし` / `skipped: model_unavailable` / `skipped: 再判定不合致`）。
@@ -67,7 +67,7 @@ Step ① の docs-first（§1.2）完了後、main agent がリスク信号を�
 1. triage が `deferred` を返す → orchestrator は通常の Step ① worker を dispatch（`skipped` と同じ経路）
 2. worker は `triage_result: deferred` のまま §1.4〜§1.7 を完走し、通常の investigation memo を返す
 3. orchestrator が memo body（根本原因候補数・影響コンポーネント数・非機能要件の言及等）からスコア起動条件を事後評価する
-4. 条件合致時: orchestrator が C として dual-thinking を起動し、worker の調査結果を含むブリーフで A/B 分析 → investigation memo を上書き
+4. 条件合致時: orchestrator が C として deep-thinking を起動し、worker の調査結果を含むブリーフで A/B 分析 → investigation memo を上書き
 5. 条件不合致時: `deferred` → `skipped`（理由: 再判定不合致）に遷移し、worker の memo をそのまま ② へ引き継ぐ
 
 ### 重複防止規則
@@ -80,7 +80,7 @@ Step ① の docs-first（§1.2）完了後、main agent がリスク信号を�
 
 | 初期状態 | イベント | 遷移先 |
 |---|---|---|
-| `deferred` | worker 完走 + スコア条件合致 | `invoked`（orchestrator が C として dual-thinking 起動） |
+| `deferred` | worker 完走 + スコア条件合致 | `invoked`（orchestrator が C として deep-thinking 起動） |
 | `deferred` | worker 完走 + スコア条件不合致 | `skipped`（理由: 再判定不合致） |
 | `deferred` | Step ① 完了時に再判定未実施 | `skipped`（理由: 再判定なし） |
 | `deferred` | handoff でセッション跨ぎ | `deferred` 維持（次セッションで再判定） |
@@ -92,7 +92,7 @@ Worker Contract の変更は不要。worker は `deferred` を意識せず通常
 
 ## 失敗時の graceful skip
 
-ワークフロー自動起動時の失敗は graceful skip とする。これは dual-thinking 本体の ABORT ポリシー（ユーザー明示依頼時）とは区別される。トリアージは ① の補助であり、失敗で調査全体がブロックされるべきではない。
+ワークフロー自動起動時の失敗は graceful skip とする。これは deep-thinking 本体の ABORT ポリシー（ユーザー明示依頼時）とは区別される。トリアージは ① の補助であり、失敗で調査全体がブロックされるべきではない。
 
 ### 失敗種別ごとの分岐
 
@@ -123,7 +123,7 @@ Worker Contract の変更は不要。worker は `deferred` を意識せず通常
 
 ---
 
-## dual-thinking に渡すブリーフ（Phase 2b: orchestrator-as-C）
+## deep-thinking に渡すブリーフ（Phase 2b: orchestrator-as-C）
 
 triage が `invoked` を返した場合、orchestrator が C として以下のブリーフを作成し A/B を起動する。
 
@@ -134,7 +134,7 @@ triage が `invoked` を返した場合、orchestrator が C として以下の�
 - **証跡インベントリ**（参照すべき docs / コードパス）
 - **検討すべき争点**（明示的に限定）
 
-orchestrator は暫定結論を渡さない（dual-thinking 内部フロー Phase 1 の契約通り）。
+orchestrator は暫定結論を渡さない（deep-thinking 内部フロー Phase 1 の契約通り）。
 
 ### A/B 結果の統合
 

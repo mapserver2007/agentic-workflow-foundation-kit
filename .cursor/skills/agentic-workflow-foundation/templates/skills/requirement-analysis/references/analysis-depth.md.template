@@ -54,8 +54,8 @@
 
 ## deep 起動の前提条件と失敗時動作
 
-- **`dual_thinking.enabled: true`**: deep 経路で dual-thinking を起動する
-- **`dual_thinking.enabled: false`**: deep 判定されても `standard` に降格し、ユーザーに「このタスクは dual-thinking による深い分析が推奨されますが、dual-thinking が無効のため standard 分析で続行します」と警告する
+- **`deep_thinking.enabled: true`**: deep 経路で deep-thinking を起動する
+- **`deep_thinking.enabled: false`**: deep 判定されても `standard` に降格し、ユーザーに「このタスクは deep-thinking による深い分析が推奨されますが、deep-thinking が無効のため standard 分析で続行します」と警告する
 - **deep 起動失敗**（モデル利用不可等）: `gate_result: INCOMPLETE` とし、毎回ユーザーに継続可否を確認する。承認された場合は standard で続行し `analysis_depth: standard` とする。拒否された場合は `status: blocked` で終了する
 
 ---

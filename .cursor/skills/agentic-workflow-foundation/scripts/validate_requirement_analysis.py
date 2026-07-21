@@ -6,7 +6,7 @@
   G-RA-DEPTH-001  : analysis_depth 値域が standard | deep
   G-RA-GATE-001   : Gate A/B/C 定義と Issue Ledger type enum の存在（SKILL.md 参照で確認）
   G-RA-EXIT-001   : blocking_open_issues ゼロの退出条件定義（SKILL.md 参照で確認）
-  G-RA-DT-001     : dual_thinking.enabled: true 時のみ deep 経路利用可
+  G-RA-DEEP-001     : deep_thinking.enabled: true 時のみ deep 経路利用可
   G-RA-LEGACY-001 : workflow-triage 文字列が requirement-analysis テンプレートに含まれない
   G-RA-HIC-001    : high_impact_categories が定義されている
 
@@ -136,11 +136,11 @@ def validate_legacy_reference() -> list[tuple[str, str]]:
     return failures
 
 
-def validate_dual_thinking_sot_duplication() -> list[tuple[str, str]]:
-    """dual-thinking config に triage が残存かつ requirement-analysis が有効の場合を FAIL とする。"""
+def validate_deep_thinking_sot_duplication() -> list[tuple[str, str]]:
+    """deep-thinking config に triage が残存かつ requirement-analysis が有効の場合を FAIL とする。"""
     failures: list[tuple[str, str]] = []
     dt_config_path = os.path.join(
-        ROOT, ".cursor", "skills", "dual-thinking", "config.yaml",
+        ROOT, ".cursor", "skills", "deep-thinking", "config.yaml",
     )
     ra_config_path = os.path.join(
         ROOT, ".cursor", "skills", "requirement-analysis", "config.yaml",
@@ -152,7 +152,7 @@ def validate_dual_thinking_sot_duplication() -> list[tuple[str, str]]:
     if dt_config and "triage" in dt_config:
         failures.append((
             "G-RA-LEGACY-001",
-            "dual-thinking/config.yaml に 'triage' セクションが残存しています。"
+            "deep-thinking/config.yaml に 'triage' セクションが残存しています。"
             " requirement_analysis 有効時は手動削除してください（SoT 二重化）",
         ))
     return failures
@@ -170,7 +170,7 @@ def run(config_path: str) -> int:
 
     failures = validate(config)
     failures.extend(validate_legacy_reference())
-    failures.extend(validate_dual_thinking_sot_duplication())
+    failures.extend(validate_deep_thinking_sot_duplication())
 
     if failures:
         print(f"[validate_requirement_analysis] FAIL: {len(failures)} 件の契約違反")

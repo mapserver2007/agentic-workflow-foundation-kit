@@ -56,8 +56,8 @@ C が A/B の分析から再審対象を識別し、匿名化して配布する�
 
 1. A/B に**同時に**同一の争点カードを配布する
 2. A/B は互いの応答を見ない
-3. 1ラウンドあたりの争点カード配布数: `{{dual_thinking.execution.max_issues_per_round}}` 件まで。影響度順に選定する
-4. 争点ごとに `{{dual_thinking.execution.max_rebuttal_turns_per_issue}}` 回まで
+3. 1ラウンドあたりの争点カード配布数: `{{deep_thinking.execution.max_issues_per_round}}` 件まで。影響度順に選定する
+4. 争点ごとに `{{deep_thinking.execution.max_rebuttal_turns_per_issue}}` 回まで
 5. 同一争点に追加の原子的な問いで上限を迂回することは禁止する
 6. 相手の結論、役割、モデル名を開示する自由討論、再投票、複数往復は行わない
 

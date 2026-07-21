@@ -10,16 +10,16 @@
 | ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 正規化済み要求のみ返却。envelope 書込みなし |
 | ① | 深度判定 | subagent dispatch | requirement_analysis.models.depth_triage | generalPurpose | depth 結果のみ返却。envelope 書込みなし |
 | ① | standard 調査 | subagent dispatch | requirement_analysis.models.standard_investigation | generalPurpose | step envelope body（Investigation Memo） |
-| ① | deep 分析 | 親が dual-thinking 起動 | dual-thinking config が SoT | — | step envelope body（Investigation Memo） |
+| ① | deep 分析 | 親が deep-thinking 起動 | deep-thinking config が SoT | — | step envelope body（Investigation Memo） |
 | ① | Gate 不合格 | 親が質問 | — | — | Issue Ledger 更新 |
-| ① | Gate C 検査 | 親直接実行 | — | — | standard: 調査 Subagent 完走後 / deep: dual-thinking 完了後 |
+| ① | Gate C 検査 | 親直接実行 | — | — | standard: 調査 Subagent 完走後 / deep: deep-thinking 完了後 |
 | ② | — | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
 | ③ | — | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。commit / push 禁止 |
 | ④ | — | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
 | ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 
-> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は envelope を書かない。最終 envelope は親が書く。Subagent から dual-thinking を入れ子起動しない。
+> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は envelope を書かない。最終 envelope は親が書く。Subagent から deep-thinking を入れ子起動しない。
 
 {{else}}
 | Step | モード | config キー | subagent_type | 書込み責務境界 |
@@ -72,16 +72,16 @@
 
 {{#if requirement_analysis.enabled}}
 - `analysis_depth: standard`: requirement-analysis/config.yaml > models.standard_investigation が SoT
-- `analysis_depth: deep`: dual-thinking config.yaml が SoT → standard_investigation は不使用
+- `analysis_depth: deep`: deep-thinking config.yaml が SoT → standard_investigation は不使用
 - `deferred`: standard 調査を実行 → 完走後に親がスコア起動条件を事後判定して standard/deep を確定
 {{else}}
-- triage_result = `invoked`: dual-thinking config.yaml が SoT → step1_investigation は不使用
+- triage_result = `invoked`: deep-thinking config.yaml が SoT → step1_investigation は不使用
 - triage_result = `skipped` / `deferred`: step1_investigation が SoT
-- `deferred` 再判定で起動: dual-thinking config に切替
+- `deferred` 再判定で起動: deep-thinking config に切替
 {{/if}}
 
 ## モデル利用不可時の挙動
 
 指定モデルが利用できない場合は、worker 起動前に親が **ABORT** する。フォールバックは行わない。ユーザーに `config.yaml` の該当モデルスラグを修正するよう案内して中止する。起動済み worker の実行時致命エラーは Worker Contract の `status: fatal` として扱う。
 
-**例外（Step① deep 経路のみ）**: dual-thinking モデル利用不可の場合は、`requirement-analysis/references/analysis-depth.md` の「deep 起動の前提条件と失敗時動作」に従い、親がユーザーに継続可否を確認する。承認時は standard へフォールバックし、拒否時は `status: blocked` とする。
+**例外（Step① deep 経路のみ）**: deep-thinking モデル利用不可の場合は、`requirement-analysis/references/analysis-depth.md` の「deep 起動の前提条件と失敗時動作」に従い、親がユーザーに継続可否を確認する。承認時は standard へフォールバックし、拒否時は `status: blocked` とする。

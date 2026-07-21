@@ -1,6 +1,6 @@
 # Investigation Memo 契約
 
-> Step ② 向け共通 Investigation Memo の構造定義。standard 調査 Subagent と dual-thinking は同一構造を出力する。
+> Step ② 向け共通 Investigation Memo の構造定義。standard 調査 Subagent と deep-thinking は同一構造を出力する。
 
 ## 必須セクション
 
@@ -8,7 +8,7 @@ standard 経路・deep 経路のいずれでも、Investigation Memo は以下�
 
 1. `## 正規化済み要求` — Gate A 通過後の構造化された要求記述
 2. `## 確定済み受入条件` — 具体的な受入条件のリスト（テスト可能な形式）
-3. `## 根本原因分析 / 実装方針候補` — 通常: worker 自身の分析 / dual-thinking: C が A/B の Evidence Ledger を統合した分析
+3. `## 根本原因分析 / 実装方針候補` — 通常: worker 自身の分析 / deep-thinking: C が A/B の Evidence Ledger を統合した分析
 4. `## 争点と判断根拠` — 検討した選択肢と採用/却下理由
 5. `## 影響範囲` — 変更対象ファイル・コンポーネント・ユーザー影響
 6. `## 変更対象ファイル` — 具体的なファイルパスと変更概要のリスト
