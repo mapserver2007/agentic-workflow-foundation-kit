@@ -64,6 +64,11 @@ def test_no_alternatives():
     assert rc == 1, f"no alternatives draft should FAIL (got exit {rc})"
 
 
+def test_wrong_heading_id():
+    rc = _run_draft("wrong-heading-id-draft.md", "ADR-0001")
+    assert rc == 1, f"wrong heading ID draft should FAIL (got exit {rc})"
+
+
 def test_standard_no_adrs():
     rc = _run_standard()
     assert rc == 0, f"standard mode with no ADRs should PASS (got exit {rc})"
@@ -76,6 +81,7 @@ def main() -> int:
         test_wrong_id,
         test_wrong_status,
         test_no_alternatives,
+        test_wrong_heading_id,
         test_standard_no_adrs,
     ]
     passed = 0

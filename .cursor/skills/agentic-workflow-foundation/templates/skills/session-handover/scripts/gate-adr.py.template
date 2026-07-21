@@ -137,13 +137,19 @@ def check_draft(draft_path: str, expected_id: str = None) -> dict:
         results["checks"].append({"id": "G-ADR-DRAFT-SINGLE-001", "status": "PASS",
                                    "message": "ADR 見出し 1 件"})
 
-    # G-ADR-DRAFT-ID-001: 期待 ID 一致
+    # G-ADR-DRAFT-ID-001: 期待 ID 一致（front matter + 本文見出し）
     if expected_id:
         prov_id = fm.get("provisional_id", "")
+        header_match = re.search(r"^## (ADR-\d{4})", body, re.MULTILINE)
+        header_id = header_match.group(1) if header_match else None
         if prov_id != expected_id:
             results["fail"] = True
             results["checks"].append({"id": "G-ADR-DRAFT-ID-001", "status": "FAIL",
                                        "message": f"provisional_id '{prov_id}' != 期待 '{expected_id}'"})
+        elif header_id and header_id != expected_id:
+            results["fail"] = True
+            results["checks"].append({"id": "G-ADR-DRAFT-ID-001", "status": "FAIL",
+                                       "message": f"本文見出し '{header_id}' != 期待 '{expected_id}'"})
         else:
             results["checks"].append({"id": "G-ADR-DRAFT-ID-001", "status": "PASS",
                                        "message": f"provisional_id: {prov_id}"})
