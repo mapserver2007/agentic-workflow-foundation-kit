@@ -385,6 +385,30 @@ def _cleanup_legacy_skill_dir() -> int:
     return 0
 
 
+def _cleanup_legacy_decisions_record() -> int:
+    """廃止された .cursor/skills/decisions-record/ を安全に削除する。"""
+    legacy_dir = os.path.join(ROOT, ".cursor", "skills", "decisions-record")
+    if not os.path.isdir(legacy_dir):
+        return 0
+    entries = os.listdir(legacy_dir)
+    if not entries:
+        shutil.rmtree(legacy_dir)
+        print("[cleanup] .cursor/skills/decisions-record/（空）を削除")
+        return 0
+    if set(entries) != {"SKILL.md"}:
+        print(f"FATAL: decisions-record/ に想定外のファイル: {entries}", file=sys.stderr)
+        return 2
+    skill_path = os.path.join(legacy_dir, "SKILL.md")
+    with open(skill_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "agentic-workflow-foundation" not in content:
+        print("FATAL: decisions-record/SKILL.md に生成マーカーなし", file=sys.stderr)
+        return 2
+    shutil.rmtree(legacy_dir)
+    print("[cleanup] .cursor/skills/decisions-record/ を削除")
+    return 0
+
+
 _LEGACY_WORKFLOW_DOCS = {
     "02-task-decision.md": "# ①退出ゲート — タスク確定の判定",
     "03-report-creation.md": "# ③ タスクレポートの作成",
@@ -696,6 +720,9 @@ def main(argv=None) -> int:
                 if rc != 0:
                     return rc
                 rc = _cleanup_legacy_skill_dir()
+                if rc != 0:
+                    return rc
+                rc = _cleanup_legacy_decisions_record()
                 if rc != 0:
                     return rc
                 rc = _cleanup_legacy_workflow_triage(manifest)

@@ -28,7 +28,7 @@
 - **小さく始める**: 最小限の変更で目的を達成
 - **段階的に実装**: 一度に多くの変更をしない
 - **AGENTS.md > Boundaries の遵守**: Always / Ask First / Never を必ず確認
-- **設計判断は ADR へ**: [docs/DECISIONS.md](../../DECISIONS.md) の「設計次元 D-*」基準に該当する判断は ADR エントリ化
+- **設計判断は ADR へ**: [docs/DECISIONS.md](../../DECISIONS.md) の「設計次元 D-*」基準に該当する判断は ADR worker dispatch → 草案ゲート → 承認 → 確定追記のフローでエントリ化（直接追記しない）
 
 ## テスト段階
 

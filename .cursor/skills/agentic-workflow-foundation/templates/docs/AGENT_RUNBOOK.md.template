@@ -45,7 +45,7 @@ AGENTS.md 読込
 ### 2.2 セッション終了
 ```
 QUALITY_GATE.md §1 コードゲート実行
-設計判断が発生 → docs/DECISIONS.md に ADR 追記（ADR-NNNN）
+設計判断が発生 → ADR worker dispatch → 草案ゲート → ユーザー承認 → docs/DECISIONS.md に確定追記（ADR-NNNN）
 失敗の学びが発生 → docs/GOTCHAS.md に直接追記（検知時即追記 / Session Protocol 手順4 で最終確認）
 Context Budget Yellow/Red → .cursor/.session/handoff-{session_id}.md へ manifest 書き出し
 ```
@@ -80,7 +80,7 @@ flowchart LR
 | --- | --- | --- |
 | セッション再開 | 追跡ドキュメント（{{project.tracking_artifact}}） | 最終チェック位置から続行 |
 | 品質ゲート失敗 | `docs/QUALITY_GATE.md > §2 例外承認フロー` | ユーザー承認 → 修正 or 例外起票 |
-| 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR 起票（Status: Proposed） |
+| 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR worker dispatch → 草案ゲート → ユーザー承認 → 確定追記（Status: Proposed → Accepted） |
 | 同じ失敗を繰り返した | `docs/GOTCHAS.md` | 直接追記 → Evolve-A（個別修復{{#if agent_workflow.maintenance_gotchas.enabled}}: `maintenance-gotchas-workflow`{{/if}}） / Evolve-B（累積5件以上で構造リファクタリング） |
 | 基盤ファイルが設計書とずれた | `bin/quality-gate self` | drift 検出 → 再生成 or manifest 修正 |
 

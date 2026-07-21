@@ -8,7 +8,7 @@ description: >-
   .cursor/rules/*.mdc / .cursor/hooks/* / .cursor/hooks.json /
   docs/AGENT_RUNBOOK.md / DECISIONS.md / GOTCHAS.md / QUALITY_GATE.md /
   CONTEXT_BUDGET.md / docs/tech-stack.md / session-planning /
-  session-handover / decisions-record / .gitignore / .cursorignore）を
+  session-handover / .gitignore / .cursorignore）を
   冪等・再現的に生成/メンテナンスする。「Agentic 基盤を生成して」
   「基盤ファイルを作って/更新して」「techstack を取り込んで再生成して」
   「session 系スキルも含めて整備して」「agentic-workflow-foundation スキル」
@@ -59,7 +59,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
-- **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `decisions-record` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
+- **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
 
@@ -405,7 +405,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
 - `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は基盤の**必須出力**として常に `bin/` に生成し実行ビットを付与する（ADR-0001）。`code_review.enabled` が `true` の場合は追加で `bin/github-pr-{reviews,comment,reply}-safe` も生成する。`.cursorignore` のマーカーブロックに `bin/` を含めて AI アクセスを遮断する。GitHub App が未設定の場合、wrapper は exit 2（致命的エラー）で終了する。
-- `session-planning` / `session-handover` / `decisions-record` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
+- `session-planning` / `session-handover` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
 
 ### Phase 3: 監査ゲート
 

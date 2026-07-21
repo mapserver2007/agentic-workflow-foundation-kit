@@ -136,6 +136,25 @@ def check_artifact(filepath: str, json_mode: bool = False):
         })
         fail = True
 
+    # --- blocked: adr_required 時は base_commit_sha + decision_alternatives 2件以上必須 ---
+    if step == "step3" and status == "blocked" and fm.get("reason") == "adr_required":
+        if "base_commit_sha" not in fm or not fm["base_commit_sha"]:
+            results.append({
+                "id": "G-ARTIFACT-ADR-SHA-001",
+                "level": "FAIL",
+                "msg": "blocked: adr_required では base_commit_sha が必須です",
+            })
+            fail = True
+        alts = fm.get("decision_alternatives")
+        if not isinstance(alts, list) or len(alts) < 2:
+            alt_count = len(alts) if isinstance(alts, list) else 0
+            results.append({
+                "id": "G-ARTIFACT-ADR-ALTS-001",
+                "level": "FAIL",
+                "msg": f"blocked: adr_required では decision_alternatives 2件以上必須（実際: {alt_count}件）",
+            })
+            fail = True
+
     # --- base_commit_sha 検証（step3） ---
     if step == "step3" and "base_commit_sha" in fm:
         sha = fm["base_commit_sha"]
