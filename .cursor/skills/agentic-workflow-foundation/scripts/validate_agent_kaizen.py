@@ -83,7 +83,11 @@ def validate(config: dict) -> list[tuple[str, str]]:
 
     score_threshold = execution.get("score_threshold")
     if score_threshold is not None:
-        if not isinstance(score_threshold, int) or score_threshold < 1:
+        if (
+            isinstance(score_threshold, bool)
+            or not isinstance(score_threshold, int)
+            or score_threshold < 1
+        ):
             failures.append((
                 "G-AK-THRESHOLD-001",
                 f"execution.score_threshold は正の整数が必要（現在値: {score_threshold!r}）",

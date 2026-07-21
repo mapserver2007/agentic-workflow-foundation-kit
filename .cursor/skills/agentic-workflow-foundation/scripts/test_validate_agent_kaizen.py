@@ -6,7 +6,7 @@
   - 空モデル → G-AK-CONFIG-001
   - models セクション欠落 → G-AK-CONFIG-001
   - execution セクション欠落 → G-AK-CONFIG-001
-  - score_threshold 不正（0 / 負 / 非整数） → G-AK-THRESHOLD-001
+  - score_threshold 不正（0 / 負 / 非整数 / bool） → G-AK-THRESHOLD-001
   - model_unavailable 不正 → G-AK-POLICY-001
   - high_impact_perspectives 空 → G-AK-PERSP-001
   - high_impact_perspectives 不正 ID → G-AK-PERSP-001
@@ -117,6 +117,22 @@ def test_string_threshold_fails():
     assert "G-AK-THRESHOLD-001" in _ids(failures)
 
 
+def test_bool_true_threshold_fails():
+    cfg = _with(**{"execution.score_threshold": True})
+    failures = validate(cfg)
+    assert "G-AK-THRESHOLD-001" in _ids(failures), (
+        f"bool True should trigger G-AK-THRESHOLD-001: {failures}"
+    )
+
+
+def test_bool_false_threshold_fails():
+    cfg = _with(**{"execution.score_threshold": False})
+    failures = validate(cfg)
+    assert "G-AK-THRESHOLD-001" in _ids(failures), (
+        f"bool False should trigger G-AK-THRESHOLD-001: {failures}"
+    )
+
+
 def test_invalid_model_unavailable_fails():
     cfg = _with(**{"execution.model_unavailable": "FALLBACK"})
     failures = validate(cfg)
@@ -173,6 +189,8 @@ def main() -> int:
         test_zero_threshold_fails,
         test_negative_threshold_fails,
         test_string_threshold_fails,
+        test_bool_true_threshold_fails,
+        test_bool_false_threshold_fails,
         test_invalid_model_unavailable_fails,
         test_empty_perspectives_fails,
         test_missing_perspectives_fails,
