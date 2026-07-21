@@ -20,7 +20,7 @@ TESTS_IN_ORDER = [
     "test_engine_readonly.py",
     "test_resolve_quality_gate.py",
     "test_resolve_budget_thresholds.py",
-    "test_validate_dual_thinking.py",
+    "test_validate_deep_thinking.py",
     "test_validate_agent_kaizen.py",
     "test_worker_contract.py",
 ]

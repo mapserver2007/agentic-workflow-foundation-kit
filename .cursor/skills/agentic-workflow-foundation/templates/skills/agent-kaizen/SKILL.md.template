@@ -35,7 +35,7 @@ kit 本体、生成チェーン、Hook・品質ゲート、Domain 層 docs の�
    - Deterministic: inventory・リンク、SoT チェーン双方向、公式 audit、既存テスト、権限・shebang・余剰ファイル・marker block を照合する。
    - Deterministic 完了後、Subagent（`config.yaml > models.depth_triage`）で [analysis-depth.md](references/analysis-depth.md) に従い深度を判定する。
    - `standard`: Subagent（`config.yaml > models.standard_analysis`）が全 18 観点を意味的に照合する。
-   - `deep`: 親が [dual-thinking](../dual-thinking/SKILL.md) を C 役として起動し、A/B の独立分析を統合する。
+   - `deep`: 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動し、A/B の独立分析を統合する。
    - `deferred`: standard 完走後に親がスコア条件を再判定し、該当時は deep へ遷移する。
 3. **Finding 統合**
    - [severity-criteria.md](references/severity-criteria.md) の採用基準 5 条件をすべて満たす候補だけを採用し、Critical / High / Medium と Track A〜D を付与する。

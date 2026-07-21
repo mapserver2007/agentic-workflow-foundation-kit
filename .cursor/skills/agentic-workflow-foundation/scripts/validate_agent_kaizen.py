@@ -10,7 +10,7 @@
 対象外（実行時にのみ観測可能で静的検査では保証不能）:
   - 実モデル割当（Cursor Subagent API が返さない）
   - Subagent が検査対象を変更しないこと（プロセス間隔離を外部観測できない）
-  - dual-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
+  - deep-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
 
 exit code:
   0 = 全検査 PASS

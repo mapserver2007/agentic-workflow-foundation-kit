@@ -1,39 +1,39 @@
-# dual-thinking 実行設定
+# deep-thinking 実行設定
 #
 # このファイルを直接編集して A/B のモデルや実行パラメータを変更できます。
 # mode: seed のため、再生成時に既存の編集内容は上書きされません。
 
 models:
   # A（推進視点）: readonly subagent
-  analyst_a: "{{#if dual_thinking.models.analyst_a}}{{dual_thinking.models.analyst_a}}{{else}}composer-2.5-fast{{/if}}"
+  analyst_a: "{{#if deep_thinking.models.analyst_a}}{{deep_thinking.models.analyst_a}}{{else}}composer-2.5-fast{{/if}}"
   # B（反証視点）: readonly subagent
-  analyst_b: "{{#if dual_thinking.models.analyst_b}}{{dual_thinking.models.analyst_b}}{{else}}gpt-5.6-terra-medium{{/if}}"
+  analyst_b: "{{#if deep_thinking.models.analyst_b}}{{deep_thinking.models.analyst_b}}{{else}}gpt-5.6-terra-medium{{/if}}"
 
 execution:
   # true の場合、A/B を別プロセスとして起動する
-  require_distinct_agents: {{#if dual_thinking.execution.require_distinct_agents}}{{dual_thinking.execution.require_distinct_agents}}{{else}}true{{/if}}
+  require_distinct_agents: {{#if deep_thinking.execution.require_distinct_agents}}{{deep_thinking.execution.require_distinct_agents}}{{else}}true{{/if}}
   # true の場合、A/B に異なるモデルを要求する（静的 audit で検査）
-  require_distinct_models: {{#if dual_thinking.execution.require_distinct_models}}{{dual_thinking.execution.require_distinct_models}}{{else}}true{{/if}}
+  require_distinct_models: {{#if deep_thinking.execution.require_distinct_models}}{{deep_thinking.execution.require_distinct_models}}{{else}}true{{/if}}
   # モデル利用不可時の方針: ABORT（即終了）
-  model_unavailable: "{{#if dual_thinking.execution.model_unavailable}}{{dual_thinking.execution.model_unavailable}}{{else}}ABORT{{/if}}"
+  model_unavailable: "{{#if deep_thinking.execution.model_unavailable}}{{deep_thinking.execution.model_unavailable}}{{else}}ABORT{{/if}}"
   # 最大ラウンド数（round 0 含む）
-  max_rounds: {{#if dual_thinking.execution.max_rounds}}{{dual_thinking.execution.max_rounds}}{{else}}3{{/if}}
+  max_rounds: {{#if deep_thinking.execution.max_rounds}}{{deep_thinking.execution.max_rounds}}{{else}}3{{/if}}
   # 争点ごとの反駁上限
-  max_rebuttal_turns_per_issue: {{#if dual_thinking.execution.max_rebuttal_turns_per_issue}}{{dual_thinking.execution.max_rebuttal_turns_per_issue}}{{else}}1{{/if}}
+  max_rebuttal_turns_per_issue: {{#if deep_thinking.execution.max_rebuttal_turns_per_issue}}{{deep_thinking.execution.max_rebuttal_turns_per_issue}}{{else}}1{{/if}}
   # 再審1ラウンドあたりの争点カード配布上限
-  max_issues_per_round: {{#if dual_thinking.execution.max_issues_per_round}}{{dual_thinking.execution.max_issues_per_round}}{{else}}1{{/if}}
+  max_issues_per_round: {{#if deep_thinking.execution.max_issues_per_round}}{{deep_thinking.execution.max_issues_per_round}}{{else}}1{{/if}}
   # 停止条件
-  stop_when: "{{#if dual_thinking.execution.stop_when}}{{dual_thinking.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
+  stop_when: "{{#if deep_thinking.execution.stop_when}}{{deep_thinking.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
 
 # 高影響領域: この領域に該当する判断は不確実性を明示しユーザー判断を促す
 # SoT: manifest.yaml > requirement_analysis.high_impact_categories（requirement_analysis 有効時）
-#       manifest.yaml > dual_thinking.high_impact_categories（requirement_analysis 無効時）
+#       manifest.yaml > deep_thinking.high_impact_categories（requirement_analysis 無効時）
 high_impact_categories:
 {{#if requirement_analysis.enabled}}
 {{#each requirement_analysis.high_impact_categories}}  - "{{this}}"
 {{/each}}
-{{else}}{{#if dual_thinking.high_impact_categories}}
-{{#each dual_thinking.high_impact_categories}}  - "{{this}}"
+{{else}}{{#if deep_thinking.high_impact_categories}}
+{{#each deep_thinking.high_impact_categories}}  - "{{this}}"
 {{/each}}
 {{else}}
   - "security_or_authorization"
@@ -52,15 +52,15 @@ high_impact_categories:
 # requirement_analysis.enabled: true の場合は requirement-analysis/config.yaml が SoT となるため、
 # このセクションは不要。既存プロジェクトでは手動削除を推奨。
 triage:
-  # スコア起動の閾値（信号がこの件数以上で dual-thinking を起動）
-  score_threshold: {{#if dual_thinking.triage.score_threshold}}{{dual_thinking.triage.score_threshold}}{{else}}2{{/if}}
+  # スコア起動の閾値（信号がこの件数以上で deep-thinking を起動）
+  score_threshold: {{#if deep_thinking.triage.score_threshold}}{{deep_thinking.triage.score_threshold}}{{else}}2{{/if}}
   # 即時起動条件のカテゴリ（high_impact_categories を参照）
   immediate_triggers:
     - "requirement_docs_contradiction"
     - "high_impact_category_match"
     - "undefined_acceptance_with_multiple_candidates"
   # ワークフロー自動起動の失敗時方針（skip: graceful skip / abort: 中止）
-  on_failure: "{{#if dual_thinking.triage.on_failure}}{{dual_thinking.triage.on_failure}}{{else}}skip{{/if}}"
+  on_failure: "{{#if deep_thinking.triage.on_failure}}{{deep_thinking.triage.on_failure}}{{else}}skip{{/if}}"
   # 高影響カテゴリ該当 + 起動失敗時にユーザー通知するか
-  notify_on_high_impact_failure: {{#if dual_thinking.triage.notify_on_high_impact_failure}}{{dual_thinking.triage.notify_on_high_impact_failure}}{{else}}true{{/if}}
+  notify_on_high_impact_failure: {{#if deep_thinking.triage.notify_on_high_impact_failure}}{{deep_thinking.triage.notify_on_high_impact_failure}}{{else}}true{{/if}}
 {{/if}}

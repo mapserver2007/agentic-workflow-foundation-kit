@@ -30,7 +30,7 @@ ROOT_OVERLAY_KEYS = (
     "coderabbit",
     "agent_workflow",
     "cross_repo_knowledge",
-    "dual_thinking",
+    "deep_thinking",
     "requirement_analysis",
     "agent_kaizen",
 )
@@ -435,7 +435,7 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
         # manifest の段階で除外する。
         if (
             out.get("path")
-            == ".cursor/skills/dual-thinking/references/workflow-triage.md"
+            == ".cursor/skills/deep-thinking/references/workflow-triage.md"
             and _is_feature_enabled(manifest, "requirement_analysis")
         ):
             continue
@@ -553,17 +553,17 @@ def prepare_skill_dir(resolved_dir: str, manifest: dict) -> str:
     return resolved_dir
 
 
-def _run_dual_thinking_validator(manifest: dict) -> int:
-    """dual_thinking が有効なら静的契約検査を実行する。無効時は skip。"""
-    if not _is_feature_enabled(manifest, "dual_thinking"):
+def _run_deep_thinking_validator(manifest: dict) -> int:
+    """deep_thinking が有効なら静的契約検査を実行する。無効時は skip。"""
+    if not _is_feature_enabled(manifest, "deep_thinking"):
         return 0
     config_path = os.path.join(
-        ROOT, ".cursor", "skills", "dual-thinking", "config.yaml",
+        ROOT, ".cursor", "skills", "deep-thinking", "config.yaml",
     )
     if not os.path.isfile(config_path):
-        print("[validate_dual_thinking] SKIP: config.yaml 不在（feature 有効だが未生成）")
+        print("[validate_deep_thinking] SKIP: config.yaml 不在（feature 有効だが未生成）")
         return 0
-    from validate_dual_thinking import run as validate_run
+    from validate_deep_thinking import run as validate_run
     return validate_run(config_path)
 
 
@@ -600,7 +600,7 @@ def _cleanup_legacy_workflow_triage(manifest: dict) -> int:
     if not _is_feature_enabled(manifest, "requirement_analysis"):
         return 0
     triage_path = os.path.join(
-        ROOT, ".cursor", "skills", "dual-thinking", "references", "workflow-triage.md",
+        ROOT, ".cursor", "skills", "deep-thinking", "references", "workflow-triage.md",
     )
     if not os.path.isfile(triage_path):
         return 0
@@ -649,7 +649,7 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
     if rc != 0:
         return rc
     if command == "audit" and manifest is not None:
-        rc = _run_dual_thinking_validator(manifest)
+        rc = _run_deep_thinking_validator(manifest)
         if rc != 0:
             return rc
         rc = _run_requirement_analysis_validator(manifest)

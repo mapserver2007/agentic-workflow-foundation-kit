@@ -264,17 +264,17 @@ bin/quality-gate self
 - exit 1 = 出力ファイルが直接編集された（drift）または必須要件欠落 → 再生成または manifest 修正
 - exit 2 = テンプレート不在 / manifest 破損
 
-{{#if dual_thinking.static_gate.enabled}}
-### 4.1 dual-thinking 静的契約ゲート
+{{#if deep_thinking.static_gate.enabled}}
+### 4.1 deep-thinking 静的契約ゲート
 
-audit 成功後、`dual_thinking` feature が有効な場合に `validate_dual_thinking.py` を自動実行する。生成済み `config.yaml` の設定値を検査し、契約違反を audit 失敗へ昇格させる。
+audit 成功後、`deep_thinking` feature が有効な場合に `validate_deep_thinking.py` を自動実行する。生成済み `config.yaml` の設定値を検査し、契約違反を audit 失敗へ昇格させる。
 
 | 検査 ID | 対象 | 検査内容 |
 | --- | --- | --- |
-| G-DT-CONFIG-001 | 設定構造 | 必須キー（`models.analyst_a/b`、`execution.*`）の存在・型・非空 |
-| G-DT-MODEL-001 | モデル多様性 | `require_distinct_models: true` 時に A/B が同一モデルなら FAIL |
-| G-DT-BUDGET-001 | 再審予算 | `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` が正の整数 |
-| G-DT-POLICY-001 | 停止方針 | `model_unavailable` が `ABORT`、`stop_when` が `NO_MATERIAL_ISSUES` |
+| G-DEEP-CONFIG-001 | 設定構造 | 必須キー（`models.analyst_a/b`、`execution.*`）の存在・型・非空 |
+| G-DEEP-MODEL-001 | モデル多様性 | `require_distinct_models: true` 時に A/B が同一モデルなら FAIL |
+| G-DEEP-BUDGET-001 | 再審予算 | `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` が正の整数 |
+| G-DEEP-POLICY-001 | 停止方針 | `model_unavailable` が `ABORT`、`stop_when` が `NO_MATERIAL_ISSUES` |
 
 **静的検査の対象外**（Cursor Subagent API の制約により実行時に外部観測できない）:
 
@@ -301,7 +301,7 @@ audit 成功後、`agent_kaizen` feature が有効な場合に `validate_agent_k
 
 - 実モデル割当（設定値が Subagent に実際に割り当てられたことを確認する API がない）
 - Subagent が検査対象を変更しないこと（プロセス間隔離を外部観測できない）
-- dual-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
+- deep-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
 
 検査対象外の実行時特性を静的検査で PASS したと主張しない。
 {{/if}}

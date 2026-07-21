@@ -32,7 +32,7 @@ WRITE_COMMANDS = ("generate",)
 
 
 def _make_mock_manifest():
-    return {"features": {"dual_thinking": {"enabled": False}}}
+    return {"features": {"deep_thinking": {"enabled": False}}}
 
 
 def _run_main_with_mocks(command: str):

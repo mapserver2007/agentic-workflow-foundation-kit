@@ -97,7 +97,7 @@ framework:
       not_adopted: "Finding Code 79 種体系 / Deterministic Guard の数値判定基盤"
     - id: C
       name: 認知的多様性
-      adopted: "Task subagent 並列探索 / 自己反論 / review スキル / dual-thinking（A/B 並列分析 + C 独立裁定）"
+      adopted: "Task subagent 並列探索 / 自己反論 / review スキル / deep-thinking（A/B 並列分析 + C 独立裁定）"
       not_adopted: "engine / model resolver による異モデル強制"
     - id: D
       name: 段階的圧縮
@@ -501,15 +501,15 @@ agent_workflow:
     format: "[0-9]+"
 
 # ------------------------------------------------------------
-# (2k) dual_thinking — 多角評価スキル（オプション生成）
+# (2k) deep_thinking — 多角評価スキル（オプション生成）
 #   Phase 1.5 の AskQuestion で生成有無を決定する。
-#   enabled: true の場合のみ outputs[] の feature: dual_thinking エントリが生成対象になる。
+#   enabled: true の場合のみ outputs[] の feature: deep_thinking エントリが生成対象になる。
 #   A（推進視点）・B（反証視点）の並列 readonly subagent と C（統合裁定・親エージェント）で
 #   内部的に多角分析を行い、通常のチャット返答と同じ体裁で応答する。
 #   内部の A/B 分析プロセスはユーザーに表示しない。
 #   C のモデルはスキル呼び出し時に選択し、A/B のモデルだけを設定する。
 # ------------------------------------------------------------
-dual_thinking:
+deep_thinking:
   enabled: false
   models:
     analyst_a: "[要確認]"
@@ -525,13 +525,13 @@ dual_thinking:
   static_gate:
     enabled: true
     checks:
-      - id: G-DT-CONFIG-001
+      - id: G-DEEP-CONFIG-001
         desc: "必須キー・型・空値"
-      - id: G-DT-MODEL-001
+      - id: G-DEEP-MODEL-001
         desc: "require_distinct_models 時の A/B モデル重複"
-      - id: G-DT-BUDGET-001
+      - id: G-DEEP-BUDGET-001
         desc: "再審上限（max_rounds / max_rebuttal_turns_per_issue / max_issues_per_round）の正の整数検査"
-      - id: G-DT-POLICY-001
+      - id: G-DEEP-POLICY-001
         desc: "model_unavailable / stop_when の契約値検査"
     not_verifiable:
       - "実モデル割当（Cursor Subagent API が返さない）"
@@ -550,8 +550,8 @@ dual_thinking:
 # (2k) requirement_analysis — 要求分析スキル（オプション生成）
 #   agent_workflow.enabled: true 時に自動有効化される子 feature。
 #   3 段階ガード（要求完全性・仕様整合性・実現性）と分析深度判定を統括する。
-#   deep 経路は dual_thinking.enabled: true を前提とする。
-#   dual_thinking.enabled: false の場合: deep 判定は standard に降格し警告を出す。
+#   deep 経路は deep_thinking.enabled: true を前提とする。
+#   deep_thinking.enabled: false の場合: deep 判定は standard に降格し警告を出す。
 # ------------------------------------------------------------
 requirement_analysis:
   enabled: true
@@ -1249,70 +1249,70 @@ outputs:
       - "## 修復種別別検証マトリクス"
       - "## 責務境界テーブル"
       - "## Context Budget 到達時の対応"
-  # dual-thinking スキル（feature: dual_thinking で条件生成）。
-  # dual_thinking.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
-  - path: .cursor/skills/dual-thinking/SKILL.md
-    template: skills/dual-thinking/SKILL.md.template
+  # deep-thinking スキル（feature: deep_thinking で条件生成）。
+  # deep_thinking.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  - path: .cursor/skills/deep-thinking/SKILL.md
+    template: skills/deep-thinking/SKILL.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
-      - "name: dual-thinking"
+      - "name: deep-thinking"
       - "## 内部フロー"
       - "## 応答の契約"
       - "表示しない内部情報"
-  - path: .cursor/skills/dual-thinking/config.yaml
-    template: skills/dual-thinking/config.yaml.template
+  - path: .cursor/skills/deep-thinking/config.yaml
+    template: skills/deep-thinking/config.yaml.template
     mode: seed
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "models"
       - "execution"
       - "high_impact_categories"
-  - path: .cursor/skills/dual-thinking/README.md
-    template: skills/dual-thinking/README.md
+  - path: .cursor/skills/deep-thinking/README.md
+    template: skills/deep-thinking/README.md
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "## 動作の要点"
       - "## 実行設定と前提"
       - "## 有効なユースケース"
       - "## 起動判断フロー"
-  - path: .cursor/skills/dual-thinking/references/analyst-brief.md
-    template: skills/dual-thinking/references/analyst-brief.md.template
+  - path: .cursor/skills/deep-thinking/references/analyst-brief.md
+    template: skills/deep-thinking/references/analyst-brief.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "Evidence Ledger"
       - "相補分析の視点指示"
-  - path: .cursor/skills/dual-thinking/references/verification-flags.md
-    template: skills/dual-thinking/references/verification-flags.md.template
+  - path: .cursor/skills/deep-thinking/references/verification-flags.md
+    template: skills/deep-thinking/references/verification-flags.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "DISTINCT_AGENT_EXECUTION_UNVERIFIED"
       - "MODEL_ASSIGNMENT_UNVERIFIED"
       - "LOOP_CONVERGED"
-  - path: .cursor/skills/dual-thinking/references/issue-card-format.md
-    template: skills/dual-thinking/references/issue-card-format.md.template
+  - path: .cursor/skills/deep-thinking/references/issue-card-format.md
+    template: skills/deep-thinking/references/issue-card-format.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "匿名化争点カード"
       - "除外する要素"
       - "## 停止条件"
-  - path: .cursor/skills/dual-thinking/references/response-synthesis.md
-    template: skills/dual-thinking/references/response-synthesis.md.template
+  - path: .cursor/skills/deep-thinking/references/response-synthesis.md
+    template: skills/deep-thinking/references/response-synthesis.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "応答生成ガイド"
       - "禁止される表現パターン"
       - "許容される表現パターン"
       - "高影響領域の扱い"
-  - path: .cursor/skills/dual-thinking/references/workflow-triage.md
-    template: skills/dual-thinking/references/workflow-triage.md.template
+  - path: .cursor/skills/deep-thinking/references/workflow-triage.md
+    template: skills/deep-thinking/references/workflow-triage.md.template
     mode: render
-    feature: dual_thinking
+    feature: deep_thinking
     required_sections:
       - "即時起動条件"
       - "スコア起動条件"

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""validate_dual_thinking.py — 生成済み config.yaml の静的契約検査。
+"""validate_deep_thinking.py — 生成済み config.yaml の静的契約検査。
 
 検査 ID:
-  G-DT-CONFIG-001 : 必須キー・型・空値
-  G-DT-MODEL-001  : require_distinct_models 時の A/B モデル重複
-  G-DT-BUDGET-001 : 再審上限の正の整数検査
-  G-DT-POLICY-001 : model_unavailable / stop_when の契約値検査
+  G-DEEP-CONFIG-001 : 必須キー・型・空値
+  G-DEEP-MODEL-001  : require_distinct_models 時の A/B モデル重複
+  G-DEEP-BUDGET-001 : 再審上限の正の整数検査
+  G-DEEP-POLICY-001 : model_unavailable / stop_when の契約値検査
 
 対象外（実行時にのみ観測可能で静的検査では保証不能）:
   - 実モデル割当（Cursor Subagent API が返さない）
@@ -33,7 +33,7 @@ if ENGINE_DIR not in sys.path:
 import genlib  # noqa: E402
 
 CONFIG_REL = os.path.join(
-    ".cursor", "skills", "dual-thinking", "config.yaml"
+    ".cursor", "skills", "deep-thinking", "config.yaml"
 )
 
 REQUIRED_MODELS_KEYS = ("analyst_a", "analyst_b")
@@ -67,29 +67,29 @@ def validate(config: dict) -> list[tuple[str, str]]:
 
     models = config.get("models")
     if not isinstance(models, dict):
-        failures.append(("G-DT-CONFIG-001", "models セクションが存在しないか dict でない"))
+        failures.append(("G-DEEP-CONFIG-001", "models セクションが存在しないか dict でない"))
         models = {}
 
     for key in REQUIRED_MODELS_KEYS:
         val = models.get(key)
         if not val or not isinstance(val, str) or not val.strip():
-            failures.append(("G-DT-CONFIG-001", f"models.{key} が未設定または空"))
+            failures.append(("G-DEEP-CONFIG-001", f"models.{key} が未設定または空"))
 
     execution = config.get("execution")
     if not isinstance(execution, dict):
-        failures.append(("G-DT-CONFIG-001", "execution セクションが存在しないか dict でない"))
+        failures.append(("G-DEEP-CONFIG-001", "execution セクションが存在しないか dict でない"))
         execution = {}
 
     for key in REQUIRED_EXECUTION_KEYS:
         if key not in execution:
-            failures.append(("G-DT-CONFIG-001", f"execution.{key} が未設定"))
+            failures.append(("G-DEEP-CONFIG-001", f"execution.{key} が未設定"))
 
     a_model = (models.get("analyst_a") or "").strip()
     b_model = (models.get("analyst_b") or "").strip()
     require_distinct = execution.get("require_distinct_models")
     if require_distinct and a_model and b_model and a_model == b_model:
         failures.append((
-            "G-DT-MODEL-001",
+            "G-DEEP-MODEL-001",
             f"require_distinct_models=true だが A/B が同一モデル: {a_model}",
         ))
 
@@ -99,21 +99,21 @@ def validate(config: dict) -> list[tuple[str, str]]:
             continue
         if not isinstance(val, int) or val < 1:
             failures.append((
-                "G-DT-BUDGET-001",
+                "G-DEEP-BUDGET-001",
                 f"execution.{key} は正の整数が必要（現在値: {val!r}）",
             ))
 
     mu = execution.get("model_unavailable")
     if mu is not None and mu not in VALID_MODEL_UNAVAILABLE:
         failures.append((
-            "G-DT-POLICY-001",
+            "G-DEEP-POLICY-001",
             f"execution.model_unavailable の値 {mu!r} は契約外（許可値: {VALID_MODEL_UNAVAILABLE}）",
         ))
 
     sw = execution.get("stop_when")
     if sw is not None and sw not in VALID_STOP_WHEN:
         failures.append((
-            "G-DT-POLICY-001",
+            "G-DEEP-POLICY-001",
             f"execution.stop_when の値 {sw!r} は契約外（許可値: {VALID_STOP_WHEN}）",
         ))
 
@@ -133,18 +133,18 @@ def run(config_path: str) -> int:
     failures = validate(config)
 
     if failures:
-        print(f"[validate_dual_thinking] FAIL: {len(failures)} 件の契約違反")
+        print(f"[validate_deep_thinking] FAIL: {len(failures)} 件の契約違反")
         for check_id, reason in failures:
             print(f"  {check_id}: {reason}")
         return 1
 
-    print("[validate_dual_thinking] PASS: 全静的検査を通過")
+    print("[validate_deep_thinking] PASS: 全静的検査を通過")
     return 0
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="dual-thinking config.yaml の静的契約検査",
+        description="deep-thinking config.yaml の静的契約検査",
     )
     parser.add_argument(
         "--config",

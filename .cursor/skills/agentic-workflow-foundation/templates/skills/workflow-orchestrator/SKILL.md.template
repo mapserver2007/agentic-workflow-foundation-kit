@@ -30,7 +30,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}> - [maintenance-gotchas-workflow](../maintenance-gotchas-workflow/SKILL.md) — GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}> - [references/worker-dispatch.md](references/worker-dispatch.md) — ステップ別 Subagent dispatch 契約
 {{#if requirement_analysis.enabled}}> - [requirement-analysis](../requirement-analysis/SKILL.md) — Step ① 要求分析（3 段階ガード + 分析深度判定）
-{{/if}}{{#if dual_thinking.enabled}}> - [dual-thinking](../dual-thinking/SKILL.md) — {{#if requirement_analysis.enabled}}deep 経路で親が起動{{else}}Step ① 調査深度トリアージで自動起動時に使用{{/if}}
+{{/if}}{{#if deep_thinking.enabled}}> - [deep-thinking](../deep-thinking/SKILL.md) — {{#if requirement_analysis.enabled}}deep 経路で親が起動{{else}}Step ① 調査深度トリアージで自動起動時に使用{{/if}}
 {{/if}}
 
 ---
@@ -65,7 +65,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 5. **Gate B（仕様整合性）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親がユーザーに質問
 6. **分析深度判定**: Subagent（`requirement-analysis/config.yaml > models.depth_triage`）で判定
    - `standard`: 調査 Subagent（`requirement-analysis/config.yaml > models.standard_investigation`）を dispatch
-   - `deep`: 親が [dual-thinking](../dual-thinking/SKILL.md) を C 役として起動。**dual-thinking の `config.yaml` が SoT**
+   - `deep`: 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動。**deep-thinking の `config.yaml` が SoT**
    - `deferred`: standard 調査 Subagent を dispatch → 完走後に親がスコア起動条件を事後判定
 7. **Gate C（実現性・コード整合性）**: コード調査後に親が直接実施。`INCOMPLETE` → 親がユーザーに質問
 8. ADR 起票判定（設計次元 D-* 該当があれば `docs/DECISIONS.md` へ追記）
@@ -74,8 +74,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
-{{#if dual_thinking.enabled}}3. **調査深度トリアージ**: [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) の基準で `triage_result` を決定する
-   - `invoked`: orchestrator が C として [dual-thinking](../dual-thinking/SKILL.md) を直接実行。**dual-thinking の `config.yaml` が SoT**
+{{#if deep_thinking.enabled}}3. **調査深度トリアージ**: [`references/workflow-triage.md`](../deep-thinking/references/workflow-triage.md) の基準で `triage_result` を決定する
+   - `invoked`: orchestrator が C として [deep-thinking](../deep-thinking/SKILL.md) を直接実行。**deep-thinking の `config.yaml` が SoT**
    - `skipped`: [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
    - `deferred`: Step ① worker を dispatch → 完走後に orchestrator が事後判定
 4. コードを調査し、根本原因 or 実装方針を特定する
@@ -90,8 +90,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 {{#if requirement_analysis.enabled}}
 **deferred 再判定**: worker 完走後、親がスコア起動条件を事後判定する。詳細は [`references/analysis-depth.md`](../requirement-analysis/references/analysis-depth.md) を参照。
-{{else}}{{#if dual_thinking.enabled}}
-**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../dual-thinking/references/workflow-triage.md) を参照。
+{{else}}{{#if deep_thinking.enabled}}
+**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../deep-thinking/references/workflow-triage.md) を参照。
 {{/if}}{{/if}}
 
 ### Step ②: タスクレポートの作成
