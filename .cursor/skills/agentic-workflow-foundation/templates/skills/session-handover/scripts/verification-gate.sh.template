@@ -13,8 +13,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-if [[ -x "$ROOT_DIR/$cmd" || "$cmd" == bin/quality-gate* ]]; then
-  "$ROOT_DIR/$cmd"
+cmd_exe="${cmd%% *}"
+if [[ -x "$ROOT_DIR/$cmd_exe" || "$cmd_exe" == bin/quality-gate* ]]; then
+  read -ra cmd_arr <<< "$cmd"
+  "$ROOT_DIR/${cmd_arr[0]}" "${cmd_arr[@]:1}"
 else
   bash -lc "$cmd"
 fi

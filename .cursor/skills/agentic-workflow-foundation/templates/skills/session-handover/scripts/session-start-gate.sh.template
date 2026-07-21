@@ -113,7 +113,7 @@ fi
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 # --- maintenance-docs/ 未処理ファイルの検知 (INFO) ---
-MAINT_DOCS_DIR="$ROOT/docs/agent-tasks/maintenance-docs"
+MAINT_DOCS_DIR="$PROJECT_DIR/docs/agent-tasks/maintenance-docs"
 if [[ -d "$MAINT_DOCS_DIR" ]]; then
   maint_count=0
   for f in "$MAINT_DOCS_DIR"/*.md; do
