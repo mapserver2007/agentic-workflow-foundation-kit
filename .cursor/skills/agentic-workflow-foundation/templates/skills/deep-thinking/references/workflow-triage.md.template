@@ -123,7 +123,7 @@ Worker Contract の変更は不要。worker は `deferred` を意識せず通常
 
 ---
 
-## deep-thinking に渡すブリーフ（Phase 2b: orchestrator-as-C）
+## deep-thinking に渡すブリーフ（orchestrator-as-C）
 
 triage が `invoked` を返した場合、orchestrator が C として以下のブリーフを作成し A/B を起動する。
 
@@ -132,9 +132,10 @@ triage が `invoked` を返した場合、orchestrator が C として以下の�
 - **要求の核心**（正規化済み）
 - **既存仕様との対応関係・不整合候補**
 - **証跡インベントリ**（参照すべき docs / コードパス）
+- **プロジェクトコンテキスト**（Boundaries / tech stack 制約 / 関連 ADR / domain docs の観測事実）
 - **検討すべき争点**（明示的に限定）
 
-orchestrator は暫定結論を渡さない（deep-thinking 内部フロー Phase 1 の契約通り）。
+orchestrator は暫定結論を渡さない（deep-thinking 内部フローのコンテキスト収集・ブリーフ作成工程の契約通り）。orchestrator が docs-first で収集済みのプロジェクト固有情報はコンテキスト収集工程で再利用される。
 
 ### A/B 結果の統合
 
