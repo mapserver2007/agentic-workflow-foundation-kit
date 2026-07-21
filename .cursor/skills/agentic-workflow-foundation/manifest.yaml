@@ -1086,6 +1086,18 @@ outputs:
     template: bin/github-pr-create-safe.template
     mode: render
     executable: true
+  # quality-gate wrapper（常時生成・必須。ADR-0001）。
+  # tech stack 非依存の公開入口。AI・docs・gate scripts はこの wrapper 経由で検証を実行する。
+  - path: bin/quality-gate
+    template: bin/quality-gate.template
+    mode: render
+    executable: true
+    required_sections:
+      - "quality-gate"
+      - "SUBCMD"
+      - "audit"
+      - "verify"
+      - "self"
   # agent-workflow docs（feature: agent_workflow で条件生成）。
   # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。

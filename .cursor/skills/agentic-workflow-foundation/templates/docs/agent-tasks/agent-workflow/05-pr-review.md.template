@@ -78,7 +78,7 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 - **レビュー完了承認をユーザーから取得済みであること**
 - タスクレポートの「PRレビュー検証完了」が `[x]` に更新されていること
 {{#if agent_workflow.gate_scripts}}- （修正が 1 件以上ある場合）`workflow-gate.sh step5` が通過していること
-{{else}}- （修正が 1 件以上ある場合）`{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}` が通過していること
+{{else}}- （修正が 1 件以上ある場合）`bin/quality-gate verify` が通過していること
 {{/if}}
 
 ## 5.7 レビュー完了承認（PO 承認ゲート）

@@ -23,16 +23,16 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 | ゲート | コマンド | 合格条件 |
 | --- | --- | --- |
-| G-GEN | `{{project.quality_gate.gen_cmd}}` | exit 0 かつ **生成対象パスに差分なし** — `git status --porcelain -- <gen_artifact_paths>` が空（`manifest.yaml > project.quality_gate.gen_artifact_paths` で対象を限定） |
-| G-BUILD | `{{project.quality_gate.build_cmd}}` | exit 0 |
-| G-LINT | `{{project.quality_gate.lint_cmd}}` | exit 0 |
-| G-TEST | `{{project.quality_gate.test_cmd}}` | exit 0（全テスト PASS） |
+| G-GEN | `bin/quality-gate gen` | exit 0 かつ **生成対象パスに差分なし** — `git status --porcelain -- <gen_artifact_paths>` が空（`manifest.yaml > project.quality_gate.gen_artifact_paths` で対象を限定） |
+| G-BUILD | `bin/quality-gate build` | exit 0 |
+| G-LINT | `bin/quality-gate lint` | exit 0 |
+| G-TEST | `bin/quality-gate test` | exit 0（全テスト PASS） |
 
 **G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は「gen 対象パスの変更検出 → 必要時だけ gen 実行 → 対象パスのみ `git status --porcelain` → build/lint/test」の順で実行する。gen 対象パスに変更がない場合は gen をスキップし build/lint/test のみ実行する。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:
-- 生成物に関わる変更: `{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
-- 生成物に無関係な変更: `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`
+- 生成物に関わる変更: `bin/quality-gate gen && bin/quality-gate verify`
+- 生成物に無関係な変更: `bin/quality-gate verify`
 
 **G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
 
@@ -40,22 +40,22 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 G-* は技術スタックから決まる root scripts を外部インターフェース contract として定義する。`package.json` の各 script は、この contract を満たす責務を負う（実体が contract に追従する）。
 
-**gen script (`{{project.quality_gate.gen_cmd}}`)**
+**gen script (`bin/quality-gate gen` → backend: `{{project.quality_gate.gen_cmd}}`)**
 
 {{#each quality_gate_contract.gen}}- {{this}}
 {{/each}}
 
-**build script (`{{project.quality_gate.build_cmd}}`)**
+**build script (`bin/quality-gate build` → backend: `{{project.quality_gate.build_cmd}}`)**
 
 {{#each quality_gate_contract.build}}- {{this}}
 {{/each}}
 
-**lint script (`{{project.quality_gate.lint_cmd}}`)**
+**lint script (`bin/quality-gate lint` → backend: `{{project.quality_gate.lint_cmd}}`)**
 
 {{#each quality_gate_contract.lint}}- {{this}}
 {{/each}}
 
-**test script (`{{project.quality_gate.test_cmd}}`)**
+**test script (`bin/quality-gate test` → backend: `{{project.quality_gate.test_cmd}}`)**
 
 {{#each quality_gate_contract.test}}- {{this}}
 {{/each}}
@@ -159,7 +159,7 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 .cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
 ```
 
-**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（`{{project.quality_gate.build_cmd}}` 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
+**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（backend command 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
 
 **archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 
@@ -245,7 +245,7 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`（gen 対象変更時は先に `{{project.quality_gate.gen_cmd}}` + porcelain チェック） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `bin/quality-gate verify`（gen 対象変更時は先に `bin/quality-gate gen` + porcelain チェック） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ 追跡ドキュメントの残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
 {{/if}}
@@ -257,7 +257,7 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py audit
+bin/quality-gate self
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足

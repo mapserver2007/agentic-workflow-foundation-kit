@@ -263,7 +263,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `name`: (1) の AskQuestion で「指定なし」が選ばれた場合のフォールバックとして、コピー先（実行先）リポジトリのディレクトリ名から自動導出する。PO が名前を入力した場合は (1) の入力値を優先する。
 - `slug`: 確定した `name` から導出する。
 - `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
-- `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から導出する。開発型 Web スタックでは root scripts（`pnpm run gen` / `pnpm run build` / `pnpm run lint` / `pnpm run test`）を canonical entrypoint とする。
+- `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から backend command を導出する。公開入口は `bin/quality-gate <subcmd>`（ADR-0001）。開発型 Web スタックでは backend を `pnpm run gen` / `build` / `lint` / `test` に決定する。
 
 全 `workflow_pattern` 共通で `tracking_artifact` は `.cursor/.tracking/tracker-{session_id}.md`。
 
@@ -322,7 +322,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 ```
 
 - Phase 1.65 の責務は実 script の検出ではなく contract の決定である。`package.json` の有無に依存せず、実 script の検出や優先採用は行わない。
-- 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、`G-GEN = pnpm run gen`、`G-BUILD = pnpm run build`、`G-LINT = pnpm run lint`、`G-TEST = pnpm run test` に一意決定する。
+- 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、backend command を `pnpm run gen` / `build` / `lint` / `test` に一意決定する。公開コマンドは `bin/quality-gate <subcmd>` に統一される（ADR-0001）。
 - `G-GEN` は開発中の OpenAPI bundle / 型・client 生成 / 生成物差分チェックを担い、`G-BUILD` は生成済み成果物を前提にデプロイ直前やローカル実行直前の build を担う。
 - root `manifest.yaml > quality_gate_contract` へ、`package.json` scripts が満たすべき gen / build / lint / test の内訳（contract）を書き込む。
 - `session.verification.gate_command` は標準検証として build / lint / test のみを含め、`G-GEN` は OpenAPI 定義や生成設定を変更した開発中に個別実行する。
@@ -444,7 +444,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。
 - **unified design / root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の upstream / per-project 解決ロジックを追加しない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定し、`framework.accd_axes` は自動導出で確定する**。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装を自動導出し、ACCD 軸ごとの AskQuestion は行わない。未確定で残った `[要確認]` は audit が WARN 扱い。
-- **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。導出の責務は実 script 検出ではなく canonical root scripts と script contract の決定であり、`package.json` の有無に依存しない。OpenAPI 由来の生成は `G-GEN`、実行/デプロイ前 build は `G-BUILD` として分離する。
+- **`quality_gate` は `workflow_pattern` × `tech_stack` から導出する**。導出の責務は backend command（tech stack 依存）の決定であり、`package.json` の有無に依存しない。公開入口は `bin/quality-gate`（ADR-0001）。OpenAPI 由来の生成は `G-GEN`、実行/デプロイ前 build は `G-BUILD` として分離する。
 - **wrapper スクリプト（`bin/`）は生成物であり直接編集しない**。変更は `templates/bin/*.template` を編集して再生成する。`.cursorignore` により AI のコンテキストから除外されるが、`templates/bin/` は除外対象外であり SoT として編集可能。`bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の**必須出力**であり、GitHub App のセットアップが foundation kit の前提要件となる（ADR-0001）。GitHub App 未設定時は wrapper が exit 2（致命的エラー）で終了する設計とし、今後 git 操作に関する skill が追加される場合も同様に wrapper + GitHub App 経由を前提とする。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。

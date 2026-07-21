@@ -97,7 +97,7 @@ def _resolve(manifest: dict):
             "lint_cmd": "pnpm run lint",
             "test_cmd": "pnpm run test",
         },
-        "gate_command": "pnpm run build && pnpm run lint && pnpm run test",
+        "gate_command": "bin/quality-gate verify",
         "contract": {
             "gen": GEN_CONTRACT,
             "build": BUILD_CONTRACT,

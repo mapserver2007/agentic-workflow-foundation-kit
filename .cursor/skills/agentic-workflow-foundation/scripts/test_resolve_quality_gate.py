@@ -91,7 +91,7 @@ def main() -> int:
             'build_cmd: "pnpm run build"',
             'lint_cmd: "pnpm run lint"',
             'test_cmd: "pnpm run test"',
-            'gate_command: "pnpm run build && pnpm run lint && pnpm run test"',
+            'gate_command: "bin/quality-gate verify"',
             "quality_gate_contract:",
             "  gen:",
             "OpenAPI bundle",
@@ -101,8 +101,8 @@ def main() -> int:
         if missing:
             print(f"missing expected content: {missing}", file=sys.stderr)
             return 1
-        if 'gate_command: "pnpm run gen' in out:
-            print("G-GEN must not be included in session.verification.gate_command", file=sys.stderr)
+        if 'gate_command: "pnpm run' in out:
+            print("gate_command must use wrapper, not raw pnpm commands", file=sys.stderr)
             return 1
         second = subprocess.run(
             [sys.executable, str(RESOLVER), "--manifest", str(manifest), "--check"],
