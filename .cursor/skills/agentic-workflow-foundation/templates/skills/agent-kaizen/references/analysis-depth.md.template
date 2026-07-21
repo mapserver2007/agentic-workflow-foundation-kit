@@ -32,6 +32,12 @@
 - どちらも検査対象・採用基準・Finding schema は同一とし、deep は観点追加ではなく独立分析と反証を追加する。
 - Subagent は候補と証拠だけを返し、Finding の採否・重大度・永続出力は親が確定する。
 
-## モデル利用不可時
+### deep 経路の SoT 分離
 
-指定モデルを利用できない場合は暗黙に代替しない。`config.yaml > execution.model_unavailable` が `ABORT` なら中断し、利用できないモデル名と設定変更先を報告する。
+- **深度選択**（いつ deep にするか）は本ファイル（agent-kaizen の `analysis-depth.md`）が SoT とする。requirement-analysis には requirement-analysis 固有の `analysis-depth.md` がある。dual-thinking は呼出元の深度選択を再判定しない。
+- **A/B 実行設定・統合規約**（どう deep を実行するか）は dual-thinking の `config.yaml` と SKILL.md が SoT とする。
+
+### deep 経路の失敗時規則
+
+- **モデル利用不可**: `config.yaml > execution.model_unavailable` が `ABORT` なら中断し、利用できないモデル名と設定変更先を報告する。暗黙に代替しない。
+- **A/B 起動・回収失敗**: deep が即時条件（§ deep 即時起動条件）で必要になった場合は、Finding 出力を確定せず検査を中断する。deferred から deep へ昇格した場合に限り、既に完走した standard の結果を「deep 未実施」と明示して返せる。いずれの場合も、根拠なく deep 完了扱いにしない。

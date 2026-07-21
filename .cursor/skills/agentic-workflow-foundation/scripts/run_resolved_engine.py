@@ -581,6 +581,20 @@ def _run_requirement_analysis_validator(manifest: dict) -> int:
     return validate_run(config_path)
 
 
+def _run_agent_kaizen_validator(manifest: dict) -> int:
+    """agent_kaizen が有効なら静的契約検査を実行する。無効時は skip。"""
+    if not _is_feature_enabled(manifest, "agent_kaizen"):
+        return 0
+    config_path = os.path.join(
+        ROOT, ".cursor", "skills", "agent-kaizen", "config.yaml",
+    )
+    if not os.path.isfile(config_path):
+        print("[validate_agent_kaizen] SKIP: config.yaml 不在（feature 有効だが未生成）")
+        return 0
+    from validate_agent_kaizen import run as validate_run
+    return validate_run(config_path)
+
+
 def _cleanup_legacy_workflow_triage(manifest: dict) -> int:
     """requirement_analysis 有効時に旧 workflow-triage.md を安全に削除する。"""
     if not _is_feature_enabled(manifest, "requirement_analysis"):
@@ -639,6 +653,9 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
         if rc != 0:
             return rc
         rc = _run_requirement_analysis_validator(manifest)
+        if rc != 0:
+            return rc
+        rc = _run_agent_kaizen_validator(manifest)
         if rc != 0:
             return rc
         return _run_worker_contract_validator()
