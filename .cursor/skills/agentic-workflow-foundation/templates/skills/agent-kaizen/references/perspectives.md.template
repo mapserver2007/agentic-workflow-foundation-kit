@@ -132,7 +132,7 @@ agent-kaizen の 18 評価観点の定義と、Track・Phase・検査 ID プレ�
 - **Track**: D
 - **Phase**: D
 - **検査 ID プレフィックス**: `G-KIT-ENVP`
-- **検査内容**: Python 3.x / PyYAML / jq / pnpm など必要な外部依存が存在するか。shell スクリプトが想定する coreutils コマンドが対象 OS に存在するか
+- **検査内容**: foundation 自身の実装ランタイム依存（Python 3.x / PyYAML 等）と、下流プロジェクトの技術スタック依存を区別する。下流の必要依存は固定列挙せず、resolved manifest の技術スタック宣言、品質ゲート契約（`project.quality_gate`）、実行対象スクリプトから導出して確認する。shell スクリプトが想定する coreutils コマンドが対象 OS に存在するか
 
 ### §5.18 Inspection non-destructiveness（NDST）
 

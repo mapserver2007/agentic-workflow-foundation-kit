@@ -3,8 +3,8 @@ name: agent-kaizen
 description: >-
   kit 内部の manifest→生成物チェーンの整合性を検査し、defect を検出する。
   検査結果サマリと改善プランファイルを .cursor/plans/ に出力する。
-  18 評価観点を Deterministic→Analytic の順で検査する。
-  「整合性検査」「kaizen」「kit 検査」「defect 検出」等の指示で使う。
+  18 評価観点を Deterministic→Analytic の順で consistency check する。
+  「整合性検査」「kaizen」「kit 検査」「defect 検出」「consistency check」等の指示で使う。
   Do NOT use for: SoT 再現度の採点(evaluate-agentic-workflow を使う)、
   基盤ファイルの生成・メンテナンス(agentic-workflow-foundation を使う)、
   Domain 層業務仕様の評価。

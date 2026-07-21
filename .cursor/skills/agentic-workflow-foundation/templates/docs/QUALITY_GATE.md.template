@@ -285,6 +285,27 @@ audit 成功後、`dual_thinking` feature が有効な場合に `validate_dual_t
 検査対象外の実行時特性を静的検査で PASS したと主張しない。
 {{/if}}
 
+{{#if agent_kaizen.enabled}}
+### 4.2 agent-kaizen 静的契約ゲート
+
+audit 成功後、`agent_kaizen` feature が有効な場合に `validate_agent_kaizen.py` を自動実行する。生成済み `config.yaml` の設定値を検査し、契約違反を audit 失敗へ昇格させる。
+
+| 検査 ID | 対象 | 検査内容 |
+| --- | --- | --- |
+| G-AK-CONFIG-001 | 設定構造 | 必須キー（`models.depth_triage/standard_analysis`、`execution.*`）の存在・型・非空 |
+| G-AK-THRESHOLD-001 | 閾値 | `execution.score_threshold` が正の整数 |
+| G-AK-POLICY-001 | 失敗方針 | `execution.model_unavailable` が `ABORT` |
+| G-AK-PERSP-001 | 観点指定 | `high_impact_perspectives` が非空・正規 ID（18 観点）のみ・重複なし |
+
+**静的検査の対象外**（実行時にのみ観測可能で静的検査では保証不能）:
+
+- 実モデル割当（設定値が Subagent に実際に割り当てられたことを確認する API がない）
+- Subagent が検査対象を変更しないこと（プロセス間隔離を外部観測できない）
+- dual-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
+
+検査対象外の実行時特性を静的検査で PASS したと主張しない。
+{{/if}}
+
 ## 5. 参考
 
 - `AGENTS.md > Session Protocol`（本ゲートの実行タイミング）
