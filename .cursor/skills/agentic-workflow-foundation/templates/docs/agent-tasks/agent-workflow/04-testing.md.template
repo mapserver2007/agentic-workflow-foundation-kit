@@ -25,7 +25,7 @@
 ```
 {{else}}
 ```bash
-{{project.quality_gate.gen_cmd}} && {{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}
+bin/quality-gate gen && bin/quality-gate verify
 ```
 {{/if}}
 

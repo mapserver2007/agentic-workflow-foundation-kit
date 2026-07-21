@@ -32,7 +32,7 @@
 | `project.workflow_pattern` / `project.tracking_artifact` | `AGENTS.md`（Workflow Pattern）/ `docs/AGENT_RUNBOOK.md` / `.cursor/skills/session-planning/SKILL.md` / `.cursor/skills/session-handover/SKILL.md`。ゲート文脈は `.cursor/skills/session-handover/scripts/session-start-gate.sh`（検査対象）/ `docs/QUALITY_GATE.md`（§1.4 検査ID / §1.5 セッション開始ゲート / §3 フェーズ境界ゲート）で補足 |
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
 | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
-| `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands。`G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST`） |
+| `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands。`bin/quality-gate <subcmd>` 経由で `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST`）/ `bin/quality-gate`（wrapper 本体。ADR-0001） |
 | `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract。gen / build / lint / test）/ `AGENTS.md`（Quality Gate Contract） |
 | `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ）/ `.coderabbit.yaml`（`coderabbit` 経由で tech_stack に従属） |
 | `coderabbit.language` / `coderabbit.tools_*` / `coderabbit.path_*` | `.coderabbit.yaml`（CodeRabbit レビュー設定。Phase 1.66 で tech_stack から自動導出） |

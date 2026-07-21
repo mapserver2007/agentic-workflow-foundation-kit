@@ -109,8 +109,8 @@ actionable エントリに対し影響範囲・修正コスト・再発頻度で
 
 | 修復種別 | 必須検証 |
 | --- | --- |
-| ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}`） |
-| 設定/manifest 変更 | G-GEN（`{{project.quality_gate.gen_cmd}}`） + 自己検証ゲート（`run_resolved_engine.py audit`） + G-BUILD + G-LINT + G-TEST |
+| ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`bin/quality-gate verify`） |
+| 設定/manifest 変更 | `bin/quality-gate self`（kit 自己検証）+ `bin/quality-gate verify`（G-BUILD + G-LINT + G-TEST） |
 | Meta 層 docs 修正（seed / 直接追記） | リンク検証 + 構造検証（見出し階層の整合） |
 | Domain 層 docs 修正 | リンク検証 + 構造検証（見出し階層の整合） |
 | テスト追加 | G-TEST（追加テストが PASS + 既存テスト非破壊） |

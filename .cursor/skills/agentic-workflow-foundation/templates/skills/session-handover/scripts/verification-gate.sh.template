@@ -10,4 +10,11 @@ if [[ -z "$cmd" || "$cmd" == \[* ]]; then
   exit 0
 fi
 
-bash -lc "$cmd"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+
+if [[ -x "$ROOT_DIR/$cmd" || "$cmd" == bin/quality-gate* ]]; then
+  "$ROOT_DIR/$cmd"
+else
+  bash -lc "$cmd"
+fi

@@ -56,7 +56,7 @@ kit 本体、生成チェーン、Hook・品質ゲート、Domain 層 docs の�
 - **出力境界**: 永続書込みは `.cursor/plans/kaizen-summary-*` と `.cursor/plans/kaizen-plan-*` のみ
 - **復元禁止**: 検査対象を自動修正・復元・cleanup しない
 - **Git 操作禁止**: agent-kaizen 実行中に add / commit / push / reset 等を行わない
-- **公式ゲートの安全実行**: `run_resolved_engine.py audit` の readonly 経路のみ使用
+- **公式ゲートの安全実行**: `bin/quality-gate audit` の readonly 経路のみ使用
 - **品質非劣化**: 改善プランの提案は機能削除・ゲート緩和・fail-open 化等に抵触しない
 - **実行主体**: Subagent は検査対象と `.cursor/plans/` を変更しない。親だけが Finding を再検証して出力する
 - **モデル失敗**: 指定モデルを利用できない場合は暗黙に代替せず、`config.yaml > execution.model_unavailable` に従う

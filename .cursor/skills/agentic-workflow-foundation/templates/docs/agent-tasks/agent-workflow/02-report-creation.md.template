@@ -98,7 +98,7 @@
 ## 10. 完了チェック
 
 - [ ] 実装完了
-- [ ] テスト完了（G-TEST / `{{project.quality_gate.test_cmd}}` PASS）
+- [ ] テスト完了（G-TEST / `bin/quality-gate test` PASS）
 - [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN）
 - [ ] PRレビュー検証完了
 {{#if agent_workflow.maintenance_docs.enabled}}- [ ] maintenance-docs/ 起票判定（G-DOC-SPEC）

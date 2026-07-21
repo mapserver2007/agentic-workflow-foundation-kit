@@ -53,8 +53,10 @@ case "$STEP" in
     ;;
   step4)
     # ④ コードゲート（決定 10: G-GEN パス限定 porcelain チェック）
-    # 順序: gen 対象変更検出 → 必要時だけ gen → 対象パスだけ porcelain 検査 → build/lint/test
-    echo "--- code gate (tech stack: manifest.yaml > project.quality_gate) ---"
+    # 順序: gen 対象変更検出 → 必要時だけ gen → 対象パスだけ porcelain 検査 → verify
+    # ADR-0001: tech stack 固有コマンドは bin/quality-gate wrapper 経由で実行する
+    echo "--- code gate (via bin/quality-gate wrapper) ---"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
     {{#if project.quality_gate.gen_artifact_paths}}
     # --- G-GEN: 生成対象パス限定 porcelain チェック ---
@@ -66,10 +68,10 @@ case "$STEP" in
 
     if [[ -n "$GEN_DIRTY" || -n "$GEN_DIRTY_CACHED" ]]; then
       echo "--- G-GEN: gen 対象に変更あり → gen 実行 ---"
-      bash -lc "{{project.quality_gate.gen_cmd}}"
+      "$ROOT_DIR/bin/quality-gate" gen
       GEN_EXIT=$?
       if [[ $GEN_EXIT -ne 0 ]]; then
-        echo "FAIL: {{project.quality_gate.gen_cmd}} が exit $GEN_EXIT で失敗"
+        echo "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
         exit 1
       fi
       # gen 後の porcelain 検査（対象パスのみ）
@@ -82,15 +84,15 @@ case "$STEP" in
       fi
       echo "PASS: G-GEN — 生成物は最新（差分なし）"
     else
-      echo "SKIP: G-GEN — gen 対象に変更なし（build/lint/test のみ実行）"
+      echo "SKIP: G-GEN — gen 対象に変更なし（verify のみ実行）"
     fi
     {{else}}
-    echo "SKIP: gen_artifact_paths が空 — gen 対象なし（build/lint/test のみ実行）"
+    echo "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
     {{/if}}
 
-    # --- build / lint / test ---
-    echo "--- build / lint / test ---"
-    bash -lc "{{project.quality_gate.build_cmd}} && {{project.quality_gate.lint_cmd}} && {{project.quality_gate.test_cmd}}"
+    # --- build / lint / test (via wrapper) ---
+    echo "--- verify ---"
+    "$ROOT_DIR/bin/quality-gate" verify
     ;;
   step5)
     # ④→⑤ 検証→PR: verification-gate.sh（session.verification.gate_command）
