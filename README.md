@@ -12,7 +12,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、`decisions-record`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
+| Capabilities | `session-planning`、`session-handover`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
 | Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む）、workflow / artifact / archive ゲート |
 | Project Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
@@ -115,7 +115,7 @@ agentic-workflow-foundation-kit/
         │   │   │                             # data-models, coding-standards, workflows,
         │   │   │                             # agent-tasks/**
         │   │   ├── skills/                   # session-planning, session-handover,
-        │   │   │                             # decisions-record, agent-code-review,
+        │   │   │                             # agent-code-review,
         │   │   │                             # agent-github-pr, agent-github-issue,
         │   │   │                             # workflow-orchestrator, requirement-analysis,
         │   │   │                             # maintenance-*-workflow, cross-repository-
@@ -144,7 +144,7 @@ agentic-workflow-foundation-kit/
         │       └── audit.py
         │
         └── （生成スキル）                     # session-planning, session-handover,
-                                               # decisions-record, workflow-orchestrator,
+                                               # workflow-orchestrator,
                                                # requirement-analysis, maintenance-*-workflow,
                                                # agent-code-review, agent-github-pr,
                                                # agent-github-issue, cross-repository-
@@ -164,7 +164,6 @@ agentic-workflow-foundation-kit/
 | --- | --- |
 | [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{session_id}.md`）の作成・更新 |
 | [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive ゲート |
-| [`decisions-record`](.cursor/skills/decisions-record/SKILL.md) | 設計判断記録（`docs/DECISIONS.md`）の起票 |
 | [`workflow-orchestrator`](.cursor/skills/workflow-orchestrator/SKILL.md) | 6 段階標準タスク実行ワークフロー（①〜⑥）の制御 |
 | [`requirement-analysis`](.cursor/skills/requirement-analysis/SKILL.md) | Step ①の要求正規化、3段階ガード、分析深度判定 |
 | [`maintenance-docs-workflow`](.cursor/skills/maintenance-docs-workflow/SKILL.md) | 起票キューから Domain 層 docs を反映する独立パイプライン |
@@ -267,7 +266,7 @@ bin/quality-gate verify
 | Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-response-tracker.sh`、`session-compact-observer.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/tech-stack.md`、`docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py`、`.cursor/skills/decisions-record/SKILL.md` |
+| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py` |
 | GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |
 | Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |

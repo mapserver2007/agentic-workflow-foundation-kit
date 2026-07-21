@@ -15,7 +15,7 @@ description: 全タスクで AGENTS.md を先に読み docs を裏取り元と�
 - **参照順序は `AGENTS.md > Documentation Navigation` に従う**（本ルールで重複定義しない）
 - **仕様の Source of Truth は docs/**（Domain 層）— コードからの推論だけで仕様を断定しない
 - **コードから読み取った仕様は docs で裏取りしてから回答する** — 矛盾時は docs を優先し、乖離を明記する
-- **設計次元 D-*（{{#each framework.design_dimensions}}{{this.id}} {{/each}}）の変更に該当する設計判断のみ `docs/DECISIONS.md` に ADR を追記する**（軽微な実装変更は対象外）
+- **設計次元 D-*（{{#each framework.design_dimensions}}{{this.id}} {{/each}}）の変更に該当する設計判断は ADR worker dispatch フローで `docs/DECISIONS.md` に記録する**（直接追記せず草案→承認→確定。軽微な実装変更は対象外）
 
 ## 禁止
 

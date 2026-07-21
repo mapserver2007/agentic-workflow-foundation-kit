@@ -385,6 +385,48 @@ def _cleanup_legacy_skill_dir() -> int:
     return 0
 
 
+def _cleanup_legacy_decisions_record() -> int:
+    """廃止された .cursor/skills/decisions-record/ を安全に削除する（ADR-0001）。
+
+    - 生成マーカー確認できる SKILL.md のみ削除
+    - 空ディレクトリの場合も安全に削除
+    - 想定外のファイルがある場合は exit 2
+    """
+    legacy_dir = os.path.join(ROOT, ".cursor", "skills", "decisions-record")
+
+    if not os.path.isdir(legacy_dir):
+        return 0
+
+    entries = os.listdir(legacy_dir)
+
+    if not entries:
+        shutil.rmtree(legacy_dir)
+        print("[cleanup] 廃止ディレクトリ .cursor/skills/decisions-record/（空）を安全に削除（ADR-0001）")
+        return 0
+
+    if set(entries) != {"SKILL.md"}:
+        print(
+            f"FATAL: decisions-record/ に想定外のファイルが存在: {entries}. "
+            f"手動で確認してください。",
+            file=sys.stderr,
+        )
+        return 2
+
+    skill_path = os.path.join(legacy_dir, "SKILL.md")
+    with open(skill_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "agentic-workflow-foundation" not in content:
+        print(
+            "FATAL: decisions-record/SKILL.md に生成マーカーがありません。手動で確認してください。",
+            file=sys.stderr,
+        )
+        return 2
+
+    shutil.rmtree(legacy_dir)
+    print("[cleanup] 廃止ディレクトリ .cursor/skills/decisions-record/ を安全に削除（ADR-0001）")
+    return 0
+
+
 _LEGACY_WORKFLOW_DOCS = {
     "02-task-decision.md": "# ①退出ゲート — タスク確定の判定",
     "03-report-creation.md": "# ③ タスクレポートの作成",
@@ -626,6 +668,16 @@ def _run_worker_contract_validator() -> int:
     return rc
 
 
+def _run_gate_adr_tests() -> int:
+    """gate-adr.py の草案モード・標準モードテストを実行する。"""
+    test_script = os.path.join(HERE, "test_gate_adr.py")
+    if not os.path.isfile(test_script):
+        print("[test_gate_adr] SKIP: test_gate_adr.py 不在")
+        return 0
+    rc = subprocess.call([sys.executable, test_script], cwd=ROOT)
+    return rc
+
+
 def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) -> int:
     if command in ("generate", "check"):
         args = [
@@ -658,7 +710,10 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
         rc = _run_agent_kaizen_validator(manifest)
         if rc != 0:
             return rc
-        return _run_worker_contract_validator()
+        rc = _run_worker_contract_validator()
+        if rc != 0:
+            return rc
+        return _run_gate_adr_tests()
     return 0
 
 
@@ -696,6 +751,9 @@ def main(argv=None) -> int:
                 if rc != 0:
                     return rc
                 rc = _cleanup_legacy_skill_dir()
+                if rc != 0:
+                    return rc
+                rc = _cleanup_legacy_decisions_record()
                 if rc != 0:
                     return rc
                 rc = _cleanup_legacy_workflow_triage(manifest)

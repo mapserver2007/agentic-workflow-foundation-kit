@@ -85,3 +85,63 @@
 指定モデルが利用できない場合は、worker 起動前に親が **ABORT** する。フォールバックは行わない。ユーザーに `config.yaml` の該当モデルスラグを修正するよう案内して中止する。起動済み worker の実行時致命エラーは Worker Contract の `status: fatal` として扱う。
 
 **例外（Step① deep 経路のみ）**: deep-thinking モデル利用不可の場合は、`requirement-analysis/references/analysis-depth.md` の「deep 起動の前提条件と失敗時動作」に従い、親がユーザーに継続可否を確認する。承認時は standard へフォールバックし、拒否時は `status: blocked` とする。
+
+## ADR Worker 契約
+
+ADR 専用 worker は、Step ① / ③ で D-* 変更を検知した際にオーケストレータが dispatch する。`docs/DECISIONS.md` への確定追記は**親のみ**が行い、worker は草案 artifact の作成に限定する。
+
+### dispatch 条件
+
+- Step ① worker が `adr_candidates` を返した場合、または Step ③ worker が `blocked: adr_required` を返した場合
+- オーケストレータが D-* 該当を確認した後に dispatch する
+
+### ADR Worker 入出力
+
+| フィールド（入力） | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `adr_candidate` | object | yes | D-* 候補（dimension / title / context / decision / rationale） |
+| `provisional_id` | string | yes | 暫定 ADR 番号（`ADR-NNNN`）。オーケストレータが `docs/DECISIONS.md` の最大番号 + 1 を採番 |
+| `base_commit_sha` | string | yes | 検知時点の commit SHA |
+| `investigation_memo_ref` | string | no | Step ① Investigation Memo パス（Step ① 検知時） |
+| `step3_envelope_ref` | string | no | Step ③ envelope パス（Step ③ 検知時） |
+
+| フィールド（出力） | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `fatal` | 草案作成結果 |
+| `draft_path` | string | — | 草案 artifact のパス（`{{agent_workflow.artifact.dir}}/{slug}--adr-draft.md`） |
+| `provisional_id` | string | — | 入力と同値（照合用） |
+| `reason` | string | — | `incomplete` / `fatal` 時の理由 |
+
+### 草案 artifact の構造
+
+草案は `{{agent_workflow.artifact.dir}}/{slug}--adr-draft.md` に書き出す。YAML front matter + Markdown body で構成する。
+
+```yaml
+---
+status: Proposed
+provisional_id: ADR-NNNN
+dimension: D-WORKFLOW
+title: "{判断のタイトル}"
+---
+```
+
+body は `docs/DECISIONS.md` のテンプレートに準拠した ADR 全文（Significance / Context / Decision / Consequences / Alternatives Considered）。
+
+### オーケストレータの制御フロー
+
+1. **採番**: `docs/DECISIONS.md` 内の既存最大番号 + 1 を暫定番号として採番
+2. **dispatch**: ADR worker を起動（モデルは `config.yaml > models.step1_investigation` を再利用）
+3. **草案ゲート**: `gate-adr.py --draft {draft_path}` で草案を検証
+   - FAIL: 草案を保持し worker へ修正再依頼
+4. **ユーザー承認**: 草案内容を提示し承認を取得
+   - 却下: 草案を保持して停止（明示的な破棄指示時のみ削除）
+5. **採番再確認**: 確定直前に `docs/DECISIONS.md` の最大番号を再確認し、競合時は再採番 → 草案を更新 → 再検証
+6. **確定追記**: Status を `Accepted` に変更し `docs/DECISIONS.md` へ追記。追記成功後に草案 artifact を削除
+7. **re-dispatch**（Step ③ 検知時のみ）: `gate-redispatch.py` 通過後、`approved_adr_id` 付きで Step ③ worker を再起動
+
+### 異常系
+
+- **草案ゲート不合格**: 草案を保持し worker へ修正再依頼（最大 2 回。超過時はユーザーに報告）
+- **ユーザー却下**: 草案を保持して停止。明示的な破棄指示があった場合のみ草案を削除
+- **セッション中断**: 草案を再開入力として保持。次セッションの再開フローで検出される
+- **確定追記失敗**: 草案を削除しない。ユーザーに報告して停止

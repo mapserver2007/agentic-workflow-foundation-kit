@@ -32,11 +32,12 @@
 
 ## 3.4 設計判断が発生した場合（設計次元 D-*）
 
-実装中に [docs/DECISIONS.md](../../DECISIONS.md) の **設計次元 D-* のいずれかを変更する判断** が発生した場合:
+実装中に **設計次元 D-* のいずれかを変更する判断** が発生した場合:
 
-1. `docs/DECISIONS.md` に新規 ADR エントリを追記（Significance セクション + Alternatives Considered 2 件以上必須）
-2. `reports/{report}.md` には**判断トピック名**を記載し、詳細は `docs/DECISIONS.md` への参照リンクで参照する（判断本文は埋め込まない）
-3. タスクレポートの「完了チェック」の「ADR 起票判定」を `[x]` に更新
+1. step envelope に `status: blocked`, `reason: adr_required` を設定し、`decision_alternatives`（代替案 2 件以上）と `base_commit_sha` を含めて親へ返す
+2. 親オーケストレータが ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記を管理する（[`worker-dispatch.md §ADR Worker 契約`](../../../.cursor/skills/workflow-orchestrator/references/worker-dispatch.md) 参照）
+3. 承認後、親が `approved_adr_id` 付きで Step ③ worker を再 dispatch する
+4. タスクレポートの「完了チェック」の「ADR 起票判定」を `[x]` に更新
 
 D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 / 値チューニングの選択 / リネーム / docs 整理 等）は ADR 起票せず PR 説明で完結。
 
@@ -144,7 +145,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 - `complete`: オーケストレータは正式成果物（`changed_files` / `untracked_files` と working tree の照合）を確認し、レポートの完了チェックを更新して④へ遷移する
 - `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
-- `blocked` (`reason: adr_required`): D-* 変更検知。オーケストレータは ADR 起草 → `workflow-gate.sh adr` → ユーザー承認 → 新規③ worker を `revised_plan_ref` + `prev_envelope_ref` + `approved_adr_id` 付きで起動する
+- `blocked` (`reason: adr_required`): D-* 変更検知。オーケストレータは ADR worker を dispatch → 草案ゲート検証 → ユーザー承認 → 確定追記 → 新規③ worker を `revised_plan_ref` + `prev_envelope_ref` + `approved_adr_id` 付きで起動する。`base_commit_sha` と `decision_alternatives`（代替案 2 件以上）は `blocked` envelope に必須
 - `fatal`: exit 2 相当。オーケストレータがユーザーに報告し QUALITY_GATE §2 例外承認導線を案内する
 
 ### Markdown body

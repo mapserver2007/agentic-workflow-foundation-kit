@@ -23,7 +23,7 @@
 | `framework.naming` | `AGENTS.md`（Documentation Naming Convention）/ `docs/QUALITY_GATE.md`（G-DOC-NAMING） |
 | `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
 | `framework.exit_codes` | `docs/QUALITY_GATE.md` |
-| `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` / `.cursor/skills/decisions-record/SKILL.md` |
+| `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` |
 | `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（Phase 1.5 で軽量実装を自動確定し、root manifest から overlay） |
 | `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
 | `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/CONTEXT_BUDGET.md` / `.cursor/hooks/README.md` |

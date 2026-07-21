@@ -98,11 +98,6 @@
 - `=== session-start gate ===`: 実行ログでゲート実行を識別できること。
 - `G-SESSION-HANDOFF-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）と完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`verification-gate.sh` と同クラスのシェルゲート（軽量実装 / 数値判定なし）として実装すること。
 
-### .cursor/skills/decisions-record/SKILL.md
-- `name: decisions-record`: Cursor skill としての識別子。
-- `D-BOUNDARY`: ADR 起票対象の設計次元を含むこと。
-- `Alternatives Considered`: 判断理由を復元可能にすること。
-
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
 - `name: agent-maintenance-docs`: Cursor skill としての識別子。
 - `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。
