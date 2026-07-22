@@ -19,6 +19,7 @@ set -u
 #   lint     — 下流 G-LINT（backend lint_cmd を実行）
 #   test     — 下流 G-TEST（backend test_cmd を実行）
 #   verify   — 下流 build → lint → test（G-GEN を含めない）
+#   adr      — ADR 起票内容の機械検査（gate-adr.py へ転送）
 #
 # Exit codes:
 #   0 = PASS
@@ -32,7 +33,7 @@ readonly FOUNDATION_SCRIPTS="$ROOT_DIR/.cursor/skills/agentic-workflow-foundatio
 
 SUBCMD="${1:-}"
 if [[ -z "$SUBCMD" ]]; then
-  echo "ERROR: Usage: bin/${SCRIPT_NAME} <audit|check|scripts|self|gen|build|lint|test|verify>" >&2
+  echo "ERROR: Usage: bin/${SCRIPT_NAME} <audit|check|scripts|self|gen|build|lint|test|verify|adr>" >&2
   exit 2
 fi
 
@@ -106,9 +107,15 @@ case "$SUBCMD" in
     _run_backend "{{project.quality_gate.lint_cmd}}" && \
     _run_backend "{{project.quality_gate.test_cmd}}"
     ;;
+  adr)
+    # ADR 起票内容の機械検査
+    GATE_DIR="$ROOT_DIR/.cursor/skills/session-handover/scripts"
+    export CURSOR_PROJECT_DIR="$ROOT_DIR"
+    exec python3 "$GATE_DIR/gate-adr.py" "${@:2}"
+    ;;
   *)
     echo "ERROR: unknown subcommand '$SUBCMD'." >&2
-    echo "Available: audit | check | scripts | self | gen | build | lint | test | verify" >&2
+    echo "Available: audit | check | scripts | self | gen | build | lint | test | verify | adr" >&2
     exit 2
     ;;
 esac

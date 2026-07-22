@@ -74,6 +74,21 @@ def test_standard_no_adrs():
     assert rc == 0, f"standard mode with no ADRs should PASS (got exit {rc})"
 
 
+def test_wrapper_adr_subcommand():
+    """bin/quality-gate adr --draft で引数転送と非 root CWD を検証する。"""
+    wrapper = ROOT / "bin" / "quality-gate"
+    draft = FIXTURES / "valid-draft.md"
+    result = subprocess.run(
+        [str(wrapper), "adr", "--draft", str(draft), "ADR-0001"],
+        capture_output=True, text=True,
+        cwd=str(ROOT / ".cursor"),  # root 以外の CWD
+    )
+    assert result.returncode == 0, (
+        f"wrapper adr subcommand should PASS (got exit {result.returncode})\n"
+        f"stderr: {result.stderr}"
+    )
+
+
 def main() -> int:
     tests = [
         test_valid_draft,
@@ -83,6 +98,7 @@ def main() -> int:
         test_no_alternatives,
         test_wrong_heading_id,
         test_standard_no_adrs,
+        test_wrapper_adr_subcommand,
     ]
     passed = 0
     failed = 0

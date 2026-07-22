@@ -1123,6 +1123,7 @@ outputs:
       - "audit"
       - "verify"
       - "self"
+      - "adr"
   # agent-workflow docs（feature: agent_workflow で条件生成）。
   # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。
