@@ -179,6 +179,27 @@ def test_invalid_step_fails():
     assert rc == 1, "invalid step 'step5' should FAIL (G-ARTIFACT-STEP-001)"
 
 
+def test_step3_blocked_adr_valid():
+    rc = check_artifact(str(FIXTURES_DIR / "step3-blocked-adr-valid.md"), json_mode=True)
+    assert rc == 0, "step3 blocked: adr_required with SHA + 2 alts should PASS"
+
+
+def test_step3_blocked_adr_no_sha_fails():
+    rc = check_artifact(str(FIXTURES_DIR / "step3-blocked-adr-no-sha.md"), json_mode=True)
+    assert rc == 1, (
+        "step3 blocked: adr_required without base_commit_sha should FAIL "
+        "(G-ARTIFACT-ADR-SHA-001)"
+    )
+
+
+def test_step3_blocked_adr_few_alts_fails():
+    rc = check_artifact(str(FIXTURES_DIR / "step3-blocked-adr-few-alts.md"), json_mode=True)
+    assert rc == 1, (
+        "step3 blocked: adr_required with <2 alternatives should FAIL "
+        "(G-ARTIFACT-ADR-ALTS-001)"
+    )
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -199,6 +220,9 @@ def main() -> int:
         test_step1_missing_gate_fails,
         test_invalid_status_fails,
         test_invalid_step_fails,
+        test_step3_blocked_adr_valid,
+        test_step3_blocked_adr_no_sha_fails,
+        test_step3_blocked_adr_few_alts_fails,
     ]
     passed = 0
     failed = 0

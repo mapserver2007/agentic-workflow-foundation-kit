@@ -94,7 +94,7 @@ Gate B 通過後、分析深度判定 Subagent（`config.yaml > models.depth_tri
 
 ## 1.9 ADR 起票判定（設計次元 D-*）
 
-調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、タスクレポートに埋め込まず **[docs/DECISIONS.md](../../DECISIONS.md)** に ADR として起票する。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
+調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、`docs/DECISIONS.md` に直接追記せず、ADR 候補を step envelope の `adr_candidates` フィールドに記録して親オーケストレータへ返す。親が ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記のフローを管理する（[`worker-dispatch.md §ADR Worker 契約`](../../../.cursor/skills/workflow-orchestrator/references/worker-dispatch.md) 参照）。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
 
 **起票判定**（D-* のいずれか 1 つ以上に該当する場合のみ）:
 
@@ -208,7 +208,7 @@ docs-first 完了後、[`references/workflow-triage.md`](../../../.cursor/skills
 
 ## 1.{{#if deep_thinking.enabled}}6{{else}}5{{/if}} ADR 起票判定（設計次元 D-*）
 
-調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、タスクレポートに埋め込まず **[docs/DECISIONS.md](../../DECISIONS.md)** に ADR として起票する。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
+調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、`docs/DECISIONS.md` に直接追記せず、ADR 候補を step envelope の `adr_candidates` フィールドに記録して親オーケストレータへ返す。親が ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記のフローを管理する（[`worker-dispatch.md §ADR Worker 契約`](../../../.cursor/skills/workflow-orchestrator/references/worker-dispatch.md) 参照）。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
 
 **起票判定**（D-* のいずれか 1 つ以上に該当する場合のみ）:
 
@@ -280,6 +280,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `non_blocking_issues` | array | — | non-blocking warning のサマリ配列 |
 | `resolved_issues` | array | — | 解決済み issue のサマリ配列 |
 | `reason` | string | — | `blocked` / `fatal` / `incomplete` 時の理由 |
+| `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
 {{else}}
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
@@ -290,6 +291,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `investigation_memo_path` | string | — | 構造化調査メモの相対パス（step envelope body 部を指してよい） |
 {{#if deep_thinking.enabled}}| `triage_result` | enum | `skipped` / `invoked` / `deferred` | 調査深度トリアージの判定結果 |
 {{/if}}| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
 {{/if}}
 
 ### 終端状態と遷移

@@ -273,7 +273,7 @@ tech_stack:
 
 # ------------------------------------------------------------
 # (2d) session — Layer 3 セッション管理（親へ内包）
-#   session-planning / session-handover / decisions-record は本 manifest の
+#   session-planning / session-handover は本 manifest の
 #   outputs[] から生成する。スキル実行後は root manifest.yaml の session.verification
 #   が正式な検証コマンドの置き場になる。
 # ------------------------------------------------------------
@@ -910,6 +910,10 @@ outputs:
     required_sections:
       - "G-ADR-SIGNIFICANCE-001"
       - "G-ADR-ALTERNATIVES-001"
+      - "G-ADR-DRAFT-SINGLE-001"
+      - "G-ADR-DRAFT-ID-001"
+      - "G-ADR-DRAFT-STATUS-001"
+      - "G-ADR-DRAFT-EMPTY-001"
   - path: .cursor/skills/session-handover/scripts/gate-artifact.py
     template: skills/session-handover/scripts/gate-artifact.py.template
     mode: render
@@ -919,6 +923,8 @@ outputs:
       - "G-ARTIFACT-PARSE-001"
       - "G-ARTIFACT-FIELD-001"
       - "G-ARTIFACT-STATUS-001"
+      - "G-ARTIFACT-ADR-SHA-001"
+      - "G-ARTIFACT-ADR-ALTS-001"
   - path: .cursor/skills/session-handover/scripts/gate-redispatch.py
     template: skills/session-handover/scripts/gate-redispatch.py.template
     mode: render
@@ -927,13 +933,6 @@ outputs:
     required_sections:
       - "G-REDISPATCH-SHA-001"
       - "G-REDISPATCH-CHANGED-001"
-  - path: .cursor/skills/decisions-record/SKILL.md
-    template: skills/decisions-record/SKILL.md.template
-    mode: render
-    required_sections:
-      - "name: decisions-record"
-      - "D-BOUNDARY"
-      - "Alternatives Considered"
   # agent-code-review スキル（feature: code_review で条件生成）。
   # code_review.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .cursor/skills/agent-code-review/SKILL.md
