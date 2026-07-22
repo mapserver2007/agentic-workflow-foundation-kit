@@ -43,12 +43,26 @@ description: >-
 
 `docs/agent-tasks/maintenance-docs/` 内の `*.md` ファイル（`archives/` 除く）を一覧し、各ファイルから以下を抽出する:
 
-- YAML front matter: `status`, `source_type`, `source`, `target_docs`, `change_type`
+- YAML front matter: `status`, `source_type`, `source`, `source_report`, `target_docs`, `change_type`
 - 本文: コード変更の要約、影響を受ける docs セクション、期待する反映内容
 
 `status: pending` のファイルのみ処理対象とする。`source`（PR URL / report パス）を参照してコード変更の詳細を把握する。
 
 起票ファイルテンプレートの全文定義は [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を SoT として参照する（二重定義しない）。
+
+#### queue front matter 契約
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | yes | `pending` / `in_progress` / `done` |
+| `created` | date | yes | 作成日 |
+| `source_type` | enum | yes | `step6` / `review` / `manual` |
+| `source` | string | yes | PR URL / report path / 空 |
+| `source_report` | string | conditional | タスクレポートのファイル名。`source_type: manual` の場合は省略可（`gate-maintenance-docs.py` の突合対象外） |
+| `target_docs` | string[] | yes | 反映先 docs パスのリスト（1件以上） |
+| `change_type` | enum | yes | `feature` / `behavior` / `api` / `config` / `architecture` / `deprecation` |
+
+> **`source_report` と archive ゲートの関係**: タスクレポートの archive 時に `gate-maintenance-docs.py` が `source_report` で突合検査を行う。`source_type: manual` の queue は突合スキャンから除外される。report archive 後も `reports/` → `reports/archives/` の順で解決する。
 
 ### Phase 2: 反映対象の判定と優先度付け
 

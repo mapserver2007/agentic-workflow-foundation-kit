@@ -20,10 +20,17 @@
 起票ファイルのテンプレート全文・反映要否判定基準は [03-implementation.md](03-implementation.md) §3.5 を参照。
 
 起票ファイルが存在しない場合は、改めて反映要否を判定する:
-- 反映が必要: 起票ファイルを新規作成する
+- 反映が必要: 起票ファイルを新規作成する（`source_report` にタスクレポートのファイル名を設定）
 - 反映不要: 作成せずに次に進む
 
-判定完了後、タスクレポートの「maintenance-docs/ 起票判定」チェックボックスを `[x]` に更新する。
+### maintenance-docs-judgment の確定手順（archive 前 Hard Gate 対象）
+
+判定完了後、タスクレポートの「§10. 完了チェック」内にある **maintenance-docs 起票判定** key-value を更新する:
+
+- **反映が必要な場合**: `maintenance-docs-judgment: required` / `queue_file: docs/agent-tasks/maintenance-docs/{slug}.md`
+- **反映不要の場合**: `maintenance-docs-judgment: not_required` / `queue_file: なし` / `judgment_reason: {具体的な理由}`
+
+上記 key-value を確定した**後に** `- [x] maintenance-docs/ 起票判定（G-DOC-SPEC）` チェックボックスを `[x]` にする（順序厳守）。`archive-gate.sh` は `gate-maintenance-docs.py` を呼び出し、判定と queue の整合性を機械検査する。
 {{else}}
 PR レビュー完了後、以下の原則に従い Domain 層ドキュメントへの仕様反映を行う。
 

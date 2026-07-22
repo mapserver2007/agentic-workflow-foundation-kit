@@ -10,6 +10,7 @@
 set -u
 
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPORTS_DIR="$PROJECT_DIR/docs/agent-tasks/reports"
 REPORT_FILE="${1:-}"
 
@@ -88,6 +89,24 @@ check_report() {
     else
       echo "[PASS] 残存 step envelope なし (G-ARCHIVE-ARTIFACT-001)"
     fi
+  fi
+{{/if}}
+
+{{#if agent_workflow.maintenance_docs.enabled}}
+  # --- G-ARCHIVE-MDOCS-001: maintenance-docs 起票判定の整合性検査 ---
+  python3 "$SCRIPT_DIR/gate-maintenance-docs.py" "$file"
+  local mdocs_rc=$?
+  if (( mdocs_rc == 2 )); then
+    echo "[FATAL] gate-maintenance-docs.py が致命的エラー (G-ARCHIVE-MDOCS-001)"
+    return 2
+  elif (( mdocs_rc == 1 )); then
+    echo "[FAIL] maintenance-docs 起票判定の整合性検査失敗 (G-ARCHIVE-MDOCS-001)"
+    fail=1
+  elif (( mdocs_rc == 0 )); then
+    echo "[PASS] maintenance-docs 起票判定の整合性 OK (G-ARCHIVE-MDOCS-001)"
+  else
+    echo "[FATAL] gate-maintenance-docs.py が想定外の終了コード: $mdocs_rc (G-ARCHIVE-MDOCS-001)"
+    return 2
   fi
 {{/if}}
 
