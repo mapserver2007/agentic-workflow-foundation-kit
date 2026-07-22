@@ -66,6 +66,7 @@ status: pending
 created: YYYY-MM-DD
 source_type: step6 | review | manual
 source: "{PR URL / report path / 手動の場合は空}"
+source_report: "{タスクレポートのファイル名。source_type: manual の場合は省略可}"
 target_docs:
   - "{docs/spec.md}"
   - "{docs/api.md}"

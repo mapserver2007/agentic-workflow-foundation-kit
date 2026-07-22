@@ -437,6 +437,17 @@ agent_workflow:
   report_slug_format: "TICKET-{number}-{slug}"
   maintenance_docs:
     enabled: true
+    judgment_enum:
+      - "pending"
+      - "required"
+      - "not_required"
+    queue_required_front_matter:
+      - "status"
+      - "created"
+      - "source_type"
+      - "source_report"
+      - "target_docs"
+      - "change_type"
   maintenance_gotchas:
     enabled: true
   gate_scripts: true
@@ -481,8 +492,11 @@ agent_workflow:
     - id: redispatch
       desc: "re-dispatch 前の復元差分照合"
       cmd: "gate-redispatch.py"
+    - id: maintenance-docs
+      desc: "maintenance-docs 起票判定と queue 整合性の機械検査"
+      cmd: "gate-maintenance-docs.py"
     - id: archive
-      desc: "完了チェック6項目 + 残存artifact検査 + archives移動検査"
+      desc: "完了チェック6項目 + 残存artifact検査 + maintenance-docs整合性検査 + archives移動検査"
       cmd: "archive-gate.sh"
   # ステップ別モデル設定（PO 決定値）。
   # config.yaml テンプレートがこの値を seed 初期値として使い、生成後は PO が直接 config.yaml を編集できる。
@@ -885,6 +899,7 @@ outputs:
       - "step2-report"
       - "step4"
       - "adr"
+      - "maintenance-docs"
       - "archive"
   - path: .cursor/skills/session-handover/scripts/archive-gate.sh
     template: skills/session-handover/scripts/archive-gate.sh.template
@@ -894,6 +909,7 @@ outputs:
     required_sections:
       - "=== archive gate ==="
       - "G-ARCHIVE-CHECK-001"
+      - "G-ARCHIVE-MDOCS-001"
   - path: .cursor/skills/session-handover/scripts/gate-report.py
     template: skills/session-handover/scripts/gate-report.py.template
     mode: render
@@ -933,6 +949,16 @@ outputs:
     required_sections:
       - "G-REDISPATCH-SHA-001"
       - "G-REDISPATCH-CHANGED-001"
+  - path: .cursor/skills/session-handover/scripts/gate-maintenance-docs.py
+    template: skills/session-handover/scripts/gate-maintenance-docs.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-MDOCS-JUDGMENT-001"
+      - "G-MDOCS-QUEUE-001"
+      - "G-MDOCS-REASON-001"
+      - "=== maintenance-docs gate ==="
   # agent-code-review スキル（feature: code_review で条件生成）。
   # code_review.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
   - path: .cursor/skills/agent-code-review/SKILL.md
