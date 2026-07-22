@@ -49,6 +49,8 @@ def find_queues_for_report(project_dir: Path, report_filename: str):
         # source_type: manual は突合対象外
         if front_matter.get("source_type") == "manual":
             continue
+        if front_matter.get("status") != "pending":
+            continue
         if front_matter.get("source_report") == report_filename:
             matches.append((f, front_matter))
     return matches
@@ -69,7 +71,8 @@ def _parse_queue_front_matter(path: Path):
     if len(parts) < 3:
         return None
     try:
-        return yaml.safe_load(parts[1])
+        parsed = yaml.safe_load(parts[1])
+        return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None
 
@@ -106,7 +109,11 @@ def check_report(report_path: Path, project_dir: Path):
             _out("FAIL", "judgment=required だが queue_file が未設定", "G-MDOCS-QUEUE-001")
             return 1
 
-        queue_path = project_dir / queue_file_val
+        queue_dir = (project_dir / QUEUE_DIR_REL).resolve()
+        queue_path = (project_dir / queue_file_val).resolve()
+        if not str(queue_path).startswith(str(queue_dir)):
+            _out("FAIL", "queue_file は maintenance-docs/ 配下を指す必要があります", "G-MDOCS-QUEUE-001")
+            return 1
         if not queue_path.is_file():
             _out("FAIL", f"queue_file が存在しません: {queue_file_val}", "G-MDOCS-QUEUE-001")
             return 1

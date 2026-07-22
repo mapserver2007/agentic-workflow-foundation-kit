@@ -102,8 +102,11 @@ check_report() {
   elif (( mdocs_rc == 1 )); then
     echo "[FAIL] maintenance-docs 起票判定の整合性検査失敗 (G-ARCHIVE-MDOCS-001)"
     fail=1
-  else
+  elif (( mdocs_rc == 0 )); then
     echo "[PASS] maintenance-docs 起票判定の整合性 OK (G-ARCHIVE-MDOCS-001)"
+  else
+    echo "[FATAL] gate-maintenance-docs.py が想定外の終了コード: $mdocs_rc (G-ARCHIVE-MDOCS-001)"
+    return 2
   fi
 {{/if}}
 

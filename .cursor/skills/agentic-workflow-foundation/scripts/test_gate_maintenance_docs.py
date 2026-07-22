@@ -33,7 +33,11 @@ REPORTS_FIXTURES = SKILL_DIR / "fixtures" / "reports-mdocs"
 QUEUE_FIXTURES = SKILL_DIR / "fixtures" / "maintenance-docs"
 
 
-def _setup_project(tmp: Path, queue_files: list[str] = None, report_file: str = None):
+def _setup_project(
+    tmp: Path,
+    queue_files: list[str] | None = None,
+    report_file: str | None = None,
+):
     """一時プロジェクトを作り、queue fixtures をコピーし report を配置する。"""
     queue_dir = tmp / "docs" / "agent-tasks" / "maintenance-docs"
     queue_dir.mkdir(parents=True)

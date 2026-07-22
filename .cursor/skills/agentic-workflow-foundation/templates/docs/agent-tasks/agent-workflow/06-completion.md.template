@@ -28,7 +28,7 @@
 判定完了後、タスクレポートの「§10. 完了チェック」内にある **maintenance-docs 起票判定** key-value を更新する:
 
 - **反映が必要な場合**: `maintenance-docs-judgment: required` / `queue_file: docs/agent-tasks/maintenance-docs/{slug}.md`
-- **反映不要の場合**: `maintenance-docs-judgment: not_required` / `judgment_reason: {具体的な理由}`
+- **反映不要の場合**: `maintenance-docs-judgment: not_required` / `queue_file: なし` / `judgment_reason: {具体的な理由}`
 
 上記 key-value を確定した**後に** `- [x] maintenance-docs/ 起票判定（G-DOC-SPEC）` チェックボックスを `[x]` にする（順序厳守）。`archive-gate.sh` は `gate-maintenance-docs.py` を呼び出し、判定と queue の整合性を機械検査する。
 {{else}}
