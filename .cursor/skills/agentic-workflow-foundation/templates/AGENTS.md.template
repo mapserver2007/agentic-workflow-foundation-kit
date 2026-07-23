@@ -52,8 +52,14 @@ bin/quality-gate gen     # G-GEN（生成 + 差分検査は workflow-gate.sh ste
 bin/quality-gate build   # G-BUILD
 bin/quality-gate lint    # G-LINT
 bin/quality-gate test    # G-TEST
-bin/quality-gate self    # kit 自己検証（audit + foundation tests）
 ```
+{{#if foundation.enabled}}
+
+```bash
+bin/foundation-gate gen  # G-GEN（生成 + 差分検査は workflow-gate.sh step4 経由）
+bin/foundation-gate self # kit 自己検証（audit + foundation tests）
+```
+{{/if}}
 
 **exit code**: `0` = 通過 / `1` = 修正して再実行（Advisory ループ）/ `2` = 致命的エラー（ユーザー報告）。詳細は `docs/QUALITY_GATE.md`。
 

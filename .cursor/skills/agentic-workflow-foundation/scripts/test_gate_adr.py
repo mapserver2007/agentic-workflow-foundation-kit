@@ -74,27 +74,57 @@ def test_standard_no_adrs():
     assert rc == 0, f"standard mode with no ADRs should PASS (got exit {rc})"
 
 
-def test_wrapper_adr_subcommand():
-    """bin/quality-gate adr --draft で引数転送と非 root CWD を検証する。"""
-    wrapper = ROOT / "bin" / "quality-gate"
+def test_workflow_gate_adr_subcommand():
+    """workflow-gate.sh adr --draft で引数転送と非 root CWD を検証する。"""
+    workflow_gate = ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "workflow-gate.sh"
     draft = FIXTURES / "valid-draft.md"
     relative_draft = str(draft.relative_to(ROOT))
     result = subprocess.run(
-        [str(wrapper), "adr", "--draft", relative_draft, "ADR-0001"],
+        [str(workflow_gate), "adr", "--draft", relative_draft, "ADR-0001"],
         capture_output=True, text=True,
         cwd=str(ROOT / ".cursor"),  # root 以外の CWD
     )
     assert result.returncode == 0, (
-        f"wrapper adr subcommand should PASS (got exit {result.returncode})\n"
+        f"workflow-gate.sh adr subcommand should PASS (got exit {result.returncode})\n"
         f"stderr: {result.stderr}"
     )
     wrong_id = subprocess.run(
-        [str(wrapper), "adr", "--draft", relative_draft, "ADR-9999"],
+        [str(workflow_gate), "adr", "--draft", relative_draft, "ADR-9999"],
         capture_output=True, text=True,
         cwd=str(ROOT / ".cursor"),
     )
     assert wrong_id.returncode != 0, (
-        "wrapper must forward the expected ADR ID"
+        "workflow-gate.sh adr must forward the expected ADR ID"
+    )
+
+
+def test_quality_gate_adr_rejected():
+    """bin/quality-gate adr は exit 2 で拒否されることを検証する（ADR-0001）。"""
+    wrapper = ROOT / "bin" / "quality-gate"
+    result = subprocess.run(
+        [str(wrapper), "adr"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 2, (
+        f"bin/quality-gate adr should be rejected with exit 2 (got exit {result.returncode})"
+    )
+    assert "workflow-gate.sh" in result.stderr, (
+        "rejection message should mention workflow-gate.sh"
+    )
+
+
+def test_quality_gate_self_rejected():
+    """bin/quality-gate self は exit 2 で拒否されることを検証する（ADR-0001）。"""
+    wrapper = ROOT / "bin" / "quality-gate"
+    result = subprocess.run(
+        [str(wrapper), "self"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 2, (
+        f"bin/quality-gate self should be rejected with exit 2 (got exit {result.returncode})"
+    )
+    assert "foundation-gate" in result.stderr, (
+        "rejection message should mention foundation-gate"
     )
 
 
@@ -107,7 +137,9 @@ def main() -> int:
         test_no_alternatives,
         test_wrong_heading_id,
         test_standard_no_adrs,
-        test_wrapper_adr_subcommand,
+        test_workflow_gate_adr_subcommand,
+        test_quality_gate_adr_rejected,
+        test_quality_gate_self_rejected,
     ]
     passed = 0
     failed = 0

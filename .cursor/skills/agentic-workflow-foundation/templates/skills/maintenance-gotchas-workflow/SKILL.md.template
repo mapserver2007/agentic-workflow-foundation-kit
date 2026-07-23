@@ -110,7 +110,7 @@ actionable エントリに対し影響範囲・修正コスト・再発頻度で
 | 修復種別 | 必須検証 |
 | --- | --- |
 | ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`bin/quality-gate verify`） |
-| 設定/manifest 変更 | `bin/quality-gate self`（kit 自己検証）+ `bin/quality-gate verify`（G-BUILD + G-LINT + G-TEST） |
+| 設定/manifest 変更 | `bin/foundation-gate self`（kit 自己検証）+ `bin/quality-gate verify`（G-BUILD + G-LINT + G-TEST） |
 | Meta 層 docs 修正（seed / 直接追記） | リンク検証 + 構造検証（見出し階層の整合） |
 | Domain 層 docs 修正 | リンク検証 + 構造検証（見出し階層の整合） |
 | テスト追加 | G-TEST（追加テストが PASS + 既存テスト非破壊） |

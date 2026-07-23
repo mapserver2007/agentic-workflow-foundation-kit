@@ -122,6 +122,8 @@ case "$STEP" in
     ;;
   adr)
     # ADR 起票内容の機械検査（docs/DECISIONS.md）
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+    export CURSOR_PROJECT_DIR="$ROOT_DIR"
     exec python3 "$SCRIPT_DIR/gate-adr.py" "$@"
     ;;
   artifact)

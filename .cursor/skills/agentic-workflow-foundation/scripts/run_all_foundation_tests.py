@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Foundation script tests の集約 runner。
 
-bin/quality-gate scripts / self から呼ばれる。
+bin/foundation-gate scripts / self から呼ばれる。
 test_worker_contract.py は audit 後段で自動実行されるため、
 self (audit + scripts) 経由時の重複実行は許容する（冪等）。
 

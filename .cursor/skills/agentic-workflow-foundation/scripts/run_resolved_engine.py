@@ -33,6 +33,7 @@ ROOT_OVERLAY_KEYS = (
     "deep_thinking",
     "requirement_analysis",
     "agent_kaizen",
+    "foundation",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
