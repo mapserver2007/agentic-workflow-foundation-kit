@@ -50,9 +50,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
 | **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step2`{{/if}} |
 | **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | Step ② 承認済み | コード変更完了 + レポート更新 | — |
-| **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → PR{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
-| **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | PR → 完了{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} |
-| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ 承認済み{{#if agent_workflow.gate_scripts}} + `workflow-gate.sh step6` PASS{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}{{/if}} | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
+| **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → 検証{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
+| **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | 検証 → PR（入口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} + PR → 完了（出口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}{{/if}} |
+| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ で `workflow-gate.sh step6` PASS 済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
 
 ### Step ①: 調査・分析（退出ゲートを内包）
 
@@ -130,11 +130,18 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
 
-1. `agent-github-pr` スキルで PR を作成する
+{{#if agent_workflow.gate_scripts}}1. `workflow-gate.sh step5` を実行する（Step ⑤ 入口: 検証 → PR）
+2. `agent-github-pr` スキルで PR を作成する
+3. `agent-code-review` スキルでレビュー指摘を取得・検証する
+4. ユーザーに検証結果を提示し承認後に返信・修正する
+5. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
+6. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+7. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
+{{else}}1. `agent-github-pr` スキルで PR を作成する
 2. `agent-code-review` スキルでレビュー指摘を取得・検証する
 3. ユーザーに検証結果を提示し承認後に返信・修正する
 4. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
-{{#if agent_workflow.gate_scripts}}5. `workflow-gate.sh step6` で Step ⑥ 入口条件を検証する{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}{{/if}}
+{{/if}}
 
 ### Step ⑥: 完了報告
 

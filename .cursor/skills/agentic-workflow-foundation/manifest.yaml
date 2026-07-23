@@ -628,11 +628,11 @@ cross_repo_knowledge:
 # ------------------------------------------------------------
 # (2l) foundation — 基盤保守ゲート（条件生成 / ADR-0001）
 #   foundation.enabled: true の場合のみ bin/foundation-gate を生成する。
-#   seed default は false。kit root overlay で true に設定する。
+#   seed default は true。下流プロジェクトは root overlay で false に設定できる。
 #   ROOT_OVERLAY_KEYS に "foundation" を含め、root manifest から合成する。
 # ------------------------------------------------------------
 foundation:
-  enabled: false
+  enabled: true
 
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
