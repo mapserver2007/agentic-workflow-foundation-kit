@@ -5,6 +5,9 @@
 実装・テスト・レビューが完了した後、maintenance-docs/ 起票ファイルの最終確認と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
 
 **前提条件**: ⑤ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
+{{#if agent_workflow.step6.project_gate_command}}
+**プロジェクト固有ゲート**: Step ⑤ で `workflow-gate.sh step6` を実行済みであり、プロジェクト固有の検査と汎用レビューゲートの両方を通過していることが前提となる。
+{{/if}}
 
 ---
 

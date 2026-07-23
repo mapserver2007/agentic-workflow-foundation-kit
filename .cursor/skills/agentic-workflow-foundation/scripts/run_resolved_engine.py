@@ -440,6 +440,58 @@ def _cleanup_legacy_workflow_docs() -> int:
     return 0
 
 
+_PROJECT_GATE_UNSAFE_CHARS = set('"\\$`')
+
+
+def _validate_project_gate_command(manifest: dict) -> None:
+    """agent_workflow.step6.project_gate_command を生成前に検証する。
+
+    - 未設定 / None: 既存動作（プロジェクトゲートなし）
+    - 設定時: 非空の文字列リスト。空文字列・改行・シェル展開を壊す文字は exit 2
+    """
+    aw = manifest.get("agent_workflow")
+    if not isinstance(aw, dict):
+        return
+    step6 = aw.get("step6")
+    if not isinstance(step6, dict):
+        return
+    cmd = step6.get("project_gate_command")
+    if cmd is None:
+        return
+    if not isinstance(cmd, list) or len(cmd) == 0:
+        print(
+            "FATAL: agent_workflow.step6.project_gate_command は非空の文字列リストが必要です",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    for i, elem in enumerate(cmd):
+        if not isinstance(elem, str):
+            print(
+                f"FATAL: project_gate_command[{i}] が文字列ではありません: {type(elem).__name__}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if elem == "":
+            print(
+                f"FATAL: project_gate_command[{i}] が空文字列です",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if "\n" in elem:
+            print(
+                f"FATAL: project_gate_command[{i}] に改行が含まれています",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        unsafe = _PROJECT_GATE_UNSAFE_CHARS & set(elem)
+        if unsafe:
+            print(
+                f"FATAL: project_gate_command[{i}] に禁止文字が含まれています: {sorted(unsafe)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+
 def _filter_outputs_by_features(manifest: dict) -> dict:
     """feature フラグが無効な outputs エントリを除外する。
 
@@ -477,6 +529,7 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
 def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     manifest = genlib.load_manifest(seed_manifest_path)
     if not os.path.isfile(root_manifest_path):
+        _validate_project_gate_command(manifest)
         return _filter_outputs_by_features(_apply_upstream_design_inputs(manifest))
 
     overlay = genlib.load_manifest(root_manifest_path)
@@ -495,6 +548,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
             merged[key] = overlay[key]
     merged = _apply_framework_overlay(merged, overlay)
     merged = _apply_upstream_design_inputs(merged)
+    _validate_project_gate_command(merged)
     return _filter_outputs_by_features(merged)
 
 

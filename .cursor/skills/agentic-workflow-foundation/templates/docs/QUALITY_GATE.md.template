@@ -169,6 +169,26 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 {{#each agent_workflow.step_gates}}| `{{this.id}}` | {{this.desc}} | `{{this.cmd}}` |
 {{/each}}
 
+{{#if agent_workflow.step6.project_gate_command}}
+**Step 6 プロジェクト固有ゲート**: `manifest.yaml > agent_workflow.step6.project_gate_command` が設定されている場合、`workflow-gate.sh step6` はプロジェクトゲートを先に実行し、成功時のみ `plan-gate.sh review` を実行する。プロジェクトゲートが非 0 で終了した場合は汎用ゲートへ進まずその exit code で失敗する。残余引数はプロジェクトゲートへ透過される。未設定または `null` の場合は既存どおり `plan-gate.sh review` のみを実行する。上記テーブルの step6 行は後段の汎用ゲートを示す。
+
+```yaml
+# 設定例（manifest.yaml）
+agent_workflow:
+  step6:
+    project_gate_command:
+      - python3
+      - .cursor/skills/session-handover/scripts/gate-review.py
+```
+
+```bash
+# 実行例
+workflow-gate.sh step6 TICKET-1234
+# → gate-review.py TICKET-1234 を実行
+# → 成功時のみ plan-gate.sh review を実行
+```
+{{/if}}
+
 ```bash
 # 使用例
 .cursor/skills/session-handover/scripts/workflow-gate.sh step2
@@ -256,7 +276,7 @@ workflow-orchestrator のフェーズ境界ゲートを統一インターフェ�
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step2`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（gen 対象変更を自動検出し必要時のみ gen 実行） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step5`（`session.verification.gate_command` 実行） |
-| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6` + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
