@@ -25,6 +25,7 @@ TESTS_IN_ORDER = [
     "test_worker_contract.py",
     "test_gate_adr.py",
     "test_gate_maintenance_docs.py",
+    "test_project_gate_command.py",
 ]
 
 

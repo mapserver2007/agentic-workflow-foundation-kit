@@ -467,6 +467,14 @@ agent_workflow:
       # 未導入・不正 front matter・未知必須フィールドは exit 2（致命的エラー）。
       parser: "python3-pyyaml"
       parser_missing_exit: 2
+  # --- step6 プロジェクト固有ゲート（任意・設定駆動）---
+  # 下流プロジェクトの root manifest.yaml で以下を設定すると、
+  # workflow-gate.sh step6 実行時にプロジェクトゲート → 汎用ゲート（plan-gate.sh review）の
+  # 順序で実行する。未設定時は既存どおり plan-gate.sh review のみ。
+  # step6:
+  #   project_gate_command:
+  #     - python3
+  #     - .cursor/skills/session-handover/scripts/gate-review.py
   step_gates:
     - id: step2
       desc: "計画→実装境界（必須セクション充足）"

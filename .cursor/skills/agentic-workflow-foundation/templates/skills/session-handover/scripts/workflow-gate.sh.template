@@ -100,7 +100,20 @@ case "$STEP" in
     ;;
   step6)
     # ⑤→⑥ PR→完了: レビュー完了承認 + 未対応0件を検査
+    {{#if agent_workflow.step6.project_gate_command}}
+    # プロジェクト固有ゲート → 汎用ゲートの順序で実行
+    PROJECT_GATE_CMD=({{#each agent_workflow.step6.project_gate_command}} "{{this}}"{{/each}} )
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+    (cd "$ROOT_DIR" && "${PROJECT_GATE_CMD[@]}" "$@")
+    pg_exit=$?
+    if [[ $pg_exit -ne 0 ]]; then
+      echo "FAIL: プロジェクトゲートが exit $pg_exit で失敗（汎用ゲートは未実行）"
+      exit $pg_exit
+    fi
     exec "$SCRIPT_DIR/plan-gate.sh" review
+    {{else}}
+    exec "$SCRIPT_DIR/plan-gate.sh" review
+    {{/if}}
     ;;
   adr)
     # ADR 起票内容の機械検査（docs/DECISIONS.md）
