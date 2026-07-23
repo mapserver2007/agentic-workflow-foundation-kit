@@ -1140,6 +1140,8 @@ outputs:
       - "verify"
       - "gen"
       - "build"
+      - "lint"
+      - "test"
   # foundation-gate wrapper（feature: foundation で条件生成。ADR-0001）。
   # 基盤保守の公開入口。foundation.enabled: true の場合のみ生成される。
   - path: bin/foundation-gate
@@ -1152,6 +1154,8 @@ outputs:
       - "SUBCMD"
       - "audit"
       - "generate"
+      - "check"
+      - "scripts"
       - "self"
   # agent-workflow docs（feature: agent_workflow で条件生成）。
   # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。

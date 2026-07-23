@@ -56,8 +56,8 @@ bin/quality-gate test    # G-TEST
 {{#if foundation.enabled}}
 
 ```bash
-bin/foundation-gate gen  # G-GEN（生成 + 差分検査は workflow-gate.sh step4 経由）
-bin/foundation-gate self # kit 自己検証（audit + foundation tests）
+bin/foundation-gate generate # 基盤ファイル群を再生成
+bin/foundation-gate self     # kit 自己検証（audit + foundation tests）
 ```
 {{/if}}
 
