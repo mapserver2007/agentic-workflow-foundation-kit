@@ -72,7 +72,7 @@ case "$STEP" in
       GEN_EXIT=$?
       if [[ $GEN_EXIT -ne 0 ]]; then
         echo "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
-        exit 1
+        exit "$GEN_EXIT"
       fi
       # gen 後の porcelain 検査（対象パスのみ）
       GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
@@ -93,6 +93,11 @@ case "$STEP" in
     # --- build / lint / test (via wrapper) ---
     echo "--- verify ---"
     "$ROOT_DIR/bin/quality-gate" verify
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      echo "FAIL: bin/quality-gate verify が exit $rc で失敗"
+      exit "$rc"
+    fi
     ;;
   step5)
     # ④→⑤ 検証→PR: verification-gate.sh（session.verification.gate_command）
