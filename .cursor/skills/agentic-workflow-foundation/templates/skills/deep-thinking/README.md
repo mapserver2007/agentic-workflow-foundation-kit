@@ -35,7 +35,7 @@ A/B 並列分析 + C 統合裁定の構造により、これらのリスクを�
 - `execution.stop_when`: 再審の停止条件
 - `high_impact_categories`: リスクと不確実性を明示し、ユーザーの最終判断を必要とする領域
 
-**静的検査**: config.yaml の構造・異モデル要求・再審予算・停止方針は基盤 audit（`bin/foundation-gate audit`）の静的ゲート G-DEEP-* で検査される。実行時のモデル実割当・A/B の相互非参照・別プロセス実行は Cursor Subagent API の制約により静的検査の対象外。
+**静的検査**: config.yaml の構造・異モデル要求・再審予算・停止方針は基盤 audit（{{#if foundation.enabled}}`bin/foundation-gate audit`{{else}}`bin/quality-gate verify`{{/if}}）の静的ゲート G-DEEP-* で検査される。実行時のモデル実割当・A/B の相互非参照・別プロセス実行は Cursor Subagent API の制約により静的検査の対象外。
 
 起動前に A/B の指定モデルが利用可能であることを確認する。利用不可時は同等モデルへ暗黙に代替せず、`config.yaml` の修正を促して終了する。A/B が同一モデルの場合、A/B の一致をモデル独立な検証とはみなさない（一次証跡の直接性を優先する）。
 
