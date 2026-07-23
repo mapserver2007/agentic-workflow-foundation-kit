@@ -66,7 +66,7 @@ evidence:
     observation: "project.context_budget に budget_thresholds の overlay が定義されていない"
 fix_target: "manifest.yaml > project.context_budget"
 fix_description: "root manifest の project.context_budget に budget_thresholds のオーバーライド値を追加する"
-verification: "bin/quality-gate audit 実行後に resolved manifest で上書き値を確認"
+verification: "{{#if foundation.enabled}}bin/foundation-gate audit 実行後に{{else}}bin/quality-gate verify 実行後に{{/if}} resolved manifest で上書き値を確認"
 adoption_gate:
   has_evidence: true
   has_impact: true

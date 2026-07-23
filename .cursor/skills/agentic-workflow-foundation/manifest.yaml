@@ -626,6 +626,15 @@ cross_repo_knowledge:
   git_protocol: "ssh"
 
 # ------------------------------------------------------------
+# (2l) foundation — 基盤保守ゲート（条件生成 / ADR-0001）
+#   foundation.enabled: true の場合のみ bin/foundation-gate を生成する。
+#   seed default は false。kit root overlay で true に設定する。
+#   ROOT_OVERLAY_KEYS に "foundation" を含め、root manifest から合成する。
+# ------------------------------------------------------------
+foundation:
+  enabled: false
+
+# ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
 #   mode: render = テンプレート全展開 / marker = マーカーブロックを既存ファイルへ upsert
 #   required_sections: 生成結果に必ず含まれるべき文字列（設計書準拠の機械検査）
@@ -1120,7 +1129,7 @@ outputs:
     mode: render
     executable: true
   # quality-gate wrapper（常時生成・必須。ADR-0001）。
-  # tech stack 非依存の公開入口。AI・docs・gate scripts はこの wrapper 経由で検証を実行する。
+  # アプリ品質の公開入口。AI・docs・gate scripts はこの wrapper 経由で検証を実行する。
   - path: bin/quality-gate
     template: bin/quality-gate.template
     mode: render
@@ -1128,10 +1137,26 @@ outputs:
     required_sections:
       - "quality-gate"
       - "SUBCMD"
-      - "audit"
       - "verify"
+      - "gen"
+      - "build"
+      - "lint"
+      - "test"
+  # foundation-gate wrapper（feature: foundation で条件生成。ADR-0001）。
+  # 基盤保守の公開入口。foundation.enabled: true の場合のみ生成される。
+  - path: bin/foundation-gate
+    template: bin/foundation-gate.template
+    mode: render
+    feature: foundation
+    executable: true
+    required_sections:
+      - "foundation-gate"
+      - "SUBCMD"
+      - "audit"
+      - "generate"
+      - "check"
+      - "scripts"
       - "self"
-      - "adr"
   # agent-workflow docs（feature: agent_workflow で条件生成）。
   # docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
   # .gitkeep は seed モード（既存ディレクトリがあれば不可侵）。

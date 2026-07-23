@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -u
+
+# foundation-gate — 基盤保守ゲートの公開入口 (ADR-0001)
+#
+# Agentic Workflow Foundation の生成・監査・テストを一元化する wrapper。
+# foundation.enabled: true の場合のみ生成される（fail-closed）。
+# アプリ品質ゲート（gen/build/lint/test/verify）は bin/quality-gate を使う。
+#
+# Usage:
+#   bin/foundation-gate <SUBCMD>
+#
+# Subcommands:
+#   generate — run_resolved_engine.py generate（基盤ファイル群の生成）
+#   audit    — run_resolved_engine.py audit（冪等性・必須要件検査）
+#   check    — run_resolved_engine.py check（冪等性ドライラン）
+#   scripts  — foundation test_*.py を固定順序で実行
+#   self     — kit 全自己検証（audit + scripts）
+#
+# Exit codes:
+#   0 = PASS
+#   1 = FAIL（修正可能）
+#   2 = 致命的エラー（引数不正 / 設定不備）
+
+readonly SCRIPT_NAME="foundation-gate"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly FOUNDATION_SCRIPTS="$ROOT_DIR/.cursor/skills/agentic-workflow-foundation/scripts"
+
+# fail-closed: foundation scripts が存在しない場合は即 exit 2
+if [[ ! -d "$FOUNDATION_SCRIPTS" ]]; then
+  echo "ERROR: foundation scripts not found: $FOUNDATION_SCRIPTS" >&2
+  echo "foundation.enabled: true が設定されていますが、必要な scripts が存在しません。" >&2
+  exit 2
+fi
+
+SUBCMD="${1:-}"
+if [[ -z "$SUBCMD" ]]; then
+  echo "ERROR: Usage: bin/${SCRIPT_NAME} <generate|audit|check|scripts|self>" >&2
+  exit 2
+fi
+
+_run_generate() {
+  python3 "$FOUNDATION_SCRIPTS/run_resolved_engine.py" generate
+}
+
+_run_audit() {
+  python3 "$FOUNDATION_SCRIPTS/run_resolved_engine.py" audit
+}
+
+_run_check() {
+  python3 "$FOUNDATION_SCRIPTS/run_resolved_engine.py" check
+}
+
+_run_scripts() {
+  local runner="$FOUNDATION_SCRIPTS/run_all_foundation_tests.py"
+  if [[ ! -f "$runner" ]]; then
+    echo "ERROR: foundation test runner not found: $runner" >&2
+    return 2
+  fi
+  python3 "$runner"
+}
+
+case "$SUBCMD" in
+  generate)
+    _run_generate
+    ;;
+  audit)
+    _run_audit
+    ;;
+  check)
+    _run_check
+    ;;
+  scripts)
+    _run_scripts
+    ;;
+  self)
+    echo "=== foundation-gate self ==="
+    echo "--- audit ---"
+    _run_audit
+    audit_exit=$?
+    if [[ $audit_exit -ne 0 ]]; then
+      echo "FAIL: audit exited with $audit_exit" >&2
+      exit $audit_exit
+    fi
+    echo "--- scripts ---"
+    _run_scripts
+    ;;
+  *)
+    echo "ERROR: unknown subcommand '$SUBCMD'." >&2
+    echo "Available: generate | audit | check | scripts | self" >&2
+    exit 2
+    ;;
+esac

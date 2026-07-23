@@ -15,7 +15,9 @@ bin/quality-gate gen     # G-GEN（生成 + 差分検査は workflow-gate.sh ste
 bin/quality-gate build   # G-BUILD
 bin/quality-gate lint    # G-LINT
 bin/quality-gate test    # G-TEST
-bin/quality-gate self    # kit 自己検証（audit + foundation tests）
+{{#if foundation.enabled}}
+bin/foundation-gate self # kit 自己検証（audit + foundation tests）
+{{/if}}
 ```
 
 ## Boundaries（要約）

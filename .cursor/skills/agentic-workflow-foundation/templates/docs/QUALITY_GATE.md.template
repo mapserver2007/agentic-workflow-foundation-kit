@@ -289,12 +289,13 @@ workflow-gate.sh step6 TICKET-1234
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
 
+{{#if foundation.enabled}}
 ## 4. 基盤ファイルの自己検証ゲート
 
 基盤ファイル群（本ファイル含む）が統一設計書に準拠し、YAML 正本と一致しているかを検証する。
 
 ```bash
-bin/quality-gate self
+bin/foundation-gate self
 ```
 
 - exit 0 = 出力ファイル == manifest 再生成結果（冪等）かつ設計書必須要件を充足
@@ -341,6 +342,7 @@ audit 成功後、`agent_kaizen` feature が有効な場合に `validate_agent_k
 - deep-thinking の A/B 独立性（Subagent 起動の内部実装に依存）
 
 検査対象外の実行時特性を静的検査で PASS したと主張しない。
+{{/if}}
 {{/if}}
 
 ## 5. 参考

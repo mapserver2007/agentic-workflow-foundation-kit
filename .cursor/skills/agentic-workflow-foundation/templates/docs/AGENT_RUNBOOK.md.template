@@ -82,7 +82,9 @@ flowchart LR
 | 品質ゲート失敗 | `docs/QUALITY_GATE.md > §2 例外承認フロー` | ユーザー承認 → 修正 or 例外起票 |
 | 既存パターンと矛盾する実装が必要 | `docs/DECISIONS.md > Alternatives Considered` | ADR worker dispatch → 草案ゲート → ユーザー承認 → 確定追記（Status: Proposed → Accepted） |
 | 同じ失敗を繰り返した | `docs/GOTCHAS.md` | 直接追記 → Evolve-A（個別修復{{#if agent_workflow.maintenance_gotchas.enabled}}: `maintenance-gotchas-workflow`{{/if}}） / Evolve-B（累積5件以上で構造リファクタリング） |
-| 基盤ファイルが設計書とずれた | `bin/quality-gate self` | drift 検出 → 再生成 or manifest 修正 |
+{{#if foundation.enabled}}
+| 基盤ファイルが設計書とずれた | `bin/foundation-gate self` | drift 検出 → 再生成 or manifest 修正 |
+{{/if}}
 
 ## 5. 参考
 
