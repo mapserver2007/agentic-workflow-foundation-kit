@@ -240,20 +240,20 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 # 生成
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 
-# 冪等性ドライラン（wrapper 経由）
-bin/quality-gate check
+# 冪等性ドライラン（foundation-gate 経由）
+bin/foundation-gate check
 
-# 監査（wrapper 経由）
-bin/quality-gate audit
+# 監査（foundation-gate 経由）
+bin/foundation-gate audit
 
 # kit 全自己検証（audit + foundation script tests）
-bin/quality-gate self
+bin/foundation-gate self
 
 # 下流プロジェクトの検証（build → lint → test）
 bin/quality-gate verify
 ```
 
-`agentic-workflow-engine/scripts/generate.py` と `audit.py` を直接呼ぶのは、エンジン単体の検証時だけです。通常の foundation 生成では `run_resolved_engine.py` が upstream metadata と root manifest overlay を解決してから engine を呼びます。`bin/quality-gate` は公開入口であり、AI・docs・gate scripts はこの wrapper 経由で検証を実行します。
+`agentic-workflow-engine/scripts/generate.py` と `audit.py` を直接呼ぶのは、エンジン単体の検証時だけです。通常の foundation 生成では `run_resolved_engine.py` が upstream metadata と root manifest overlay を解決してから engine を呼びます。`bin/quality-gate` はアプリ品質の公開入口（gen/build/lint/test/verify）、`bin/foundation-gate` は基盤保守の公開入口（generate/audit/check/scripts/self）です（ADR-0001）。
 
 ## 生成物
 
