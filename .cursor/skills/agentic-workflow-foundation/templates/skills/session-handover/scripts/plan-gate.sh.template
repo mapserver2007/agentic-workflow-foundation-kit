@@ -88,11 +88,21 @@ for f in "${tracked[@]}"; do
 
   # --- review フェーズ限定検査 ---
   if [[ "$PHASE" == "review" ]]; then
-    # --- G-PLAN-REVIEW-001: レビュー完了承認あり かつ 未対応0件 (FAIL) ---
+    # --- G-PLAN-REVIEW-001: 「## レビュー完了承認」節のみを対象に判定 (FAIL) ---
+    # 節スコープ抽出: 「## レビュー完了承認」から次の「## 」見出しまでを切り出す。
+    # これにより例外承認記録や他節の「承認取得済み」「保留」による誤判定を防ぐ。
+    review_section=""
+    if grep -qF '## レビュー完了承認' "$f" 2>/dev/null; then
+      review_section="$(sed -n '/^## レビュー完了承認/,/^## /{ /^## レビュー完了承認/d; /^## /d; p; }' "$f" 2>/dev/null)"
+    fi
     approved=0
-    grep -qE '承認取得済み' "$f" 2>/dev/null && approved=1
+    if [[ -n "$review_section" ]]; then
+      echo "$review_section" | grep -qE '承認取得済み' && approved=1
+    fi
     unresolved=0
-    grep -qE '未対応|保留' "$f" 2>/dev/null && unresolved=1
+    if [[ -n "$review_section" ]]; then
+      echo "$review_section" | grep -qE '未対応|保留' && unresolved=1
+    fi
     if (( approved == 1 )) && (( unresolved == 0 )); then
       echo "[PASS] レビュー完了承認あり / 未対応0件 (G-PLAN-REVIEW-001)"
     else

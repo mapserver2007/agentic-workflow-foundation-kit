@@ -4,7 +4,7 @@ description: >-
   セッション開始時に追跡ドキュメント（{{project.tracking_artifact}}）の存在を保証し、
   セッション分割計画を作成/更新する。追跡ドキュメントが存在しない場合は新キャンペーンと判断し、
   パターン選択フローを実行してから新規作成する。
-  小規模タスクでは最小骨格（プランへのポインタ + セッション判断ログ）で十分。
+  すべてのタスクで必須 7 節（manifest.yaml > framework.plan_required_sections）を含む簡潔な骨格を作成する。
   大規模タスク（変更{{session.large_task_threshold.files}}ファイル以上、サブタスク{{session.large_task_threshold.subtasks}}つ以上）は
   セッション分割計画を含む完全な追跡ドキュメントを作成する。
 disable-model-invocation: true
@@ -21,8 +21,8 @@ disable-model-invocation: true
 
 セッション開始時に `{{project.tracking_artifact}}` が存在しない場合は新規作成する。
 
-- **小規模タスク**: 最小骨格（プランへのポインタ + セッション判断ログ）で十分
-- **大規模タスク**: セッション分割計画を含む完全な追跡ドキュメントを作成
+- **すべてのタスク**: 必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格を作成する。計画ゲート（`plan-gate.sh`）はこの 7 節を機械検査するため、省略するとゲートが通らない
+- **大規模タスク**: 上記に加え、セッション分割計画を含む完全な追跡ドキュメントを作成
 
 大規模タスクの判定基準:
 

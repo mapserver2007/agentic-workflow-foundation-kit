@@ -75,7 +75,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
 2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞を確認（`docs/QUALITY_GATE.md §1.5`）
-3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む。存在しなければ最小骨格（ポインタ + 判断ログ）で新規作成する
+3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む。存在しなければ必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格で新規作成する
 {{#if agent_workflow.enabled}}4. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む
 5. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
 6. ソースコード調査はドキュメント把握後に開始する

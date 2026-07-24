@@ -149,7 +149,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 ### Step ⑥: 完了報告
 
-親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} Step ⑤ で `workflow-gate.sh step6` を通過済みであることが前提。{{/if}}
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} Step ⑤ で `workflow-gate.sh step6` を通過済みであることが前提（`plan-gate.sh review` は追跡ドキュメントの `## レビュー完了承認` が `承認取得済み` であることを検査する。この更新は `agent-code-review` Step 7 の責務）。{{/if}}
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 以下を実行する:
