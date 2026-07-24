@@ -146,6 +146,36 @@ def test_05_pr_review_generated_gate_contract():
     )
 
 
+def test_step6_tracker_approval_prerequisite():
+    """Step ⑥ が tracker 承認更新を前提として案内すること。"""
+    content = _read(SKILL_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
+    lines = content.splitlines()
+    step6_lines = [line for line in lines if "Step ⑥" in line or "### Step ⑥" in line]
+    found = False
+    in_step6 = False
+    for line in lines:
+        if "### Step ⑥" in line:
+            in_step6 = True
+        elif in_step6 and line.startswith("### "):
+            break
+        elif in_step6 and ("plan-gate.sh review" in line or "レビュー完了承認" in line):
+            found = True
+            break
+    assert found, (
+        "Step ⑥ セクションに tracker 承認（plan-gate.sh review）への言及がない"
+    )
+
+
+def test_05_pr_review_tracker_update_responsibility():
+    """05-pr-review.md.template が tracker 承認更新の責務を明記すること。"""
+    content = _read(PR_REVIEW_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
+    assert "追跡ドキュメント" in content and "承認取得済み" in content, (
+        "05-pr-review.md.template に tracker 承認更新の責務が記載されていない"
+    )
+
+
 def main() -> int:
     tests = [
         test_step4_matrix_implementation_to_verification,
@@ -155,6 +185,8 @@ def main() -> int:
         test_05_pr_review_template_step5_rerun,
         test_05_pr_review_template_step6_completion,
         test_05_pr_review_generated_gate_contract,
+        test_step6_tracker_approval_prerequisite,
+        test_05_pr_review_tracker_update_responsibility,
     ]
     passed = 0
     failed = 0

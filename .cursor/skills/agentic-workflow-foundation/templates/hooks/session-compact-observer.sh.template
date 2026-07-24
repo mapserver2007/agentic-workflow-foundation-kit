@@ -106,28 +106,34 @@ jq -c -n \
 PENDING_FILE="$SESSION_DIR/${SESSION_ID}.pending-handoff"
 printf '%s\n' "$USAGE_PCT" > "$PENDING_FILE" 2>/dev/null || true
 
-# ---- 3.5. tracker が存在しなければ最小骨格を生成 ----
+# ---- 3.5. tracker が存在しなければ必須 7 節を含む骨格を生成 ----
+# SoT: manifest.yaml > framework.plan_required_sections
 TRACKER="$TRACKER_FILE"
 if [[ ! -f "$TRACKER" ]]; then
   mkdir -p "$(dirname "$TRACKER")" 2>/dev/null || true
   cat > "$TRACKER" 2>/dev/null <<'TRACKER_SKEL'
 # 追跡ドキュメント（自動生成骨格）
 
-## 現在のフェーズ
+## 目的と完了条件
 <!-- TODO: AI が記入 -->
 
-## セッション判断ログ
-### 採用した判断と根拠
-### 却下した案と却下理由
+## スコープ
+<!-- TODO: AI が記入 -->
 
-## ブロッカー・制約
-<!-- なし -->
+## タスク分解
+<!-- TODO: AI が記入 -->
 
-## 次セッションTODO
+## 検証ゲート
 <!-- TODO: AI が記入 -->
 
 ## 完了チェック
 - [ ] <!-- TODO: AI が記入 -->
+
+## レビュー完了承認
+承認状態: 未承認
+
+## 例外承認記録
+<!-- なし -->
 TRACKER_SKEL
 fi
 
