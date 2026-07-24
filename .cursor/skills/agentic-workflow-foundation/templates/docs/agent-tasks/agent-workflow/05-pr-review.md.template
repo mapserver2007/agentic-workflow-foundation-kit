@@ -25,7 +25,10 @@ PR を作成し、レビュー指摘に対応するフェーズ。{{#if code_rev
 
 ④ テスト完了後、PR を作成する。
 
-{{#if github_pr.enabled}}
+{{#if agent_workflow.gate_scripts}}
+> **必須**: PR 作成**前**に `workflow-gate.sh step5` を実行し、検証ゲートを通過させること。
+
+{{/if}}{{#if github_pr.enabled}}
 `agent-github-pr` スキルを使用して PR を作成する。wrapper（`bin/github-pr-create-safe`）経由で安全に PR を作成できる。
 {{else}}
 ユーザーに PR 作成方法の選択を求める。
@@ -77,9 +80,10 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 - 各指摘の PR コメントに返信済みであること
 - **レビュー完了承認をユーザーから取得済みであること**
 - タスクレポートの「PRレビュー検証完了」が `[x]` に更新されていること
-{{#if agent_workflow.gate_scripts}}- （修正が 1 件以上ある場合）`workflow-gate.sh step5` が通過していること
-- `workflow-gate.sh step6` が通過していること{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲートが失敗した場合は汎用ゲートへ進まず、完了報告には進めない）{{/if}}
-{{else}}- （修正が 1 件以上ある場合）`bin/quality-gate verify` が通過していること
+{{#if agent_workflow.gate_scripts}}- PR 作成前に `workflow-gate.sh step5` が通過していること
+- コード変更後は `workflow-gate.sh step5` が再度通過していること
+- レビュー完了承認後に `workflow-gate.sh step6` が通過していること{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲートが失敗した場合は汎用ゲートへ進まず、完了報告には進めない）{{/if}}
+{{else}}- `bin/quality-gate verify` が通過していること
 {{/if}}
 
 ## 5.7 レビュー完了承認（PO 承認ゲート）

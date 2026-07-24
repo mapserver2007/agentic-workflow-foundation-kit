@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Workflow Orchestrator Gate Matrix 契約テスト。
+
+Step Gate Matrix のテンプレート（SoT）と生成物が、
+step4/step5/step6 の境界責務を正しく案内していることを検証する。
+
+検査対象:
+  - テンプレート SKILL.md.template の Step ④ 行が step4 を「実装 → 検証」として案内すること
+  - テンプレート SKILL.md.template の Step ⑤ 行が step5 を必須入口、step6 を必須出口として案内すること
+  - テンプレート SKILL.md.template の Step ⑤ 手順がコード変更後の step5 再実行を要求すること
+  - 生成物 05-pr-review.md が PR 作成前 step5・変更後 step5 再実行・step6 完了条件を含むこと
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent.parent.parent
+
+TEMPLATE_DIR = HERE.parent / "templates"
+SKILL_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKILL.md.template"
+PR_REVIEW_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md.template"
+PR_REVIEW_GENERATED = ROOT / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md"
+
+
+def _read(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def test_step4_matrix_implementation_to_verification():
+    """Step ④ Matrix 行が step4 を「実装 → 検証」として案内すること。"""
+    content = _read(SKILL_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
+    lines = [line for line in content.splitlines() if "**④ テスト**" in line or "④" in line]
+    step4_lines = [line for line in lines if "step4" in line]
+    assert step4_lines, "Step ④ 行に step4 への参照が見つからない"
+    step4_line = step4_lines[0]
+    assert "実装 → 検証" in step4_line, (
+        f"Step ④ 行が「実装 → 検証」を含まない: {step4_line!r}"
+    )
+    assert "実装 → PR" not in step4_line, (
+        f"Step ④ 行に誤った「実装 → PR」が残っている: {step4_line!r}"
+    )
+
+
+def test_step5_matrix_entry_exit():
+    """Step ⑤ Matrix 行が step5 を必須入口、step6 を必須出口として案内すること。"""
+    content = _read(SKILL_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
+    lines = [line for line in content.splitlines() if "**⑤ PR レビュー**" in line or "⑤" in line]
+    step5_lines = [line for line in lines if "step5" in line and "step6" in line]
+    assert step5_lines, (
+        "Step ⑤ Matrix 行に step5 と step6 の両方への参照が見つからない"
+    )
+
+
+def test_step5_procedure_rerun_after_change():
+    """Step ⑤ 手順がコード変更後の step5 再実行を要求すること。"""
+    content = _read(SKILL_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
+    assert "コード変更があった場合" in content and "step5" in content, (
+        "Step ⑤ 手順に「コード変更があった場合の step5 再実行」の記述が見つからない"
+    )
+    lines = content.splitlines()
+    rerun_lines = [
+        line for line in lines
+        if "コード変更" in line and "step5" in line
+    ]
+    assert rerun_lines, (
+        "「コード変更」と「step5」が同一行に存在する記述が見つからない"
+    )
+
+
+def test_05_pr_review_template_step5_before_pr():
+    """05-pr-review.md.template が PR 作成前 step5 を明記すること。"""
+    content = _read(PR_REVIEW_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
+    assert "PR 作成前" in content or "PR 作成**前**" in content, (
+        "05-pr-review.md.template に「PR 作成前に step5」の記述が見つからない"
+    )
+    assert "step5" in content, (
+        "05-pr-review.md.template に step5 への参照が見つからない"
+    )
+
+
+def test_05_pr_review_template_step5_rerun():
+    """05-pr-review.md.template がコード変更後の step5 再実行を明記すること。"""
+    content = _read(PR_REVIEW_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
+    lines = content.splitlines()
+    rerun_lines = [
+        line for line in lines
+        if "変更後" in line and "step5" in line
+    ]
+    assert rerun_lines, (
+        "05-pr-review.md.template に「コード変更後の step5 再実行」の記述が見つからない"
+    )
+
+
+def test_05_pr_review_template_step6_completion():
+    """05-pr-review.md.template が step6 完了条件を明記すること。"""
+    content = _read(PR_REVIEW_TEMPLATE)
+    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
+    assert "step6" in content, (
+        "05-pr-review.md.template に step6 への参照が見つからない"
+    )
+    lines = content.splitlines()
+    step6_completion_lines = [
+        line for line in lines
+        if "step6" in line and ("完了" in line or "通過" in line or "PASS" in line)
+    ]
+    assert step6_completion_lines, (
+        "05-pr-review.md.template に step6 完了/通過条件の記述が見つからない"
+    )
+
+
+def test_05_pr_review_generated_gate_contract():
+    """生成物 05-pr-review.md が必須語句を含むこと（再生成後のみ有効）。"""
+    content = _read(PR_REVIEW_GENERATED)
+    if not content:
+        print("  SKIP: 生成物が存在しない（再生成前）", file=sys.stderr)
+        return
+    if "PR 作成前" not in content and "PR 作成**前**" not in content:
+        print("  SKIP: 生成物が旧テンプレート由来（再生成未実施）", file=sys.stderr)
+        return
+    required_phrases = [
+        "step5",
+        "step6",
+    ]
+    for phrase in required_phrases:
+        assert phrase in content, (
+            f"生成物 05-pr-review.md に必須語句 '{phrase}' が見つからない"
+        )
+    has_rerun = any(
+        "変更後" in line and "step5" in line
+        for line in content.splitlines()
+    ) or any(
+        "変更" in line and "step5" in line and "再" in line
+        for line in content.splitlines()
+    )
+    assert has_rerun, (
+        "生成物 05-pr-review.md に「変更後 step5 再実行」の記述が見つからない"
+    )
+
+
+def main() -> int:
+    tests = [
+        test_step4_matrix_implementation_to_verification,
+        test_step5_matrix_entry_exit,
+        test_step5_procedure_rerun_after_change,
+        test_05_pr_review_template_step5_before_pr,
+        test_05_pr_review_template_step5_rerun,
+        test_05_pr_review_template_step6_completion,
+        test_05_pr_review_generated_gate_contract,
+    ]
+    passed = 0
+    failed = 0
+    for t in tests:
+        try:
+            t()
+            passed += 1
+        except AssertionError as e:
+            print(f"  FAIL: {t.__name__}: {e}", file=sys.stderr)
+            failed += 1
+        except Exception as e:
+            print(f"  ERROR: {t.__name__}: {e}", file=sys.stderr)
+            failed += 1
+
+    print(f"[test_workflow_orchestrator_gate_matrix] {passed}/{passed + failed} passed")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
