@@ -66,6 +66,7 @@ agentic-workflow-foundation-kit/
 ├── setup.md                           # 外部サービス・Cursor 設定手順
 ├── LICENSE
 ├── Makefile                           # CLI 依存の install / check
+├── init.yaml                          # 初期入力 SoT（name / context_budget のみ。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
 │
 ├── AGENTS.md                          ┐
@@ -127,6 +128,7 @@ agentic-workflow-foundation-kit/
         │   │   └── design-conformance.md
         │   └── scripts/
         │       ├── run_resolved_engine.py
+        │       ├── apply_kit_init.py
         │       ├── ingest_tech_stack.py
         │       ├── resolve_budget_thresholds.py
         │       ├── resolve_quality_gate.py
@@ -177,7 +179,7 @@ agentic-workflow-foundation-kit/
 
 ## 本リポジトリの dogfooding 既定
 
-ルート `manifest.yaml` では、オプション機能がすべて有効化されています（生成先プロジェクトでは Phase 1.5 の AskQuestion で個別に決定）。
+ルート `manifest.yaml` では、オプション機能がすべて有効化されています（生成先プロジェクトでは seed default / root manifest 直接編集で変更）。
 
 | 設定キー | 既定値 | 生成物 |
 | --- | --- | --- |
@@ -200,7 +202,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 
 1. **Phase 1**: seed manifest / templates / resolver を変更する必要がある場合だけ更新する
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
-3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review / GitHub PR / GitHub Issue / agent workflow / dual thinking / cross-repo スキル生成有無を確定する
+3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で `project.name` / `slug` / `workflow_pattern`（開発型固定）/ `context_budget` を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
 5. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
 6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
@@ -218,6 +220,9 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 ```bash
 # root manifest.yaml を seed から作成 / framework ブロックを同期
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py bootstrap
+
+# init.yaml → root manifest.yaml の project.* / context_budget を適用
+python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 # Context Budget 閾値を min_context_window_tokens から導出
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py
