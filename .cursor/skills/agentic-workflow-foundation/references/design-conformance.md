@@ -20,7 +20,7 @@
 ## 必須要件の設計根拠
 
 ### AGENTS.md（unified §12 Layer1）
-- `## Workflow Pattern`: §3 の3パターン分類を宣言（開発/パイプライン/ドキュメント型）。
+- `## Workflow Pattern`: 開発型専用の宣言。
 - `## Documentation Naming Convention`: §12 semantic 2層モデル（Meta=大文字 / Domain=kebab-case）。
 - `## Agent Role` / `## Boundaries`: §13.3 宣言的制約 + bas Interaction Principles。
 - `## Session Protocol`: 3構成要素（追跡ドキュメント/検証ゲート/再開プロトコル）の手続き SoT。
@@ -81,7 +81,7 @@
 ### .cursor/skills/session-planning/SKILL.md（Layer 3 セッション管理）
 - `name: session-planning`: Cursor skill としての識別子。
 - `## 大規模タスクの検知`: セッション分割の発火条件。
-- `## パターン選択フロー`: `workflow_pattern` と追跡ドキュメントの対応。
+- `## ワークフローパターン`: 開発型固定の宣言と追跡ドキュメントの対応。
 - `## 追跡ドキュメント`: セッションをまたぐ作業状態の SoT。
 
 ### .cursor/skills/session-handover/SKILL.md（Layer 3 セッション管理）
@@ -121,7 +121,7 @@
 QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。
 
 - **採用（adopted 枠内）**: `verification-gate.sh` と同クラスのシェルゲート（`session-start-gate.sh`）、`G-{GATE}-{CATEGORY}-{NNN}` の軽量検査 ID、追跡ドキュメントライフサイクルのフェーズ境界表（Advisory ループ運用）。
-- **非採用（not_adopted 死守）**: BAS の Finding Code 79 種体系、Deterministic Guard の数値判定基盤（スコアリング / 重み付け）。重量型の機械判定エンジンは「経営型」ワークフローでのみ検討対象とし、開発型では作らない。
+- **非採用（not_adopted 死守）**: BAS の Finding Code 79 種体系、Deterministic Guard の数値判定基盤（スコアリング / 重み付け）。重量型の機械判定エンジンは本キットのスコープ外。
 - **判断根拠**: 機構（`session-bootstrap.sh` / handoff manifest / `archive/` 境界）は既に存在し、それを検証するシェルゲートは axis B が既に adopted としているクラスと同一。重量インフラを伴わずに Advisory（~80%）の隙間を機械強制で補える。
 
 ## 必須要件を増減する場合

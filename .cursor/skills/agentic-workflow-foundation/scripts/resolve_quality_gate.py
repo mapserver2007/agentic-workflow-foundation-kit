@@ -77,7 +77,7 @@ def _resolve(manifest: dict):
     pattern = str((manifest.get("project") or {}).get("workflow_pattern") or "")
     names = _tech_names(manifest)
     if pattern != "開発型":
-        return None, f"workflow_pattern が開発型ではないため G-* 自動決定対象外: {pattern}"
+        return "FATAL", f"workflow_pattern が開発型でない: {pattern!r}（開発型専用）"
     required = ["pnpm", "next.js", "hono", "typescript", "cloudflare workers"]
     missing = [name for name in required if not _has(names, name)]
     if missing:
@@ -231,6 +231,9 @@ def main(argv=None) -> int:
         return 2
 
     resolved, reason = _resolve(manifest)
+    if resolved == "FATAL":
+        _out("ERROR", reason)
+        return 2
     if resolved is None:
         _out("WARN", reason or "G-* を決定できないため既存値を維持")
         return 0

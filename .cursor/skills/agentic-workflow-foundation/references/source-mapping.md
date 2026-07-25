@@ -24,7 +24,7 @@
 | `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
 | `framework.exit_codes` | `docs/QUALITY_GATE.md` |
 | `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` |
-| `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（Phase 1.5 で軽量実装を自動確定し、root manifest から overlay） |
+| `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（開発型の軽量実装として seed manifest に固定し、root manifest から overlay） |
 | `framework.agent_conduct` | `.cursor/rules/02-agent-conduct.mdc` |
 | `framework.budget_thresholds` | `.cursor/hooks/session-budget-evaluator.sh` / `docs/CONTEXT_BUDGET.md` / `.cursor/hooks/README.md` |
 | `framework.upstream_design_inputs` | `docs/CONTEXT_BUDGET.md`（生成根拠の説明）/ `references/design-conformance.md`（監査根拠） |
@@ -47,7 +47,7 @@
 ## 変更時の運用
 
 1. immutable upstream docs / stateless resolver / `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、基盤定義変更として扱う。PO 確定済み事項は再質問せず、未確定事項のみ PO 承認を得る。
-2. `project.*` は Phase 1.5 の対話（AskQuestion / 自動導出 / 固定値）で確定し、`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装として自動導出する。確定値はスキル実行で生成される root `manifest.yaml` に保存する。
+2. `project.*` は Phase 1.5 の `init.yaml` → `apply_kit_init.py` で確定する（name / context_budget のみ。workflow_pattern は開発型固定）。`framework.accd_axes` は開発型の軽量実装として seed manifest に固定する。確定値はスキル実行で生成される root `manifest.yaml` に保存する。
 3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `G-GEN` を含む `project.quality_gate` / `quality_gate_contract` を自動決定し、Phase 1.66 で `coderabbit`（CodeRabbit 設定）を自動決定し、Phase 1.67 で `domain_docs`（Domain 層ドキュメント変数）を自動決定する。
 4. Phase 2 / Phase 3 は `run_resolved_engine.py` 経由で engine を呼び、unified design / root manifest overlay を foundation 側の stateless 前処理に閉じ込める。
 5. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

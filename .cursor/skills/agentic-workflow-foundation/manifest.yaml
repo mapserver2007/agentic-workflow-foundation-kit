@@ -395,7 +395,7 @@ quality_gate_contract:
 
 # ------------------------------------------------------------
 # (2f) code_review — agent-code-review スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default / root manifest 直接編集で変更する。
 #   enabled: true の場合のみ outputs[] の feature: code_review エントリが生成対象になる。
 #   run_resolved_engine.py の _filter_outputs_by_features() が outputs[] をフィルタする。
 # ------------------------------------------------------------
@@ -407,7 +407,7 @@ code_review:
 
 # ------------------------------------------------------------
 # (2g) github_pr — agent-github-pr スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default / root manifest 直接編集で変更する。
 #   enabled: true の場合のみ outputs[] の feature: github_pr エントリが生成対象になる。
 # ------------------------------------------------------------
 github_pr:
@@ -415,7 +415,7 @@ github_pr:
 
 # ------------------------------------------------------------
 # (2h) github_issue — agent-github-issue スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default / root manifest 直接編集で変更する。
 #   enabled: true の場合のみ outputs[] の feature: github_issue エントリが生成対象になる。
 # ------------------------------------------------------------
 github_issue:
@@ -524,7 +524,7 @@ agent_workflow:
 
 # ------------------------------------------------------------
 # (2k) deep_thinking — 多角評価スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default / root manifest 直接編集で変更する。
 #   enabled: true の場合のみ outputs[] の feature: deep_thinking エントリが生成対象になる。
 #   A（推進視点）・B（反証視点）の並列 readonly subagent と C（統合裁定・親エージェント）で
 #   内部的に多角分析を行い、通常のチャット返答と同じ体裁で応答する。
@@ -614,7 +614,7 @@ agent_kaizen:
     - "SESS"
     - "NDST"
 
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default / root manifest 直接編集で変更する。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
 #   git clone / fetch / checkout / pull はすべて wrapper 経由で行い、
@@ -873,7 +873,7 @@ outputs:
     required_sections:
       - "name: session-planning"
       - "## 追跡ドキュメントの存在保証"
-      - "## パターン選択フロー"
+      - "## ワークフローパターン"
       - "## 追跡ドキュメント"
   - path: .cursor/skills/session-handover/SKILL.md
     template: skills/session-handover/SKILL.md.template
@@ -1567,8 +1567,8 @@ project:
   slug: "[自動導出] name から導出"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
-  # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
-  workflow_pattern: "[要確認]"
+  # 開発型固定。init.yaml / apply_kit_init.py が "開発型" を書き込む。他パターンは非対応
+  workflow_pattern: "開発型"
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
