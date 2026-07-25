@@ -177,11 +177,11 @@ agentic-workflow-foundation-kit/
 | [`deep-thinking`](.cursor/skills/deep-thinking/SKILL.md) | A/B 並列分析 + C 統合裁定による多角評価 |
 | [`agent-kaizen`](.cursor/skills/agent-kaizen/SKILL.md) | kit 内部の manifest→生成物チェーンの整合性検査（18 評価観点） |
 
-## 本リポジトリの dogfooding 既定
+## seed default（オプション機能）
 
-ルート `manifest.yaml` では、オプション機能がすべて有効化されています（生成先プロジェクトでは seed default / root manifest 直接編集で変更）。
+seed / root `manifest.yaml` では、オプション機能の seed default がすべて `enabled: true` です。無効化は root manifest の直接編集 → 再生成で行います（`init.yaml` では設定しない）。
 
-| 設定キー | 既定値 | 生成物 |
+| 設定キー | seed default | 生成物 |
 | --- | --- | --- |
 | `code_review.enabled` | `true` | `agent-code-review`、`bin/github-pr-{reviews,comment,reply}-safe` |
 | `github_pr.enabled` | `true` | `agent-github-pr` |
