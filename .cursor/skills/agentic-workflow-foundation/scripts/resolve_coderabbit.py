@@ -207,7 +207,7 @@ def resolve(manifest: dict) -> dict:
     path_instructions は manifest の既存値をパススルーし、tech_stack の
     ハッシュが変わった場合は AI 再生成が必要な旨を警告する。
 
-    coderabbit.enabled は Phase 1.5 の AskQuestion で PO が決定する値であり、
+    coderabbit.enabled は seed default: true。変更は root manifest 直接編集であり、
     本スクリプトでは既存の enabled 値を保持する（未設定時は True をデフォルトとする）。
     """
     existing = manifest.get("coderabbit") or {}

@@ -212,7 +212,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 **apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。
 
-feature を変えたい場合は、init 後に root `manifest.yaml` を直接編集して再生成する。
+feature の seed default はいずれも `enabled: true`。無効化したい場合のみ root `manifest.yaml` を直接編集して再生成する（`init.yaml` では設定しない）。
 
 **バリデーション**:
 
@@ -269,7 +269,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 
 ### Phase 1.66: CodeRabbit 設定自動決定
 
-**発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（Phase 1.5 で No を選択）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
+**発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（seed default は true。無効化は root manifest 直接編集）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
 
 本フェーズは **AI ステップ（path_instructions 生成）** と **スクリプトステップ（ツール・フィルタ決定）** の 2 段階で構成される。
 
