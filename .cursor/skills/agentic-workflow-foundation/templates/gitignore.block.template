@@ -4,5 +4,7 @@
 .cursor/.tracking/
 # agentic-workflow-foundation: ステップ間パイプラインの中間生成物（不完全な中間物はコミットしない）
 .cursor/.artifacts/
+# Node.js 依存ディレクトリ（コミットしない）
+node_modules/
 # MEGA sync (local only)
 .megaignore

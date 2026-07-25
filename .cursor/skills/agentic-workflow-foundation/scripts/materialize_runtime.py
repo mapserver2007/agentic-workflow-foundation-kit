@@ -189,6 +189,15 @@ def _matches_policy(version: str, majors: set[int] | None, open_ended: bool) -> 
     return (v >= min(majors)) if open_ended else (v in majors)
 
 
+def _reusable_version(version_spec: str, version_policy: str) -> str | None:
+    """既存の固定 semver が version_policy に適合すれば返す。"""
+    version = (version_spec or "").strip().lstrip("^~")
+    if not re.fullmatch(r"\d+(?:\.\d+){1,2}", version):
+        return None
+    majors, open_ended = _parse_version_policy(version_policy)
+    return version if _matches_policy(version, majors, open_ended) else None
+
+
 # ---------------------------------------------------------------------------
 # npm registry
 # ---------------------------------------------------------------------------
@@ -265,6 +274,8 @@ def _lookup_policy(npm_pkg: str, policies_map: dict[str, str]) -> str:
     tech_key = NPM_TO_TECH.get(npm_pkg, "")
     if not tech_key:
         return ""
+    if tech_key in policies_map:
+        return policies_map[tech_key]
     for k, v in policies_map.items():
         if tech_key in k:
             return v
@@ -275,6 +286,7 @@ def resolve_packages(
     caps: dict[str, bool],
     policies_map: dict[str, str],
     fetch_version=None,
+    existing: dict | None = None,
 ) -> tuple[dict[str, str], str | None]:
     """capability から必要な npm パッケージと version を解決する。
 
@@ -285,11 +297,21 @@ def resolve_packages(
 
     dev_deps: dict[str, str] = {}
     package_manager: str | None = None
+    existing_dev = (existing or {}).get("devDependencies") or {}
 
     if caps.get("pnpm"):
         policy = _lookup_policy("pnpm", policies_map)
-        version = fetch_version("pnpm", policy)
-        package_manager = f"pnpm@{version}"
+        existing_pm = (existing or {}).get("packageManager") or ""
+        existing_version = (
+            _reusable_version(existing_pm.removeprefix("pnpm@"), policy)
+            if existing_pm.startswith("pnpm@")
+            else None
+        )
+        if existing_version:
+            package_manager = existing_pm
+        else:
+            version = fetch_version("pnpm", policy)
+            package_manager = f"pnpm@{version}"
 
     seen: set[str] = set()
     for cap_key, npm_pkg, _section in CAPABILITY_PACKAGES:
@@ -299,8 +321,12 @@ def resolve_packages(
             continue
         seen.add(npm_pkg)
         policy = _lookup_policy(npm_pkg, policies_map)
-        version = fetch_version(npm_pkg, policy)
-        dev_deps[npm_pkg] = f"^{version}"
+        existing_spec = existing_dev.get(npm_pkg, "")
+        if _reusable_version(existing_spec, policy):
+            dev_deps[npm_pkg] = existing_spec
+        else:
+            version = fetch_version(npm_pkg, policy)
+            dev_deps[npm_pkg] = f"^{version}"
 
     return dev_deps, package_manager
 
@@ -341,11 +367,17 @@ def build_package_json(
     elif "scripts" in pkg:
         del pkg["scripts"]
 
+    kit_owned_packages = {npm_pkg for _, npm_pkg, _ in CAPABILITY_PACKAGES}
     existing_dev = pkg.get("devDependencies") or {}
-    for dep_name, dep_version in dev_deps.items():
-        existing_dev[dep_name] = dep_version
+    for npm_pkg in kit_owned_packages:
+        if npm_pkg in dev_deps:
+            existing_dev[npm_pkg] = dev_deps[npm_pkg]
+        else:
+            existing_dev.pop(npm_pkg, None)
     if existing_dev:
         pkg["devDependencies"] = dict(sorted(existing_dev.items()))
+    elif "devDependencies" in pkg:
+        del pkg["devDependencies"]
 
     return pkg
 
@@ -446,10 +478,26 @@ def main(argv=None) -> int:
         _out("INFO", f"物質化対象: scripts={list(scripts.keys())}, gen_paths={gen_paths}（--check）")
         return 0
 
-    # npm registry からバージョン解決（ネットワーク必須）
+    existing_pkg = None
+    existing_pkg_content = None
+    if os.path.exists(args.package_json):
+        try:
+            with open(args.package_json, "r", encoding="utf-8") as f:
+                existing_pkg_content = f.read()
+            existing_pkg = json.loads(existing_pkg_content)
+            _out("INFO", "既存 package.json を検出 — kit 所有キーを同期")
+        except (OSError, json.JSONDecodeError) as e:
+            _out("ERROR", f"既存 package.json の読込失敗: {e}")
+            return 2
+
+    # 既存の適合版を再利用し、不足分のみ npm registry から解決
     policies_map = _version_policies_map(manifest)
     try:
-        dev_deps, package_manager = resolve_packages(caps, policies_map)
+        dev_deps, package_manager = resolve_packages(
+            caps,
+            policies_map,
+            existing=existing_pkg,
+        )
     except urllib.error.URLError as e:
         _out("ERROR", f"npm registry アクセス失敗: {e}")
         return 1
@@ -462,23 +510,16 @@ def main(argv=None) -> int:
 
     _out("INFO", f"解決 devDependencies: {len(dev_deps)} 件, packageManager: {package_manager}")
 
-    existing_pkg = None
-    if os.path.exists(args.package_json):
-        try:
-            with open(args.package_json, "r", encoding="utf-8") as f:
-                existing_pkg = json.load(f)
-            _out("INFO", "既存 package.json を検出 — kit 所有キーを同期")
-        except (OSError, json.JSONDecodeError) as e:
-            _out("ERROR", f"既存 package.json の読込失敗: {e}")
-            return 2
-
     project_name = (manifest.get("project") or {}).get("slug") or "project"
     pkg = build_package_json(existing_pkg, scripts, dev_deps, package_manager, project_name)
 
-    with open(args.package_json, "w", encoding="utf-8") as f:
-        json.dump(pkg, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    _out("INFO", f"package.json を{'同期更新' if existing_pkg else '新規生成'}")
+    new_pkg_content = json.dumps(pkg, indent=2, ensure_ascii=False) + "\n"
+    if new_pkg_content != existing_pkg_content:
+        with open(args.package_json, "w", encoding="utf-8") as f:
+            f.write(new_pkg_content)
+        _out("INFO", f"package.json を{'同期更新' if existing_pkg else '新規生成'}")
+    else:
+        _out("PASS", "package.json 更新なし=冪等")
 
     if _update_manifest_gen_paths(args.manifest, gen_paths):
         _out("INFO", "manifest.yaml gen_artifact_paths を更新")
