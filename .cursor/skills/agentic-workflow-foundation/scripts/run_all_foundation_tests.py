@@ -21,6 +21,8 @@ TESTS_IN_ORDER = [
     "test_apply_kit_init.py",
     "test_ingest_tech_stack.py",
     "test_resolve_quality_gate.py",
+    "test_materialize_runtime.py",
+    "test_check_tech_stack_conformance.py",
     "test_resolve_budget_thresholds.py",
     "test_validate_deep_thinking.py",
     "test_validate_agent_kaizen.py",

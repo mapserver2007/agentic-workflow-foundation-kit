@@ -115,6 +115,14 @@
 - `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` / `model_unavailable` / `stop_when` 等の実行パラメータが定義されていること。
 - `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
 
+## 設計判断: runtime 物質化の `outputs[]` 対象外（D-SOT / D-QUALITY）
+
+Phase 1.68（`materialize_runtime.py`）が生成する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**（アプリ所有ファイル）。
+
+- **理由**: `package.json` は PO / アプリ開発者が自由に編集するファイルであり、byte-for-byte 冪等性を audit で強制すると運用が破綻する。kit 所有キー（`scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies）のみ契約更新時に上書きし、それ以外のキーは不可侵とする。
+- **整合性の担保**: `outputs[]` の代わりに Phase 1.7（`check_tech_stack_conformance.py`）が契約確定後の `package.json` 不在と必須 scripts の欠落を fail-closed で検出する。
+- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`tech_stack.items` から capability フラグを検出し、gate ごとに断片を結合して scripts / deps を決定する（manifest seed のキー爆発を回避）。
+
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
 
 QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。

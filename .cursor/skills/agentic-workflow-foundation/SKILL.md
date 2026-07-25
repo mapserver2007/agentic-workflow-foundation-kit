@@ -74,7 +74,8 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `templates/bin/*` | wrapper スクリプトのテンプレート。`github-pr-create-safe` / `_github-app-auth.sh` は基盤必須出力として常に生成。`github-pr-{reviews,comment,reply}-safe` は `code_review` 有効時のみ生成。`.cursorignore` で AI アクセス遮断 |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
-| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
+| `scripts/materialize_runtime.py` | tech_stack capability から `package.json` 等の runtime 前提を物質化（Phase 1.68）。`outputs[]` / audit の対象外（アプリ所有ファイル） |
+| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と `package.json` の意味的整合チェック。契約確定後の `package.json` 不在は fail-closed |
 | `scripts/resolve_coderabbit.py` | root `manifest.yaml > tech_stack` → `coderabbit`（CodeRabbit 有効/無効ツール・path_instructions・path_filters）決定 |
 | `scripts/resolve_domain_docs.py` | root `manifest.yaml > tech_stack` → `domain_docs`（Domain 層ドキュメント用の tech-stack 固有セクションリスト）決定 |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
@@ -95,6 +96,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
 - [ ] Phase 1.67: Domain 層ドキュメント変数自動決定（resolve_domain_docs.py）
+- [ ] Phase 1.68: runtime 前提の物質化（materialize_runtime.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
@@ -319,9 +321,28 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
 
+### Phase 1.68: runtime 前提の物質化（materialize_runtime.py）
+
+Phase 1.65 で決定された quality-gate 契約が「呼び出し可能」になるよう、tech_stack の capability から `package.json`（scripts / devDependencies / packageManager）等を動的合成して filesystem に書き出す。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py
+```
+
+- **適格条件は Phase 1.65 と同一判定式を共有する**。1.65 成功なら 1.68 も実行、1.65 非適格なら 1.68 も skip。1.65 成功で 1.68 だけ skip する分岐は存在しない。
+- **深さ: 呼び出し可能まで**。`pnpm install` / 最小アプリ生成 / ゲート PASS 保証は範囲外。
+- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`tech_stack.items` から capability フラグを検出し、gate ごとに断片を結合して scripts / deps を決定する。
+- **所有権**: `package.json` はアプリ所有ファイル。kit 所有キーは `scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies。kit 所有 scripts は契約更新時に上書き可。
+- **生成モード**: 不在 → 新規作成 / 既存 → kit 所有キーのみ同期（非所有キーは不可侵）。
+- **deps バージョン**: npm registry から version_policy に合う latest を取得。ネットワーク失敗は exit 1/2（固定版フォールバックなし）。
+- **seed ファイル**: `tsconfig.json`（strict 最小 stub）、`pnpm-workspace.yaml`（pnpm workspace 検出時のみ）を不在時に seed 生成。
+- manifest の `gen_artifact_paths` を、gen capability の有無に応じて更新する。
+- `--check` フラグで dry-run（書き込みなし）を実行可能。
+- テスト時は `MATERIALIZE_VERSIONS_JSON` 環境変数でオフライン実行可能。
+
 ### Phase 1.7: techstack 整合ゲート
 
-root `manifest.yaml > tech_stack`（policy）を確認する。本ゲートの責務は policy↔reality の照合であり、reality 側の `package.json` が存在しない場合は照合対象が無いものとして fail-open する（不在は違反ではなく対象外）。
+root `manifest.yaml > tech_stack`（policy）を確認する。**契約確定後（Phase 1.65 適格）の `package.json` 不在は fail-closed（exit 1）**。契約未確定（1.65 非適格）時は従来通り fail-open。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py

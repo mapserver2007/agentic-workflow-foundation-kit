@@ -18,10 +18,12 @@ if HERE not in sys.path:
 
 import genlib  # noqa: E402
 import ingest_tech_stack as ingest  # noqa: E402
+import resolve_quality_gate as rqg  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
 OPTIONAL_MARKERS = ("任意", "代替")
+REQUIRED_GATE_SCRIPTS = ("build", "lint", "test")
 
 
 def _out(level: str, msg: str) -> None:
@@ -81,9 +83,16 @@ def main(argv=None) -> int:
         _out("WARN", "root manifest tech_stack.items が空（Phase 1.6 未実行？）。照合をスキップ")
         return 0
 
+    # 契約確定判定: Phase 1.65 と同一の適格条件を使用
+    resolved, _reason = rqg._resolve(manifest)
+    contract_resolved = resolved is not None and resolved != "FATAL"
+
     versions = ingest.load_package_versions(args.package_json)
     if versions is None:
-        _out("PASS", "package.json（reality）が無いため policy↔reality 照合対象なしとしてスキップ（fail-open）")
+        if contract_resolved:
+            _out("FAIL", "quality-gate 契約確定済みだが package.json が不在（Phase 1.68 未実行？）")
+            return 1
+        _out("PASS", "契約未確定のため package.json 不在は対象外（fail-open）")
         return 0
 
     failures = []
@@ -113,6 +122,29 @@ def main(argv=None) -> int:
                 f"version_policy 違反: {tech} はポリシー「{it.get('version_policy')}」"
                 f"に対し実 major {rm}（{versions[pkg]}）"
             )
+
+    # 契約確定時: 必須 scripts の存在検査
+    if contract_resolved and versions is not None:
+        pkg_path = args.package_json
+        try:
+            import json as _json
+            with open(pkg_path, "r", encoding="utf-8") as _f:
+                pkg_data = _json.load(_f)
+            pkg_scripts = pkg_data.get("scripts") or {}
+            for gate in REQUIRED_GATE_SCRIPTS:
+                if gate not in pkg_scripts:
+                    failures.append(f"契約確定済みだが package.json scripts.{gate} が欠落")
+            # gen は openapi capability 存在時のみ必須
+            names = rqg._tech_names(manifest)
+            has_openapi = (
+                rqg._has(names, "openapi")
+                and rqg._has(names, "redocly")
+                and rqg._has(names, "spectral")
+            )
+            if has_openapi and "gen" not in pkg_scripts:
+                failures.append("契約確定済み + OpenAPI capability ありだが package.json scripts.gen が欠落")
+        except (OSError, ValueError):
+            pass
 
     for w in warnings:
         _out("WARN", w)

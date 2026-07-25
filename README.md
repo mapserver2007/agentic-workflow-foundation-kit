@@ -134,6 +134,7 @@ agentic-workflow-foundation-kit/
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
         │       ├── resolve_domain_docs.py
+        │       ├── materialize_runtime.py
         │       ├── check_tech_stack_conformance.py
         │       ├── validate_deep_thinking.py
         │       ├── validate_requirement_analysis.py
@@ -194,7 +195,7 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
-> 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の backend command（`pnpm run *`）は tech stack 設計書から導出される生成先プロジェクト向け contract です。AI・docs・gate scripts は `bin/quality-gate <subcmd>` を公開入口として使用し、backend command を直接実行しません。
+> Phase 1.68（`materialize_runtime.py`）が tech_stack capability から `package.json`（scripts / devDependencies / packageManager）等を自動物質化します。深さは「呼び出し可能まで」で、`pnpm install` や最小アプリ生成は範囲外です。`package.json` はアプリ所有ファイルであり `outputs[]` / audit の対象外ですが、kit 所有キー（scripts / packageManager / tech_stack 由来 deps）は契約更新時に上書きされます。
 
 ## 生成ワークフロー
 
@@ -208,10 +209,11 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
 7. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
 8. **Phase 1.67**: `tech_stack` から Domain 層ドキュメント用の tech-stack 固有セクションリストを解決する
-9. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする
-10. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-11. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
-12. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+9. **Phase 1.68**: `tech_stack` capability から `package.json`（scripts / devDependencies / packageManager）等の runtime 前提を物質化する（呼び出し可能まで。`pnpm install` / 最小アプリ生成は範囲外）
+10. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする（契約確定後の `package.json` 不在は fail-closed）
+11. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
+12. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
+13. **Phase 4**: 確定値、生成物、ゲート結果を報告する
 
 ## 手動実行
 
@@ -238,6 +240,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 
 # Domain 層ドキュメント用の tech-stack 固有セクションを導出
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
+
+# tech_stack capability から package.json 等の runtime 前提を物質化
+python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py
 
 # tech stack policy と実リポジトリの整合確認
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py
