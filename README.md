@@ -66,6 +66,7 @@ agentic-workflow-foundation-kit/
 ├── setup.md                           # 外部サービス・Cursor 設定手順
 ├── LICENSE
 ├── Makefile                           # CLI 依存の install / check
+├── init.yaml                          # 初期入力 SoT（name / tech_stack_design / context_budget。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
 │
 ├── AGENTS.md                          ┐
@@ -89,8 +90,8 @@ agentic-workflow-foundation-kit/
 │
 └── .cursor/
     ├── docs/
-    │   ├── AI_AGENT_UNIFIED_DESIGN.md        # immutable upstream SoT（非公開・gitignore）
-    │   ├── AI_BUSINESS_AGENT_SUITE.md        # immutable upstream SoT（非公開・gitignore）
+    │   ├── AI_AGENT_UNIFIED_DESIGN.md        # immutable upstream SoT
+    │   ├── AI_BUSINESS_AGENT_SUITE.md        # immutable upstream SoT
     │   └── TECHNOLOGY_STACK_UNIFIED_DESIGN.md # project ごとの tech stack 入力
     ├── hooks/                                # 生成 Hook スクリプト
     ├── hooks.json
@@ -127,11 +128,13 @@ agentic-workflow-foundation-kit/
         │   │   └── design-conformance.md
         │   └── scripts/
         │       ├── run_resolved_engine.py
+        │       ├── apply_kit_init.py
         │       ├── ingest_tech_stack.py
         │       ├── resolve_budget_thresholds.py
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
         │       ├── resolve_domain_docs.py
+        │       ├── materialize_runtime.py
         │       ├── check_tech_stack_conformance.py
         │       ├── validate_deep_thinking.py
         │       ├── validate_requirement_analysis.py
@@ -175,11 +178,11 @@ agentic-workflow-foundation-kit/
 | [`deep-thinking`](.cursor/skills/deep-thinking/SKILL.md) | A/B 並列分析 + C 統合裁定による多角評価 |
 | [`agent-kaizen`](.cursor/skills/agent-kaizen/SKILL.md) | kit 内部の manifest→生成物チェーンの整合性検査（18 評価観点） |
 
-## 本リポジトリの dogfooding 既定
+## seed default（オプション機能）
 
-ルート `manifest.yaml` では、オプション機能がすべて有効化されています（生成先プロジェクトでは Phase 1.5 の AskQuestion で個別に決定）。
+seed / root `manifest.yaml` では、オプション機能の seed default がすべて `enabled: true` です。無効化は root manifest の直接編集 → 再生成で行います（`init.yaml` では設定しない）。
 
-| 設定キー | 既定値 | 生成物 |
+| 設定キー | seed default | 生成物 |
 | --- | --- | --- |
 | `code_review.enabled` | `true` | `agent-code-review`、`bin/github-pr-{reviews,comment,reply}-safe` |
 | `github_pr.enabled` | `true` | `agent-github-pr` |
@@ -192,7 +195,7 @@ agentic-workflow-foundation-kit/
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
-> 本キットリポジトリ自体にアプリケーションコード（`package.json` 等）は含まれません。`project.quality_gate` の backend command（`pnpm run *`）は tech stack 設計書から導出される生成先プロジェクト向け contract です。AI・docs・gate scripts は `bin/quality-gate <subcmd>` を公開入口として使用し、backend command を直接実行しません。
+> Phase 1.68（`materialize_runtime.py`）が tech_stack capability から `package.json`（scripts / devDependencies / packageManager）等を自動物質化します。深さは「呼び出し可能まで」で、`pnpm install` や最小アプリ生成は範囲外です。`package.json` はアプリ所有ファイルであり `outputs[]` / audit の対象外ですが、kit 所有キー（scripts / packageManager / tech_stack 由来 deps）は契約更新時に上書きされます。
 
 ## 生成ワークフロー
 
@@ -200,16 +203,17 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 
 1. **Phase 1**: seed manifest / templates / resolver を変更する必要がある場合だけ更新する
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
-3. **Phase 1.5**: `project.*`、`workflow_pattern`、CodeRabbit / review / GitHub PR / GitHub Issue / agent workflow / dual thinking / cross-repo スキル生成有無を確定する
+3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で `project.name` / `slug` / `workflow_pattern`（開発型固定）/ `context_budget` を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
-5. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
+5. **Phase 1.6**: `init.yaml > tech_stack_design.filename` で指定された設計書から `tech_stack` を root `manifest.yaml` へ取り込む
 6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
 7. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
 8. **Phase 1.67**: `tech_stack` から Domain 層ドキュメント用の tech-stack 固有セクションリストを解決する
-9. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする
-10. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-11. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
-12. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+9. **Phase 1.68**: `tech_stack` capability から `package.json`（scripts / devDependencies / packageManager）等の runtime 前提を物質化する（呼び出し可能まで。`pnpm install` / 最小アプリ生成は範囲外）
+10. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする（契約確定後の `package.json` 不在は fail-closed）
+11. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
+12. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
+13. **Phase 4**: 確定値、生成物、ゲート結果を報告する
 
 ## 手動実行
 
@@ -218,6 +222,9 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 ```bash
 # root manifest.yaml を seed から作成 / framework ブロックを同期
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py bootstrap
+
+# init.yaml → root manifest.yaml の project.* / context_budget を適用
+python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 # Context Budget 閾値を min_context_window_tokens から導出
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py
@@ -233,6 +240,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 
 # Domain 層ドキュメント用の tech-stack 固有セクションを導出
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
+
+# tech_stack capability から package.json 等の runtime 前提を物質化
+python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py
 
 # tech stack policy と実リポジトリの整合確認
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py
@@ -323,7 +333,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### tech stack は project input
 
-`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` はプロジェクトごとに変わる入力です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
+技術スタック統一設計書はプロジェクトごとに変わる入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
 
 ### Context Budget は Hook で観測する
 
@@ -336,7 +346,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 - `git`
 - `jq`（Hook 実行時を推奨。未インストール時は fail-open）
 - `gh`（GitHub 連携スキル使用時を推奨）
-- 必要に応じて `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`
+- `.cursor/docs/` 配下の技術スタック統一設計書（ファイル名は `init.yaml > tech_stack_design.filename` で指定）
 - Optional: CodeRabbit / GitHub review 運用を使う場合は、対象プロジェクト側の GitHub / CodeRabbit 設定
 
 macOS では `make install` / `make check` で CLI 依存を一括確認できます。

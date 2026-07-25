@@ -165,7 +165,7 @@ description: >-
 | PR 作成 | `agent-github-pr` スキル参照で実行 | — |
 | レビュー対応 | `agent-code-review` スキル参照で実行 | — |
 | `AGENTS.md` の直接編集 | — | Never 抵触。manifest 経由で再生成 |
-| `docs/tech-stack.md` の直接編集 | — | SoT は `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`。逆流禁止 |
+| `docs/tech-stack.md` の直接編集 | — | SoT は `.cursor/docs/{{project.tech_stack_design_filename}}`。逆流禁止 |
 | Meta 層 docs の編集 | — | Meta 層生成物。SoT は manifest → templates |
 | コード実装 | — | workflow-orchestrator Step ③ の責務 |
 | 起票ファイルの作成 | — | Step ③ 実装時に作成 / PR レビュー所見 / ユーザー手動 |

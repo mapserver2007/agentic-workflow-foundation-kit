@@ -1,0 +1,28 @@
+# agentic-workflow-foundation の初期設定。
+# このファイルを apply_kit_init.py が読み、root manifest.yaml へ反映する。
+# workflow は開発型固定。feature の有効・無効はこのファイルでは設定しない。
+# 記法: block style のみ / インデントは半角スペース2。
+
+# 設定スキーマのバージョン。現在は 1 固定で変更しない。
+version: 1
+
+project:
+  # 生成される AGENTS.md などに表示するプロジェクト名。
+  # null またはキー省略時は、実行先リポジトリのディレクトリ名を使う。
+  # slug はこの値から自動生成されるため、通常は null のままでよい。
+  name: agentic-workflow-foundation-kit
+
+# Phase 1.6 で ingest_tech_stack.py が読む技術スタック統一設計書。
+# 配置ディレクトリは .cursor/docs/ 固定。ファイル名のみ指定する。
+# AI_AGENT_UNIFIED_DESIGN / AI_BUSINESS_AGENT_SUITE はここに書かない
+# （kit 実行時の immutable upstream SoT として常に固定参照）。
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+
+context_budget:
+  # 使用する全モデルのうち、最小のコンテキストウィンドウを token 単位で指定する。
+  # 複数モデルを使う場合は最大値ではなく最小値を設定する。
+  # この値から Yellow / Red の handoff 閾値を自動算出する。
+  # 例: 200K モデルを含む場合は 200000、300K モデルのみなら 300000。
+  # 省略時の既定値・推奨値は 200000。
+  min_context_window_tokens: 200000

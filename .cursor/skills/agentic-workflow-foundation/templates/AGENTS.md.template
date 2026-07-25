@@ -6,7 +6,7 @@
 
 ## Workflow Pattern
 
-このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型 / パイプライン型 / ドキュメント型 / ハイブリッド。統一設計書 §3 / §8 のパターン選択フローで決定）。
+このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型専用。主アウトプットは動くアプリケーション、検証は自動テスト + ビルド + 型チェック）。
 
 - 主アウトプットと生成/検証ゲート: `bin/quality-gate gen` / `bin/quality-gate build` / `bin/quality-gate lint` / `bin/quality-gate test`
 - 追跡ドキュメント: `{{project.tracking_artifact}}`（セッションごとの状態管理ファイル。`.gitignore` 対象・完了時は削除）
@@ -43,7 +43,7 @@
 
 ## Tech Stack
 
-技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md)）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
+技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/{{project.tech_stack_design_filename}}`](.cursor/docs/{{project.tech_stack_design_filename}})）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
 
 ## Key Commands
 

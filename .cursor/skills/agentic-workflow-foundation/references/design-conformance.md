@@ -20,7 +20,7 @@
 ## 必須要件の設計根拠
 
 ### AGENTS.md（unified §12 Layer1）
-- `## Workflow Pattern`: §3 の3パターン分類を宣言（開発/パイプライン/ドキュメント型）。
+- `## Workflow Pattern`: 開発型専用の宣言。
 - `## Documentation Naming Convention`: §12 semantic 2層モデル（Meta=大文字 / Domain=kebab-case）。
 - `## Agent Role` / `## Boundaries`: §13.3 宣言的制約 + bas Interaction Principles。
 - `## Session Protocol`: 3構成要素（追跡ドキュメント/検証ゲート/再開プロトコル）の手続き SoT。
@@ -75,13 +75,12 @@
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
 ### docs/tech-stack.md（techstack §9）
-- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。
-- `TECHNOLOGY_STACK_UNIFIED_DESIGN.md`: per-project 入力への逆参照ポインタ。
+- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。テンプレート内のリンクは `project.tech_stack_design_filename`（manifest 値）で動的解決される。
 
 ### .cursor/skills/session-planning/SKILL.md（Layer 3 セッション管理）
 - `name: session-planning`: Cursor skill としての識別子。
 - `## 大規模タスクの検知`: セッション分割の発火条件。
-- `## パターン選択フロー`: `workflow_pattern` と追跡ドキュメントの対応。
+- `## ワークフローパターン`: 開発型固定の宣言と追跡ドキュメントの対応。
 - `## 追跡ドキュメント`: セッションをまたぐ作業状態の SoT。
 
 ### .cursor/skills/session-handover/SKILL.md（Layer 3 セッション管理）
@@ -116,12 +115,20 @@
 - `execution`: `max_rounds` / `max_rebuttal_turns_per_issue` / `max_issues_per_round` / `model_unavailable` / `stop_when` 等の実行パラメータが定義されていること。
 - `high_impact_categories`: 高影響カテゴリの機械可読な分類値一覧が定義されていること。SKILL.md の高影響判定はこの列挙のみで行い、非定義語での運用判断を許容しない。
 
+## 設計判断: runtime 物質化の `outputs[]` 対象外（D-SOT / D-QUALITY）
+
+Phase 1.68（`materialize_runtime.py`）が生成する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**（アプリ所有ファイル）。
+
+- **理由**: `package.json` は PO / アプリ開発者が自由に編集するファイルであり、byte-for-byte 冪等性を audit で強制すると運用が破綻する。kit 所有キー（`scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies）のみ契約更新時に上書きし、それ以外のキーは不可侵とする。
+- **整合性の担保**: `outputs[]` の代わりに Phase 1.7（`check_tech_stack_conformance.py`）が契約確定後の `package.json` 不在と必須 scripts の欠落を fail-closed で検出する。
+- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`tech_stack.items` から capability フラグを検出し、gate ごとに断片を結合して scripts / deps を決定する（manifest seed のキー爆発を回避）。
+
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
 
 QUALITY_GATE の本番運用比較で挙がった「フェーズ境界ゲート / セッション開始ゲート / 安定検査 ID の不在」を、**`framework.accd_axes[B].adopted` のシェルゲート層に厳密スコープ**して塞いだ。
 
 - **採用（adopted 枠内）**: `verification-gate.sh` と同クラスのシェルゲート（`session-start-gate.sh`）、`G-{GATE}-{CATEGORY}-{NNN}` の軽量検査 ID、追跡ドキュメントライフサイクルのフェーズ境界表（Advisory ループ運用）。
-- **非採用（not_adopted 死守）**: BAS の Finding Code 79 種体系、Deterministic Guard の数値判定基盤（スコアリング / 重み付け）。重量型の機械判定エンジンは「経営型」ワークフローでのみ検討対象とし、開発型では作らない。
+- **非採用（not_adopted 死守）**: BAS の Finding Code 79 種体系、Deterministic Guard の数値判定基盤（スコアリング / 重み付け）。重量型の機械判定エンジンは本キットのスコープ外。
 - **判断根拠**: 機構（`session-bootstrap.sh` / handoff manifest / `archive/` 境界）は既に存在し、それを検証するシェルゲートは axis B が既に adopted としているクラスと同一。重量インフラを伴わずに Advisory（~80%）の隙間を機械強制で補える。
 
 ## 必須要件を増減する場合

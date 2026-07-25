@@ -17,7 +17,7 @@ if GENLIB_DIR not in sys.path:
 
 import genlib  # noqa: E402
 
-DEFAULT_DESIGN_DOC = os.path.join(ROOT, ".cursor", "docs", "TECHNOLOGY_STACK_UNIFIED_DESIGN.md")
+CURSOR_DOCS_DIR = os.path.join(ROOT, ".cursor", "docs")
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
 
@@ -212,10 +212,31 @@ def write_back(manifest_path: str, note, items):
     return True
 
 
+def _resolve_design_doc(cli_design_doc: str | None, manifest_path: str) -> str | None:
+    """CLI 明示指定 > manifest project.tech_stack_design_filename の優先順位で解決する。
+
+    manifest_path の親ディレクトリをリポジトリルートとみなし、
+    .cursor/docs/{filename} を解決する。
+    """
+    if cli_design_doc is not None:
+        return cli_design_doc
+
+    try:
+        manifest = genlib.load_manifest(manifest_path)
+    except genlib.YamlError:
+        return None
+    project = manifest.get("project") or {}
+    filename = project.get("tech_stack_design_filename")
+    if filename and isinstance(filename, str):
+        repo_root = os.path.dirname(os.path.abspath(manifest_path))
+        return os.path.join(repo_root, ".cursor", "docs", filename)
+    return None
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="techstack §9 を生成済み root manifest.yaml の tech_stack へ取り込む")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
-    parser.add_argument("--design-doc", default=DEFAULT_DESIGN_DOC)
+    parser.add_argument("--design-doc", default=None)
     parser.add_argument("--package-json", default=DEFAULT_PACKAGE_JSON)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
@@ -223,11 +244,16 @@ def main(argv=None) -> int:
     if not os.path.exists(args.manifest):
         print(f"[ingest_tech_stack] ERROR: manifest が見つからない: {args.manifest}")
         return 2
-    if not os.path.exists(args.design_doc):
-        warn(f"techstack 設計書が無いため取り込みをスキップ（既定値を維持）: {args.design_doc}")
-        return 0
 
-    with open(args.design_doc, "r", encoding="utf-8") as f:
+    design_doc = _resolve_design_doc(args.design_doc, args.manifest)
+    if design_doc is None:
+        print("[ingest_tech_stack] ERROR: 設計書パスが未設定（--design-doc または manifest project.tech_stack_design_filename が必要）")
+        return 2
+    if not os.path.exists(design_doc):
+        print(f"[ingest_tech_stack] ERROR: 設計書が見つからない: {design_doc}")
+        return 2
+
+    with open(design_doc, "r", encoding="utf-8") as f:
         note, items = parse_section9(f.read())
     if not items:
         warn("§9 の技術スタック表が見つからないため取り込みをスキップ（既定値を維持）")

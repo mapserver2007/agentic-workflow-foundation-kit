@@ -6,7 +6,7 @@
 
 ## 生成根拠
 
-このガイドは組織内の非公開設計フレームワーク（正本）と seed defaults から一時 resolved manifest を生成して出力している。正本はリポジトリに含めず、SKILL 内部に前回実行状態も保存しない。
+このガイドは組織内の設計フレームワーク（immutable upstream SoT）と seed defaults から一時 resolved manifest を生成して出力している。SKILL 内部に前回実行状態は保存しない。
 
 | 設計入力（役割） | 状態 |
 |---|---|

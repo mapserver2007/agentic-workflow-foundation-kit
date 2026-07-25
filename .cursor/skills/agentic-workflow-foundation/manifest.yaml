@@ -395,35 +395,35 @@ quality_gate_contract:
 
 # ------------------------------------------------------------
 # (2f) code_review — agent-code-review スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: code_review エントリが生成対象になる。
 #   run_resolved_engine.py の _filter_outputs_by_features() が outputs[] をフィルタする。
 # ------------------------------------------------------------
 code_review:
-  enabled: false
+  enabled: true
   report:
-    enabled: false
+    enabled: true
     output_dir: "docs/agent-tasks/reports"
 
 # ------------------------------------------------------------
 # (2g) github_pr — agent-github-pr スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: github_pr エントリが生成対象になる。
 # ------------------------------------------------------------
 github_pr:
-  enabled: false
+  enabled: true
 
 # ------------------------------------------------------------
 # (2h) github_issue — agent-github-issue スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: github_issue エントリが生成対象になる。
 # ------------------------------------------------------------
 github_issue:
-  enabled: false
+  enabled: true
 
 # ------------------------------------------------------------
 # (2i) agent_workflow — タスク実行ワークフロー docs + orchestrator スキル
-#   Phase 1.5 の AskQuestion で生成有無を変更可能（seed default: true）。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
 #   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
@@ -524,7 +524,7 @@ agent_workflow:
 
 # ------------------------------------------------------------
 # (2k) deep_thinking — 多角評価スキル（オプション生成）
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: deep_thinking エントリが生成対象になる。
 #   A（推進視点）・B（反証視点）の並列 readonly subagent と C（統合裁定・親エージェント）で
 #   内部的に多角分析を行い、通常のチャット返答と同じ体裁で応答する。
@@ -532,10 +532,10 @@ agent_workflow:
 #   C のモデルはスキル呼び出し時に選択し、A/B のモデルだけを設定する。
 # ------------------------------------------------------------
 deep_thinking:
-  enabled: false
+  enabled: true
   models:
-    analyst_a: "[要確認]"
-    analyst_b: "[要確認]"
+    analyst_a: "composer-2.5-fast"
+    analyst_b: "gpt-5.6-terra-medium"
   execution:
     require_distinct_agents: true
     require_distinct_models: true
@@ -614,14 +614,14 @@ agent_kaizen:
     - "SESS"
     - "NDST"
 
-#   Phase 1.5 の AskQuestion で生成有無を決定する。
+#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
 #   git clone / fetch / checkout / pull はすべて wrapper 経由で行い、
 #   AI が直接 git コマンドを実行しない設計。
 # ------------------------------------------------------------
 cross_repo_knowledge:
-  enabled: false
+  enabled: true
   clone_base_path: "/tmp/cross-repo-knowledge"
   git_protocol: "ssh"
 
@@ -815,7 +815,6 @@ outputs:
     mode: render
     required_sections:
       - "技術スタック一覧とバージョン方針"
-      - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
   # resolve_domain_docs.py（Phase 1.67）が tech_stack から domain_docs.* を決定し、
   # テンプレート内の {{#each}} で tech-stack 固有セクションを展開する。
@@ -857,7 +856,7 @@ outputs:
     required_sections:
       - "## 主要ユースケースの処理フロー"
   # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
-  # coderabbit.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # coderabbit.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .coderabbit.yaml
     template: coderabbit.yaml.template
     mode: render
@@ -873,7 +872,7 @@ outputs:
     required_sections:
       - "name: session-planning"
       - "## 追跡ドキュメントの存在保証"
-      - "## パターン選択フロー"
+      - "## ワークフローパターン"
       - "## 追跡ドキュメント"
   - path: .cursor/skills/session-handover/SKILL.md
     template: skills/session-handover/SKILL.md.template
@@ -977,7 +976,7 @@ outputs:
       - "G-MDOCS-REASON-001"
       - "=== maintenance-docs gate ==="
   # agent-code-review スキル（feature: code_review で条件生成）。
-  # code_review.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # code_review.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .cursor/skills/agent-code-review/SKILL.md
     template: skills/agent-code-review/SKILL.md.template
     mode: render
@@ -1049,7 +1048,7 @@ outputs:
     mode: render
     feature: code_review
   # agent-github-pr スキル（feature: github_pr で条件生成）。
-  # github_pr.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # github_pr.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .cursor/skills/agent-github-pr/SKILL.md
     template: skills/agent-github-pr/SKILL.md.template
     mode: render
@@ -1066,7 +1065,7 @@ outputs:
       - "wrapper"
       - "github-pr-create-safe"
   # agent-github-issue スキル（feature: github_issue で条件生成）。
-  # github_issue.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # github_issue.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .cursor/skills/agent-github-issue/SKILL.md
     template: skills/agent-github-issue/SKILL.md.template
     mode: render
@@ -1309,7 +1308,7 @@ outputs:
       - "## 責務境界テーブル"
       - "## Context Budget 到達時の対応"
   # deep-thinking スキル（feature: deep_thinking で条件生成）。
-  # deep_thinking.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # deep_thinking.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .cursor/skills/deep-thinking/SKILL.md
     template: skills/deep-thinking/SKILL.md.template
     mode: render
@@ -1425,7 +1424,7 @@ outputs:
       - "## Step ② Worker との契約"
       - "## Issue Ledger の格納場所"
   # cross-repository-knowledge-link スキル（feature: cross_repo_knowledge で条件生成）。
-  # cross_repo_knowledge.enabled: true の場合のみ生成される。Phase 1.5 の AskQuestion で決定。
+  # cross_repo_knowledge.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   # git 操作はすべて bin/cross-repo-sync-safe wrapper 経由で実行する。
   - path: .cursor/skills/cross-repository-knowledge-link/SKILL.md
     template: skills/cross-repository-knowledge-link/SKILL.md.template
@@ -1567,8 +1566,11 @@ project:
   slug: "[自動導出] name から導出"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
-  # AskQuestion(多肢選択) で確定。開発型 / パイプライン型 / ドキュメント型 / ハイブリッド
-  workflow_pattern: "[要確認]"
+  # 開発型固定。init.yaml / apply_kit_init.py が "開発型" を書き込む。他パターンは非対応
+  workflow_pattern: "開発型"
+  # init.yaml tech_stack_design.filename から apply_kit_init.py が書き込む。
+  # ingest_tech_stack.py が .cursor/docs/{filename} を解決する。
+  tech_stack_design_filename: "[要確認]"
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、

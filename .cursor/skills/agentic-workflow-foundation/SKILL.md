@@ -27,7 +27,7 @@ Agentic Workflow 基盤ファイル群を、**immutable upstream SoT（統一設
 
 > `AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` は immutable upstream SoT として読み取り、`run_resolved_engine.py` が一時 resolved skill-dir の `manifest.yaml` へ決定論的に展開する。スキル内 seed `manifest.yaml` / `templates/` は schema / default / fallback であり、実行結果によって永続更新しない。
 >
-> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
+> 技術スタック統一設計書はプロジェクトごとに変動する per-project 入力として扱い、ファイル名を `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。`ingest_tech_stack.py` がスキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
 >
 > リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。
 
@@ -38,7 +38,7 @@ immutable upstream SoT(.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md / AI_BUSINESS_AGE
        │
 seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + templates)
        │
-       ├─ Phase 1.5: project 設定 + ACCD 採用/非採用 確定 → root manifest.yaml 生成
+       ├─ Phase 1.5: init.yaml → apply_kit_init.py → root manifest.yaml の project.*
        ├─ Phase 1.55: min_context_window_tokens → budget_thresholds 算出
        │
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
@@ -56,7 +56,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **統一設計書は immutable upstream SoT**。実行時に読み取り、fingerprint と構造化要件を一時 resolved manifest へ展開する。読み取り専用であり、スキル実行で書き換えない。
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed / schema / default**。統一設計書から一意に抽出できない既定値を保持するが、実行結果によって永続更新しない。
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
-- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
+- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
@@ -74,7 +74,8 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `templates/bin/*` | wrapper スクリプトのテンプレート。`github-pr-create-safe` / `_github-app-auth.sh` は基盤必須出力として常に生成。`github-pr-{reviews,comment,reply}-safe` は `code_review` 有効時のみ生成。`.cursorignore` で AI アクセス遮断 |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
-| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と、存在する場合の `package.json` の意味的整合チェック |
+| `scripts/materialize_runtime.py` | tech_stack capability から `package.json` 等の runtime 前提を物質化（Phase 1.68）。`outputs[]` / audit の対象外（アプリ所有ファイル） |
+| `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と `package.json` の意味的整合チェック。契約確定後の `package.json` 不在は fail-closed |
 | `scripts/resolve_coderabbit.py` | root `manifest.yaml > tech_stack` → `coderabbit`（CodeRabbit 有効/無効ツール・path_instructions・path_filters）決定 |
 | `scripts/resolve_domain_docs.py` | root `manifest.yaml > tech_stack` → `domain_docs`（Domain 層ドキュメント用の tech-stack 固有セクションリスト）決定 |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
@@ -89,12 +90,13 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 ```text
 - [ ] Phase 1: unified design resolver / manifest / templates のフレームワーク変更（必要時のみ。PO 確定事項は再質問しない）
 - [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
-- [ ] Phase 1.5: プロジェクト設定確定（AskQuestion / 自動導出 / 固定値 / code_review / github_pr / github_issue / context_budget オプション）
+- [ ] Phase 1.5: init.yaml 適用（apply_kit_init.py。開発型固定 / name・slug 導出 / context_budget 適用）
 - [ ] Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
 - [ ] Phase 1.65: G-* / script contract 自動決定（resolve_quality_gate.py）
 - [ ] Phase 1.66: CodeRabbit 設定自動決定（resolve_coderabbit.py）
 - [ ] Phase 1.67: Domain 層ドキュメント変数自動決定（resolve_domain_docs.py）
+- [ ] Phase 1.68: runtime 前提の物質化（materialize_runtime.py）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
@@ -184,109 +186,49 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 #### `session-planning/SKILL.md` の出力仕様
 
-**評価根拠**: 評価レポート §3.19（88点）— A1/A2 パターン選択4問省略・新キャンペーン開始フロー欠落 / B1 対話ステップ欠如
-
 **`session-planning/SKILL.md` テンプレートが満たすべき最低要件**:
 
-- **パターン選択4問**: 統一設計書 §8 準拠の対話フローをスキル内で自己完結させる。`workflow_pattern` が未確定の場合に AI が自己回答する手段を提供する。4問は以下の構成とする。
-  - Q1「主アウトプットは何か？」→ 動くアプリケーション / スクリプト・生成データ / ドキュメント群 → 各パターンへマッピング
-  - Q2「最大リスクは何か？」→ リグレッション / AI 幻覚 / 不完全・不整合 → 対応する検証方法を示す
-  - Q3「検証方法は何か？」→ 自動テスト + ビルド + 型チェック / スクリプト出力の整合性チェック / 完了基準チェックリスト → パターン確定
-  - Q4「複合型か？」→ 全問が同一パターンを指すなら単一パターン採用。2つ以上に該当するなら PO にワークスペース分離判断を確認してから主パターンを確定する
-  - フォールバック: 4問に自己回答できない場合は、親 `agentic-workflow-foundation` の Phase 1.5 で PO に AskQuestion する旨を明記する
-- **新キャンペーン開始フロー**: 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在しない場合に新キャンペーンと判断し実行する手順を2ステップで記載する。
-  - パターン選択フローで `workflow_pattern` を確認（確定済みなら省略）
-  - 追跡ドキュメントを新規作成し、`framework.plan_required_sections` の必須セクションをすべて設ける
+- **開発型固定の宣言**: `workflow_pattern` は `"開発型"` 固定であり、パターン選択フローは不要であることを明記する。
+- **新キャンペーン開始フロー**: 追跡ドキュメントが存在しない場合に新キャンペーンと判断し、追跡ドキュメントを新規作成して `framework.plan_required_sections` の必須セクションをすべて設ける。
 
-### Phase 1.5: プロジェクト設定 / ACCD 対応確定（AskQuestion / 自動導出 / 固定値）
+### Phase 1.5: init.yaml 適用（apply_kit_init.py）
 
-**発火条件**: `project.*` の必須フィールドに `[要確認]` が残っている場合。確定済みなら再質問せず Phase 1.6 へ進む。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型の全てで軽量実装を自動採用するため、AskQuestion の発火条件にしない。
+`init.yaml`（リポジトリ直下の初期入力 SoT）を読み込み、root `manifest.yaml` の `project.*` と `context_budget` を適用する。
 
-`project.*` は manifest への PO 直接手入力・自由入力を原則廃止し、**AskQuestion / 自動導出 / 固定値**で確定する。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装へ自動導出する。
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
+```
 
-**(1) AskQuestion（多肢選択）**
+**`init.yaml` の役割**:
 
-各 AskQuestion は1ステップ＝1論点で提示する（`name` と `workflow_pattern` を1回の質問にまとめない）。
+- 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
+- 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
 
-- `name`: `project.name` に設定するプロジェクト名を PO に確認する。`AskQuestion` で候補を提示し、「指定なし（本プロジェクトのディレクトリ名を採用）」の選択肢を必ず含める。
-  - 「指定なし」が選ばれた場合は、コピー先（実行先）リポジトリのディレクトリ名を `project.name` に自動採用する（推奨。下表 (2) の自動導出ロジックと同一）。
-  - PO が任意の名前を入力した場合（`AskQuestion` の Other 入力を含む）は、その値を `project.name` に設定する。
+**apply が書くもの**:
 
-- `workflow_pattern`: 主アウトプット / 最大リスク / 検証方法から、推奨案を添えて PO に選択してもらう。
+1. `project.name`（`init.yaml` の値。null / 省略時はリポジトリのディレクトリ名から導出）
+2. `project.slug`（name から自動導出）
+3. `project.workflow_pattern: "開発型"`（固定）
+4. `project.tech_stack_design_filename`（`init.yaml > tech_stack_design.filename` から。必須）
+5. `project.context_budget.min_context_window_tokens`
 
-| 選択肢 | 主アウトプット | 最大リスク | 検証方法 |
-| --- | --- | --- | --- |
-| 開発型 | 動くアプリケーション | リグレッション | 自動テスト + ビルド + 型チェック |
-| パイプライン型 | スクリプト生成データ | AI 幻覚 | スクリプト出力の整合性チェック |
-| ドキュメント型 | ドキュメント群（SDD 成果物） | 不完全・不整合 | 完了基準チェックリスト |
+**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。
 
-- `code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking`（推奨スキル・ツール）: 1 問で生成有無を一括確定する。回答は root `manifest.yaml > code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` に記録する。**wrapper（`bin/github-pr-create-safe` / `bin/_github-app-auth.sh`）は基盤の必須出力であり、この質問の対象外**（ADR-0001）。`deep_thinking` のモデル設定は有効化後に別途 1 論点で確認する。
+feature の seed default はいずれも `enabled: true`。無効化したい場合のみ root `manifest.yaml` を直接編集して再生成する（`init.yaml` では設定しない）。
 
-  **推奨スキル・ツールインストール確認**: 「agentic-workflow-foundation-kit の推奨スキル・ツール設定をインストールしますか？」（推奨: Yes / No）
-     - Yes → 以下を固定値で一括設定する
-       - `code_review.enabled: true` / `code_review.report.enabled: true` / `code_review.report.output_dir: "docs/agent-tasks/reports"` → agent-code-review スキルを生成
-       - `github_pr.enabled: true` → agent-github-pr スキルを生成
-       - `github_issue.enabled: true` → agent-github-issue スキルと `bin/github-issue-{create,read}-safe` を生成
-       - `coderabbit.enabled: true` → Phase 1.66 で tech_stack から設定を導出し `.coderabbit.yaml` を生成
-       - `agent_workflow.enabled: true` → agent-workflow docs（6 段階：①〜⑥、①の退出ゲートを内包 + index + best-practices）を生成
-       - `agent_workflow.orchestrator_skill: true` → workflow-orchestrator スキルを生成
-       - `agent_workflow.maintenance_docs.enabled: true` → agent-maintenance-docs スキルを生成
-       - `cross_repo_knowledge.enabled: true` → cross-repository-knowledge-link スキルと `bin/cross-repo-sync-safe` を生成
-       - `deep_thinking.enabled: true` → deep-thinking スキルを生成（続けてモデル設定を 1 問で確認する）
-       - レポート出力有無・出力先・agent-github-pr / agent-github-issue / CodeRabbit / deep-thinking 個別設定の個別質問は行わない
-     - No → `code_review.enabled: false` / `github_pr.enabled: false` / `github_issue.enabled: false` / `coderabbit.enabled: false` / `agent_workflow.enabled: false` / `agent_workflow.orchestrator_skill: false` / `agent_workflow.maintenance_docs.enabled: false` / `cross_repo_knowledge.enabled: false` / `deep_thinking.enabled: false` のまま → agent-code-review / agent-github-pr / agent-github-issue スキルを生成しない / issue wrapper を生成しない / `.coderabbit.yaml` を生成しない / agent-workflow docs を生成しない / workflow-orchestrator スキルを生成しない / agent-maintenance-docs スキルを生成しない / cross-repository-knowledge-link スキルを生成しない / deep-thinking スキルを生成しない
-     - **いずれの場合も** `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は常に生成される（基盤必須インフラ。GitHub App セットアップが前提）
+**バリデーション**:
 
-- `context_budget`（最小コンテキストウィンドウ）: 使用するモデルの最小コンテキストウィンドウを PO に確認する。複数モデル併用時は最小のものを選ぶ。回答は `project.context_budget.min_context_window_tokens` に記録する。
+- `init.yaml` 不在時は exit 2（必須初期設定の欠落）
+- `version` は `1` 必須
+- `project.workflow_pattern` / `features` / `deep_thinking` / `cross_repo_knowledge` キーが `init.yaml` にあれば exit 2（禁止キー）
+- `project.name` は文字列または null（空文字 / 非 string は exit 2）
+- `tech_stack_design` は必須。`tech_stack_design.filename` は basename のみ（`/` `\` `..` 禁止）、`.md` 末端、非空（省略時 exit 2）
+- `context_budget.min_context_window_tokens` は正の整数かつ 50000 以上（省略時 200000）
+- 未知キーは exit 2
+- apply 後に所有キーに `"開発型"` 以外の `workflow_pattern` や `[要確認]` が残存なら exit 1
 
-  **最小コンテキストウィンドウ確認**: 「使用するモデルの最小コンテキストウィンドウは？（複数モデルを併用する場合は最小のものを選んでください）」
-  - `200K tokens (推奨)` — Composer 2.5 等の 200K モデルを含む場合 → `min_context_window_tokens: 200000`
-  - `300K tokens` — Opus 4.8 等の 300K モデルのみ使用 → `min_context_window_tokens: 300000`
-  - `その他（カスタム入力）` — 数値をトークン単位で入力 → 入力値を `min_context_window_tokens` に設定
-  - Phase 1.55 で `resolve_budget_thresholds.py` がこの値から `framework.budget_thresholds` を決定論的に算出する
-
-- `deep_thinking.models`（多角評価スキルの A/B モデル設定）: 推奨スキル一括確認で `deep_thinking.enabled: true` が選ばれた場合のみ、有効化とは**別の 1 論点**として確認する。C はスキルを呼び出す親エージェントであり、そのモデルはスキル呼び出し時に選択するため、この設定対象に含めない。
-
-  **多角評価 A/B モデル設定確認**: 「A（推進分析）/ B（反証分析）に割り当てるモデルを指定してください。C（裁定者）はスキル呼び出し時に選択した親エージェントのモデルで実行されます。」
-     - デフォルト（推奨）: `A: composer-2.5-fast` / `B: gpt-5.6-terra-medium`（GPT-5.6 Terra）
-     - AskQuestion の選択肢は以下の固定構成で提示する:
-       - A（推奨）: A=`composer-2.5-fast` / B=`gpt-5.6-terra-medium`（GPT-5.6 Terra）
-       - B: その他（カスタム入力）
-     - 推奨を選択 → `manifest.yaml > deep_thinking.models` にデフォルト値を設定する
-     - カスタム入力 → PO が指定した値を `deep_thinking.models.{analyst_a,analyst_b}` に設定する。利用可能モデルの列挙・比較が環境から得られない場合は PO に設定値を尋ね、推測で代入しない
-     - `execution.max_rounds` / `max_rebuttal_turns_per_issue` / `high_impact_categories` は seed default（`3` / `1` / 標準 7 分類）を採用し、個別質問しない
-     - `deep_thinking.enabled: false`（推奨スキル一括確認で No）の場合はこの質問をスキップする
-
-**(2) 自動導出（質問不要）**
-
-- `tracking_artifact`: 全 `workflow_pattern` 共通で `.cursor/.tracking/tracker-{session_id}.md`。
-- `name`: (1) の AskQuestion で「指定なし」が選ばれた場合のフォールバックとして、コピー先（実行先）リポジトリのディレクトリ名から自動導出する。PO が名前を入力した場合は (1) の入力値を優先する。
-- `slug`: 確定した `name` から導出する。
-- `framework.accd_axes`: 開発型 / パイプライン型 / ドキュメント型では、BAS 固有の重い機構を丸移植せず、下表の軽量実装を自動採用する。
-- `quality_gate.{gen,build,lint,test}_cmd`: Phase 1.65 で `workflow_pattern` × `tech_stack` から backend command を導出する。公開入口は `bin/quality-gate <subcmd>`（ADR-0001）。開発型 Web スタックでは backend を `pnpm run gen` / `build` / `lint` / `test` に決定する。
-
-全 `workflow_pattern` 共通で `tracking_artifact` は `.cursor/.tracking/tracker-{session_id}.md`。
-
-| ACCD 軸 | 自動採用する軽量実装 | 意図的に非採用とする BAS 固有の重い機構 |
-| --- | --- | --- |
-| A 制約の補完 | `AGENTS.md` 参照順序 / `.cursor/rules/*.mdc` / 追跡ドキュメント / handoff manifest | YAML 正本 + Markdown 生成 / Context Loading Table の機械検証 |
-| B 専念の委譲 | 品質ゲート / `verification-gate.sh` / `session-start-gate.sh` / `guard-git-write.sh` / 軽量検査ID（`G-{GATE}-{CAT}-{NNN}`） | Finding Code 79 種体系 / Deterministic Guard の数値判定基盤 |
-| C 認知的多様性 | `Task` subagent 並列探索 / 自己反論 / review スキル / deep-thinking（A/B 並列分析 + C 独立裁定） | engine / model resolver による異モデル強制 |
-| D 段階的圧縮 | `templates required_sections` / handoff manifest / Documentation Navigation / 追跡ドキュメント完了時削除 | 提案書 7 ステップパイプライン |
-| E 自律的進化 | `GOTCHAS.md` / `DECISIONS.md` / Hook 昇格パス | 仮説シミュレーション全タスク必須化 |
-
-> 重量型は、上記 3 workflow pattern ではなく、経営課題分析のように入力 / 出力のバリエーションが広く、複数 PO・仮説並列生成・異モデル批判・構造化状態管理が必要な「経営型」で検討する。本プロジェクトで軽量実装だけが選ばれるのは意図した設計であり、問題ではない。
-
-**(3) 固定値**
-
-- `one_liner` / `agent_role` / `priorities` / `boundaries.{always,ask_first,never_extra}` / `doc_navigation.domain[]`
-- これらは本基盤の機能・運用制約を説明する固定値。コピー先リポジトリが変わっても不変。
-
-**確定後**
-
-- 確定値はすべて、スキル実行で生成されるリポジトリ直下 `manifest.yaml > project.*` に記入する。
-- ACCD の自動確定値は、スキル実行で生成されるリポジトリ直下 `manifest.yaml > framework.accd_axes[].adopted` / `not_adopted` に記入する。
-- 「複合型」になりそうな場合は、ワークスペース分離判断を PO に確認してから主パターンを確定する。
+**冪等性**: `init.yaml` が不変なら再 apply しても root manifest は変化しない。
 
 ### Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 
@@ -303,13 +245,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresh
 
 ### Phase 1.6: techstack 取り込み
 
-`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` がある場合、§9 の技術スタック表を生成済みのリポジトリ直下 `manifest.yaml > tech_stack` に取り込む。
+`init.yaml > tech_stack_design.filename` で指定された設計書（`.cursor/docs/{filename}`）の §9 技術スタック表を、生成済みのリポジトリ直下 `manifest.yaml > tech_stack` に取り込む。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 ```
 
-- 設計書が無い場合は WARN でスキップし、既存 root `manifest.yaml > tech_stack` を維持する。
+- CLI `--design-doc` 明示指定時はその値を使用し、未指定時は manifest `project.tech_stack_design_filename` から解決する。いずれも未設定、または対象ファイルが存在しない場合は exit 2。
 - 生成前の `docs/tech-stack.md` は存在しなくてよい。ここで更新するのは生成元データ root `manifest.yaml > tech_stack`。
 - seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書）から決まる。
 
@@ -331,7 +273,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 
 ### Phase 1.66: CodeRabbit 設定自動決定
 
-**発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（Phase 1.5 で No を選択）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
+**発火条件**: `coderabbit.enabled: true` の場合のみ実行する。`coderabbit.enabled: false`（seed default は true。無効化は root manifest 直接編集）の場合はスキップし、`.coderabbit.yaml` は Phase 2 でも生成されない（`feature: coderabbit` による条件生成）。
 
 本フェーズは **AI ステップ（path_instructions 生成）** と **スクリプトステップ（ツール・フィルタ決定）** の 2 段階で構成される。
 
@@ -354,7 +296,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 
 **発火条件**: スクリプトが `[ACTION] path_instructions の AI 再生成が必要です` を出力した場合のみ実行する。hash 一致時（`更新なし=冪等`）はスキップする。
 
-1. `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` と root `manifest.yaml > tech_stack.items` を読む。
+1. `project.tech_stack_design_filename` で指定された設計書と root `manifest.yaml > tech_stack.items` を読む。
 2. 以下の観点で path_instructions を生成する:
    - 検出された各テクノロジーカテゴリに対応するファイルパターンとレビュー指示
    - テクノロジー間の組み合わせ（例: React + Workers → OpenNext 整合性確認）
@@ -379,9 +321,28 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
 
+### Phase 1.68: runtime 前提の物質化（materialize_runtime.py）
+
+Phase 1.65 で決定された quality-gate 契約が「呼び出し可能」になるよう、tech_stack の capability から `package.json`（scripts / devDependencies / packageManager）等を動的合成して filesystem に書き出す。
+
+```bash
+python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py
+```
+
+- **適格条件は Phase 1.65 と同一判定式を共有する**。1.65 成功なら 1.68 も実行、1.65 非適格なら 1.68 も skip。1.65 成功で 1.68 だけ skip する分岐は存在しない。
+- **深さ: 呼び出し可能まで**。`pnpm install` / 最小アプリ生成 / ゲート PASS 保証は範囲外。
+- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`tech_stack.items` から capability フラグを検出し、gate ごとに断片を結合して scripts / deps を決定する。
+- **所有権**: `package.json` はアプリ所有ファイル。kit 所有キーは `scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies。kit 所有 scripts は契約更新時に上書き可。
+- **生成モード**: 不在 → 新規作成 / 既存 → kit 所有キーのみ同期（非所有キーは不可侵）。
+- **deps バージョン**: npm registry から version_policy に合う latest を取得。ネットワーク失敗は exit 1/2（固定版フォールバックなし）。
+- **seed ファイル**: `tsconfig.json`（strict 最小 stub）、`pnpm-workspace.yaml`（pnpm workspace 検出時のみ）を不在時に seed 生成。
+- manifest の `gen_artifact_paths` を、gen capability の有無に応じて更新する。
+- `--check` フラグで dry-run（書き込みなし）を実行可能。
+- テスト時は `MATERIALIZE_VERSIONS_JSON` 環境変数でオフライン実行可能。
+
 ### Phase 1.7: techstack 整合ゲート
 
-root `manifest.yaml > tech_stack`（policy）を確認する。本ゲートの責務は policy↔reality の照合であり、reality 側の `package.json` が存在しない場合は照合対象が無いものとして fail-open する（不在は違反ではなく対象外）。
+root `manifest.yaml > tech_stack`（policy）を確認する。**契約確定後（Phase 1.65 適格）の `package.json` 不在は fail-closed（exit 1）**。契約未確定（1.65 非適格）時は従来通り fail-open。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py

@@ -2,7 +2,7 @@
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（tech_stack）を更新して再生成する。 -->
 
-> 本ファイルは `manifest.yaml > tech_stack` から生成された Domain 層サマリ。`tech_stack` は Phase 1.6 で [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](../.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md) を取り込んだ結果であり、下流の Design Doc / AI レポート生成は本一覧を技術制約として参照する。
+> 本ファイルは `manifest.yaml > tech_stack` から生成された Domain 層サマリ。`tech_stack` は Phase 1.6 で [`.cursor/docs/{{project.tech_stack_design_filename}}`](../.cursor/docs/{{project.tech_stack_design_filename}}) を取り込んだ結果であり、下流の Design Doc / AI レポート生成は本一覧を技術制約として参照する。
 
 ## 技術スタック一覧とバージョン方針
 
