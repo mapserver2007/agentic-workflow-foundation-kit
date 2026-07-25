@@ -165,7 +165,13 @@ project:
 """
 
 
-def _run(manifest_content: str, tmp: str, extra_args=None, pkg_content=None):
+def _run(
+    manifest_content: str,
+    tmp: str,
+    extra_args=None,
+    pkg_content=None,
+    versions_fixture=None,
+):
     """helper: manifest を書いて materialize_runtime.py を実行する。"""
     manifest_path = os.path.join(tmp, "manifest.yaml")
     pkg_path = os.path.join(tmp, "package.json")
@@ -173,7 +179,8 @@ def _run(manifest_content: str, tmp: str, extra_args=None, pkg_content=None):
 
     Path(manifest_path).write_text(manifest_content, encoding="utf-8")
     Path(versions_path).write_text(
-        json.dumps(VERSIONS_FIXTURE), encoding="utf-8"
+        json.dumps(VERSIONS_FIXTURE if versions_fixture is None else versions_fixture),
+        encoding="utf-8",
     )
     if pkg_content is not None:
         Path(pkg_path).write_text(
@@ -219,6 +226,14 @@ def test_new_package_json():
         for rp in required_pkgs:
             if rp not in dev:
                 errors.append(f"devDependencies に {rp} がない")
+
+        ts_ver = dev.get("typescript", "")
+        if not ts_ver.startswith("^5."):
+            errors.append(f"typescript が 5 系 policy に不一致: {ts_ver}")
+
+        ots_ver = dev.get("openapi-typescript", "")
+        if not ots_ver.startswith("^7."):
+            errors.append(f"openapi-typescript が 7 系 policy に不一致: {ots_ver}")
 
         if pkg.get("name") != "test-project":
             errors.append(f"name が test-project でない: {pkg.get('name')}")
@@ -330,8 +345,74 @@ def test_idempotent():
     return 0
 
 
+def test_reuse_existing_versions_without_fetch():
+    """4. policy 適合済みの既存版を再利用し、npm 取得と再書込を省略する。"""
+    existing_dev = {
+        "typescript": "^5.7.0",
+        "@redocly/cli": "^1.30.0",
+        "@stoplight/spectral-cli": "^6.10.0",
+        "openapi-typescript": "^7.7.0",
+        "vitest": "^3.1.0",
+        "@cloudflare/vitest-pool-workers": "^0.8.0",
+        "wrangler": "^4.10.0",
+        "turbo": "^2.4.0",
+        "@biomejs/biome": "^1.9.0",
+    }
+    existing = {
+        "name": "test-project",
+        "private": True,
+        "packageManager": "pnpm@9.12.0",
+        "devDependencies": existing_dev,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        result1, manifest_path, pkg_path = _run(
+            FULL_MANIFEST,
+            tmp,
+            pkg_content=existing,
+            versions_fixture={},
+        )
+        if result1.returncode != 0:
+            print(f"FAIL: 既存版を再利用せず npm 取得を試行\n{result1.stdout}\n{result1.stderr}")
+            return 1
+
+        pkg1 = json.loads(Path(pkg_path).read_text(encoding="utf-8"))
+        if pkg1.get("packageManager") != existing["packageManager"]:
+            print("FAIL: policy 適合済み packageManager が変更された")
+            return 1
+        for name, version in existing_dev.items():
+            if pkg1.get("devDependencies", {}).get(name) != version:
+                print(f"FAIL: policy 適合済み {name} が変更された")
+                return 1
+
+        package_content1 = Path(pkg_path).read_text(encoding="utf-8")
+        versions_path = os.path.join(tmp, "versions.json")
+        result2 = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--manifest", manifest_path,
+                "--package-json", pkg_path,
+            ],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, MATERIALIZE_VERSIONS_JSON=versions_path),
+        )
+        package_content2 = Path(pkg_path).read_text(encoding="utf-8")
+        if result2.returncode != 0:
+            print(f"FAIL: 2nd run exit {result2.returncode}\n{result2.stdout}")
+            return 1
+        if package_content1 != package_content2:
+            print("FAIL: 2nd run で package.json が変化した")
+            return 1
+        if "package.json 更新なし=冪等" not in result2.stdout:
+            print(f"FAIL: 差分なしの書込省略が報告されない\n{result2.stdout}")
+            return 1
+    return 0
+
+
 def test_skip_ineligible():
-    """4. 契約未確定（1.65 非適格）→ skip / 非破壊。"""
+    """5. 契約未確定（1.65 非適格）→ skip / 非破壊。"""
     with tempfile.TemporaryDirectory() as tmp:
         result, _, pkg_path = _run(INCOMPLETE_MANIFEST, tmp)
         if result.returncode != 0:
@@ -457,6 +538,7 @@ def main() -> int:
         ("new_package_json", test_new_package_json),
         ("merge_existing", test_merge_existing),
         ("idempotent", test_idempotent),
+        ("reuse_existing_versions_without_fetch", test_reuse_existing_versions_without_fetch),
         ("skip_ineligible", test_skip_ineligible),
         ("no_gen_without_openapi", test_no_gen_without_openapi),
         ("seed_files", test_seed_files),

@@ -136,6 +136,8 @@ def main() -> int:
     # 6. 冪等性: 同じ入力で2回実行 → manifest 変化なし
     mtext = MANIFEST_WITH_FILENAME.replace("{filename}", "TECH.md")
     rc1, out1, _ = _run(mtext, DESIGN_DOC_FIXTURE, design_doc_name="TECH.md")
+    if rc1 != 0:
+        errors.append(f"idempotency: 1st ingest expected exit 0, got {rc1}")
     with tempfile.TemporaryDirectory(prefix="test-ingest-idempotent-") as tmp:
         manifest = Path(tmp) / "manifest.yaml"
         manifest.write_text(out1, encoding="utf-8")

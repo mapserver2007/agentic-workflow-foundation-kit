@@ -200,6 +200,8 @@ def main() -> int:
 
     # 10. Idempotency: apply twice → same result
     rc1, out1, _ = _run(MANIFEST_FIXTURE, INIT_VALID)
+    if rc1 != 0:
+        errors.append(f"idempotency: 1st apply expected exit 0, got {rc1}")
     with tempfile.TemporaryDirectory(prefix="test-idempotent-") as tmp:
         m = Path(tmp) / "manifest.yaml"
         i = Path(tmp) / "init.yaml"
@@ -249,6 +251,8 @@ def main() -> int:
 
     # 17. Insertion idempotency: apply custom filename twice → same result
     rc1, out1, _ = _run(MANIFEST_FIXTURE, INIT_CUSTOM_FILENAME)
+    if rc1 != 0:
+        errors.append(f"tsd idempotency: 1st apply expected exit 0, got {rc1}")
     with tempfile.TemporaryDirectory(prefix="test-tsd-idempotent-") as tmp:
         m = Path(tmp) / "manifest.yaml"
         i = Path(tmp) / "init.yaml"

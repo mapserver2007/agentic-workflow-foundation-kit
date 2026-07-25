@@ -85,7 +85,10 @@ def main(argv=None) -> int:
 
     # 契約確定判定: Phase 1.65 と同一の適格条件を使用
     resolved, _reason = rqg._resolve(manifest)
-    contract_resolved = resolved is not None and resolved != "FATAL"
+    if resolved == "FATAL":
+        _out("ERROR", _reason)
+        return 2
+    contract_resolved = resolved is not None
 
     versions = ingest.load_package_versions(args.package_json)
     if versions is None:
