@@ -27,7 +27,7 @@ Agentic Workflow 基盤ファイル群を、**immutable upstream SoT（統一設
 
 > `AI_AGENT_UNIFIED_DESIGN.md` / `AI_BUSINESS_AGENT_SUITE.md` は immutable upstream SoT として読み取り、`run_resolved_engine.py` が一時 resolved skill-dir の `manifest.yaml` へ決定論的に展開する。スキル内 seed `manifest.yaml` / `templates/` は schema / default / fallback であり、実行結果によって永続更新しない。
 >
-> `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` だけはプロジェクトごとに変動する per-project 入力として扱い、スキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
+> 技術スタック統一設計書はプロジェクトごとに変動する per-project 入力として扱い、ファイル名を `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。`ingest_tech_stack.py` がスキル実行で生成されたリポジトリ直下 `manifest.yaml > tech_stack` へ Phase 1.6 で取り込む。Phase 1.65 では、その技術スタックから `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST` と package script contract を PO 確認なしで決定する。
 >
 > リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。
 
@@ -56,7 +56,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **統一設計書は immutable upstream SoT**。実行時に読み取り、fingerprint と構造化要件を一時 resolved manifest へ展開する。読み取り専用であり、スキル実行で書き換えない。
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed / schema / default**。統一設計書から一意に抽出できない既定値を保持するが、実行結果によって永続更新しない。
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
-- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を読んで生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
+- **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
@@ -201,14 +201,15 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 - 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
 - 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
-- SoT 境界: `project.name` と `context_budget.min_context_window_tokens` のみ。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
 
 **apply が書くもの**:
 
 1. `project.name`（`init.yaml` の値。null / 省略時はリポジトリのディレクトリ名から導出）
 2. `project.slug`（name から自動導出）
 3. `project.workflow_pattern: "開発型"`（固定）
-4. `project.context_budget.min_context_window_tokens`
+4. `project.tech_stack_design_filename`（`init.yaml > tech_stack_design.filename` から。必須）
+5. `project.context_budget.min_context_window_tokens`
 
 **apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。
 
@@ -220,6 +221,7 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 - `version` は `1` 必須
 - `project.workflow_pattern` / `features` / `deep_thinking` / `cross_repo_knowledge` キーが `init.yaml` にあれば exit 2（禁止キー）
 - `project.name` は文字列または null（空文字 / 非 string は exit 2）
+- `tech_stack_design` は必須。`tech_stack_design.filename` は basename のみ（`/` `\` `..` 禁止）、`.md` 末端、非空（省略時 exit 2）
 - `context_budget.min_context_window_tokens` は正の整数かつ 50000 以上（省略時 200000）
 - 未知キーは exit 2
 - apply 後に所有キーに `"開発型"` 以外の `workflow_pattern` や `[要確認]` が残存なら exit 1
@@ -241,13 +243,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresh
 
 ### Phase 1.6: techstack 取り込み
 
-`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` がある場合、§9 の技術スタック表を生成済みのリポジトリ直下 `manifest.yaml > tech_stack` に取り込む。
+`init.yaml > tech_stack_design.filename` で指定された設計書（`.cursor/docs/{filename}`）の §9 技術スタック表を、生成済みのリポジトリ直下 `manifest.yaml > tech_stack` に取り込む。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 ```
 
-- 設計書が無い場合は WARN でスキップし、既存 root `manifest.yaml > tech_stack` を維持する。
+- CLI `--design-doc` 明示指定時はその値を使用し、未指定時は manifest `project.tech_stack_design_filename` から解決する。いずれも未設定、または対象ファイルが存在しない場合は exit 2。
 - 生成前の `docs/tech-stack.md` は存在しなくてよい。ここで更新するのは生成元データ root `manifest.yaml > tech_stack`。
 - seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書）から決まる。
 
@@ -292,7 +294,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 
 **発火条件**: スクリプトが `[ACTION] path_instructions の AI 再生成が必要です` を出力した場合のみ実行する。hash 一致時（`更新なし=冪等`）はスキップする。
 
-1. `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` と root `manifest.yaml > tech_stack.items` を読む。
+1. `project.tech_stack_design_filename` で指定された設計書と root `manifest.yaml > tech_stack.items` を読む。
 2. 以下の観点で path_instructions を生成する:
    - 検出された各テクノロジーカテゴリに対応するファイルパターンとレビュー指示
    - テクノロジー間の組み合わせ（例: React + Workers → OpenNext 整合性確認）

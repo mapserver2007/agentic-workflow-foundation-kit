@@ -75,8 +75,7 @@
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
 ### docs/tech-stack.md（techstack §9）
-- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。
-- `TECHNOLOGY_STACK_UNIFIED_DESIGN.md`: per-project 入力への逆参照ポインタ。
+- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。テンプレート内のリンクは `project.tech_stack_design_filename`（manifest 値）で動的解決される。
 
 ### .cursor/skills/session-planning/SKILL.md（Layer 3 セッション管理）
 - `name: session-planning`: Cursor skill としての識別子。

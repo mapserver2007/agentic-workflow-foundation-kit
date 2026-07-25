@@ -19,6 +19,7 @@ HERE = Path(__file__).resolve().parent
 TESTS_IN_ORDER = [
     "test_engine_readonly.py",
     "test_apply_kit_init.py",
+    "test_ingest_tech_stack.py",
     "test_resolve_quality_gate.py",
     "test_resolve_budget_thresholds.py",
     "test_validate_deep_thinking.py",

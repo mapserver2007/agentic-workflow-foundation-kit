@@ -66,7 +66,7 @@ agentic-workflow-foundation-kit/
 ├── setup.md                           # 外部サービス・Cursor 設定手順
 ├── LICENSE
 ├── Makefile                           # CLI 依存の install / check
-├── init.yaml                          # 初期入力 SoT（name / context_budget のみ。生成対象外）
+├── init.yaml                          # 初期入力 SoT（name / tech_stack_design / context_budget。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
 │
 ├── AGENTS.md                          ┐
@@ -90,8 +90,8 @@ agentic-workflow-foundation-kit/
 │
 └── .cursor/
     ├── docs/
-    │   ├── AI_AGENT_UNIFIED_DESIGN.md        # immutable upstream SoT（非公開・gitignore）
-    │   ├── AI_BUSINESS_AGENT_SUITE.md        # immutable upstream SoT（非公開・gitignore）
+    │   ├── AI_AGENT_UNIFIED_DESIGN.md        # immutable upstream SoT
+    │   ├── AI_BUSINESS_AGENT_SUITE.md        # immutable upstream SoT
     │   └── TECHNOLOGY_STACK_UNIFIED_DESIGN.md # project ごとの tech stack 入力
     ├── hooks/                                # 生成 Hook スクリプト
     ├── hooks.json
@@ -204,7 +204,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
 3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で `project.name` / `slug` / `workflow_pattern`（開発型固定）/ `context_budget` を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
-5. **Phase 1.6**: `TECHNOLOGY_STACK_UNIFIED_DESIGN.md` から `tech_stack` を root `manifest.yaml` へ取り込む
+5. **Phase 1.6**: `init.yaml > tech_stack_design.filename` で指定された設計書から `tech_stack` を root `manifest.yaml` へ取り込む
 6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
 7. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
 8. **Phase 1.67**: `tech_stack` から Domain 層ドキュメント用の tech-stack 固有セクションリストを解決する
@@ -328,7 +328,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### tech stack は project input
 
-`TECHNOLOGY_STACK_UNIFIED_DESIGN.md` はプロジェクトごとに変わる入力です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
+技術スタック統一設計書はプロジェクトごとに変わる入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
 
 ### Context Budget は Hook で観測する
 
@@ -341,7 +341,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 - `git`
 - `jq`（Hook 実行時を推奨。未インストール時は fail-open）
 - `gh`（GitHub 連携スキル使用時を推奨）
-- 必要に応じて `.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`
+- `.cursor/docs/` 配下の技術スタック統一設計書（ファイル名は `init.yaml > tech_stack_design.filename` で指定）
 - Optional: CodeRabbit / GitHub review 運用を使う場合は、対象プロジェクト側の GitHub / CodeRabbit 設定
 
 macOS では `make install` / `make check` で CLI 依存を一括確認できます。

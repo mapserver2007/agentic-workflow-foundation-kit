@@ -43,7 +43,7 @@
 
 ## Tech Stack
 
-技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`](.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md)）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
+技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/{{project.tech_stack_design_filename}}`](.cursor/docs/{{project.tech_stack_design_filename}})）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
 
 ## Key Commands
 

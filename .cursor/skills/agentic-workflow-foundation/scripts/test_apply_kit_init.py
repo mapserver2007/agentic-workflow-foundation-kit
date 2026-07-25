@@ -27,6 +27,8 @@ session:
 INIT_VALID = """version: 1
 project:
   name: my-test-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 context_budget:
   min_context_window_tokens: 200000
 """
@@ -34,39 +36,88 @@ context_budget:
 INIT_NULL_NAME = """version: 1
 project:
   name: null
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 context_budget:
   min_context_window_tokens: 300000
 """
 
 INIT_MINIMAL = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 """
 
 INIT_BAD_VERSION = """version: 2
 project:
   name: test
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 """
 
 INIT_FORBIDDEN_KEY = """version: 1
 project:
   name: test
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 features:
   code_review: true
 """
 
 INIT_EMPTY_NAME = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 project:
   name: ""
 """
 
 INIT_SMALL_WINDOW = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 context_budget:
   min_context_window_tokens: 10000
 """
 
 INIT_UNKNOWN_KEY = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 project:
   name: test
   slug: forced
+"""
+
+INIT_MISSING_TSD = """version: 1
+project:
+  name: test
+"""
+
+INIT_TSD_EMPTY_FILENAME = """version: 1
+tech_stack_design:
+  filename: ""
+"""
+
+INIT_TSD_PATH_TRAVERSAL = """version: 1
+tech_stack_design:
+  filename: "../etc/EVIL.md"
+"""
+
+INIT_TSD_NO_MD_SUFFIX = """version: 1
+tech_stack_design:
+  filename: TECH_STACK.yaml
+"""
+
+INIT_TSD_UNKNOWN_KEY = """version: 1
+tech_stack_design:
+  filename: MY_STACK.md
+  extra: bad
+"""
+
+INIT_CUSTOM_FILENAME = """version: 1
+project:
+  name: custom-stack-project
+tech_stack_design:
+  filename: MY_CUSTOM_TECH_STACK.md
+context_budget:
+  min_context_window_tokens: 200000
 """
 
 
@@ -89,11 +140,13 @@ def _run(manifest_text: str, init_text: str, extra_args: list[str] | None = None
 def main() -> int:
     errors = []
 
-    # 1. Valid init → name / slug / workflow_pattern が書き換わる
+    # 1. Valid init → name / slug / workflow_pattern / tech_stack_design_filename が書き換わる
     rc, out, log = _run(MANIFEST_FIXTURE, INIT_VALID)
     if rc != 0:
         errors.append(f"valid init: expected exit 0, got {rc}\n{log}")
-    for needle in ['name: "my-test-project"', 'slug: "my-test-project"', 'workflow_pattern: "開発型"']:
+    for needle in ['name: "my-test-project"', 'slug: "my-test-project"',
+                    'workflow_pattern: "開発型"',
+                    'tech_stack_design_filename: "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"']:
         if needle not in out:
             errors.append(f"valid init: missing {needle!r} in manifest")
 
@@ -161,6 +214,55 @@ def main() -> int:
         errors.append("idempotency: second apply changed manifest")
     if r.returncode != 0:
         errors.append(f"idempotency: second apply exit {r.returncode}")
+
+    # 11. Missing tech_stack_design → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_MISSING_TSD)
+    if rc != 2:
+        errors.append(f"missing tsd: expected exit 2, got {rc}\n{log}")
+
+    # 12. tech_stack_design.filename empty → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_TSD_EMPTY_FILENAME)
+    if rc != 2:
+        errors.append(f"tsd empty filename: expected exit 2, got {rc}\n{log}")
+
+    # 13. tech_stack_design.filename with path traversal → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_TSD_PATH_TRAVERSAL)
+    if rc != 2:
+        errors.append(f"tsd path traversal: expected exit 2, got {rc}\n{log}")
+
+    # 14. tech_stack_design.filename without .md suffix → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_TSD_NO_MD_SUFFIX)
+    if rc != 2:
+        errors.append(f"tsd no .md suffix: expected exit 2, got {rc}\n{log}")
+
+    # 15. tech_stack_design unknown key → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_TSD_UNKNOWN_KEY)
+    if rc != 2:
+        errors.append(f"tsd unknown key: expected exit 2, got {rc}\n{log}")
+
+    # 16. Custom filename → inserted into manifest
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_CUSTOM_FILENAME)
+    if rc != 0:
+        errors.append(f"custom filename: expected exit 0, got {rc}\n{log}")
+    if 'tech_stack_design_filename: "MY_CUSTOM_TECH_STACK.md"' not in out:
+        errors.append(f"custom filename: missing tech_stack_design_filename in manifest\n{out}")
+
+    # 17. Insertion idempotency: apply custom filename twice → same result
+    rc1, out1, _ = _run(MANIFEST_FIXTURE, INIT_CUSTOM_FILENAME)
+    with tempfile.TemporaryDirectory(prefix="test-tsd-idempotent-") as tmp:
+        m = Path(tmp) / "manifest.yaml"
+        i = Path(tmp) / "init.yaml"
+        m.write_text(out1, encoding="utf-8")
+        i.write_text(INIT_CUSTOM_FILENAME, encoding="utf-8")
+        r = subprocess.run(
+            [sys.executable, str(APPLY), "--manifest", str(m), "--init", str(i)],
+            check=False, capture_output=True, text=True, env=dict(os.environ),
+        )
+        out2 = m.read_text(encoding="utf-8")
+    if out1 != out2:
+        errors.append("tsd idempotency: second apply changed manifest")
+    if r.returncode != 0:
+        errors.append(f"tsd idempotency: second apply exit {r.returncode}")
 
     if errors:
         for e in errors:

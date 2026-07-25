@@ -3,6 +3,7 @@
 
 init.yaml は生成物ではなく、初回実行前から存在する初期入力 SoT。
 workflow_pattern は "開発型" 固定。feature フラグは触らない。
+tech_stack_design.filename は必須で、project.tech_stack_design_filename に書き込む。
 
 exit code:
   0 — 正常（apply 完了）
@@ -28,9 +29,10 @@ import genlib  # noqa: E402
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
 
-ALLOWED_TOP_KEYS = {"version", "project", "context_budget"}
+ALLOWED_TOP_KEYS = {"version", "project", "context_budget", "tech_stack_design"}
 ALLOWED_PROJECT_KEYS = {"name"}
 ALLOWED_CONTEXT_BUDGET_KEYS = {"min_context_window_tokens"}
+ALLOWED_TECH_STACK_DESIGN_KEYS = {"filename"}
 FORBIDDEN_TOP_KEYS = {"workflow_pattern", "features", "deep_thinking", "cross_repo_knowledge"}
 
 FIXED_WORKFLOW_PATTERN = "開発型"
@@ -95,6 +97,28 @@ def _validate_init(init: dict) -> list[str]:
                     if val < MIN_CONTEXT_WINDOW:
                         errors.append(f"min_context_window_tokens が小さすぎる（< {MIN_CONTEXT_WINDOW}）: {val}")
 
+    tsd = init.get("tech_stack_design")
+    if tsd is None:
+        errors.append("tech_stack_design は必須（省略不可）")
+    elif not isinstance(tsd, dict):
+        errors.append(f"tech_stack_design はマッピング必須（実際: {type(tsd).__name__}）")
+    else:
+        for key in tsd:
+            if key not in ALLOWED_TECH_STACK_DESIGN_KEYS:
+                errors.append(f"未知キー tech_stack_design.{key}")
+        fn = tsd.get("filename")
+        if fn is None:
+            errors.append("tech_stack_design.filename は必須（省略不可）")
+        elif not isinstance(fn, str):
+            errors.append(f"tech_stack_design.filename は文字列必須（実際: {type(fn).__name__}）")
+        elif fn == "":
+            errors.append("tech_stack_design.filename に空文字は不可")
+        else:
+            if "/" in fn or "\\" in fn or ".." in fn:
+                errors.append(f"tech_stack_design.filename は basename のみ（パス区切り / .. 禁止）: {fn!r}")
+            if not fn.endswith(".md"):
+                errors.append(f"tech_stack_design.filename は .md で終わる必要がある: {fn!r}")
+
     return errors
 
 
@@ -102,6 +126,7 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     """init.yaml + 自動導出から apply する値を解決する。"""
     project = init.get("project") or {}
     ctx = init.get("context_budget") or {}
+    tsd = init.get("tech_stack_design") or {}
 
     name = project.get("name")
     if name is None:
@@ -116,11 +141,16 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     else:
         min_tokens = int(min_tokens)
 
+    tech_stack_design_filename = tsd.get("filename")
+    if not tech_stack_design_filename:
+        raise ValueError("tech_stack_design.filename が未設定")
+
     return {
         "name": name,
         "slug": slug,
         "workflow_pattern": FIXED_WORKFLOW_PATTERN,
         "min_context_window_tokens": min_tokens,
+        "tech_stack_design_filename": tech_stack_design_filename,
     }
 
 
@@ -211,6 +241,32 @@ def _set_nested_scalar(lines: list[str], parent: str, child: str, key: str, valu
     return lines
 
 
+def _set_or_insert_scalar(lines: list[str], parent: str, key: str, value: str,
+                          after_key: str | None = None) -> list[str]:
+    """parent ブロック内の key: value を更新する。キーが存在しなければ挿入する。"""
+    result = _set_scalar(lines, parent, key, value)
+    pattern = re.compile(rf"^(\s+){re.escape(key)}:\s")
+    p_start, p_last = _find_top_block(lines, parent)
+    if p_start is None:
+        return result
+    for idx in range(p_start + 1, p_last + 1):
+        if pattern.match(lines[idx]):
+            return result
+
+    indent = "  "
+    insert_at = p_last + 1
+    if after_key:
+        after_pattern = re.compile(rf"^(\s+){re.escape(after_key)}:\s")
+        for idx in range(p_start + 1, p_last + 1):
+            m = after_pattern.match(lines[idx])
+            if m:
+                indent = m.group(1)
+                insert_at = idx + 1
+                break
+    lines.insert(insert_at, f"{indent}{key}: {value}")
+    return lines
+
+
 def _render_manifest(content: str, values: dict) -> str:
     newline = "\r\n" if "\r\n" in content else "\n"
     lines = [ln.rstrip("\r") for ln in content.split("\n")]
@@ -218,6 +274,11 @@ def _render_manifest(content: str, values: dict) -> str:
     lines = _set_scalar(lines, "project", "name", _yaml_quote(values["name"]))
     lines = _set_scalar(lines, "project", "slug", _yaml_quote(values["slug"]))
     lines = _set_scalar(lines, "project", "workflow_pattern", _yaml_quote(values["workflow_pattern"]))
+    lines = _set_or_insert_scalar(
+        lines, "project", "tech_stack_design_filename",
+        _yaml_quote(values["tech_stack_design_filename"]),
+        after_key="workflow_pattern",
+    )
     lines = _set_nested_scalar(
         lines, "project", "context_budget",
         "min_context_window_tokens", str(values["min_context_window_tokens"])
@@ -239,6 +300,10 @@ def _verify_owned_keys(manifest: dict) -> list[str]:
         val = project.get(key)
         if val is None or val == "[要確認]":
             issues.append(f"project.{key} が未確定: {val!r}")
+
+    tsd_fn = project.get("tech_stack_design_filename")
+    if tsd_fn is None or tsd_fn == "[要確認]":
+        issues.append(f"project.tech_stack_design_filename が未確定: {tsd_fn!r}")
 
     ctx = project.get("context_budget") or {}
     raw = ctx.get("min_context_window_tokens")
@@ -289,6 +354,7 @@ def main(argv=None) -> int:
 
     _out("INFO", f"name={values['name']!r} slug={values['slug']!r} "
          f"workflow_pattern={values['workflow_pattern']!r} "
+         f"tech_stack_design_filename={values['tech_stack_design_filename']!r} "
          f"min_context_window_tokens={values['min_context_window_tokens']}")
 
     if args.check:

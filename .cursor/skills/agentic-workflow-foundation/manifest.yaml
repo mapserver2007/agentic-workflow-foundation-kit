@@ -815,7 +815,6 @@ outputs:
     mode: render
     required_sections:
       - "技術スタック一覧とバージョン方針"
-      - "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
   # resolve_domain_docs.py（Phase 1.67）が tech_stack から domain_docs.* を決定し、
   # テンプレート内の {{#each}} で tech-stack 固有セクションを展開する。
@@ -1569,6 +1568,9 @@ project:
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
   # 開発型固定。init.yaml / apply_kit_init.py が "開発型" を書き込む。他パターンは非対応
   workflow_pattern: "開発型"
+  # init.yaml tech_stack_design.filename から apply_kit_init.py が書き込む。
+  # ingest_tech_stack.py が .cursor/docs/{filename} を解決する。
+  tech_stack_design_filename: "[要確認]"
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
