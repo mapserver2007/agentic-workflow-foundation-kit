@@ -94,7 +94,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する
 {{/if}}
 2. **ファイル移動**: `git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
-{{#if code_review.report.enabled}}   - **レビューレポートの同梱**: 対応する `{task-report-stem}-review.md` が存在する場合は `git add` → `git mv docs/agent-tasks/reports/{task-report-stem}-review.md docs/agent-tasks/reports/archives/` で archives/ へ移動し、タスクレポートと同一コミットに含める
+{{#if code_review.report.enabled}}   - **レビューレポートの同梱**: 対応する `{task-report-stem}-review.md` が `{{code_review.report.output_dir}}/` に存在する場合は `git add` → `git mv {{code_review.report.output_dir}}/{task-report-stem}-review.md {{code_review.report.output_dir}}/archives/` で archives/ へ移動し、タスクレポートと同一コミットに含める
 {{/if}}   - archives 移動完了をもってキャンペーン完了とする（進行中キャンペーンの SoT は `reports/` 直下のファイル存在）
 3. 次の pending レポートへ（複数レポート処理時）
 

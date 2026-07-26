@@ -402,7 +402,7 @@ code_review:
   enabled: true
   report:
     enabled: true
-    output_dir: "docs/agent-tasks/reports"
+    output_dir: "docs/agent-tasks/reviews"
 
 # ------------------------------------------------------------
 # (2g) github_pr — agent-github-pr スキル（オプション生成）
@@ -1166,6 +1166,14 @@ outputs:
     template: gitkeep.template
     mode: seed
     feature: agent_workflow
+  - path: docs/agent-tasks/reviews/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: code_review
+  - path: docs/agent-tasks/reviews/archives/.gitkeep
+    template: gitkeep.template
+    mode: seed
+    feature: code_review
   - path: docs/agent-tasks/agent-workflow.md
     template: docs/agent-tasks/agent-workflow.md.template
     mode: render
