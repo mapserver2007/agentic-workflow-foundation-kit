@@ -6,7 +6,7 @@
 
 Step ① では以下の 3 段階ガードを順番に実行し、blocking な問題が残る限り Step ② へ進めない。
 
-### Gate A — 要求完全性
+### 要求の完全性チェック（Gate A）
 
 目的、対象/対象外、期待動作、現在動作、受入条件、影響対象、制約、優先度、未決定事項、要求文内部の矛盾を検査する。
 
@@ -27,11 +27,11 @@ Step ① では以下の 3 段階ガードを順番に実行し、blocking な�
 - N/A 項目の不在は INCOMPLETE としない
 - 任意項目の不在は non-blocking warning として Issue Ledger に記録する
 
-### Gate B — 仕様整合性
+### 仕様との整合性チェック（Gate B）
 
 docs-first で仕様、アーキテクチャ、API、データモデル、ワークフロー、ADR、Boundaries との矛盾・SoT 間不整合を検査する。
 
-### Gate C — 実現性・コード整合性
+### 実現可能性チェック（Gate C）
 
 コード調査後に以下を検査する。**standard 経路と deep 経路の両方で親が直接実施する**（standard 経路では調査 Subagent 完走後、deep 経路では deep-thinking 完了後に親が実施）。
 
