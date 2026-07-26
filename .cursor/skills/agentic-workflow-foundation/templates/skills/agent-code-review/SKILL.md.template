@@ -82,7 +82,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 | Step 5-6 `reply_only` / `pending` / `discuss` 時 | `StrReplace`（更新） | アクション実行記録・保留セクション即時更新 |
 | Step 7（最終確定） | `StrReplace`（確定） | ヘッダ統計の `TBD` → 確定値、`承認状態: 承認取得済み`、完全性の最終検証 |
 
-> **コミットポリシー**: レビューレポートの git commit はせず、Step ⑥ archive コミットにまとめて含める。`.coderabbit.yaml` の `path_filters` でレビューレポートは自動レビュー対象外のため、コミットタイミングの制約はない。
+> **コミットポリシー**: レビューレポートは Step ⑤〜⑦ 中は commit しない。Step ⑥ 完了コミット（タスクレポートの `reports/archives/` 移動と同梱）で `reviews/` 直下のまま `git add` して含める。`.coderabbit.yaml` の `path_filters` でレビューレポートは自動レビュー対象外のため、コミットタイミングの制約はない。
 
 ---
 

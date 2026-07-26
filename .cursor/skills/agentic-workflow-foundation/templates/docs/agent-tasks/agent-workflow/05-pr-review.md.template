@@ -66,7 +66,7 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 レビュー完了時に、タスクレポートの「PRレビュー検証完了」チェックボックスを `[x]` に更新する。
 
 {{#if code_review.report.enabled}}
-> **レビューレポートの段階的作成**: レビューレポート（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）は Step ⑤ 中に段階的に作成・更新される。指摘取得完了時に骨格を新規作成し、判定確定・アクション実行ごとに `StrReplace` で更新する。レビュー完了承認後の Step 7 では最終確定（ヘッダ統計確定・承認記録更新）のみを行う。git commit はせず、Step ⑥ archive コミットにまとめて含める。単独実行時（タスクレポート不在）はレビューレポートを作成しない。
+> **レビューレポートの段階的作成**: レビューレポート（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）は Step ⑤ 中に段階的に作成・更新される。指摘取得完了時に骨格を新規作成し、判定確定・アクション実行ごとに `StrReplace` で更新する。レビュー完了承認後の Step 7 では最終確定（ヘッダ統計確定・承認記録更新）のみを行う。レビューレポートは Step ⑤〜⑦ 中は commit しない。Step ⑥ 完了コミット（タスクレポートの `reports/archives/` 移動と同梱）で `reviews/` 直下のまま `git add` して含める。単独実行時（タスクレポート不在）はレビューレポートを作成しない。
 {{/if}}
 
 ```markdown
