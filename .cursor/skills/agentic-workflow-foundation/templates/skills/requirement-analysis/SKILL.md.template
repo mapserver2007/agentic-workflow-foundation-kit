@@ -70,7 +70,10 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 2. `blocking: true` の open issue があれば、`user-presentation.md` の用語対応表と質問テンプレに従いユーザーに質問する
 3. ユーザー回答を受けて issue を `resolved` に遷移する
 4. 再度同一ゲートを実行する
-5. 最大再試行回数（`config.yaml > execution.max_gate_retries`）を超えた場合は `status: incomplete` で終了し、`user-presentation.md` の再試行上限テンプレに従いユーザーに報告する
+5. 最大再試行回数（`config.yaml > execution.max_gate_retries`）を超えた場合は `user-presentation.md` の再試行上限テンプレに従いユーザーに報告する
+   - ユーザーがリスク承認: 該当 issue を `waived` に遷移し（`resolution` に承認根拠を記録）、step 4 へ戻る（ゲート再評価）
+   - ユーザーが追加情報提供: step 3 へ戻る
+   - いずれでもない場合: `status: incomplete` で終了する
 
 ---
 

@@ -69,7 +69,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
    - `deferred`: standard 調査 Subagent を dispatch → 完走後に親がスコア起動条件を事後判定
 7. **実現可能性チェック（Gate C）**: コード調査後に親が直接実施。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 8. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
-9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + 確認事項すべて解消済み。不合格時は `user-presentation.md` の退出不合格テンプレに従いユーザーに状況報告
+9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + 先に回答が必要な確認事項がない（blocking_open_issues: []）。不合格時は `user-presentation.md` の退出不合格テンプレに従いユーザーに状況報告
 {{else}}[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）

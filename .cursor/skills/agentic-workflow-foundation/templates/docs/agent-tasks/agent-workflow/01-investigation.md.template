@@ -123,7 +123,7 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 - [ ] **要求の完全性チェック通過**（requirement_gate: PASS）
 - [ ] **仕様との整合性チェック通過**（spec_consistency_gate: PASS）
 - [ ] **実現可能性チェック通過**（feasibility_gate: PASS）
-- [ ] **確認事項がすべて解消済み**（blocking_open_issues: 空配列）
+- [ ] **先に回答が必要な確認事項がない**（blocking_open_issues: 空配列）
 
 退出条件は AND 合成: `既存5項目チェックリスト全PASS AND 3段階ガード全PASS AND blocking_open_issues: []`
 
