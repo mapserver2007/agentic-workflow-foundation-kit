@@ -4,7 +4,7 @@
 >
 > 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
 >
-> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` を seed manifest に overlay したうえで、`capability_registry.py` から live compose した `quality_gate_contract` を一時 resolved manifest へ注入する。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
+> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit` + feature-flag overlay keys を seed manifest に overlay したうえで、`capability_registry.py` から live compose した `quality_gate_contract` を一時 resolved manifest へ注入する。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 

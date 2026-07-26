@@ -42,7 +42,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
        ├─ Phase 1.55: min_context_window_tokens → budget_thresholds 算出
        │
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack
-       ├─ Phase 1.65: tech_stack → quality_gate / quality_gate_contract
+       ├─ Phase 1.65: tech_stack → quality_gate
        │
       └─ run_resolved_engine.py（unified design + root manifest overlay）
              │
