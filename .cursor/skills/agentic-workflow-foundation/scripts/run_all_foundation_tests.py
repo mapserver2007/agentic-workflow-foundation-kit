@@ -32,6 +32,7 @@ TESTS_IN_ORDER = [
     "test_project_gate_command.py",
     "test_workflow_orchestrator_gate_matrix.py",
     "test_plan_gate_review.py",
+    "test_bootstrap_dead_blocks.py",
 ]
 
 

@@ -325,7 +325,7 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### root manifest の責務を分ける
 
-root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。手編集してよいのは、Phase 1.5 / 1.55 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`quality_gate_contract`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit`、`agent_workflow`、`deep_thinking`、`cross_repo_knowledge` などの per-project 値です。
+root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。`outputs` / `quality_gate_contract` は root に保持しません（seed が単一 SoT / capability_registry から一時導出）。手編集してよいのは、Phase 1.5 / 1.55 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit`、`agent_workflow`、`deep_thinking`、`cross_repo_knowledge` などの per-project 値です。
 
 ### upstream docs は immutable input
 

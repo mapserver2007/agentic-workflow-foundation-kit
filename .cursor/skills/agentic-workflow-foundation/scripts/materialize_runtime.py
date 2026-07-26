@@ -29,17 +29,13 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import genlib  # noqa: E402
-import resolve_quality_gate as rqg  # noqa: E402
+import capability_registry as reg  # noqa: E402
+import resolve_quality_gate as rqg  # noqa: E402  # yaml block helpers
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
 
 GATE_SCRIPTS = frozenset({"gen", "build", "lint", "test"})
-
-GEN_ARTIFACT_PATHS = [
-    "openapi/bundled.yaml",
-    "packages/types/src/generated/api.d.ts",
-]
 
 # capability_key → [(npm_package, dep_section)]
 CAPABILITY_PACKAGES: list[tuple[str, str, str]] = [
@@ -88,76 +84,17 @@ def _out(level: str, msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Capability detection
+# Capability detection / script composition（registry 委譲）
 # ---------------------------------------------------------------------------
 
 def detect_capabilities(manifest: dict) -> dict[str, bool]:
-    """tech_stack.items から capability フラグを導出する。"""
-    names = rqg._tech_names(manifest)
-    has_ts = rqg._has(names, "typescript")
-    return {
-        "pnpm": rqg._has(names, "pnpm"),
-        "typescript": has_ts,
-        "openapi": (
-            rqg._has(names, "openapi")
-            and rqg._has(names, "redocly")
-            and rqg._has(names, "spectral")
-        ),
-        "openapi_types": rqg._has(names, "openapi-typescript"),
-        "spectral": rqg._has(names, "spectral"),
-        "redocly": rqg._has(names, "redocly"),
-        "vitest_workers": rqg._has(names, "vitest") and rqg._has(names, "cloudflare"),
-        "wrangler": rqg._has(names, "wrangler"),
-        "turbo": rqg._has(names, "turborepo"),
-        "lint_ts": has_ts,
-    }
+    """tech_stack.items から capability フラグ dict を導出する（registry 互換）。"""
+    return reg.detect_capabilities(manifest)
 
 
-# ---------------------------------------------------------------------------
-# Script composition
-# ---------------------------------------------------------------------------
-
-def compose_scripts(caps: dict[str, bool]) -> dict[str, str]:
-    """capability フラグから gate scripts を動的合成する。"""
-    scripts: dict[str, str] = {}
-
-    if caps.get("turbo"):
-        if caps.get("openapi"):
-            scripts["gen"] = "turbo run gen"
-        scripts["build"] = "turbo run build"
-        scripts["lint"] = "turbo run lint"
-        scripts["test"] = "turbo run test"
-        return scripts
-
-    if caps.get("openapi"):
-        gen_parts = ["redocly bundle openapi/openapi.yaml -o openapi/bundled.yaml"]
-        if caps.get("openapi_types"):
-            gen_parts.append(
-                "openapi-typescript openapi/bundled.yaml"
-                " -o packages/types/src/generated/api.d.ts"
-            )
-        scripts["gen"] = " && ".join(gen_parts)
-
-    build_parts: list[str] = []
-    if caps.get("typescript"):
-        build_parts.append("tsc --noEmit")
-    if build_parts:
-        scripts["build"] = " && ".join(build_parts)
-
-    lint_parts: list[str] = []
-    if caps.get("redocly"):
-        lint_parts.append("redocly lint openapi/bundled.yaml")
-    if caps.get("spectral"):
-        lint_parts.append("spectral lint openapi/openapi.yaml")
-    if caps.get("lint_ts"):
-        lint_parts.append("biome check .")
-    if lint_parts:
-        scripts["lint"] = " && ".join(lint_parts)
-
-    if caps.get("vitest_workers"):
-        scripts["test"] = "vitest run"
-
-    return scripts
+def compose_scripts(manifest: dict) -> dict[str, str]:
+    """manifest から gate scripts を動的合成する（registry 互換）。"""
+    return reg.compose_scripts(manifest)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +200,7 @@ def _version_policies_map(manifest: dict) -> dict[str, str]:
     items = (manifest.get("tech_stack") or {}).get("items") or []
     policies: dict[str, str] = {}
     for item in items:
-        tech = rqg._normalize(item.get("technology", ""))
+        tech = reg._normalize(item.get("technology", ""))
         policy = (item.get("version_policy") or "").strip()
         if tech:
             policies[tech] = policy
@@ -456,12 +393,12 @@ def main(argv=None) -> int:
         _out("ERROR", f"manifest 解析失敗: {e}")
         return 2
 
-    # Phase 1.65 と同一の適格判定（関数共有）
-    resolved, reason = rqg._resolve(manifest)
-    if resolved == "FATAL":
+    # Phase 1.65 と同一の適格判定（registry 共有）
+    status, reason = reg.check_eligibility(manifest)
+    if status == "FATAL":
         _out("ERROR", reason)
         return 2
-    if resolved is None:
+    if status == "SKIP":
         _out("WARN", reason or "Phase 1.65 と同一条件で非適格。物質化をスキップ")
         return 0
 
@@ -469,10 +406,10 @@ def main(argv=None) -> int:
     active = [k for k, v in caps.items() if v]
     _out("INFO", f"検出 capability: {', '.join(active)}")
 
-    scripts = compose_scripts(caps)
+    scripts = compose_scripts(manifest)
     _out("INFO", f"合成 scripts: {', '.join(scripts.keys())}")
 
-    gen_paths = GEN_ARTIFACT_PATHS if caps.get("openapi") else []
+    gen_paths = reg.compose_artifact_paths(manifest)
 
     if args.check:
         _out("INFO", f"物質化対象: scripts={list(scripts.keys())}, gen_paths={gen_paths}（--check）")
