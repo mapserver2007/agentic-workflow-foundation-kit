@@ -85,8 +85,8 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 ### 3.1 レビューレポート骨格作成（レポート出力設定 `true` 時）
 
-- [ ] **命名解決**: `{{code_review.report.output_dir}}/` 直下を Glob し、`*-review.md` 以外の `.md` ファイル（= タスクレポート）を列挙した
-  - [ ] **1 件**: stem に `-review.md` を付加してファイル名を決定した（`{task-report-stem}-review.md`）
+- [ ] **命名解決**: `docs/agent-tasks/reports/` 直下を Glob し、`.md` ファイル（= タスクレポート）を列挙した
+  - [ ] **1 件**: stem に `-review.md` を付加し、`{{code_review.report.output_dir}}/{task-report-stem}-review.md` をレビューレポートのパスとして決定した
   - [ ] **複数件**: PR 番号で照合を試み、一意に特定できなければユーザーに選択を求めた
   - [ ] **0 件（単独実行）**: レビューレポートファイルは作成せず、以降の Step でレポート更新操作をスキップすることを確認した
 - [ ] Mode A（タスクレポートあり）: レビューレポートファイル（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）を `Write` で新規作成した

@@ -57,8 +57,8 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 
 **解決手順（Step 3 骨格作成の直前に実行）**:
 
-1. `{{code_review.report.output_dir}}/` 直下を Glob し、`*-review.md` 以外の `.md` ファイル（= タスクレポート）を列挙する
-2. **1 件**: そのファイルの stem に `-review.md` を付加してレビューレポートのファイル名を決定する
+1. `docs/agent-tasks/reports/` 直下を Glob し、`.md` ファイル（= タスクレポート）を列挙する
+2. **1 件**: そのファイルの stem に `-review.md` を付加し、`{{code_review.report.output_dir}}/{task-report-stem}-review.md` をレビューレポートのパスとして決定する
 3. **複数件**: PR 番号で照合を試み、一意に特定できなければユーザーに選択を求める
 4. **0 件**: 単独実行と判定し、レビューレポートは作成しない（レポート出力設定を `false` 相当として扱う）
 
