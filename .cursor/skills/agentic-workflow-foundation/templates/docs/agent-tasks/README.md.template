@@ -18,14 +18,14 @@
 
 - 格納場所: `reports/`（進行中） / `reports/archives/`（完了済み）
 - 命名規則: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
-- 例: `reports/TICKET-123-cancel-order-error-handling.md`
+- 例: `reports/TICKET-123-fix-auth-bug.md`
 {{#if code_review.enabled}}
 
 ## 命名規則（レビューレポート）
 
 - 格納場所: `reviews/`（完了後もアーカイブしない）
 - 命名規則: `{task-report-stem}-review.md`（タスクレポート名から決定論的に導出）
-- 例: `reviews/TICKET-123-cancel-order-error-handling-review.md`
+- 例: `reviews/TICKET-123-fix-auth-bug-review.md`
 {{/if}}
 
 ## クイックスタート

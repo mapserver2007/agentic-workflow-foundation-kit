@@ -13,8 +13,8 @@
 **命名規約**: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
 
 **例**:
-- `reports/TICKET-123-cancel-order-error-handling.md`
-- `reports/TICKET-456-master-sync-retry-logic.md`
+- `reports/TICKET-123-fix-auth-bug.md`
+- `reports/TICKET-456-retry-logic-improvement.md`
 
 ### 命名ガイドライン（AGENTS.md > Documentation Naming Convention に準拠）
 - `reports/` 配下は **Domain 層** として kebab-case で命名する
