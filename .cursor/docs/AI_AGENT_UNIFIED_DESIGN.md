@@ -20,7 +20,7 @@ reference_specs:
 * 想定ロール: **開発責任者** — PO / PdM / PjM / PL / TL（以下まとめて「PO」と表記）
 * 元資料: `ai-agent-unified-design.md`（経営視点版）を開発ドメインに再構成したもの
 * v2 での主な変更: Opus 4.7 High レビュー（22件）の反映。公式仕様（Anthropic / Cursor）と齟齬のあった箇所を修正し、独自ルール部分は「本設計の推奨」として明示
-* **v3 での主な変更**: ドキュメント命名規約を **semantic 2層モデル（Meta = 大文字 / Domain = 小文字）** として正式採用。§12 Layer 1 に命名原則セクションを新設し、Appendix E を「Meta 層」と「Domain 層」で明示的に分類。本リポジトリでの運用実態（`docs/DECISIONS.md` や `docs/spec/master-sync.md` の共存）を設計書に逆輸入した形
+* **v3 での主な変更**: ドキュメント命名規約を **semantic 2層モデル（Meta = 大文字 / Domain = 小文字）** として正式採用。§12 Layer 1 に命名原則セクションを新設し、Appendix E を「Meta 層」と「Domain 層」で明示的に分類。下流プロジェクトでの運用実態（`docs/DECISIONS.md` や `docs/spec/feature-example.md` の共存）を設計書に逆輸入した形
 
 本ドキュメントは AI エージェント（Cursor Agent、Claude Code 等）を **開発プロジェクトに組み込む** ための基盤設計を、**設計 → 実装 → レビュー → QA → リリース** の開発プロセスに沿って解説する。用語は [Appendix C](#appendix-c-用語集) を参照。
 
@@ -509,7 +509,7 @@ echo ""; echo "=== Results: $PASS passed, $FAIL failed ==="
 | 層 | 命名 | 意味 | 判定基準 | 例 |
 | --- | --- | --- | --- | --- |
 | **Meta 層** | `UPPER_SNAKE_CASE.md` | 上位概念・判断フレームワーク・運用ルール・記録フォーマット。AI/人間への「読む指示」「どう動くか・どう判断するか」を定義 | **「他リポジトリでも同じ役割名で通用するか？」= Yes** | `DECISIONS.md`, `GOTCHAS.md`, `QUALITY_GATE.md`, `AGENT_RUNBOOK.md`, `RUNBOOK.md`, `README.md`, `CHANGELOG.md`, `SECURITY.md` |
-| **Domain 層** | `kebab-case.md` | 本リポジトリ固有のドメイン知識・独自ワークフロー・業務仕様・実装詳細 | **「このリポジトリ特有の what を記述しているか？」= Yes** | `spec.md`, `spec/master-sync.md`, `architecture.md`, `api.md`, `data-models.md`, `coding-standards.md`, `workflows.md`, `datadog-investigation-guide.md` |
+| **Domain 層** | `kebab-case.md` | 本リポジトリ固有のドメイン知識・独自ワークフロー・業務仕様・実装詳細 | **「このリポジトリ特有の what を記述しているか？」= Yes** | `spec.md`, `spec/feature-example.md`, `architecture.md`, `api.md`, `data-models.md`, `coding-standards.md`, `workflows.md`, `observability-guide.md` |
 
 **公式固定（ツール識別のため大文字必須、上記 Meta 層の特殊例）:**
 
@@ -1767,7 +1767,7 @@ v2.0 公開後の読者からの質問を受け、Appendix E と §12 Layer 1 �
 * 公式で大文字必須と定められているのは **`CLAUDE.md` / `CLAUDE.local.md` / `MEMORY.md` / `AGENTS.md` の4ファイルのみ**。出典は [Anthropic Docs - claude-md](https://docs.anthropic.com/en/docs/claude-code/claude-md) および [Cursor Docs - Rules](https://cursor.com/docs/rules)
 * 公式は **`.cursor/rules/*.mdc` / `.claude/rules/*.md` / Auto Memory トピックファイルには kebab-case を推奨**
 * Appendix E で列挙する `DECISIONS.md` / `QUALITY_GATE.md` / `RUNBOOK.md` / `GOTCHAS.md` 等の大文字表記は GitHub Community Standards / ADR コミュニティ由来の **OSS 慣習**であり、プロジェクトごとに小文字・kebab-case に読み替えてよい
-* 本リポジトリ (pos-tec-service) の `docs/spec/master-sync.md`, `docs/runbooks/RB-*.md`, `docs/investigations/` のように **小文字・kebab-case 運用は完全に公式準拠**
+* 下流の業務アプリリポジトリ例: `docs/spec/feature-example.md`, `docs/runbooks/RB-*.md`, `docs/investigations/` のように **小文字・kebab-case 運用は完全に公式準拠**
 
 #### v3.0 変更（命名規約 semantic 2層モデルの正式採用）
 
@@ -1789,4 +1789,4 @@ v2.1 では「公式要件 vs OSS 慣習」という二分法で命名規約を�
 * 新規ドキュメント作成時の命名判断が「役割名として他プロジェクトに移植できるか」という明確な基準で決まる
 * `docs/` 配下の大文字/小文字混在が、単なる慣習の寄せ集めではなく **意図的な設計** になる
 
-**後方互換性**: v2 で大文字のまま作成されたドキュメント（例: `SPEC.md`, `ARCHITECTURE.md`）を v3 規約に合わせてリネーム（`spec.md`, `architecture.md`）するかどうかは各プロジェクトの判断。本リポジトリ（pos-tec-service）は既に Domain 層 = 小文字運用が浸透しているため追加作業はほぼ不要。逆にまだ大文字で作成されている `AGENT_RUNBOOK.md` / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` は Meta 層として大文字維持で整合が取れる。
+**後方互換性**: v2 で大文字のまま作成されたドキュメント（例: `SPEC.md`, `ARCHITECTURE.md`）を v3 規約に合わせてリネーム（`spec.md`, `architecture.md`）するかどうかは各プロジェクトの判断。Domain 層 = 小文字運用が既に浸透している下流プロジェクトは追加作業はほぼ不要。逆にまだ大文字で作成されている `AGENT_RUNBOOK.md` / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` は Meta 層として大文字維持で整合が取れる。
