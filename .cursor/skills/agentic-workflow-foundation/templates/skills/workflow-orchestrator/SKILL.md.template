@@ -60,16 +60,16 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **要求正規化**: Subagent（`requirement-analysis/config.yaml > models.normalize`）で要求を構造化する
-3. **Gate A（要求完全性）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親がユーザーに質問
+3. **要求の完全性チェック（Gate A）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親が [`user-presentation.md`](../requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問
 4. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する
-5. **Gate B（仕様整合性）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親がユーザーに質問
+5. **仕様との整合性チェック（Gate B）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 6. **分析深度判定**: Subagent（`requirement-analysis/config.yaml > models.depth_triage`）で判定
    - `standard`: 調査 Subagent（`requirement-analysis/config.yaml > models.standard_investigation`）を dispatch
    - `deep`: 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動。**deep-thinking の `config.yaml` が SoT**
    - `deferred`: standard 調査 Subagent を dispatch → 完走後に親がスコア起動条件を事後判定
-7. **Gate C（実現性・コード整合性）**: コード調査後に親が直接実施。`INCOMPLETE` → 親がユーザーに質問
+7. **実現可能性チェック（Gate C）**: コード調査後に親が直接実施。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 8. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
-9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + blocking_open_issues空。不合格時はユーザーに状況報告
+9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + 確認事項すべて解消済み。不合格時は `user-presentation.md` の退出不合格テンプレに従いユーザーに状況報告
 {{else}}[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）

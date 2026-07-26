@@ -1394,6 +1394,7 @@ outputs:
       - "## 親 / Subagent 境界"
       - "## ガード失敗時の問題解消ループ"
       - "## 分析深度と経路"
+      - "## ユーザー向け出力規則"
   - path: .cursor/skills/requirement-analysis/config.yaml
     template: skills/requirement-analysis/config.yaml.template
     mode: seed
@@ -1418,6 +1419,17 @@ outputs:
       - "## 分析深度 enum"
       - "## deep 即時起動条件"
       - "## deferred 判定"
+  - path: .cursor/skills/requirement-analysis/references/user-presentation.md
+    template: skills/requirement-analysis/references/user-presentation.md.template
+    mode: render
+    feature: requirement_analysis
+    required_sections:
+      - "## 用語対応表"
+      - "## 不足時の質問テンプレ"
+      - "## 進捗サマリテンプレ"
+      - "## 例外経路テンプレ"
+      - "## 確認事項の表示分類"
+      - "## 禁止事項"
   - path: .cursor/skills/requirement-analysis/references/investigation-memo.md
     template: skills/requirement-analysis/references/investigation-memo.md.template
     mode: render

@@ -17,12 +17,12 @@
 - 未記載項目の検出
 - 要求文内部の矛盾検出
 
-## 1.2 Gate A — 要求完全性
+## 1.2 要求の完全性チェック（Gate A）
 
 正規化結果に対して [requirement-contract.md](../../../.cursor/skills/requirement-analysis/references/requirement-contract.md) のタスク種別対応マトリクスに従い検査する。
 
 - `PASS`: 次ステップへ進む
-- `INCOMPLETE`: blocking issue を Issue Ledger に記録し、親がユーザーに質問する
+- `INCOMPLETE`: blocking issue を確認事項一覧に記録し、親が [user-presentation.md](../../../.cursor/skills/requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問する
 
 ## 1.3 ドキュメントの参照
 
@@ -36,12 +36,12 @@
 
 調査中に参照した Domain 層 docs を記録する（Investigation Memo の「docs-first 参照記録」セクションへ転記する）。対象一覧は上記 Documentation Navigation を参照し、各 docs について「参照した / 該当なし」を判定する。
 
-## 1.4 Gate B — 仕様整合性
+## 1.4 仕様との整合性チェック（Gate B）
 
 docs-first 完了後、要求と既存仕様（spec / architecture / API / data-models / workflows / ADR / Boundaries）との矛盾・SoT 間不整合を検査する。
 
 - `PASS`: 次ステップへ進む
-- `INCOMPLETE`: blocking issue を Issue Ledger に記録し、親がユーザーに質問する
+- `INCOMPLETE`: blocking issue を確認事項一覧に記録し、親が [user-presentation.md](../../../.cursor/skills/requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問する
 
 ## 1.5 分析深度判定
 
@@ -66,7 +66,7 @@ Gate B 通過後、分析深度判定 Subagent（`config.yaml > models.depth_tri
 
 **重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
 
-## 1.7 Gate C — 実現性・コード整合性
+## 1.7 実現可能性チェック（Gate C）
 
 コード調査後に親が直接実施する（standard 経路: 調査 Subagent 完走後 / deep 経路: deep-thinking 完了後）。
 
@@ -79,7 +79,7 @@ Gate B 通過後、分析深度判定 Subagent（`config.yaml > models.depth_tri
 - 並行性・性能制約
 - docs と実装の乖離
 
-結果が `INCOMPLETE` の場合: blocking issue を Issue Ledger に記録し、親がユーザーに質問する。
+結果が `INCOMPLETE` の場合: blocking issue を確認事項一覧に記録し、親が [user-presentation.md](../../../.cursor/skills/requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問する。
 
 ## 1.8 根本原因・実装方針の特定
 
@@ -120,28 +120,14 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 ### 3 段階ガード退出条件
 
-- [ ] **requirement_gate**: PASS（Gate A 通過済み）
-- [ ] **spec_consistency_gate**: PASS（Gate B 通過済み）
-- [ ] **feasibility_gate**: PASS（Gate C 通過済み）
-- [ ] **blocking_open_issues**: 空配列（blocking issue が全て resolved）
+- [ ] **要求の完全性チェック通過**（requirement_gate: PASS）
+- [ ] **仕様との整合性チェック通過**（spec_consistency_gate: PASS）
+- [ ] **実現可能性チェック通過**（feasibility_gate: PASS）
+- [ ] **確認事項がすべて解消済み**（blocking_open_issues: 空配列）
 
 退出条件は AND 合成: `既存5項目チェックリスト全PASS AND 3段階ガード全PASS AND blocking_open_issues: []`
 
-いずれかを満たさない場合は、Investigation Memo を作成せずユーザーに状況を報告し、追加調査の方針を合意する。
-
-```markdown
-現在の調査状況：
-- {調査で判明していること}
-
-不明な点：
-- {特定できていない項目}
-
-Issue Ledger:
-- {blocking issue の一覧}
-
-追加で必要な情報：
-- {ユーザーに確認してほしいこと}
-```
+いずれかを満たさない場合は、Investigation Memo を作成せず [user-presentation.md](../../../.cursor/skills/requirement-analysis/references/user-presentation.md) の「Step① 退出不合格時の状況報告」テンプレに従いユーザーに状況を報告し、追加調査の方針を合意する。
 
 {{else}}
 ---
