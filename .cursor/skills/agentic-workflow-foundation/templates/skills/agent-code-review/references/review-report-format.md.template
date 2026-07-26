@@ -17,7 +17,7 @@
 
 ### PR メタデータ検索の契約（Mode B でのレポート特定）
 
-- **検索対象**: `{{code_review.report.output_dir}}/` 直下のみ（`archives/` は対象外。完了済みレポートは検索しない）
+- **検索対象**: `{{code_review.report.output_dir}}/` 直下の `*-review.md`（完了後も `reviews/` 直下に残るため、常に検索可能。`reports/archives/` とは独立）
 - **マッチ方法**: レビューレポートヘッダの `- PR: #N` 行の PR 番号を照合する
 - **探索手順**: `{{code_review.report.output_dir}}/*-review.md` を Glob → 各ファイルのヘッダを Read → PR 番号を抽出して比較
 - **0 件一致**: エラーとして原因を通知し中断する（手動ファイル操作等の想定外操作が原因。フォールバックはしない）
@@ -41,7 +41,7 @@
 
 - **Step 3 骨格作成時**: `Write` でファイルを新規作成する。メタ情報 + 全指摘を `## 未分類（判定待ち）` セクションに配置。ヘッダ統計は `TBD`（暫定値）
 - **Step 4 判定確定時**: `StrReplace` で該当指摘を `## 未分類（判定待ち）` から分類グループ（修正必須 / 修正推奨 / 修正不要）へ移動し、判定結果を記入
-- **Step 5-6 アクション実行時**: `StrReplace` でアクション実行記録・修正内容・GitHub返信内容を記入。git commit はせず、Step ⑥ archive コミットにまとめて含める
+- **Step 5-6 アクション実行時**: `StrReplace` でアクション実行記録・修正内容・GitHub返信内容を記入。git commit はせず、Step ⑥ 完了コミット（タスクレポートの `reports/archives/` 移動と同梱）で `reviews/` 直下のまま `git add` して含める
 - **Step 7 最終確定時**: `StrReplace` でヘッダ統計の `TBD` → 確定値、`## レビュー完了承認` の承認状態を更新、完全性を検証
 
 ### コメント ID アンカー規約
