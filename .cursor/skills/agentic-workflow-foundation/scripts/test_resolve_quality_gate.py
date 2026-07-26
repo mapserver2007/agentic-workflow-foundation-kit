@@ -9,7 +9,16 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[3]
 RESOLVER = HERE / "resolve_quality_gate.py"
+GENLIB_DIR = ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"
+if str(GENLIB_DIR) not in sys.path:
+    sys.path.insert(0, str(GENLIB_DIR))
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import genlib  # noqa: E402
+import capability_registry as reg  # noqa: E402
 
 
 FIXTURE = """version: 1
@@ -40,6 +49,10 @@ tech_stack:
       technology: "Redocly CLI"
       version_policy: "1 系"
       note: "bundle"
+    - layer: "型生成"
+      technology: "openapi-typescript"
+      version_policy: "7 系"
+      note: ""
     - layer: "契約テスト"
       technology: "Vitest + `@cloudflare/vitest-pool-workers`"
       version_policy: "—"
@@ -66,6 +79,15 @@ project:
     build_cmd: "[要確認]"
     lint_cmd: "[要確認]"
     test_cmd: "[要確認]"
+quality_gate_contract:
+  gen:
+    - "legacy contract line"
+  build:
+    - "legacy"
+  lint:
+    - "legacy"
+  test:
+    - "legacy"
 """
 
 
@@ -92,29 +114,45 @@ def main() -> int:
             'lint_cmd: "pnpm run lint"',
             'test_cmd: "pnpm run test"',
             'gate_command: "bin/quality-gate verify"',
-            "quality_gate_contract:",
-            "  gen:",
-            "OpenAPI bundle",
-            "Cloudflare Workers pool",
         ]
         missing = [needle for needle in expected if needle not in out]
         if missing:
             print(f"missing expected content: {missing}", file=sys.stderr)
             return 1
+        if "quality_gate_contract:" in out:
+            print("quality_gate_contract must not be persisted in root manifest", file=sys.stderr)
+            return 1
         if 'gate_command: "pnpm run' in out:
             print("gate_command must use wrapper, not raw pnpm commands", file=sys.stderr)
             return 1
-        second = subprocess.run(
+
+        parsed = genlib.load_manifest(str(manifest))
+        contract = reg.compose_contract(parsed)
+        contract_lines = sum(len(v) for v in contract.values())
+        if contract_lines != 12:
+            print(f"expected 12 composed contract lines, got {contract_lines}", file=sys.stderr)
+            return 1
+        if contract["gen"][0] != "OpenAPI bundle を生成し、bundle 成功を検証する":
+            print("unexpected gen contract content", file=sys.stderr)
+            return 1
+        if not any("Cloudflare Workers pool" in line for line in contract["test"]):
+            print("missing workers pool contract line", file=sys.stderr)
+            return 1
+        if reg.compose_contract(parsed) != reg.compose_contract(parsed):
+            print("compose_contract must be idempotent", file=sys.stderr)
+            return 1
+
+        check = subprocess.run(
             [sys.executable, str(RESOLVER), "--manifest", str(manifest), "--check"],
             check=False,
             capture_output=True,
             text=True,
             env=env,
         )
-        if second.returncode != 0:
-            print(second.stdout)
-            print(second.stderr, file=sys.stderr)
-            return second.returncode
+        if check.returncode != 0:
+            print(check.stdout)
+            print(check.stderr, file=sys.stderr)
+            return check.returncode
     print("[test_resolve_quality_gate] PASS")
     return 0
 

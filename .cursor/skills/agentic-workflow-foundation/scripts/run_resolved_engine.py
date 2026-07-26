@@ -18,11 +18,14 @@ if ENGINE_DIR not in sys.path:
 
 import genlib  # noqa: E402
 
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import capability_registry as reg  # noqa: E402
+
 ROOT_OVERLAY_KEYS = (
     "project",
     "tech_stack",
     "session",
-    "quality_gate_contract",
     "domain_docs",
     "code_review",
     "github_pr",
@@ -550,7 +553,18 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     merged = _apply_framework_overlay(merged, overlay)
     merged = _apply_upstream_design_inputs(merged)
     _validate_project_gate_command(merged)
+    merged = _inject_composed_quality_gate_contract(merged)
     return _filter_outputs_by_features(merged)
+
+
+def _inject_composed_quality_gate_contract(manifest: dict) -> dict:
+    """tech_stack から live compose した contract を一時 resolved manifest へ注入する。"""
+    status, _ = reg.check_eligibility(manifest)
+    if status != "PASS":
+        return manifest
+    manifest = dict(manifest)
+    manifest["quality_gate_contract"] = reg.compose_contract(manifest)
+    return manifest
 
 
 def _indent_of(line: str) -> int:
@@ -580,20 +594,50 @@ def _find_top_block(lines, key: str):
     return start, last
 
 
-def bootstrap_root_manifest(seed_manifest_path: str, root_manifest_path: str) -> int:
-    """root manifest の framework ブロックを seed から単一 SoT として同期する。
+_BOOTSTRAP_DEAD_BLOCKS = ("outputs", "quality_gate_contract")
 
-    生成に実際に使われる framework は seed が SoT（resolved_manifest が seed.framework を基底にし、
-    root からは ROOT_OVERLAY_KEYS / framework.accd_axes のみ overlay する）。root の framework は
-    生成に使われない複製であり、手編集はドリフト源になる。本コマンドは framework ブロックだけを
-    seed 由来に揃え、root のヘッダ・project.* / tech_stack / quality_gate などの確定値は保持する。
+
+def _strip_dead_blocks(lines: list[str]) -> list[str]:
+    """bootstrap 時に root へ持ち込まないトップレベルブロックとその直前コメントを削除する。
+
+    _BOOTSTRAP_DEAD_BLOCKS に列挙されたキーのブロック本体と、直前の連続コメント群を除去する。
+    seed には outputs / quality_gate_contract が SoT / schema-default として存在するが、
+    resolved_manifest() は seed の outputs を基底に使い ROOT_OVERLAY_KEYS にこれらを含めないため、
+    root に複製しても生成に使われない死蔵になる。
+    """
+    for key in _BOOTSTRAP_DEAD_BLOCKS:
+        start, last = _find_top_block(lines, key)
+        if start is None:
+            continue
+        end = last + 1
+        while end < len(lines) and lines[end].strip() == "":
+            end += 1
+        begin = start
+        while begin > 0 and (lines[begin - 1].strip().startswith("#") or lines[begin - 1].strip() == ""):
+            begin -= 1
+            if lines[begin].strip() == "" and (begin == 0 or not lines[begin - 1].strip().startswith("#")):
+                break
+        lines = lines[:begin] + lines[end:]
+    return lines
+
+
+def bootstrap_root_manifest(seed_manifest_path: str, root_manifest_path: str) -> int:
+    """root manifest の framework 同期と死蔵ブロック除去を行う。
+
+    - framework: seed を単一 SoT として root へ同期（生成は seed 基底）
+    - outputs / quality_gate_contract: ROOT_OVERLAY_KEYS に含まれず生成に使われない
+      ため、root に持ち込まない（seed が単一 SoT）
     """
     with open(seed_manifest_path, "r", encoding="utf-8") as f:
         seed_text = f.read()
 
     if not os.path.isfile(root_manifest_path):
+        newline = "\r\n" if "\r\n" in seed_text else "\n"
+        seed_lines = [ln.rstrip("\r") for ln in seed_text.split("\n")]
+        new_lines = _strip_dead_blocks(list(seed_lines))
+        new_text = newline.join(new_lines)
         with open(root_manifest_path, "w", encoding="utf-8") as f:
-            f.write(seed_text)
+            f.write(new_text)
         print("[bootstrap] PASS: root manifest を seed から新規生成（project.* は Phase 1.5 で確定）")
         return 0
 
@@ -612,6 +656,7 @@ def bootstrap_root_manifest(seed_manifest_path: str, root_manifest_path: str) ->
 
     framework_block = seed_lines[s_start:s_last + 1]
     new_lines = root_lines[:r_start] + framework_block + root_lines[r_last + 1:]
+    new_lines = _strip_dead_blocks(new_lines)
     new_text = newline.join(new_lines)
     changed = new_text != root_text
 

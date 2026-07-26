@@ -366,11 +366,10 @@ coderabbit:
       instructions: "manifest.yaml は Agentic Workflow 基盤の Source of Truth です。変更が下流の生成物に正しく反映されるか確認してください。"
 
 # ------------------------------------------------------------
-# (2e) quality_gate_contract — root manifest 生成用の seed
-#   Phase 1.65（resolve_quality_gate.py）が workflow_pattern × tech_stack から
-#   G-* と package scripts が満たすべき contract を決定論的に書き込む。
-#   ここでの責務は実 script 検出ではなく技術スタック由来の canonical contract の生成であり、
-#   結果は package.json の有無に依存しない（実体は contract に追従する）。
+# (2e) quality_gate_contract — seed の schema-default（root 非永続）
+#   capability_registry.py が tech_stack から決定論的に contract を導出する。
+#   root manifest には永続化せず、run_resolved_engine.py が生成時に一時 overlay 注入する。
+#   seed にはテンプレート展開用の空構造を schema-default として保持する。
 # ------------------------------------------------------------
 # (2d-2) domain_docs — Phase 1.67 で tech_stack から自動導出されるフィールド。
 #   seed テンプレートの描画に必要な最小デフォルト。tech_stack 取り込み後に上書きされる。

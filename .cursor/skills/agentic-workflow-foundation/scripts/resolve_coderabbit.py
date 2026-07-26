@@ -320,7 +320,7 @@ def _render_manifest(content: str, resolved: dict) -> str:
     if start is not None:
         new_lines = lines[:start] + block + lines[last + 1:]
     else:
-        after_key = "quality_gate_contract"
+        after_key = "domain_docs"
         a_start, a_last = _find_top_block(lines, after_key)
         if a_start is not None:
             insert_at = a_last + 1

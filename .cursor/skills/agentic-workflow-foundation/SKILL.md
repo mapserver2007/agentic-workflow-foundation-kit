@@ -58,7 +58,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。`resolve_quality_gate.py` はこの `tech_stack` だけから root scripts の canonical G-* を決める。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
-- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `quality_gate_contract` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成した一時 skill-dir を作り、engine には解決済み入力だけを渡す。
+- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成し、`capability_registry.compose_contract()` で `quality_gate_contract` を一時導出して注入した一時 skill-dir を作り、engine には解決済み入力だけを渡す。`outputs` は seed が単一 SoT であり root には保持しない。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
 
 ### 構成ファイル
@@ -73,7 +73,8 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `templates/*` | 出力ファイルのテンプレート |
 | `templates/bin/*` | wrapper スクリプトのテンプレート。`github-pr-create-safe` / `_github-app-auth.sh` は基盤必須出力として常に生成。`github-pr-{reviews,comment,reply}-safe` は `code_review` 有効時のみ生成。`.cursorignore` で AI アクセス遮断 |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
-| `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate` / `quality_gate_contract` 決定（`G-GEN` 含む） |
+| `scripts/capability_registry.py` | tech_stack → capability 断片レジストリ（Phase 1.65 / 1.68 / generate overlay の共有 SoT） |
+| `scripts/resolve_quality_gate.py` | root `manifest.yaml > tech_stack` → `project.quality_gate`（抽象 backend cmd）決定。contract は compose のみ・非永続 |
 | `scripts/materialize_runtime.py` | tech_stack capability から `package.json` 等の runtime 前提を物質化（Phase 1.68）。`outputs[]` / audit の対象外（アプリ所有ファイル） |
 | `scripts/check_tech_stack_conformance.py` | root `manifest.yaml > tech_stack` と `package.json` の意味的整合チェック。契約確定後の `package.json` 不在は fail-closed |
 | `scripts/resolve_coderabbit.py` | root `manifest.yaml > tech_stack` → `coderabbit`（CodeRabbit 有効/無効ツール・path_instructions・path_filters）決定 |
@@ -131,14 +132,14 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 
 ### Phase 1.45: root manifest framework 同期（bootstrap）
 
-root `manifest.yaml` の `framework:` ブロックは seed manifest を単一 SoT とする生成物である。生成に実際に使われる framework は seed 側であり（`run_resolved_engine.py > resolved_manifest` が seed.framework を基底にし、root からは `project` / `tech_stack` / `session` / `quality_gate_contract` / `framework.accd_axes` のみ overlay する）、root の framework は複製。手編集するとドリフト源になるため、`framework.*` を変更したら bootstrap で root へ同期する。
+root `manifest.yaml` の `framework:` ブロックは seed manifest を単一 SoT とする生成物である。生成に実際に使われる framework は seed 側であり（`run_resolved_engine.py > resolved_manifest` が seed.framework を基底にし、root からは `project` / `tech_stack` / `session` / `framework.accd_axes` のみ overlay する）、root の framework は複製。手編集するとドリフト源になるため、`framework.*` を変更したら bootstrap で root へ同期する。bootstrap は `outputs` / `quality_gate_contract` を root に持ち込まない（seed が単一 SoT。`ROOT_OVERLAY_KEYS` に含まれず生成に使われないため）。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py bootstrap
 ```
 
-- root `manifest.yaml` が**不在**なら、seed manifest をそのまま root へ新規生成する（`project.*` は Phase 1.5、`tech_stack` / `quality_gate` は Phase 1.6 / 1.65 で確定する placeholder のまま）。
-- root が**存在**するなら、`framework:` ブロックだけを seed 由来に置換する。root のファイルヘッダ（「正式 project manifest」の framing）・`project.*` / `tech_stack` / `quality_gate*` / `session` の確定値は保持する。
+- root `manifest.yaml` が**不在**なら、seed manifest から `outputs` / `quality_gate_contract` を除去して root へ新規生成する（`project.*` は Phase 1.5、`tech_stack` / `quality_gate` は Phase 1.6 / 1.65 で確定する placeholder のまま）。
+- root が**存在**するなら、`framework:` ブロックを seed 由来に置換し、`outputs` / `quality_gate_contract` があれば除去する。root のファイルヘッダ・`project.*` / `tech_stack` / `session` の確定値は保持する。
 - 冪等。`framework.*` 未変更なら「更新なし=冪等」を出力する。`framework:` ブロックを特定できない場合は exit 2。
 - 実行順序: Phase 1（seed/templates 編集）→ **Phase 1.45（bootstrap で root へ同期）** → Phase 1.5（project 設定）→ **Phase 1.55（budget_thresholds 算出）** → Phase 1.6 以降（tech_stack / quality_gate 確定）→ Phase 2（generate）。
 
@@ -263,10 +264,10 @@ root `manifest.yaml > tech_stack` から、開発型の `G-GEN` / `G-BUILD` / `G
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.py
 ```
 
-- Phase 1.65 の責務は実 script の検出ではなく contract の決定である。`package.json` の有無に依存せず、実 script の検出や優先採用は行わない。
+- Phase 1.65 の責務は実 script の検出ではなく **抽象 backend cmd**（`pnpm run *` 等）の決定である。`package.json` の有無に依存せず、実 script の検出や優先採用は行わない。
 - 開発型 Web スタック（pnpm / Next.js / Hono / TypeScript / Cloudflare Workers / OpenAPI / Redocly / Spectral / Vitest）では、backend command を `pnpm run gen` / `build` / `lint` / `test` に一意決定する。公開コマンドは `bin/quality-gate <subcmd>` に統一される（ADR-0001）。
 - `G-GEN` は開発中の OpenAPI bundle / 型・client 生成 / 生成物差分チェックを担い、`G-BUILD` は生成済み成果物を前提にデプロイ直前やローカル実行直前の build を担う。
-- root `manifest.yaml > quality_gate_contract` へ、`package.json` scripts が満たすべき gen / build / lint / test の内訳（contract）を書き込む。
+- **package script contract（`quality_gate_contract`）は `capability_registry.py` から live compose し、root manifest へ書き戻さない**。generate 直前に `run_resolved_engine.py` が一時 resolved manifest へ overlay 注入する。移行時は root の既存 `quality_gate_contract` ブロックを削除する。
 - `session.verification.gate_command` は標準検証として build / lint / test のみを含め、`G-GEN` は OpenAPI 定義や生成設定を変更した開発中に個別実行する。
 - exit 0 → 決定済みまたは対象外として継続可。WARN があれば報告する。
 - exit 2 → manifest 破損など致命的エラー。中断する。
@@ -360,7 +361,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate
 ```
 
-- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、統一設計書メタデータと root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` / `code_review` / `github_pr` / `github_issue` / `coderabbit` を seed manifest へ overlay してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
+- `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、統一設計書メタデータと root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `code_review` / `github_pr` / `github_issue` / `coderabbit` を seed manifest へ overlay し、`capability_registry.compose_contract()` で `quality_gate_contract` を一時導出して注入してから engine を呼ぶ。終了時に一時ディレクトリは削除する。
 - engine は統一設計書や root `manifest.yaml` を直接読まない。unified design / root manifest overlay は foundation 固有の入力解決であり、engine の How 境界へ混ぜない。
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。

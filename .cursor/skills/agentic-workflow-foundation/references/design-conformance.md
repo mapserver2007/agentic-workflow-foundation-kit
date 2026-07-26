@@ -121,7 +121,23 @@ Phase 1.68（`materialize_runtime.py`）が生成する `package.json` / `tsconf
 
 - **理由**: `package.json` は PO / アプリ開発者が自由に編集するファイルであり、byte-for-byte 冪等性を audit で強制すると運用が破綻する。kit 所有キー（`scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies）のみ契約更新時に上書きし、それ以外のキーは不可侵とする。
 - **整合性の担保**: `outputs[]` の代わりに Phase 1.7（`check_tech_stack_conformance.py`）が契約確定後の `package.json` 不在と必須 scripts の欠落を fail-closed で検出する。
-- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`tech_stack.items` から capability フラグを検出し、gate ごとに断片を結合して scripts / deps を決定する（manifest seed のキー爆発を回避）。
+- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`scripts/capability_registry.py` が Phase 1.65 / 1.68 / generate overlay の共有 SoT。`tech_stack.items` から capability 断片を検出し、gate ごとに contract / scripts / artifact_paths を結合する（manifest seed / root へのキー爆発を回避）。
+
+## 設計判断: quality_gate_contract の非永続化（D-SOT / D-QUALITY）
+
+`quality_gate_contract`（package script contract の具体文言）は **root `manifest.yaml` に永続化しない**。
+
+- **SoT**: `scripts/capability_registry.py` の純関数 `compose_contract()`。同一 `tech_stack` 入力なら同一導出。
+- **描画経路**: Phase 2 generate 直前に `run_resolved_engine.py` が live compose 結果を一時 resolved manifest へ overlay 注入し、`docs/QUALITY_GATE.md` 等へ展開する。
+- **Phase 1.65 の責務**: `project.quality_gate.*_cmd`（抽象 backend）と `session.verification.gate_command` のみ root へ書き込む。移行時は既存 root の `quality_gate_contract` ブロックを削除する。
+- **Follow-up**: `domain_docs` / `coderabbit` の capability 化、`gen_artifact_paths` スキーマ統一は別タスク。
+
+## 設計判断: root manifest の `outputs` 非保持（D-SOT）
+
+`outputs[]`（生成カタログ）は **seed manifest が単一 SoT** であり、root manifest には保持しない。
+
+- **根拠**: `resolved_manifest()` は seed を基底にし、root からは `ROOT_OVERLAY_KEYS` のみ overlay する。`outputs` は `ROOT_OVERLAY_KEYS` に含まれず、非テストの全スクリプトに root `outputs` の消費者が存在しない。root に複製しても生成に使われない死蔵であり、drift 源になる。
+- **bootstrap の責務**: 新規 root 生成時は seed から `outputs` / `quality_gate_contract` を除去して書き出す。既存 root からも framework 同期後に同ブロックを除去する。
 
 ## 設計判断: フェーズ境界 / セッション開始ゲートの実装層（D-QUALITY）
 

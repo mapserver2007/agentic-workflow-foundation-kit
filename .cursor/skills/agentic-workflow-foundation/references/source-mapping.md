@@ -4,7 +4,7 @@
 >
 > 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
 >
-> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` / `quality_gate_contract` を seed manifest に overlay した一時 resolved skill-dir を作る。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
+> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `session` を seed manifest に overlay したうえで、`capability_registry.py` から live compose した `quality_gate_contract` を一時 resolved manifest へ注入する。resolved skill-dir は engine に渡すための実行時入力であり、永続的な出力ファイルではない。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
@@ -33,7 +33,7 @@
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
 | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
 | `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands。`bin/quality-gate <subcmd>` 経由で `G-GEN` / `G-BUILD` / `G-LINT` / `G-TEST`）/ `bin/quality-gate`（wrapper 本体。ADR-0001） |
-| `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract。gen / build / lint / test）/ `AGENTS.md`（Quality Gate Contract） |
+| `quality_gate_contract` | `docs/QUALITY_GATE.md`（package script contract。gen / build / lint / test）/ `AGENTS.md`（Quality Gate Contract）。**SoT は `scripts/capability_registry.py` の純関数 compose**。root manifest には永続化せず、Phase 2 generate 直前に `run_resolved_engine.py` が一時 overlay 注入する |
 | `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ）/ `.coderabbit.yaml`（`coderabbit` 経由で tech_stack に従属） |
 | `coderabbit.language` / `coderabbit.tools_*` / `coderabbit.path_*` | `.coderabbit.yaml`（CodeRabbit レビュー設定。Phase 1.66 で tech_stack から自動導出） |
 | `domain_docs.primary_language` / `domain_docs.framework` / `domain_docs.*_sections` | `docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/coding-standards.md` / `docs/workflows.md`（Domain 層スケルトン。Phase 1.67 で tech_stack から自動導出、seed モード） |
@@ -47,8 +47,8 @@
 
 ## 変更時の運用
 
-1. immutable upstream docs / stateless resolver / `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、基盤定義変更として扱う。PO 確定済み事項は再質問せず、未確定事項のみ PO 承認を得る。
+1. immutable upstream docs / stateless resolver / `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、基盤定義変更として扱う。PO 確定済み事項は再質問せず、未確定事項のみ PO 承認を得る。`outputs[]` は seed manifest が単一 SoT であり、root manifest には保持しない（`ROOT_OVERLAY_KEYS` に含まれず生成に使われないため、bootstrap が除去する）。
 2. `project.*` は Phase 1.5 の `init.yaml` → `apply_kit_init.py` で確定する（name / tech_stack_design.filename / context_budget。workflow_pattern は開発型固定）。`framework.accd_axes` は開発型の軽量実装として seed manifest に固定する。確定値はスキル実行で生成される root `manifest.yaml` に保存する。
-3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `G-GEN` を含む `project.quality_gate` / `quality_gate_contract` を自動決定し、Phase 1.66 で `coderabbit`（CodeRabbit 設定）を自動決定し、Phase 1.67 で `domain_docs`（Domain 層ドキュメント変数）を自動決定し、Phase 1.68 で runtime 前提（`package.json` 等）を capability 合成で物質化する。
+3. `tech_stack.*` は Phase 1.6 で techstack 設計書から生成済み root `manifest.yaml` へ取り込み、Phase 1.65 で `G-GEN` を含む `project.quality_gate`（抽象 backend cmd）を自動決定し、Phase 1.66 で `coderabbit`（CodeRabbit 設定）を自動決定し、Phase 1.67 で `domain_docs`（Domain 層ドキュメント変数）を自動決定し、Phase 1.68 で runtime 前提（`package.json` 等）を capability 合成で物質化する。`quality_gate_contract` の具体文言は `capability_registry.py` から generate 時に live compose し、root へ書き戻さない。
 4. Phase 2 / Phase 3 は `run_resolved_engine.py` 経由で engine を呼び、unified design / root manifest overlay を foundation 側の stateless 前処理に閉じ込める。
 5. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

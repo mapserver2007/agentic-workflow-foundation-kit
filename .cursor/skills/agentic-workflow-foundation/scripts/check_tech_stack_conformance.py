@@ -18,7 +18,7 @@ if HERE not in sys.path:
 
 import genlib  # noqa: E402
 import ingest_tech_stack as ingest  # noqa: E402
-import resolve_quality_gate as rqg  # noqa: E402
+import capability_registry as reg  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
@@ -84,11 +84,11 @@ def main(argv=None) -> int:
         return 0
 
     # 契約確定判定: Phase 1.65 と同一の適格条件を使用
-    resolved, _reason = rqg._resolve(manifest)
-    if resolved == "FATAL":
-        _out("ERROR", _reason)
+    status, reason = reg.check_eligibility(manifest)
+    if status == "FATAL":
+        _out("ERROR", reason)
         return 2
-    contract_resolved = resolved is not None
+    contract_resolved = status == "PASS"
 
     versions = ingest.load_package_versions(args.package_json)
     if versions is None:
@@ -138,13 +138,8 @@ def main(argv=None) -> int:
                 if gate not in pkg_scripts:
                     failures.append(f"契約確定済みだが package.json scripts.{gate} が欠落")
             # gen は openapi capability 存在時のみ必須
-            names = rqg._tech_names(manifest)
-            has_openapi = (
-                rqg._has(names, "openapi")
-                and rqg._has(names, "redocly")
-                and rqg._has(names, "spectral")
-            )
-            if has_openapi and "gen" not in pkg_scripts:
+            caps = reg.detect_capabilities(manifest)
+            if caps.get("openapi") and "gen" not in pkg_scripts:
                 failures.append("契約確定済み + OpenAPI capability ありだが package.json scripts.gen が欠落")
         except (OSError, ValueError):
             pass
