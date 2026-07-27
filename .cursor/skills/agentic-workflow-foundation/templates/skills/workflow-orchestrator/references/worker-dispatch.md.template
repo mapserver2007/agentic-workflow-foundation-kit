@@ -7,8 +7,8 @@
 {{#if requirement_analysis.enabled}}
 | Step | Sub-step | モード | config キー | subagent_type | 書込み責務境界 |
 |------|----------|--------|------------|---------------|------------------|
-| ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 正規化済み要求のみ返却。envelope 書込みなし |
-| ① | 深度判定 | subagent dispatch | requirement_analysis.models.depth_triage | generalPurpose | depth 結果のみ返却。envelope 書込みなし |
+| ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 中間 artifact（`{slug}--step1-normalize.md`）書込み必須。最終 envelope は書かない |
+| ① | 深度判定 | subagent dispatch | requirement_analysis.models.depth_triage | generalPurpose | 中間 artifact（`{slug}--step1-depth-triage.md`）書込み必須。最終 envelope は書かない |
 | ① | standard 調査 | subagent dispatch | requirement_analysis.models.standard_investigation | generalPurpose | step envelope body（Investigation Memo） |
 | ① | deep 分析 | 親が deep-thinking 起動 | deep-thinking config が SoT | — | step envelope body（Investigation Memo） |
 | ① | Gate 不合格 | 親が質問 | — | — | Issue Ledger 更新 |
@@ -19,7 +19,7 @@
 | ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 
-> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は envelope を書かない。最終 envelope は親が書く。Subagent から deep-thinking を入れ子起動しない。
+> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。中間 artifact は `step2-report` PASS 後に step1 envelope と同時に削除する。
 
 {{else}}
 | Step | モード | config キー | subagent_type | 書込み責務境界 |
@@ -64,7 +64,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 | Step | 正式成果物・検証 |
 |------|------------------|
-{{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` |
+{{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` + `normalize_artifact_path` / `depth_triage_artifact_path`（中間 artifact 存在・schema・整合を `gate-artifact.py` が検査） |
 {{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
 {{/if}}| ② | `report_path` の存在 + 親による `workflow-gate.sh step2-report` PASS |
 | ③ | `changed_files` / `untracked_files` と working tree の照合 |
