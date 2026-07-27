@@ -32,6 +32,10 @@
 | ⑥ | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 {{/if}}
 
+## 親代行の禁止
+
+Subagent dispatch が指定された Step（①〜④）の worker 責務を、親が Subagent を dispatch せず直接実行してはならない。`workflow-gate.sh step2-report` は step1/step2 の complete envelope を、`workflow-gate.sh step4` は step3/step4 の complete envelope を必須検査するため、dispatch なしではゲートを通過できない。正規の親責務（Gate C の直接検査、ユーザーへの質問、deep-thinking 起動、Step ⑤⑥ の直接実行等）はこの制約の対象外である。
+
 ## Subagent 起動方式
 
 各 subagent dispatch ステップで、orchestrator は以下を実行する:

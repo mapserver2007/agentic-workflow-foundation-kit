@@ -121,8 +121,9 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 ### §4.2 判定
 
 - [ ] 自動レビューツールのラベルを取得・記録・引用していない
-- [ ] デフォルト「修正不要」起点で判定を始めた
+- [ ] デフォルトカテゴリを置かず、`[REPO]` 証跡から 3 段階を判定した（証跡ベース中立判定）
 - [ ] ①〜④ の順序で `judgment_initial` を 3 段階のいずれかに確定
+- [ ] F0〜F4 を単独の短絡フィルタとして使用せず、③ の判定観点として評価した
 - [ ] `ask_first` 属性を適切に付与（該当条件の詳細は [judgment-protocol.md §4.2](judgment-protocol.md) 参照）
 
 ### §4.2.5 自己反論（詳細は [judgment-protocol.md §4.2.5](judgment-protocol.md) + [self-rebuttal.md](self-rebuttal.md)）
@@ -132,7 +133,7 @@ test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test
 - [ ] ストローマンを排した（弱い反論を作って打ち倒す形式は無効）
 - [ ] Phase 3 で最強反論と初期根拠を比較し `judgment_final` を確定
 - [ ] F4 候補あり + 修正推奨確定 → `ask_first: true` 強制付与を確認
-- [ ] challenge phrase 検出時は Phase 3.5 を優先発動（`[REPO]` 新証跡なしに反転しない）
+- [ ] challenge phrase 検出時は Phase 3.5 を優先発動（(a) `[REPO]` 新証跡 or (b) 既存証跡への基準適用誤り訂正なしに判定を変えない）
 
 ### §4.3 記録
 

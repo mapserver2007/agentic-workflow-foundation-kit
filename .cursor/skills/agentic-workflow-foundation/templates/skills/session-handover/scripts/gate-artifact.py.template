@@ -5,7 +5,7 @@
 # 共通必須フィールド・status 値域・step 値域・Step 別必須フィールド（complete 時）・
 # blocked/fatal 時の reason 必須を検証する。
 # 仕様: docs/QUALITY_GATE.md §1.7 / step docs の Worker Contract / worker-dispatch.md
-# 用法: gate-artifact.py <artifact-file> [--format=json]
+# 用法: gate-artifact.py <artifact-file> [--expect-step <stepN>] [--expect-status <status>] [--format=json]
 # exit: 0 = PASS / 1 = FAIL（envelope 不正）/ 2 = 致命的エラー（依存不在・引数不備）
 
 import json
@@ -60,7 +60,9 @@ def parse_front_matter(text: str):
     return data, None
 
 
-def check_artifact(filepath: str, json_mode: bool = False):
+def check_artifact(filepath: str, json_mode: bool = False,
+                    expect_step: str | None = None,
+                    expect_status: str | None = None):
     """単一 artifact ファイルを検査する。"""
     results = []
     fail = False
@@ -199,6 +201,23 @@ def check_artifact(filepath: str, json_mode: bool = False):
                 })
                 fail = True
 
+    # --- 期待 step/status 検査（--expect-step / --expect-status 指定時のみ）---
+    if expect_step is not None and step != expect_step:
+        results.append({
+            "id": "G-ARTIFACT-EXPECT-STEP-001",
+            "level": "FAIL",
+            "msg": f"期待 step '{expect_step}' に対して実値は '{step}'",
+        })
+        fail = True
+
+    if expect_status is not None and status != expect_status:
+        results.append({
+            "id": "G-ARTIFACT-EXPECT-STATUS-001",
+            "level": "FAIL",
+            "msg": f"期待 status '{expect_status}' に対して実値は '{status}'",
+        })
+        fail = True
+
     if not fail:
         results.append({
             "id": "G-ARTIFACT-ALL",
@@ -220,17 +239,36 @@ def _print_results(filepath, results, json_mode):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    json_mode = "--format=json" in sys.argv
+    raw = sys.argv[1:]
+    json_mode = "--format=json" in raw
+    expect_step: str | None = None
+    expect_status: str | None = None
 
-    if not args:
+    positional: list[str] = []
+    i = 0
+    while i < len(raw):
+        if raw[i] == "--expect-step" and i + 1 < len(raw):
+            expect_step = raw[i + 1]
+            i += 2
+        elif raw[i] == "--expect-status" and i + 1 < len(raw):
+            expect_status = raw[i + 1]
+            i += 2
+        elif raw[i].startswith("--"):
+            i += 1
+        else:
+            positional.append(raw[i])
+            i += 1
+
+    if not positional:
         print("FATAL: artifact ファイルパスを指定してください。")
-        print("用法: gate-artifact.py <artifact-file> [--format=json]")
+        print("用法: gate-artifact.py <artifact-file> [--expect-step <stepN>] [--expect-status <status>] [--format=json]")
         sys.exit(2)
 
     worst = 0
-    for filepath in args:
-        rc = check_artifact(filepath, json_mode)
+    for filepath in positional:
+        rc = check_artifact(filepath, json_mode,
+                            expect_step=expect_step,
+                            expect_status=expect_status)
         worst = max(worst, rc)
 
     if not json_mode:
