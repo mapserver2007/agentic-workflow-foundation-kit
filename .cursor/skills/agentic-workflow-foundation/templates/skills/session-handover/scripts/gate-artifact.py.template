@@ -247,10 +247,16 @@ def main():
     positional: list[str] = []
     i = 0
     while i < len(raw):
-        if raw[i] == "--expect-step" and i + 1 < len(raw):
+        if raw[i] == "--expect-step":
+            if i + 1 >= len(raw) or raw[i + 1].startswith("--"):
+                print(f"FATAL: --expect-step に値が必要です。")
+                sys.exit(2)
             expect_step = raw[i + 1]
             i += 2
-        elif raw[i] == "--expect-status" and i + 1 < len(raw):
+        elif raw[i] == "--expect-status":
+            if i + 1 >= len(raw) or raw[i + 1].startswith("--"):
+                print(f"FATAL: --expect-status に値が必要です。")
+                sys.exit(2)
             expect_status = raw[i + 1]
             i += 2
         elif raw[i].startswith("--"):

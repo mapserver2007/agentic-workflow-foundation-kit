@@ -139,6 +139,23 @@ def _find_workflow_gate() -> Path:
     return p
 
 
+def _stage_gate(tmp: Path) -> Path:
+    """workflow-gate.sh と依存スクリプトを tmp 配下の同一相対位置へ複製する。
+
+    workflow-gate.sh は SCRIPT_DIR 基準で ROOT_DIR を解決するため、
+    cwd を変えても ARTIFACT_DIR / REPORTS_DIR は実リポジトリを指す。
+    tmp 配下にコピーすることで ROOT_DIR が tmp を指すようになる。
+    """
+    src_dir = _find_workflow_gate().parent
+    dst = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
+    dst.mkdir(parents=True, exist_ok=True)
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-report.py"):
+        src = src_dir / name
+        if src.exists():
+            shutil.copy2(str(src), str(dst / name))
+    return dst / "workflow-gate.sh"
+
+
 def _setup_envelope_dir(tmp: Path, slug: str, steps: dict[str, str]):
     """steps: {step_name: fixture_file_name or None} の envelope 構成を作る。"""
     artifact_dir = tmp / ".cursor" / ".artifacts"
@@ -179,6 +196,7 @@ def test_step2_report_envelope_missing_step1():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         slug = "TEST-001-envelope-test"
         _setup_report(tmp, slug)
         _setup_envelope_dir(tmp, slug, {"step2": "step2-complete.md"})
@@ -191,9 +209,8 @@ def test_step2_report_envelope_missing_step1():
         )
 
         result = subprocess.run(
-            ["bash", str(gate), "step2-report", str(report_path)],
+            ["bash", str(staged), "step2-report", str(report_path)],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 1, (
             f"step2-report with missing step1 envelope should exit 1 (got {result.returncode})\n"
@@ -210,6 +227,7 @@ def test_step2_report_envelope_missing_step2():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         slug = "TEST-002-envelope-test"
         _setup_report(tmp, slug)
         _setup_envelope_dir(tmp, slug, {"step1": "step1-complete.md"})
@@ -217,9 +235,8 @@ def test_step2_report_envelope_missing_step2():
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
 
         result = subprocess.run(
-            ["bash", str(gate), "step2-report", str(report_path)],
+            ["bash", str(staged), "step2-report", str(report_path)],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 1, (
             f"step2-report with missing step2 envelope should exit 1 (got {result.returncode})\n"
@@ -236,6 +253,7 @@ def test_step4_envelope_missing_step3():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         slug = "TEST-003-envelope-test"
         _setup_report(tmp, slug)
         _setup_envelope_dir(tmp, slug, {"step4": "step4-complete.md"})
@@ -243,17 +261,17 @@ def test_step4_envelope_missing_step3():
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
 
         result = subprocess.run(
-            ["bash", str(gate), "step4", str(report_path)],
+            ["bash", str(staged), "step4", str(report_path)],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 1, (
             f"step4 with missing step3 envelope should exit 1 (got {result.returncode})\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
-        assert "verify" not in result.stdout.lower() or "未実行" in result.stdout, (
-            "verify should not run when envelope is missing"
+        assert "envelope 検査失敗" in result.stdout, (
+            f"expected envelope failure message\nstdout: {result.stdout}"
         )
+        assert "--- verify ---" not in result.stdout, "verify block must not be reached"
 
 
 def test_step4_envelope_missing_step4():
@@ -265,6 +283,7 @@ def test_step4_envelope_missing_step4():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         slug = "TEST-004-envelope-test"
         _setup_report(tmp, slug)
         _setup_envelope_dir(tmp, slug, {"step3": "step3-complete.md"})
@@ -272,9 +291,8 @@ def test_step4_envelope_missing_step4():
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
 
         result = subprocess.run(
-            ["bash", str(gate), "step4", str(report_path)],
+            ["bash", str(staged), "step4", str(report_path)],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 1, (
             f"step4 with missing step4 envelope should exit 1 (got {result.returncode})\n"
@@ -291,13 +309,13 @@ def test_step4_no_reports_exit_2():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         (tmp / "docs" / "agent-tasks" / "reports").mkdir(parents=True)
-        (tmp / ".cursor" / ".artifacts").mkdir(parents=True)
+        (tmp / ".cursor" / ".artifacts").mkdir(parents=True, exist_ok=True)
 
         result = subprocess.run(
-            ["bash", str(gate), "step4"],
+            ["bash", str(staged), "step4"],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 2, (
             f"step4 with 0 reports and no explicit file should exit 2 (got {result.returncode})\n"
@@ -314,16 +332,16 @@ def test_step4_multiple_reports_exit_2():
 
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
+        staged = _stage_gate(tmp)
         reports_dir = tmp / "docs" / "agent-tasks" / "reports"
         reports_dir.mkdir(parents=True)
         (reports_dir / "report-a.md").write_text("# A\n")
         (reports_dir / "report-b.md").write_text("# B\n")
-        (tmp / ".cursor" / ".artifacts").mkdir(parents=True)
+        (tmp / ".cursor" / ".artifacts").mkdir(parents=True, exist_ok=True)
 
         result = subprocess.run(
-            ["bash", str(gate), "step4"],
+            ["bash", str(staged), "step4"],
             capture_output=True, text=True,
-            cwd=str(tmp),
         )
         assert result.returncode == 2, (
             f"step4 with 2 reports and no explicit file should exit 2 (got {result.returncode})\n"
