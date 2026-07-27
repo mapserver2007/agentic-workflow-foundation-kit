@@ -112,9 +112,11 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 
 ## 中間 Subagent の制約
 
-- 要求正規化 Subagent・分析深度判定 Subagent は envelope を書かない
-- 最終 envelope は親が書く
+- 要求正規化 Subagent は中間 artifact（`{slug}--step1-normalize.md`）を**必須で書き出す**（入力が詳しくても省略不可）
+- 分析深度判定 Subagent は中間 artifact（`{slug}--step1-depth-triage.md`）を**必須で書き出す**（入力が詳しくても省略不可）
+- 最終 step1 envelope は親が書き、`normalize_artifact_path` / `depth_triage_artifact_path` に中間 artifact のパスを記録する
 - Subagent から deep-thinking を入れ子起動しない
+- 中間 artifact は `step2-report` PASS 後に step1 envelope と同時に削除する
 
 ---
 

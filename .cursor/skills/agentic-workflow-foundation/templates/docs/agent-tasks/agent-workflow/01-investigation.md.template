@@ -265,6 +265,9 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `blocking_open_issues` | array | `[]` | blocking issue（退出時は空） |
 | `non_blocking_issues` | array | — | non-blocking warning のサマリ配列 |
 | `resolved_issues` | array | — | 解決済み issue のサマリ配列 |
+| `normalize_artifact_path` | string | — | 要求正規化中間 artifact のパス（repo root 相対） |
+| `depth_triage_artifact_path` | string | — | 分析深度判定中間 artifact のパス（repo root 相対） |
+| `depth_fallback_reason` | string | — | deep → standard フォールバック時のみ必須。理由を記録 |
 | `reason` | string | — | `blocked` / `fatal` / `incomplete` 時の理由 |
 | `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
 {{else}}

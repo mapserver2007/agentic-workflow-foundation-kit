@@ -31,6 +31,8 @@ STEP_REQUIRED_FIELDS = {
         "non_blocking_issues",
         "acceptance_criteria_status",
         "resolved_issues",
+        "normalize_artifact_path",
+        "depth_triage_artifact_path",
     ],
     "step2": ["report_path"],
     "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
@@ -199,6 +201,115 @@ def check_artifact(filepath: str, json_mode: bool = False,
                     "level": "FAIL",
                     "msg": f"{gate_field} が 'PASS' 以外（{fm.get(gate_field)!r}）なのに status=complete",
                 })
+                fail = True
+
+    # --- 中間 artifact 検証（step1 complete 時）---
+    if step == "step1" and status == "complete":
+        norm_ref = fm.get("normalize_artifact_path", "")
+        depth_ref = fm.get("depth_triage_artifact_path", "")
+
+        slug_m = re.match(r"^(.+)--step1\.md$", path.name)
+        main_slug = slug_m.group(1) if slug_m else None
+
+        for label, ref_val, suffix in [
+            ("normalize_artifact_path", norm_ref, "step1-normalize.md"),
+            ("depth_triage_artifact_path", depth_ref, "step1-depth-triage.md"),
+        ]:
+            if not ref_val:
+                continue
+            if ".cursor/.artifacts/" not in ref_val:
+                results.append({"id": "G-ARTIFACT-RA-REF-001", "level": "FAIL",
+                    "msg": f"{label} が .cursor/.artifacts/ 配下ではありません: {ref_val}"})
+                fail = True
+            if not ref_val.endswith(suffix):
+                results.append({"id": "G-ARTIFACT-RA-REF-001", "level": "FAIL",
+                    "msg": f"{label} のサフィックスが不正です（期待: *{suffix}）: {ref_val}"})
+                fail = True
+            if main_slug:
+                expected_name = f"{main_slug}--{suffix}"
+                actual_name = Path(ref_val).name
+                if actual_name != expected_name:
+                    results.append({"id": "G-ARTIFACT-RA-REF-001", "level": "FAIL",
+                        "msg": f"{label} の slug が最終 envelope と不一致（期待: {expected_name}, 実値: {actual_name}）"})
+                    fail = True
+            ref_file = path.parent / Path(ref_val).name
+            if not ref_file.is_file():
+                results.append({"id": "G-ARTIFACT-RA-REF-001", "level": "FAIL",
+                    "msg": f"{label} の参照先ファイルが存在しません: {ref_val}"})
+                fail = True
+
+        norm_fm = None
+        depth_fm = None
+
+        if norm_ref:
+            nf = path.parent / Path(norm_ref).name
+            if nf.is_file():
+                nfm, nerr = parse_front_matter(nf.read_text(encoding="utf-8"))
+                if nerr:
+                    results.append({"id": "G-ARTIFACT-RA-NORM-SCHEMA-001", "level": "FAIL",
+                        "msg": f"normalize artifact のパースに失敗: {nerr}"})
+                    fail = True
+                else:
+                    norm_fm = nfm
+
+        if depth_ref:
+            df = path.parent / Path(depth_ref).name
+            if df.is_file():
+                dfm, derr = parse_front_matter(df.read_text(encoding="utf-8"))
+                if derr:
+                    results.append({"id": "G-ARTIFACT-RA-DEPTH-SCHEMA-001", "level": "FAIL",
+                        "msg": f"depth_triage artifact のパースに失敗: {derr}"})
+                    fail = True
+                else:
+                    depth_fm = dfm
+
+        if norm_fm is not None:
+            for key, expected in [("step", "step1-normalize"), ("status", "complete"), ("gate_a", "PASS")]:
+                if norm_fm.get(key) != expected:
+                    results.append({"id": "G-ARTIFACT-RA-NORM-SCHEMA-001", "level": "FAIL",
+                        "msg": f"normalize artifact の {key}={norm_fm.get(key)!r}（期待: {expected!r}）"})
+                    fail = True
+
+        if depth_fm is not None:
+            for key, expected in [("step", "step1-depth-triage"), ("status", "complete"), ("gate_b", "PASS")]:
+                if depth_fm.get(key) != expected:
+                    results.append({"id": "G-ARTIFACT-RA-DEPTH-SCHEMA-001", "level": "FAIL",
+                        "msg": f"depth_triage artifact の {key}={depth_fm.get(key)!r}（期待: {expected!r}）"})
+                    fail = True
+            depth_ad = depth_fm.get("analysis_depth")
+            if depth_ad not in ("standard", "deep", "deferred"):
+                results.append({"id": "G-ARTIFACT-RA-DEPTH-SCHEMA-001", "level": "FAIL",
+                    "msg": f"depth_triage artifact の analysis_depth={depth_ad!r} は不正。許容値: standard/deep/deferred"})
+                fail = True
+
+        if depth_fm is not None and "analysis_depth" in fm:
+            final_depth = fm["analysis_depth"]
+            triage_depth = depth_fm.get("analysis_depth")
+            if triage_depth == "standard" and final_depth != "standard":
+                results.append({"id": "G-ARTIFACT-RA-DEPTH-CONSIST-001", "level": "FAIL",
+                    "msg": f"depth_triage=standard → 最終 depth は standard 必須（実値: {final_depth}）"})
+                fail = True
+            elif triage_depth == "deep":
+                if final_depth == "deep":
+                    pass
+                elif final_depth == "standard":
+                    if not fm.get("depth_fallback_reason"):
+                        results.append({"id": "G-ARTIFACT-RA-DEPTH-CONSIST-001", "level": "FAIL",
+                            "msg": "depth_triage=deep → 最終=standard のフォールバックには depth_fallback_reason が必須"})
+                        fail = True
+                else:
+                    results.append({"id": "G-ARTIFACT-RA-DEPTH-CONSIST-001", "level": "FAIL",
+                        "msg": f"depth_triage=deep → 最終 depth は deep または standard+fallback_reason 必須（実値: {final_depth}）"})
+                    fail = True
+
+        if norm_fm is not None and depth_fm is not None:
+            if fm.get("requirement_gate") != norm_fm.get("gate_a"):
+                results.append({"id": "G-ARTIFACT-RA-GATE-SOURCE-001", "level": "FAIL",
+                    "msg": f"requirement_gate={fm.get('requirement_gate')!r} が normalize.gate_a={norm_fm.get('gate_a')!r} と不一致"})
+                fail = True
+            if fm.get("spec_consistency_gate") != depth_fm.get("gate_b"):
+                results.append({"id": "G-ARTIFACT-RA-GATE-SOURCE-001", "level": "FAIL",
+                    "msg": f"spec_consistency_gate={fm.get('spec_consistency_gate')!r} が depth_triage.gate_b={depth_fm.get('gate_b')!r} と不一致"})
                 fail = True
 
     # --- 期待 step/status 検査（--expect-step / --expect-status 指定時のみ）---

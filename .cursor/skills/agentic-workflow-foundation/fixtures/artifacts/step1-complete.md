@@ -11,6 +11,8 @@ blocking_open_issues: []
 non_blocking_issues: []
 acceptance_criteria_status: complete
 resolved_issues: []
+normalize_artifact_path: .cursor/.artifacts/test--step1-normalize.md
+depth_triage_artifact_path: .cursor/.artifacts/test--step1-depth-triage.md
 ---
 
 # Step 1 完了 envelope（テスト fixture）

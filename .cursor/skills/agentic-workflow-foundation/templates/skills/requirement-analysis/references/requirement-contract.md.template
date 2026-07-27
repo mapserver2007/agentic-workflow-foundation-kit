@@ -118,6 +118,9 @@ blocking_open_issues: []
 non_blocking_issues: [{id, summary, gate}]
 acceptance_criteria_status: complete
 investigation_memo_path: .cursor/.artifacts/{slug}--step1.md
+normalize_artifact_path: .cursor/.artifacts/{slug}--step1-normalize.md
+depth_triage_artifact_path: .cursor/.artifacts/{slug}--step1-depth-triage.md
+depth_fallback_reason: null  # deep → standard フォールバック時のみ非空
 resolved_issues: [{id, resolution, resolved_evidence}]
 ```
 

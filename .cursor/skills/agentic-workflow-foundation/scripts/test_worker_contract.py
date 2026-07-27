@@ -45,6 +45,8 @@ STEP_DOC_OUTPUT_FIELDS = {
         "requirement_gate", "spec_consistency_gate", "feasibility_gate",
         "blocking_open_issues", "non_blocking_issues",
         "acceptance_criteria_status", "resolved_issues", "reason",
+        "normalize_artifact_path", "depth_triage_artifact_path",
+        "depth_fallback_reason",
     },
     "step2": {
         "status", "step", "report_path", "report_digest",
@@ -200,6 +202,213 @@ def test_step3_blocked_adr_few_alts_fails():
     )
 
 
+import tempfile
+
+
+_BASE_NORM_FM = (
+    "status: complete\n"
+    "step: step1-normalize\n"
+    "gate_a: PASS\n"
+    "blocking_open_issues: []\n"
+)
+
+_BASE_DEPTH_FM = (
+    "status: complete\n"
+    "step: step1-depth-triage\n"
+    "gate_b: PASS\n"
+    "analysis_depth: standard\n"
+    "depth_reason: test\n"
+)
+
+_BASE_MAIN_FM = (
+    "status: complete\n"
+    "step: step1\n"
+    "gate_result: PASS\n"
+    "investigation_memo_path: .cursor/.tracking/memo.md\n"
+    "analysis_depth: standard\n"
+    "requirement_gate: PASS\n"
+    "spec_consistency_gate: PASS\n"
+    "feasibility_gate: PASS\n"
+    "blocking_open_issues: []\n"
+    "non_blocking_issues: []\n"
+    "acceptance_criteria_status: complete\n"
+    "resolved_issues: []\n"
+)
+
+
+def _write_artifact(directory: Path, name: str, fm_text: str, body: str = "# body\n"):
+    p = directory / name
+    p.write_text(f"---\n{fm_text}---\n\n{body}", encoding="utf-8")
+    return p
+
+
+def _build_step1_suite(tmp: Path, slug: str = "T-1",
+                       main_extra: str = "",
+                       norm_fm: str | None = None,
+                       depth_fm: str | None = None,
+                       skip_norm_file: bool = False,
+                       skip_depth_file: bool = False):
+    """Build a step1 envelope + intermediate artifacts in tmp dir."""
+    norm_name = f"{slug}--step1-normalize.md"
+    depth_name = f"{slug}--step1-depth-triage.md"
+    main_fm = (
+        _BASE_MAIN_FM
+        + f"normalize_artifact_path: .cursor/.artifacts/{norm_name}\n"
+        + f"depth_triage_artifact_path: .cursor/.artifacts/{depth_name}\n"
+        + main_extra
+    )
+    main_path = _write_artifact(tmp, f"{slug}--step1.md", main_fm)
+    if not skip_norm_file:
+        _write_artifact(tmp, norm_name, norm_fm or _BASE_NORM_FM)
+    if not skip_depth_file:
+        _write_artifact(tmp, depth_name, depth_fm or _BASE_DEPTH_FM)
+    return main_path
+
+
+def test_step1_intermediate_pass():
+    """正常系: standard 経路で中間 artifact が整合 → PASS。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td))
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "standard path with valid intermediates should PASS"
+
+
+def test_step1_deep_fallback_pass():
+    """正常系: deep → standard フォールバック (depth_fallback_reason あり) → PASS。"""
+    with tempfile.TemporaryDirectory() as td:
+        depth_fm = (
+            "status: complete\n"
+            "step: step1-depth-triage\n"
+            "gate_b: PASS\n"
+            "analysis_depth: deep\n"
+            "depth_reason: test\n"
+        )
+        main = _build_step1_suite(
+            Path(td),
+            main_extra="depth_fallback_reason: model unavailable\n",
+            depth_fm=depth_fm,
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "deep fallback with reason should PASS"
+
+
+def test_step1_norm_file_missing_fails():
+    """FAIL: normalize artifact ファイル不在。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td), skip_norm_file=True)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "missing normalize file should FAIL (G-ARTIFACT-RA-REF-001)"
+
+
+def test_step1_depth_file_missing_fails():
+    """FAIL: depth_triage artifact ファイル不在。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td), skip_depth_file=True)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "missing depth file should FAIL (G-ARTIFACT-RA-REF-001)"
+
+
+def test_step1_wrong_slug_fails():
+    """FAIL: 中間 artifact の slug が最終 envelope と不一致。"""
+    with tempfile.TemporaryDirectory() as td:
+        wrong_slug = "WRONG"
+        slug = "T-1"
+        main_fm = (
+            _BASE_MAIN_FM
+            + f"normalize_artifact_path: .cursor/.artifacts/{wrong_slug}--step1-normalize.md\n"
+            + f"depth_triage_artifact_path: .cursor/.artifacts/{slug}--step1-depth-triage.md\n"
+        )
+        main = _write_artifact(Path(td), f"{slug}--step1.md", main_fm)
+        _write_artifact(Path(td), f"{wrong_slug}--step1-normalize.md", _BASE_NORM_FM)
+        _write_artifact(Path(td), f"{slug}--step1-depth-triage.md", _BASE_DEPTH_FM)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "wrong slug in normalize path should FAIL (G-ARTIFACT-RA-REF-001)"
+
+
+def test_step1_norm_schema_invalid_fails():
+    """FAIL: normalize artifact の schema 不正 (gate_a != PASS)。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: INCOMPLETE\n"
+            "blocking_open_issues: []\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "normalize gate_a=INCOMPLETE should FAIL (G-ARTIFACT-RA-NORM-SCHEMA-001)"
+
+
+def test_step1_depth_schema_invalid_fails():
+    """FAIL: depth_triage artifact の schema 不正 (step 不一致)。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_depth = (
+            "status: complete\n"
+            "step: wrong-step\n"
+            "gate_b: PASS\n"
+            "analysis_depth: standard\n"
+            "depth_reason: test\n"
+        )
+        main = _build_step1_suite(Path(td), depth_fm=bad_depth)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "depth step mismatch should FAIL (G-ARTIFACT-RA-DEPTH-SCHEMA-001)"
+
+
+def test_step1_gate_source_mismatch_fails():
+    """FAIL: requirement_gate と normalize.gate_a が不一致。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: INCOMPLETE\n"
+            "blocking_open_issues: []\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "gate source mismatch should FAIL (G-ARTIFACT-RA-GATE-SOURCE-001)"
+
+
+def test_step1_depth_consistency_fails():
+    """FAIL: depth_triage=standard なのに最終 depth=deep。"""
+    with tempfile.TemporaryDirectory() as td:
+        main_fm = (
+            "status: complete\n"
+            "step: step1\n"
+            "gate_result: PASS\n"
+            "investigation_memo_path: .cursor/.tracking/memo.md\n"
+            "analysis_depth: deep\n"
+            "requirement_gate: PASS\n"
+            "spec_consistency_gate: PASS\n"
+            "feasibility_gate: PASS\n"
+            "blocking_open_issues: []\n"
+            "non_blocking_issues: []\n"
+            "acceptance_criteria_status: complete\n"
+            "resolved_issues: []\n"
+            "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
+            "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
+        )
+        main = _write_artifact(Path(td), "T-1--step1.md", main_fm)
+        _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
+        _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "standard triage → deep final should FAIL (G-ARTIFACT-RA-DEPTH-CONSIST-001)"
+
+
+def test_step1_deep_fallback_no_reason_fails():
+    """FAIL: depth_triage=deep → 最終=standard だが depth_fallback_reason なし。"""
+    with tempfile.TemporaryDirectory() as td:
+        depth_fm = (
+            "status: complete\n"
+            "step: step1-depth-triage\n"
+            "gate_b: PASS\n"
+            "analysis_depth: deep\n"
+            "depth_reason: test\n"
+        )
+        main = _build_step1_suite(Path(td), depth_fm=depth_fm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "deep fallback without reason should FAIL (G-ARTIFACT-RA-DEPTH-CONSIST-001)"
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -223,6 +432,16 @@ def main() -> int:
         test_step3_blocked_adr_valid,
         test_step3_blocked_adr_no_sha_fails,
         test_step3_blocked_adr_few_alts_fails,
+        test_step1_intermediate_pass,
+        test_step1_deep_fallback_pass,
+        test_step1_norm_file_missing_fails,
+        test_step1_depth_file_missing_fails,
+        test_step1_wrong_slug_fails,
+        test_step1_norm_schema_invalid_fails,
+        test_step1_depth_schema_invalid_fails,
+        test_step1_gate_source_mismatch_fails,
+        test_step1_depth_consistency_fails,
+        test_step1_deep_fallback_no_reason_fails,
     ]
     passed = 0
     failed = 0
