@@ -48,15 +48,175 @@ case "$STEP" in
     exec "$SCRIPT_DIR/plan-gate.sh" report
     ;;
   step2-report)
-    # ② レポート構造検査: 必須10セクション / プレースホルダ / 完了チェック初期状態
+    # ② レポート構造検査: envelope 必須検査 → gate-report.py
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+    ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
+    REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
+
+    # 対象レポートの決定
+    if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
+      REPORT_FILES=("$1")
+    else
+      REPORT_FILES=()
+      if [[ -d "$REPORTS_DIR" ]]; then
+        for f in "$REPORTS_DIR"/*.md; do
+          [[ -f "$f" ]] && REPORT_FILES+=("$f")
+        done
+      fi
+    fi
+
+    # レポートが 0 件なら envelope 検査をスキップして gate-report.py へ
+    if [[ ${#REPORT_FILES[@]} -eq 0 ]]; then
+      exec python3 "$SCRIPT_DIR/gate-report.py" "$@"
+    fi
+
+    # レポートごとに step1/step2 envelope を検査
+    ENVELOPE_FAIL=0
+    for report_file in "${REPORT_FILES[@]}"; do
+      slug="$(basename "$report_file" .md)"
+
+      step1_env="$ARTIFACT_DIR/${slug}--step1.md"
+      step2_env="$ARTIFACT_DIR/${slug}--step2.md"
+
+      # step1 envelope 存在チェック
+      if [[ ! -f "$step1_env" ]]; then
+        echo "FAIL: step1 envelope が見つかりません: $step1_env"
+        ENVELOPE_FAIL=1
+        continue
+      fi
+      # step2 envelope 存在チェック
+      if [[ ! -f "$step2_env" ]]; then
+        echo "FAIL: step2 envelope が見つかりません: $step2_env"
+        ENVELOPE_FAIL=1
+        continue
+      fi
+
+      # step1 envelope 内容検査（step1 / complete）
+      python3 "$SCRIPT_DIR/gate-artifact.py" "$step1_env" --expect-step step1 --expect-status complete
+      rc=$?
+      if [[ $rc -ne 0 ]]; then
+        echo "FAIL: step1 envelope 検査失敗 (exit $rc): $step1_env"
+        ENVELOPE_FAIL=1
+        continue
+      fi
+
+      # step2 envelope 内容検査（step2 / complete）
+      python3 "$SCRIPT_DIR/gate-artifact.py" "$step2_env" --expect-step step2 --expect-status complete
+      rc=$?
+      if [[ $rc -ne 0 ]]; then
+        echo "FAIL: step2 envelope 検査失敗 (exit $rc): $step2_env"
+        ENVELOPE_FAIL=1
+        continue
+      fi
+
+      # step2 envelope の report_path がレポートと一致するか検査
+      # front matter (先頭 --- 〜 ---) に限定して report_path を抽出する
+      rp="$(python3 -c '
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+fm = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+block = fm.group(1) if fm else ""
+m = re.search(r"^report_path:\s*(.+)", block, re.MULTILINE)
+print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
+' "$step2_env")"
+      # report_path を正規化して比較
+      abs_report="$(cd "$(dirname "$report_file")" && pwd)/$(basename "$report_file")"
+      if [[ -n "$rp" ]]; then
+        if [[ "$rp" == /* ]]; then
+          abs_rp="$rp"
+        else
+          abs_rp="$ROOT_DIR/$rp"
+        fi
+        # resolve symlinks for comparison
+        real_report="$(python3 -c 'import sys; from pathlib import Path; print(Path(sys.argv[1]).resolve())' "$abs_report")"
+        real_rp="$(python3 -c 'import sys; from pathlib import Path; print(Path(sys.argv[1]).resolve())' "$abs_rp")"
+        if [[ "$real_report" != "$real_rp" ]]; then
+          echo "FAIL: step2 envelope の report_path ($rp) がレポート ($report_file) と不一致"
+          ENVELOPE_FAIL=1
+        fi
+      else
+        echo "FAIL: step2 envelope に report_path フィールドが見つかりません: $step2_env"
+        ENVELOPE_FAIL=1
+      fi
+    done
+
+    if [[ $ENVELOPE_FAIL -ne 0 ]]; then
+      echo "=== workflow gate step2-report: FAIL (envelope 検査失敗) ==="
+      exit 1
+    fi
+
+    echo "PASS: step1/step2 envelope 検査通過"
     exec python3 "$SCRIPT_DIR/gate-report.py" "$@"
     ;;
   step4)
     # ④ コードゲート（決定 10: G-GEN パス限定 porcelain チェック）
-    # 順序: gen 対象変更検出 → 必要時だけ gen → 対象パスだけ porcelain 検査 → verify
+    # 順序: envelope 検査 → gen 対象変更検出 → 必要時だけ gen → 対象パスだけ porcelain 検査 → verify
     # ADR-0001: tech stack 固有コマンドは bin/quality-gate wrapper 経由で実行する
     echo "--- code gate (via bin/quality-gate wrapper) ---"
     ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+    ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
+    REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
+
+    # --- report-slug の解決 ---
+    if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
+      REPORT_SLUG="$(basename "$1" .md)"
+    else
+      # reports 直下の進行中レポートから自動解決
+      REPORT_FILES=()
+      if [[ -d "$REPORTS_DIR" ]]; then
+        for f in "$REPORTS_DIR"/*.md; do
+          [[ -f "$f" ]] && REPORT_FILES+=("$f")
+        done
+      fi
+      if [[ ${#REPORT_FILES[@]} -eq 0 ]]; then
+        echo "FATAL: 進行中レポートが 0 件です。report-file を明示的に指定してください。"
+        echo "用法: workflow-gate.sh step4 [report-file]"
+        exit 2
+      elif [[ ${#REPORT_FILES[@]} -gt 1 ]]; then
+        echo "FATAL: 進行中レポートが ${#REPORT_FILES[@]} 件あります。report-file を明示的に指定してください。"
+        echo "用法: workflow-gate.sh step4 [report-file]"
+        for f in "${REPORT_FILES[@]}"; do echo "  - $f"; done
+        exit 2
+      fi
+      REPORT_SLUG="$(basename "${REPORT_FILES[0]}" .md)"
+    fi
+
+    # --- step3/step4 envelope 必須検査 ---
+    step3_env="$ARTIFACT_DIR/${REPORT_SLUG}--step3.md"
+    step4_env="$ARTIFACT_DIR/${REPORT_SLUG}--step4.md"
+
+    ENVELOPE_FAIL=0
+
+    if [[ ! -f "$step3_env" ]]; then
+      echo "FAIL: step3 envelope が見つかりません: $step3_env"
+      ENVELOPE_FAIL=1
+    else
+      python3 "$SCRIPT_DIR/gate-artifact.py" "$step3_env" --expect-step step3 --expect-status complete
+      rc=$?
+      if [[ $rc -ne 0 ]]; then
+        echo "FAIL: step3 envelope 検査失敗 (exit $rc): $step3_env"
+        ENVELOPE_FAIL=1
+      fi
+    fi
+
+    if [[ ! -f "$step4_env" ]]; then
+      echo "FAIL: step4 envelope が見つかりません: $step4_env"
+      ENVELOPE_FAIL=1
+    else
+      python3 "$SCRIPT_DIR/gate-artifact.py" "$step4_env" --expect-step step4 --expect-status complete
+      rc=$?
+      if [[ $rc -ne 0 ]]; then
+        echo "FAIL: step4 envelope 検査失敗 (exit $rc): $step4_env"
+        ENVELOPE_FAIL=1
+      fi
+    fi
+
+    if [[ $ENVELOPE_FAIL -ne 0 ]]; then
+      echo "=== workflow gate step4: FAIL (envelope 検査失敗 — verify 未実行) ==="
+      exit 1
+    fi
+
+    echo "PASS: step3/step4 envelope 検査通過"
 
     {{#if project.quality_gate.gen_artifact_paths}}
     # --- G-GEN: 生成対象パス限定 porcelain チェック ---

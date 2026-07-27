@@ -126,6 +126,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 **禁止事項**: テスト失敗の無視・lint 一括抑制・テスト skip（原因仮説の文章化が前提）。
 
+**親代行の禁止**: Subagent dispatch が指定された Step（①〜④）の worker 責務を親が直接代行してはならない。対応する step envelope が遷移ゲートで検査されるため、dispatch なしではゲートを通過できない。正規の親責務（Gate C 検査、ユーザーへの質問、deep-thinking 起動等）はこの制約の対象外。詳細は [`references/worker-dispatch.md`](references/worker-dispatch.md) を参照。
+
 ### Step ⑤: PR レビュー検証
 
 親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。

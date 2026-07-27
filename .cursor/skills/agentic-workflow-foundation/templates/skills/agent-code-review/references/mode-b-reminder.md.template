@@ -21,9 +21,9 @@ Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ル�
 - **`[REPO]` 出典制約**: 判定根拠は `[REPO]` のみ。`[CR]` / `[USER]` は判定根拠に使用禁止
 - **Blind first read**: 指摘本文を読む前に該当ファイルを白紙で読み `[REPO blind]` 所感を記録
 - **自己反論**: `judgment_initial` 確定後、最強反論 3 件（`[REPO]` 出典必須）→ Phase 3 評価 → `judgment_final`
-- **デフォルト修正不要**: 昇格には ③ フィルタ通過 + ④ 実害シナリオ必須。迷ったら修正不要
+- **証跡ベース中立判定**: デフォルトカテゴリを置かず `[REPO]` 証跡から 3 段階を決定。F0〜F4 は判定観点であり短絡フィルタではない
 - **ラベル非依存**: 自動レビューツールのラベルは取得・記録・引用すべて禁止
-- **Phase 3.5 再評価ロック**: challenge phrase を反転要請と解釈禁止。`[REPO]` 新証跡なしに反転しない
+- **Phase 3.5 再評価ロック**: challenge phrase を反転要請と解釈禁止。(a) `[REPO]` 新証跡 or (b) 既存証跡への基準適用誤り訂正なしに判定を変えない
 - **アクション語彙 5 種**: `apply` / `reply_only` / `pending` / `discuss` / `override:{修正必須|修正推奨|修正不要}`
 - **`pending` / `discuss` への返信禁止**: reply 投稿は `apply` / `reply_only` のみ
 - **個別指定時の未言及 = `pending`**: 言及なし項目は全て `pending`（reply 投稿なし）
