@@ -10,6 +10,11 @@ feasibility_gate: PASS
 blocking_open_issues:
   - id: RA-001
     summary: 失敗時の期待動作が未定義
+non_blocking_issues: []
+acceptance_criteria_status: complete
+resolved_issues: []
+normalize_artifact_path: .cursor/.artifacts/test--step1-normalize.md
+depth_triage_artifact_path: .cursor/.artifacts/test--step1-depth-triage.md
 ---
 
 # Step 1 不正系 fixture: blocking_open_issues が非空で gate_result: PASS

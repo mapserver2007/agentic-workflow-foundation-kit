@@ -409,6 +409,40 @@ def test_step1_deep_fallback_no_reason_fails():
         assert rc == 1, "deep fallback without reason should FAIL (G-ARTIFACT-RA-DEPTH-CONSIST-001)"
 
 
+def test_step1_deferred_to_standard_pass():
+    """PASS: triage=deferred → final=standard。"""
+    with tempfile.TemporaryDirectory() as td:
+        depth_fm = (
+            "status: complete\n"
+            "step: step1-depth-triage\n"
+            "gate_b: PASS\n"
+            "analysis_depth: deferred\n"
+            "depth_reason: test\n"
+        )
+        main = _build_step1_suite(Path(td), depth_fm=depth_fm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "deferred triage → standard final should PASS"
+
+
+def test_step1_deferred_to_deep_pass():
+    """PASS: triage=deferred → final=deep。"""
+    with tempfile.TemporaryDirectory() as td:
+        depth_fm = (
+            "status: complete\n"
+            "step: step1-depth-triage\n"
+            "gate_b: PASS\n"
+            "analysis_depth: deferred\n"
+            "depth_reason: test\n"
+        )
+        main = _build_step1_suite(
+            Path(td),
+            main_extra="analysis_depth: deep\n",
+            depth_fm=depth_fm,
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "deferred triage → deep final should PASS"
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -442,6 +476,8 @@ def main() -> int:
         test_step1_gate_source_mismatch_fails,
         test_step1_depth_consistency_fails,
         test_step1_deep_fallback_no_reason_fails,
+        test_step1_deferred_to_standard_pass,
+        test_step1_deferred_to_deep_pass,
     ]
     passed = 0
     failed = 0
