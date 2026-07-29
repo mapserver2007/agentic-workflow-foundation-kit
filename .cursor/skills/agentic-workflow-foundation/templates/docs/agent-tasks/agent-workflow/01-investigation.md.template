@@ -268,6 +268,8 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `normalize_artifact_path` | string | — | 要求正規化中間 artifact のパス（repo root 相対） |
 | `depth_triage_artifact_path` | string | — | 分析深度判定中間 artifact のパス（repo root 相対） |
 | `depth_fallback_reason` | string | — | deep → standard フォールバック時のみ必須。理由を記録 |
+| `requirements_digest` | string | — | canonical requirements+AC の SHA-256（complete 時必須） |
+| `requirements_ack` | object | — | `{status: "acknowledged", digest: "<same>"}` （complete 時必須） |
 | `reason` | string | — | `blocked` / `fatal` / `incomplete` 時の理由 |
 | `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
 {{else}}

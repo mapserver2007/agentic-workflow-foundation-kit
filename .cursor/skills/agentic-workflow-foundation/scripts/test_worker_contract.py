@@ -47,6 +47,7 @@ STEP_DOC_OUTPUT_FIELDS = {
         "acceptance_criteria_status", "resolved_issues", "reason",
         "normalize_artifact_path", "depth_triage_artifact_path",
         "depth_fallback_reason",
+        "requirements_digest", "requirements_ack",
     },
     "step2": {
         "status", "step", "report_path", "report_digest",
@@ -210,6 +211,12 @@ _BASE_NORM_FM = (
     "step: step1-normalize\n"
     "gate_a: PASS\n"
     "blocking_open_issues: []\n"
+    "task_type: bug_fix\n"
+    "fields:\n"
+    "  - name: target_component\n"
+    "    value: test-component\n"
+    "    provenance: user_confirmed\n"
+    "    evidence_ref: user input\n"
 )
 
 _BASE_DEPTH_FM = (
@@ -220,11 +227,50 @@ _BASE_DEPTH_FM = (
     "depth_reason: test\n"
 )
 
+_DIGEST_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+
+_VALID_MEMO_BODY = """\
+## 正規化済み要求
+fixture の要求
+
+## 確定済み受入条件
+AC-001: artifact gate が正常系 fixture を受理する
+
+## 根本原因分析 / 実装方針候補
+fixture の正常系を検証する。
+
+## 争点と判断根拠
+自己参照 Memo とする。
+
+## 影響範囲
+テスト fixture のみ。
+
+## 変更対象ファイル
+AC-001 を test fixture で検証する。
+
+## 実装手順
+AC-001 の fixture を検証する。
+
+## テスト観点
+AC-001 で gate が PASS する。
+
+## ADR 起票判定結果
+不要。
+
+## docs-first 参照記録
+要求分析契約を参照。
+
+## Issue Ledger
+なし。
+
+## non-blocking issues
+なし。
+"""
+
 _BASE_MAIN_FM = (
     "status: complete\n"
     "step: step1\n"
     "gate_result: PASS\n"
-    "investigation_memo_path: .cursor/.tracking/memo.md\n"
     "analysis_depth: standard\n"
     "requirement_gate: PASS\n"
     "spec_consistency_gate: PASS\n"
@@ -233,6 +279,10 @@ _BASE_MAIN_FM = (
     "non_blocking_issues: []\n"
     "acceptance_criteria_status: complete\n"
     "resolved_issues: []\n"
+    f"requirements_digest: \"{_DIGEST_FIXTURE}\"\n"
+    "requirements_ack:\n"
+    "  status: acknowledged\n"
+    f"  digest: \"{_DIGEST_FIXTURE}\"\n"
 )
 
 
@@ -247,17 +297,26 @@ def _build_step1_suite(tmp: Path, slug: str = "T-1",
                        norm_fm: str | None = None,
                        depth_fm: str | None = None,
                        skip_norm_file: bool = False,
-                       skip_depth_file: bool = False):
+                       skip_depth_file: bool = False,
+                       memo_path: str | None = None,
+                       memo_body: str | None = None):
     """Build a step1 envelope + intermediate artifacts in tmp dir."""
     norm_name = f"{slug}--step1-normalize.md"
     depth_name = f"{slug}--step1-depth-triage.md"
+    memo_ref = memo_path or f".cursor/.artifacts/{slug}--step1.md"
     main_fm = (
         _BASE_MAIN_FM
+        + f"investigation_memo_path: {memo_ref}\n"
         + f"normalize_artifact_path: .cursor/.artifacts/{norm_name}\n"
         + f"depth_triage_artifact_path: .cursor/.artifacts/{depth_name}\n"
         + main_extra
     )
-    main_path = _write_artifact(tmp, f"{slug}--step1.md", main_fm)
+    main_path = _write_artifact(
+        tmp,
+        f"{slug}--step1.md",
+        main_fm,
+        body=memo_body if memo_body is not None else _VALID_MEMO_BODY,
+    )
     if not skip_norm_file:
         _write_artifact(tmp, norm_name, norm_fm or _BASE_NORM_FM)
     if not skip_depth_file:
@@ -315,10 +374,13 @@ def test_step1_wrong_slug_fails():
         slug = "T-1"
         main_fm = (
             _BASE_MAIN_FM
+            + f"investigation_memo_path: .cursor/.artifacts/{slug}--step1.md\n"
             + f"normalize_artifact_path: .cursor/.artifacts/{wrong_slug}--step1-normalize.md\n"
             + f"depth_triage_artifact_path: .cursor/.artifacts/{slug}--step1-depth-triage.md\n"
         )
-        main = _write_artifact(Path(td), f"{slug}--step1.md", main_fm)
+        main = _write_artifact(
+            Path(td), f"{slug}--step1.md", main_fm, body=_VALID_MEMO_BODY
+        )
         _write_artifact(Path(td), f"{wrong_slug}--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), f"{slug}--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
@@ -375,7 +437,7 @@ def test_step1_depth_consistency_fails():
             "status: complete\n"
             "step: step1\n"
             "gate_result: PASS\n"
-            "investigation_memo_path: .cursor/.tracking/memo.md\n"
+            "investigation_memo_path: .cursor/.artifacts/T-1--step1.md\n"
             "analysis_depth: deep\n"
             "requirement_gate: PASS\n"
             "spec_consistency_gate: PASS\n"
@@ -387,7 +449,9 @@ def test_step1_depth_consistency_fails():
             "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
             "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
         )
-        main = _write_artifact(Path(td), "T-1--step1.md", main_fm)
+        main = _write_artifact(
+            Path(td), "T-1--step1.md", main_fm, body=_VALID_MEMO_BODY
+        )
         _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
@@ -443,6 +507,188 @@ def test_step1_deferred_to_deep_pass():
         assert rc == 0, "deferred triage → deep final should PASS"
 
 
+def test_step1_ack_missing_fails():
+    """FAIL: requirements_ack が欠落。"""
+    with tempfile.TemporaryDirectory() as td:
+        fm = (
+            "status: complete\n"
+            "step: step1\n"
+            "gate_result: PASS\n"
+            "investigation_memo_path: .cursor/.artifacts/T-1--step1.md\n"
+            "analysis_depth: standard\n"
+            "requirement_gate: PASS\n"
+            "spec_consistency_gate: PASS\n"
+            "feasibility_gate: PASS\n"
+            "blocking_open_issues: []\n"
+            "non_blocking_issues: []\n"
+            "acceptance_criteria_status: complete\n"
+            "resolved_issues: []\n"
+            f'requirements_digest: "{_DIGEST_FIXTURE}"\n'
+            "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
+            "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
+        )
+        main = _write_artifact(
+            Path(td), "T-1--step1.md", fm, body=_VALID_MEMO_BODY
+        )
+        _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
+        _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "missing requirements_ack should FAIL"
+
+
+def test_step1_ack_digest_mismatch_fails():
+    """FAIL: requirements_ack.digest と requirements_digest が不一致。"""
+    with tempfile.TemporaryDirectory() as td:
+        wrong_digest = "0000000000000000000000000000000000000000000000000000000000000000"
+        main = _build_step1_suite(Path(td))
+        content = main.read_text(encoding="utf-8")
+        main.write_text(
+            content.replace(
+                f'  digest: "{_DIGEST_FIXTURE}"',
+                f'  digest: "{wrong_digest}"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "ack digest mismatch should FAIL (G-ARTIFACT-RA-ACK-004)"
+
+
+def test_step1_digest_malformed_fails():
+    """FAIL: requirements_digest と ack が同値でも SHA-256 形式ではない。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td))
+        content = main.read_text(encoding="utf-8")
+        main.write_text(
+            content.replace(_DIGEST_FIXTURE, "not-a-sha256"),
+            encoding="utf-8",
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "malformed digest should FAIL (G-ARTIFACT-RA-ACK-001)"
+
+
+def test_step1_memo_unresolvable_fails():
+    """FAIL: investigation_memo_path の参照先が解決不能。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(
+            Path(td),
+            memo_path=".cursor/.tracking/nonexistent.md",
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, (
+            "unresolvable memo path should FAIL (G-ARTIFACT-RA-MEMO-002)"
+        )
+
+
+def test_step1_memo_list_ac_definition_passes():
+    """PASS: dash-prefixed AC-NNN 定義を受理する。"""
+    with tempfile.TemporaryDirectory() as td:
+        memo_body = _VALID_MEMO_BODY.replace(
+            "AC-001: artifact gate",
+            "- AC-001: artifact gate",
+            1,
+        )
+        main = _build_step1_suite(Path(td), memo_body=memo_body)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "dash-prefixed AC definition should PASS"
+
+
+def test_step1_memo_near_ac_reference_fails():
+    """FAIL: AC-0011 は AC-001 の完全一致参照ではない。"""
+    with tempfile.TemporaryDirectory() as td:
+        memo_body = _VALID_MEMO_BODY.replace(
+            "AC-001 で gate が PASS する。",
+            "AC-0011 で gate が PASS する。",
+            1,
+        )
+        main = _build_step1_suite(Path(td), memo_body=memo_body)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "near AC-ID must not satisfy exact AC reference"
+
+
+def test_step1_provenance_undecided_fails():
+    """FAIL: normalize fields に provenance=undecided が残存。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: bug_fix\n"
+            "fields:\n"
+            "  - name: target\n"
+            "    value: foo\n"
+            "    provenance: undecided\n"
+            "    evidence_ref: none\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "provenance=undecided should FAIL (G-ARTIFACT-RA-NORM-PROV-004)"
+
+
+def test_step1_provenance_external_complete_fails():
+    """FAIL: provenance=external のまま complete は不可。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: new_feature\n"
+            "fields:\n"
+            "  - name: api_spec\n"
+            "    value: pending\n"
+            "    provenance: external\n"
+            "    evidence_ref: awaiting vendor\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "provenance=external on complete should FAIL (G-ARTIFACT-RA-NORM-PROV-005)"
+
+
+def test_step1_docs_derived_evidence_missing_fails():
+    """FAIL: provenance=docs_derived には非空 evidence_ref が必須。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: bug_fix\n"
+            "fields:\n"
+            "  - name: spec\n"
+            "    value: confirmed\n"
+            "    provenance: docs_derived\n"
+            '    evidence_ref: ""\n'
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, (
+            "docs_derived without evidence_ref should FAIL "
+            "(G-ARTIFACT-RA-NORM-PROV-006)"
+        )
+
+
+def test_step1_invalid_task_type_fails():
+    """FAIL: normalize の task_type が不正値。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: unknown_type\n"
+            "fields:\n"
+            "  - name: x\n"
+            "    value: y\n"
+            "    provenance: user_confirmed\n"
+            "    evidence_ref: test\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "invalid task_type should FAIL (G-ARTIFACT-RA-NORM-PROV-001)"
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -478,6 +724,16 @@ def main() -> int:
         test_step1_deep_fallback_no_reason_fails,
         test_step1_deferred_to_standard_pass,
         test_step1_deferred_to_deep_pass,
+        test_step1_ack_missing_fails,
+        test_step1_ack_digest_mismatch_fails,
+        test_step1_digest_malformed_fails,
+        test_step1_memo_unresolvable_fails,
+        test_step1_memo_list_ac_definition_passes,
+        test_step1_memo_near_ac_reference_fails,
+        test_step1_provenance_undecided_fails,
+        test_step1_provenance_external_complete_fails,
+        test_step1_docs_derived_evidence_missing_fails,
+        test_step1_invalid_task_type_fails,
     ]
     passed = 0
     failed = 0

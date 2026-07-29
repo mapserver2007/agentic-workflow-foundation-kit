@@ -7,7 +7,7 @@
 {{#if requirement_analysis.enabled}}
 | Step | Sub-step | モード | config キー | subagent_type | 書込み責務境界 |
 |------|----------|--------|------------|---------------|------------------|
-| ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 中間 artifact（`{slug}--step1-normalize.md`）書込み必須。最終 envelope は書かない |
+| ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 中間 artifact（`{slug}--step1-normalize.md`）書込み必須。`task_type` + 軽量 `fields[]`（`name` / `value` / `provenance` / `evidence_ref`）を出力。最終 envelope は書かない |
 | ① | 深度判定 | subagent dispatch | requirement_analysis.models.depth_triage | generalPurpose | 中間 artifact（`{slug}--step1-depth-triage.md`）書込み必須。最終 envelope は書かない |
 | ① | standard 調査 | subagent dispatch | requirement_analysis.models.standard_investigation | generalPurpose | step envelope body（Investigation Memo） |
 | ① | deep 分析 | 親が deep-thinking 起動 | deep-thinking config が SoT | — | step envelope body（Investigation Memo） |

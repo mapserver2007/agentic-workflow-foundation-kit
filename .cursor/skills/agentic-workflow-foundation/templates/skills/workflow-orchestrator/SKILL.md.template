@@ -193,7 +193,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | 完了チェック状態 | 再開ステップ |
 | --- | --- |
 {{#if requirement_analysis.enabled}}| Step① envelope が `status: incomplete` + `analysis_depth: deferred` | Step① 再判定から再開（deferred → standard/deep を事後判定） |
-| Step① envelope が `status: incomplete`（deferred 以外） | Step① を Gate 不合格の問題解消ループから再開 |
+| Step① envelope が `status: incomplete`（deferred 以外） | Step① を Gate 不合格の問題解消ループから再開。Ledger + answer log（RA-ID 付き回答履歴）を必須入力として読む |
+| Step① envelope が `status: blocked` | reason に応じてエスカレーション。`blocked_external` の場合は外部回答待ち状態から再開 |
 | Step① envelope なし + handoff に Step① 途中記録あり | Step① を最初から再実行 |
 {{/if}}| 全て `[ ]` | Step ③（実装）から |
 | 実装完了 `[x]` のみ | Step ④（テスト）から |

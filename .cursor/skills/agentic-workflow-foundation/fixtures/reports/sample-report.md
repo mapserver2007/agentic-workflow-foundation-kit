@@ -10,6 +10,11 @@
 
 テスト fixture のため具体的な問題はない。
 
+### 受入条件
+
+- AC-001: artifact gate の正常系 fixture が検証を通過する
+- **requirements_digest**: a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890
+
 ## 原因・背景
 
 gate-report.py の REQUIRED_SECTIONS 検査のテスト用。

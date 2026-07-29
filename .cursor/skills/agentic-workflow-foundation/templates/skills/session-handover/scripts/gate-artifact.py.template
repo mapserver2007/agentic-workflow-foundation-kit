@@ -33,6 +33,8 @@ STEP_REQUIRED_FIELDS = {
         "resolved_issues",
         "normalize_artifact_path",
         "depth_triage_artifact_path",
+        "requirements_digest",
+        "requirements_ack",
     ],
     "step2": ["report_path"],
     "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
@@ -311,6 +313,172 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 results.append({"id": "G-ARTIFACT-RA-GATE-SOURCE-001", "level": "FAIL",
                     "msg": f"spec_consistency_gate={fm.get('spec_consistency_gate')!r} が depth_triage.gate_b={depth_fm.get('gate_b')!r} と不一致"})
                 fail = True
+
+    # --- requirements_digest / requirements_ack 検証（step1 complete 時）---
+    if step == "step1" and status == "complete":
+        rd = fm.get("requirements_digest")
+        ra = fm.get("requirements_ack")
+        if (
+            not isinstance(rd, str)
+            or re.fullmatch(r"[0-9a-f]{64}", rd, re.IGNORECASE) is None
+        ):
+            results.append({"id": "G-ARTIFACT-RA-ACK-001", "level": "FAIL",
+                "msg": "requirements_digest が欠落、または64桁のSHA-256 hex形式ではありません"})
+            fail = True
+        if not isinstance(ra, dict):
+            results.append({"id": "G-ARTIFACT-RA-ACK-002", "level": "FAIL",
+                "msg": "requirements_ack がマッピングではありません"})
+            fail = True
+        else:
+            ack_status = ra.get("status")
+            ack_digest = ra.get("digest")
+            if ack_status != "acknowledged":
+                results.append({"id": "G-ARTIFACT-RA-ACK-003", "level": "FAIL",
+                    "msg": f"requirements_ack.status が 'acknowledged' ではありません: {ack_status!r}"})
+                fail = True
+            if not ack_digest or ack_digest != rd:
+                results.append({"id": "G-ARTIFACT-RA-ACK-004", "level": "FAIL",
+                    "msg": f"requirements_ack.digest と requirements_digest が不一致（ack={ack_digest!r}, digest={rd!r}）"})
+                fail = True
+
+    # --- acceptance_criteria_status 値域検証（step1 complete 時）---
+    if step == "step1" and status == "complete":
+        acs = fm.get("acceptance_criteria_status")
+        if acs not in ("complete", "incomplete"):
+            results.append({"id": "G-ARTIFACT-RA-ACS-001", "level": "FAIL",
+                "msg": f"acceptance_criteria_status '{acs}' は不正です。許容値: complete/incomplete"})
+            fail = True
+        elif acs != "complete":
+            results.append({"id": "G-ARTIFACT-RA-ACS-002", "level": "FAIL",
+                "msg": "acceptance_criteria_status が 'complete' ではありません"})
+            fail = True
+
+    # --- Issue schema 検証（step1、非空時）---
+    if step == "step1" and status == "complete":
+        for list_key in ("resolved_issues", "non_blocking_issues"):
+            items = fm.get(list_key)
+            if isinstance(items, list):
+                for idx, item in enumerate(items):
+                    if isinstance(item, dict) and not item.get("id"):
+                        results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                            "msg": f"{list_key}[{idx}] に 'id' がありません"})
+                        fail = True
+
+    # --- Memo 検査（step1 complete 時）---
+    if step == "step1" and status == "complete":
+        memo_path_val = fm.get("investigation_memo_path", "")
+        memo_file = None
+        if memo_path_val:
+            if memo_path_val == str(path) or Path(memo_path_val).name == path.name:
+                memo_file = path
+            else:
+                candidate = path.parent / Path(memo_path_val).name
+                if candidate.is_file():
+                    memo_file = candidate
+
+        if memo_file and memo_file.is_file():
+            memo_text = memo_file.read_text(encoding="utf-8")
+
+            MEMO_REQUIRED_HEADINGS = [
+                "正規化済み要求", "確定済み受入条件",
+                "根本原因分析 / 実装方針候補", "争点と判断根拠",
+                "影響範囲", "変更対象ファイル", "実装手順",
+                "テスト観点", "ADR 起票判定結果",
+                "docs-first 参照記録", "Issue Ledger",
+                "non-blocking issues",
+            ]
+            for heading in MEMO_REQUIRED_HEADINGS:
+                if heading not in memo_text:
+                    results.append({"id": "G-ARTIFACT-RA-MEMO-001", "level": "FAIL",
+                        "msg": f"Memo に必須見出し '{heading}' がありません"})
+                    fail = True
+
+            ac_def_pattern = re.compile(
+                r"^[ \t]*[-*]?[ \t]*AC-(\d{3}):[ \t]*\S", re.MULTILINE
+            )
+            ac_defs = ac_def_pattern.findall(memo_text)
+            if len(ac_defs) == 0:
+                results.append({"id": "G-ARTIFACT-RA-MEMO-AC-001", "level": "FAIL",
+                    "msg": "Memo 内に AC-NNN 定義が 0 件です（1件以上必須）"})
+                fail = True
+            elif len(ac_defs) != len(set(ac_defs)):
+                results.append({"id": "G-ARTIFACT-RA-MEMO-AC-002", "level": "FAIL",
+                    "msg": "Memo 内に重複する AC-NNN 定義があります"})
+                fail = True
+
+            if ac_defs:
+                def _extract_section(text, heading):
+                    pattern = re.compile(
+                        r"^##\s+" + re.escape(heading) + r"\b.*?\n(.*?)(?=\n##\s|\Z)",
+                        re.DOTALL | re.MULTILINE,
+                    )
+                    m = pattern.search(text)
+                    return m.group(1) if m else ""
+
+                test_section = _extract_section(memo_text, "テスト観点")
+                impl_section = _extract_section(memo_text, "実装手順")
+                files_section = _extract_section(memo_text, "変更対象ファイル")
+
+                for ac_num in set(ac_defs):
+                    ac_id = f"AC-{ac_num}"
+                    ac_ref = re.compile(
+                        rf"(?<![A-Za-z0-9-]){re.escape(ac_id)}(?!\d)"
+                    )
+                    in_test = bool(ac_ref.search(test_section))
+                    in_impl = bool(ac_ref.search(impl_section))
+                    in_files = bool(ac_ref.search(files_section))
+                    if not in_test:
+                        results.append({"id": "G-ARTIFACT-RA-MEMO-AC-003", "level": "FAIL",
+                            "msg": f"{ac_id} が「テスト観点」に出現しません"})
+                        fail = True
+                    if not in_impl and not in_files:
+                        results.append({"id": "G-ARTIFACT-RA-MEMO-AC-004", "level": "FAIL",
+                            "msg": f"{ac_id} が「実装手順」「変更対象ファイル」のいずれにも出現しません"})
+                        fail = True
+        elif memo_path_val:
+            results.append({"id": "G-ARTIFACT-RA-MEMO-002", "level": "FAIL",
+                "msg": f"investigation_memo_path の参照先が解決できません: {memo_path_val!r}"})
+            fail = True
+
+    # --- normalize provenance 検証（step1 complete 時）---
+    if step == "step1" and status == "complete" and norm_fm is not None:
+        n_task_type = norm_fm.get("task_type")
+        valid_task_types = {"bug_fix", "new_feature", "refactoring", "performance"}
+        if not n_task_type or n_task_type not in valid_task_types:
+            results.append({"id": "G-ARTIFACT-RA-NORM-PROV-001", "level": "FAIL",
+                "msg": f"normalize artifact の task_type が不正: {n_task_type!r}（許容値: {sorted(valid_task_types)}）"})
+            fail = True
+
+        n_fields = norm_fm.get("fields")
+        valid_prov = {"user_confirmed", "docs_derived", "undecided", "external"}
+        if not isinstance(n_fields, list) or len(n_fields) == 0:
+            results.append({"id": "G-ARTIFACT-RA-NORM-PROV-002", "level": "FAIL",
+                "msg": "normalize artifact の fields が空です"})
+            fail = True
+        elif isinstance(n_fields, list):
+            for fidx, fld in enumerate(n_fields):
+                if not isinstance(fld, dict):
+                    continue
+                prov = fld.get("provenance")
+                if not prov or prov not in valid_prov:
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-003", "level": "FAIL",
+                        "msg": f"fields[{fidx}].provenance が不正: {prov!r}"})
+                    fail = True
+                if prov == "undecided":
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-004", "level": "FAIL",
+                        "msg": f"fields[{fidx}] に provenance=undecided が残っています（complete 不可）"})
+                    fail = True
+                if prov == "external":
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-005", "level": "FAIL",
+                        "msg": f"fields[{fidx}] が provenance=external のまま complete（blocked にすべき）"})
+                    fail = True
+                evidence_ref = fld.get("evidence_ref")
+                if prov in ("docs_derived", "external") and (
+                    not isinstance(evidence_ref, str) or not evidence_ref.strip()
+                ):
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-006", "level": "FAIL",
+                        "msg": f"fields[{fidx}] は provenance={prov} のため非空 evidence_ref が必須です"})
+                    fail = True
 
     # --- 期待 step/status 検査（--expect-step / --expect-status 指定時のみ）---
     if expect_step is not None and step != expect_step:
