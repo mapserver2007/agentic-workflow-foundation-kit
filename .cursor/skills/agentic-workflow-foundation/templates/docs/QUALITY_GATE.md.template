@@ -231,6 +231,7 @@ workflow-gate.sh step6 TICKET-1234
 | G-ARTIFACT-RA-ACS-002 | `acceptance_criteria_status` が `complete` である（complete 時必須） |
 | G-ARTIFACT-RA-ISSUE-001 | `resolved_issues` / `non_blocking_issues` の各要素に `id` が存在する |
 | G-ARTIFACT-RA-MEMO-001 | Memo に必須 12 見出し（正規化済み要求・確定済み受入条件 等）が存在する |
+| G-ARTIFACT-RA-MEMO-002 | `investigation_memo_path` の参照先ファイルが解決可能である |
 | G-ARTIFACT-RA-MEMO-AC-001 | Memo 内に `AC-NNN:` 定義が 1 件以上存在する |
 | G-ARTIFACT-RA-MEMO-AC-002 | Memo 内の AC-NNN 定義に重複がない |
 | G-ARTIFACT-RA-MEMO-AC-003 | 各 AC-ID が「テスト観点」セクションに出現する |

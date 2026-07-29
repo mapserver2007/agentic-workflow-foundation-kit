@@ -427,6 +427,10 @@ def check_artifact(filepath: str, json_mode: bool = False,
                         results.append({"id": "G-ARTIFACT-RA-MEMO-AC-004", "level": "FAIL",
                             "msg": f"{ac_id} が「実装手順」「変更対象ファイル」のいずれにも出現しません"})
                         fail = True
+        elif memo_path_val:
+            results.append({"id": "G-ARTIFACT-RA-MEMO-002", "level": "FAIL",
+                "msg": f"investigation_memo_path の参照先が解決できません: {memo_path_val!r}"})
+            fail = True
 
     # --- normalize provenance 検証（step1 complete 時）---
     if step == "step1" and status == "complete" and norm_fm is not None:

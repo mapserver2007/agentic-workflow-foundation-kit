@@ -229,11 +229,48 @@ _BASE_DEPTH_FM = (
 
 _DIGEST_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 
+_VALID_MEMO_BODY = """\
+## 正規化済み要求
+fixture の要求
+
+## 確定済み受入条件
+AC-001: artifact gate が正常系 fixture を受理する
+
+## 根本原因分析 / 実装方針候補
+fixture の正常系を検証する。
+
+## 争点と判断根拠
+自己参照 Memo とする。
+
+## 影響範囲
+テスト fixture のみ。
+
+## 変更対象ファイル
+AC-001 を test fixture で検証する。
+
+## 実装手順
+AC-001 の fixture を検証する。
+
+## テスト観点
+AC-001 で gate が PASS する。
+
+## ADR 起票判定結果
+不要。
+
+## docs-first 参照記録
+要求分析契約を参照。
+
+## Issue Ledger
+なし。
+
+## non-blocking issues
+なし。
+"""
+
 _BASE_MAIN_FM = (
     "status: complete\n"
     "step: step1\n"
     "gate_result: PASS\n"
-    "investigation_memo_path: .cursor/.tracking/memo.md\n"
     "analysis_depth: standard\n"
     "requirement_gate: PASS\n"
     "spec_consistency_gate: PASS\n"
@@ -260,17 +297,22 @@ def _build_step1_suite(tmp: Path, slug: str = "T-1",
                        norm_fm: str | None = None,
                        depth_fm: str | None = None,
                        skip_norm_file: bool = False,
-                       skip_depth_file: bool = False):
+                       skip_depth_file: bool = False,
+                       memo_path: str | None = None):
     """Build a step1 envelope + intermediate artifacts in tmp dir."""
     norm_name = f"{slug}--step1-normalize.md"
     depth_name = f"{slug}--step1-depth-triage.md"
+    memo_ref = memo_path or f".cursor/.artifacts/{slug}--step1.md"
     main_fm = (
         _BASE_MAIN_FM
+        + f"investigation_memo_path: {memo_ref}\n"
         + f"normalize_artifact_path: .cursor/.artifacts/{norm_name}\n"
         + f"depth_triage_artifact_path: .cursor/.artifacts/{depth_name}\n"
         + main_extra
     )
-    main_path = _write_artifact(tmp, f"{slug}--step1.md", main_fm)
+    main_path = _write_artifact(
+        tmp, f"{slug}--step1.md", main_fm, body=_VALID_MEMO_BODY
+    )
     if not skip_norm_file:
         _write_artifact(tmp, norm_name, norm_fm or _BASE_NORM_FM)
     if not skip_depth_file:
@@ -328,10 +370,13 @@ def test_step1_wrong_slug_fails():
         slug = "T-1"
         main_fm = (
             _BASE_MAIN_FM
+            + f"investigation_memo_path: .cursor/.artifacts/{slug}--step1.md\n"
             + f"normalize_artifact_path: .cursor/.artifacts/{wrong_slug}--step1-normalize.md\n"
             + f"depth_triage_artifact_path: .cursor/.artifacts/{slug}--step1-depth-triage.md\n"
         )
-        main = _write_artifact(Path(td), f"{slug}--step1.md", main_fm)
+        main = _write_artifact(
+            Path(td), f"{slug}--step1.md", main_fm, body=_VALID_MEMO_BODY
+        )
         _write_artifact(Path(td), f"{wrong_slug}--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), f"{slug}--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
@@ -388,7 +433,7 @@ def test_step1_depth_consistency_fails():
             "status: complete\n"
             "step: step1\n"
             "gate_result: PASS\n"
-            "investigation_memo_path: .cursor/.tracking/memo.md\n"
+            "investigation_memo_path: .cursor/.artifacts/T-1--step1.md\n"
             "analysis_depth: deep\n"
             "requirement_gate: PASS\n"
             "spec_consistency_gate: PASS\n"
@@ -400,7 +445,9 @@ def test_step1_depth_consistency_fails():
             "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
             "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
         )
-        main = _write_artifact(Path(td), "T-1--step1.md", main_fm)
+        main = _write_artifact(
+            Path(td), "T-1--step1.md", main_fm, body=_VALID_MEMO_BODY
+        )
         _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
@@ -463,7 +510,7 @@ def test_step1_ack_missing_fails():
             "status: complete\n"
             "step: step1\n"
             "gate_result: PASS\n"
-            "investigation_memo_path: .cursor/.tracking/memo.md\n"
+            "investigation_memo_path: .cursor/.artifacts/T-1--step1.md\n"
             "analysis_depth: standard\n"
             "requirement_gate: PASS\n"
             "spec_consistency_gate: PASS\n"
@@ -476,7 +523,9 @@ def test_step1_ack_missing_fails():
             "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
             "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
         )
-        main = _write_artifact(Path(td), "T-1--step1.md", fm)
+        main = _write_artifact(
+            Path(td), "T-1--step1.md", fm, body=_VALID_MEMO_BODY
+        )
         _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
@@ -498,6 +547,19 @@ def test_step1_ack_digest_mismatch_fails():
         )
         rc = check_artifact(str(main), json_mode=True)
         assert rc == 1, "ack digest mismatch should FAIL (G-ARTIFACT-RA-ACK-004)"
+
+
+def test_step1_memo_unresolvable_fails():
+    """FAIL: investigation_memo_path の参照先が解決不能。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(
+            Path(td),
+            memo_path=".cursor/.tracking/nonexistent.md",
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, (
+            "unresolvable memo path should FAIL (G-ARTIFACT-RA-MEMO-002)"
+        )
 
 
 def test_step1_provenance_undecided_fails():
@@ -597,6 +659,7 @@ def main() -> int:
         test_step1_deferred_to_deep_pass,
         test_step1_ack_missing_fails,
         test_step1_ack_digest_mismatch_fails,
+        test_step1_memo_unresolvable_fails,
         test_step1_provenance_undecided_fails,
         test_step1_provenance_external_complete_fails,
         test_step1_invalid_task_type_fails,
