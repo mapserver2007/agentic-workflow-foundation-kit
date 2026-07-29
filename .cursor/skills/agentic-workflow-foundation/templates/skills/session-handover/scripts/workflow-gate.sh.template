@@ -67,7 +67,7 @@ case "$STEP" in
 
     # レポートが 0 件なら envelope 検査をスキップして gate-report.py へ
     if [[ ${#REPORT_FILES[@]} -eq 0 ]]; then
-      exec python3 "$SCRIPT_DIR/gate-report.py" "$@"
+      exec python3 "$SCRIPT_DIR/gate-report.py" --artifact-dir "$ARTIFACT_DIR" "$@"
     fi
 
     # レポートごとに step1/step2 envelope を検査
@@ -146,7 +146,7 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     fi
 
     echo "PASS: step1/step2 envelope 検査通過"
-    exec python3 "$SCRIPT_DIR/gate-report.py" "$@"
+    exec python3 "$SCRIPT_DIR/gate-report.py" --artifact-dir "$ARTIFACT_DIR" "$@"
     ;;
   step4)
     # ④ コードゲート（決定 10: G-GEN パス限定 porcelain チェック）

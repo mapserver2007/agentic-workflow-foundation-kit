@@ -218,7 +218,7 @@ workflow-gate.sh step6 TICKET-1234
 
 | 検査 ID | 検査内容 |
 | --- | --- |
-| G-ARTIFACT-RA-ACK-001 | `requirements_digest` が非空の文字列として存在する |
+| G-ARTIFACT-RA-ACK-001 | `requirements_digest` が64桁の SHA-256 hex 文字列として存在する |
 | G-ARTIFACT-RA-ACK-002 | `requirements_ack` がマッピング型である |
 | G-ARTIFACT-RA-ACK-003 | `requirements_ack.status` が `acknowledged` である |
 | G-ARTIFACT-RA-ACK-004 | `requirements_ack.digest` と `requirements_digest` が一致する（R1 無効化検出） |
@@ -246,13 +246,14 @@ workflow-gate.sh step6 TICKET-1234
 | G-ARTIFACT-RA-NORM-PROV-003 | 各 `fields[].provenance` が `user_confirmed` / `docs_derived` / `undecided` / `external` のいずれか |
 | G-ARTIFACT-RA-NORM-PROV-004 | `provenance=undecided` が complete 時に残存していない |
 | G-ARTIFACT-RA-NORM-PROV-005 | `provenance=external` のまま complete にしていない（blocked にすべき） |
+| G-ARTIFACT-RA-NORM-PROV-006 | `provenance=docs_derived` / `external` の `fields[].evidence_ref` が非空である |
 
 **step2-report RA 転記検査（G-REPORT-RA-*）**: `gate-report.py` がレポート内の RA 固有転記を検査する。
 
 | 検査 ID | 検査内容 |
 | --- | --- |
 | G-REPORT-RA-AC-001 | レポートに「受入条件」見出しと `AC-NNN:` 定義が 1 件以上存在し重複がない |
-| G-REPORT-RA-DIGEST-001 | `requirements_digest`（SHA-256）がレポートに転記されている |
+| G-REPORT-RA-DIGEST-001 | レポートの `requirements_digest` が64桁の SHA-256 hex 形式で、Step① envelope の値と完全一致する |
 {{/if}}
 
 **redispatch ゲート（G-REDISPATCH-*）**: re-dispatch 前に partial artifact の `base_commit_sha` / `changed_files` / `untracked_files` を現在の working tree と照合する。差分不一致時は FAIL（exit 1）で re-dispatch を阻止する。

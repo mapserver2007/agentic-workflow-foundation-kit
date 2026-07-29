@@ -33,12 +33,23 @@ ROOT = HERE.parent.parent.parent.parent
 _gate_artifact_path = (
     ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "gate-artifact.py"
 )
+_gate_report_path = (
+    ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "gate-report.py"
+)
 
 FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
+REPORT_FIXTURES_DIR = HERE.parent / "fixtures" / "reports"
 
 
 def _load_gate_artifact():
     spec = importlib.util.spec_from_file_location("gate_artifact", str(_gate_artifact_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_gate_report():
+    spec = importlib.util.spec_from_file_location("gate_report", str(_gate_report_path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -349,6 +360,74 @@ def test_step4_multiple_reports_exit_2():
         )
 
 
+def test_report_digest_matches_step1():
+    """PASS: report の digest が Step1 envelope と完全一致する。"""
+    mod = _load_gate_report()
+    result = mod.check_report(
+        str(REPORT_FIXTURES_DIR / "sample-report.md"),
+        str(FIXTURES_DIR / "step1-complete.md"),
+    )
+    assert not result["fail"], f"matching report digest should PASS: {result}"
+
+
+def test_report_digest_mismatch_fails():
+    """FAIL: report の digest が Step1 envelope と不一致。"""
+    mod = _load_gate_report()
+    with tempfile.TemporaryDirectory() as td:
+        report = Path(td) / "sample-report.md"
+        content = (REPORT_FIXTURES_DIR / "sample-report.md").read_text(
+            encoding="utf-8"
+        )
+        report.write_text(
+            content.replace(
+                "a1b2c3d4e5f67890a1b2c3d4e5f67890"
+                "a1b2c3d4e5f67890a1b2c3d4e5f67890",
+                "00000000000000000000000000000000"
+                "00000000000000000000000000000000",
+            ),
+            encoding="utf-8",
+        )
+        result = mod.check_report(
+            str(report),
+            str(FIXTURES_DIR / "step1-complete.md"),
+        )
+        assert result["fail"], "digest mismatch should FAIL"
+        assert any(
+            check["id"] == "G-REPORT-RA-DIGEST-001"
+            and check["status"] == "FAIL"
+            for check in result["checks"]
+        ), f"digest mismatch gate result missing: {result}"
+
+
+def test_gate_report_artifact_dir_cli():
+    """PASS: --artifact-dir から report slug 対応の Step1 を解決する。"""
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        artifact_dir = tmp / "artifacts"
+        artifact_dir.mkdir()
+        report = tmp / "sample-report.md"
+        shutil.copy2(REPORT_FIXTURES_DIR / "sample-report.md", report)
+        shutil.copy2(
+            FIXTURES_DIR / "step1-complete.md",
+            artifact_dir / "sample-report--step1.md",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_gate_report_path),
+                "--artifact-dir",
+                str(artifact_dir),
+                str(report),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"gate-report --artifact-dir should PASS (got {result.returncode})\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+
 def main() -> int:
     tests = [
         # gate-artifact.py expect options
@@ -369,6 +448,10 @@ def main() -> int:
         test_step4_envelope_missing_step4,
         test_step4_no_reports_exit_2,
         test_step4_multiple_reports_exit_2,
+        # gate-report.py requirements_digest binding
+        test_report_digest_matches_step1,
+        test_report_digest_mismatch_fails,
+        test_gate_report_artifact_dir_cli,
     ]
     passed = 0
     failed = 0

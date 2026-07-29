@@ -318,9 +318,12 @@ def check_artifact(filepath: str, json_mode: bool = False,
     if step == "step1" and status == "complete":
         rd = fm.get("requirements_digest")
         ra = fm.get("requirements_ack")
-        if not rd or not isinstance(rd, str):
+        if (
+            not isinstance(rd, str)
+            or re.fullmatch(r"[0-9a-f]{64}", rd, re.IGNORECASE) is None
+        ):
             results.append({"id": "G-ARTIFACT-RA-ACK-001", "level": "FAIL",
-                "msg": "requirements_digest が欠落または不正です"})
+                "msg": "requirements_digest が欠落、または64桁のSHA-256 hex形式ではありません"})
             fail = True
         if not isinstance(ra, dict):
             results.append({"id": "G-ARTIFACT-RA-ACK-002", "level": "FAIL",
@@ -390,7 +393,9 @@ def check_artifact(filepath: str, json_mode: bool = False,
                         "msg": f"Memo に必須見出し '{heading}' がありません"})
                     fail = True
 
-            ac_def_pattern = re.compile(r"^AC-(\d{3}):\s*\S", re.MULTILINE)
+            ac_def_pattern = re.compile(
+                r"^[ \t]*[-*]?[ \t]*AC-(\d{3}):[ \t]*\S", re.MULTILINE
+            )
             ac_defs = ac_def_pattern.findall(memo_text)
             if len(ac_defs) == 0:
                 results.append({"id": "G-ARTIFACT-RA-MEMO-AC-001", "level": "FAIL",
@@ -416,9 +421,12 @@ def check_artifact(filepath: str, json_mode: bool = False,
 
                 for ac_num in set(ac_defs):
                     ac_id = f"AC-{ac_num}"
-                    in_test = ac_id in test_section
-                    in_impl = ac_id in impl_section
-                    in_files = ac_id in files_section
+                    ac_ref = re.compile(
+                        rf"(?<![A-Za-z0-9-]){re.escape(ac_id)}(?!\d)"
+                    )
+                    in_test = bool(ac_ref.search(test_section))
+                    in_impl = bool(ac_ref.search(impl_section))
+                    in_files = bool(ac_ref.search(files_section))
                     if not in_test:
                         results.append({"id": "G-ARTIFACT-RA-MEMO-AC-003", "level": "FAIL",
                             "msg": f"{ac_id} が「テスト観点」に出現しません"})
@@ -463,6 +471,13 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 if prov == "external":
                     results.append({"id": "G-ARTIFACT-RA-NORM-PROV-005", "level": "FAIL",
                         "msg": f"fields[{fidx}] が provenance=external のまま complete（blocked にすべき）"})
+                    fail = True
+                evidence_ref = fld.get("evidence_ref")
+                if prov in ("docs_derived", "external") and (
+                    not isinstance(evidence_ref, str) or not evidence_ref.strip()
+                ):
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-006", "level": "FAIL",
+                        "msg": f"fields[{fidx}] は provenance={prov} のため非空 evidence_ref が必須です"})
                     fail = True
 
     # --- 期待 step/status 検査（--expect-step / --expect-status 指定時のみ）---
