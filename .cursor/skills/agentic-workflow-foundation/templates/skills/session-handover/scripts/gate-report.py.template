@@ -123,6 +123,57 @@ def check_report(filepath: str) -> dict:
             "message": f"完了チェック全{len(COMPLETION_ITEMS)}項目存在",
         })
 
+{{#if requirement_analysis.enabled}}
+    # --- G-REPORT-RA-AC-001: 受入条件サブ構造（AC-NNN:）の存在チェック (FAIL) ---
+    ac_heading_found = "受入条件" in content
+    ac_pattern = re.compile(r"^AC-(\d{3}):\s*\S", re.MULTILINE)
+    ac_matches = ac_pattern.findall(content)
+
+    if not ac_heading_found:
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-RA-AC-001",
+            "status": "FAIL",
+            "message": "「受入条件」見出しがレポートに存在しません",
+        })
+    elif len(ac_matches) == 0:
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-RA-AC-001",
+            "status": "FAIL",
+            "message": "受入条件セクションに AC-NNN: 定義が 0 件です（1件以上必須）",
+        })
+    elif len(ac_matches) != len(set(ac_matches)):
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-RA-AC-001",
+            "status": "FAIL",
+            "message": "受入条件セクションに重複する AC-NNN 定義があります",
+        })
+    else:
+        results["checks"].append({
+            "id": "G-REPORT-RA-AC-001",
+            "status": "PASS",
+            "message": f"受入条件 AC-ID {len(ac_matches)} 件充足",
+        })
+
+    # --- G-REPORT-RA-DIGEST-001: requirements_digest 転記チェック (FAIL) ---
+    digest_pattern = re.compile(r"requirements_digest.*:\s*[0-9a-f]{16,}", re.IGNORECASE)
+    if not digest_pattern.search(content):
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-RA-DIGEST-001",
+            "status": "FAIL",
+            "message": "requirements_digest（SHA-256）がレポートに転記されていません",
+        })
+    else:
+        results["checks"].append({
+            "id": "G-REPORT-RA-DIGEST-001",
+            "status": "PASS",
+            "message": "requirements_digest 転記あり",
+        })
+
+{{/if}}
     # --- G-REPORT-TICKET-001: チケットリンクの形式チェック (WARN) ---
     if TICKET_SERVICE and TICKET_FORMAT:
         ticket_section = ""

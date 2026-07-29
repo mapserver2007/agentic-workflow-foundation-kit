@@ -141,6 +141,18 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 
 ---
 
+## Step① 退出時の ack プロトコル
+
+退出前に親が以下を実行する（[requirement-contract.md](references/requirement-contract.md) の完了定義 §7-8 に対応）:
+
+1. 4分類サマリ（確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち）を [`user-presentation.md`](references/user-presentation.md) の ack テンプレに従い提示
+2. canonical requirements + AC から `requirements_digest`（SHA-256）を生成
+3. ユーザー明示承認を受けて `requirements_ack: {status: acknowledged, digest: requirements_digest}` を step1 envelope に記録
+4. **Class R1**（AC/対象/対象外の変更）: `requirements_digest` が変化 → 旧 `requirements_ack.digest` 不一致 → Step① 再ゲート + 再 ack + Step② 再承認
+5. **Class R2**（実装方針のみ）/ **Class R3**（non-blocking 文言）: Advisory 契約（[requirement-contract.md > 再承認クラス](references/requirement-contract.md) 参照）
+
+---
+
 ## 関連ドキュメント
 
 - [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) — Step ① 詳細手順

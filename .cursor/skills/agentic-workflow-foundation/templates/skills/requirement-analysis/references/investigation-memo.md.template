@@ -21,6 +21,16 @@ standard 経路・deep 経路のいずれでも、Investigation Memo は以下�
 
 ---
 
+## AC-ID 書式と相互参照ルール
+
+AC は「確定済み受入条件」節に `AC-NNN:` 書式（ゼロ埋め3桁）で定義する。相互参照は [requirement-contract.md > AC-ID マッチ規則](requirement-contract.md) に従う:
+
+- 定義: `AC-NNN: {テスト可能な条件}`（一意・非空・「確定済み受入条件」節内に限定）
+- 参照: `## 実装手順` / `## 変更対象ファイル` / `## テスト観点` の見出し境界内で `AC-NNN` を完全一致で参照する
+- 各 AC は **(a) テスト観点に1回以上** かつ **(b) 実装手順または変更対象ファイルの少なくとも一方に1回以上** 出現すること
+
+---
+
 ## Step ② Worker との契約
 
 Step ② Worker はこの Memo のみから必須 10 セクションのタスクレポートを作成し、プレースホルダや未確認の仮定を残さない。
@@ -29,18 +39,30 @@ Step ② Worker はこの Memo のみから必須 10 セクションのタスク
 
 | Memo セクション | レポートセクション |
 | --- | --- |
-| 正規化済み要求 | 概要 / 問題の説明 |
-| 確定済み受入条件 | 受入条件 |
-| 根本原因分析 / 実装方針候補 | 根本原因分析 |
-| 争点と判断根拠 | 検討した代替案 |
+| 正規化済み要求 | タスクの概要 + 問題・要件の詳細 |
+| 確定済み受入条件 | 問題・要件の詳細 > 受入条件 |
+| 根本原因分析 / 実装方針候補 | 原因・背景 |
+| 争点と判断根拠 | 原因・背景 + 追加調査が必要な項目 |
 | 影響範囲 | 影響範囲 |
-| 変更対象ファイル | 関連する既存コード |
-| 実装手順 | 実装計画 |
+| 変更対象ファイル | コード変更の詳細 |
+| 実装手順 | 実装方針 |
 | テスト観点 | テスト計画 |
-| ADR 起票判定結果 | （ADR がある場合は参照リンクを追記） |
+| ADR 起票判定結果 | （ADR がある場合は完了チェックに参照リンクを追記） |
 | docs-first 参照記録 | 関連する既存コード |
-| Issue Ledger | 争点と判断根拠に統合 |
-| non-blocking issues | リスクと未決定事項 |
+| Issue Ledger | 原因・背景 + 追加調査が必要な項目 |
+| non-blocking issues | 追加調査が必要な項目 |
+
+### 必須転記対象（artifact 削除前の前提）
+
+Step② レポートへの転記が完了するまで、step1 envelope / 中間 artifact は削除しない。以下はレポートに必ず転記する:
+
+- canonical requirements / AC（`問題・要件の詳細 > 受入条件` として AC-ID 付きで転記）
+- `requirements_digest`（レポートの `問題・要件の詳細` 末尾に記録）
+- resolved / waived Issue の簡潔な判断根拠（`原因・背景` に統合）
+
+### requirement_delta の転記
+
+Issue Ledger 更新時に Memo body へ追記された `## requirement_delta` は、レポートの「追加調査が必要な項目」に差分として転記する。
 
 ---
 
@@ -48,4 +70,5 @@ Step ② Worker はこの Memo のみから必須 10 セクションのタスク
 
 - **open/resolved/waived**: Step① envelope の YAML front matter に `resolved_issues` と `non_blocking_issues` を配列で記録。完全な Ledger 履歴は Investigation Memo body に記載
 - **退出時検査**: `gate-artifact.py` が `blocking_open_issues: []` を検査。空でなければ FAIL
-- **Step② への引き渡し**: Step② Worker は Memo body の Issue Ledger を参照し、解決済み判断を「争点と判断根拠」セクションに反映する
+- **Step② への引き渡し**: Step② Worker は Memo body の Issue Ledger を参照し、解決済み判断を「原因・背景」セクションに反映する
+- **回答バインディング**: 各 issue は `id`（`RA-xxx`）必須。`RA-xxx` なしの質問のみで `resolved` 遷移する手順は契約上禁止

@@ -10,6 +10,10 @@
   G-RA-LEGACY-001 : workflow-triage 文字列が requirement-analysis テンプレートに含まれない
   G-RA-HIC-001    : high_impact_categories が定義されている
 
+本スクリプトは config.yaml の静的検査のみを担当する。
+ランタイム検査（digest 結合 ack / AC 相互参照 / provenance / Memo 構造）は
+gate-artifact.py / gate-report.py が担当する（QUALITY_GATE.md §1.7 参照）。
+
 exit code:
   0 = 全検査 PASS
   1 = 契約違反あり

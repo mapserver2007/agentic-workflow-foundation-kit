@@ -13,6 +13,10 @@ acceptance_criteria_status: complete
 resolved_issues: []
 normalize_artifact_path: .cursor/.artifacts/test--step1-normalize.md
 depth_triage_artifact_path: .cursor/.artifacts/test--step1-depth-triage.md
+requirements_digest: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+requirements_ack:
+  status: acknowledged
+  digest: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
 ---
 
 # Step 1 完了 envelope（テスト fixture）

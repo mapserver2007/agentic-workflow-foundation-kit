@@ -47,6 +47,7 @@ STEP_DOC_OUTPUT_FIELDS = {
         "acceptance_criteria_status", "resolved_issues", "reason",
         "normalize_artifact_path", "depth_triage_artifact_path",
         "depth_fallback_reason",
+        "requirements_digest", "requirements_ack",
     },
     "step2": {
         "status", "step", "report_path", "report_digest",
@@ -210,6 +211,12 @@ _BASE_NORM_FM = (
     "step: step1-normalize\n"
     "gate_a: PASS\n"
     "blocking_open_issues: []\n"
+    "task_type: bug_fix\n"
+    "fields:\n"
+    "  - name: target_component\n"
+    "    value: test-component\n"
+    "    provenance: user_confirmed\n"
+    "    evidence_ref: user input\n"
 )
 
 _BASE_DEPTH_FM = (
@@ -219,6 +226,8 @@ _BASE_DEPTH_FM = (
     "analysis_depth: standard\n"
     "depth_reason: test\n"
 )
+
+_DIGEST_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 
 _BASE_MAIN_FM = (
     "status: complete\n"
@@ -233,6 +242,10 @@ _BASE_MAIN_FM = (
     "non_blocking_issues: []\n"
     "acceptance_criteria_status: complete\n"
     "resolved_issues: []\n"
+    f"requirements_digest: \"{_DIGEST_FIXTURE}\"\n"
+    "requirements_ack:\n"
+    "  status: acknowledged\n"
+    f"  digest: \"{_DIGEST_FIXTURE}\"\n"
 )
 
 
@@ -443,6 +456,110 @@ def test_step1_deferred_to_deep_pass():
         assert rc == 0, "deferred triage → deep final should PASS"
 
 
+def test_step1_ack_missing_fails():
+    """FAIL: requirements_ack が欠落。"""
+    with tempfile.TemporaryDirectory() as td:
+        fm = (
+            "status: complete\n"
+            "step: step1\n"
+            "gate_result: PASS\n"
+            "investigation_memo_path: .cursor/.tracking/memo.md\n"
+            "analysis_depth: standard\n"
+            "requirement_gate: PASS\n"
+            "spec_consistency_gate: PASS\n"
+            "feasibility_gate: PASS\n"
+            "blocking_open_issues: []\n"
+            "non_blocking_issues: []\n"
+            "acceptance_criteria_status: complete\n"
+            "resolved_issues: []\n"
+            f'requirements_digest: "{_DIGEST_FIXTURE}"\n'
+            "normalize_artifact_path: .cursor/.artifacts/T-1--step1-normalize.md\n"
+            "depth_triage_artifact_path: .cursor/.artifacts/T-1--step1-depth-triage.md\n"
+        )
+        main = _write_artifact(Path(td), "T-1--step1.md", fm)
+        _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
+        _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "missing requirements_ack should FAIL"
+
+
+def test_step1_ack_digest_mismatch_fails():
+    """FAIL: requirements_ack.digest と requirements_digest が不一致。"""
+    with tempfile.TemporaryDirectory() as td:
+        wrong_digest = "0000000000000000000000000000000000000000000000000000000000000000"
+        main = _build_step1_suite(
+            Path(td),
+            main_extra=(
+                f'requirements_digest: "{_DIGEST_FIXTURE}"\n'
+                "requirements_ack:\n"
+                "  status: acknowledged\n"
+                f'  digest: "{wrong_digest}"\n'
+            ),
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "ack digest mismatch should FAIL (G-ARTIFACT-RA-ACK-004)"
+
+
+def test_step1_provenance_undecided_fails():
+    """FAIL: normalize fields に provenance=undecided が残存。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: bug_fix\n"
+            "fields:\n"
+            "  - name: target\n"
+            "    value: foo\n"
+            "    provenance: undecided\n"
+            "    evidence_ref: none\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "provenance=undecided should FAIL (G-ARTIFACT-RA-NORM-PROV-004)"
+
+
+def test_step1_provenance_external_complete_fails():
+    """FAIL: provenance=external のまま complete は不可。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: new_feature\n"
+            "fields:\n"
+            "  - name: api_spec\n"
+            "    value: pending\n"
+            "    provenance: external\n"
+            "    evidence_ref: awaiting vendor\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "provenance=external on complete should FAIL (G-ARTIFACT-RA-NORM-PROV-005)"
+
+
+def test_step1_invalid_task_type_fails():
+    """FAIL: normalize の task_type が不正値。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "blocking_open_issues: []\n"
+            "task_type: unknown_type\n"
+            "fields:\n"
+            "  - name: x\n"
+            "    value: y\n"
+            "    provenance: user_confirmed\n"
+            "    evidence_ref: test\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "invalid task_type should FAIL (G-ARTIFACT-RA-NORM-PROV-001)"
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -478,6 +595,11 @@ def main() -> int:
         test_step1_deep_fallback_no_reason_fails,
         test_step1_deferred_to_standard_pass,
         test_step1_deferred_to_deep_pass,
+        test_step1_ack_missing_fails,
+        test_step1_ack_digest_mismatch_fails,
+        test_step1_provenance_undecided_fails,
+        test_step1_provenance_external_complete_fails,
+        test_step1_invalid_task_type_fails,
     ]
     passed = 0
     failed = 0
