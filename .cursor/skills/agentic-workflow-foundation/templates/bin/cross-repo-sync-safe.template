@@ -121,7 +121,7 @@ mkdir -p "$CLONE_BASE_PATH"
 
 # Health check → quarantine → (re)clone
 _needs_clone=false
-if [[ ! -d "$REPO_PATH" ]]; then
+if [[ ! -e "$REPO_PATH" && ! -L "$REPO_PATH" ]]; then
   _needs_clone=true
 elif ! _is_repo_worktree_root "$REPO_PATH"; then
   # Corrupted or invalid .git — quarantine via mv (rm is forbidden)
