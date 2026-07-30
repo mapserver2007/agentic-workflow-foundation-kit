@@ -38,7 +38,7 @@ description: >
 - 知識参照のたびに `bin/cross-repo-sync-safe sync` を毎回実行する（clone 済みでも省略しない）
 - 同期失敗時は関連リポの知識なしで可能な範囲で回答する
 - exit code: `0` = 成功 / `1` = 操作失敗（ネットワーク/認証を確認案内）/ `2` = 致命的エラー（config.json 確認案内。`clone_base_path` 消失を含む）
-- **破損検知時のフォールバック**: wrapper が `rev-parse --git-dir` で破損を検知した場合、`{name}-yyyyMMddhhmmss` 固定形式で自動退避し再 clone する。AI はこの退避ディレクトリに触れない
+- **破損検知時のフォールバック**: wrapper が対象ディレクトリを非 bare 作業ツリーの root として検証できない場合、`{name}-yyyyMMddhhmmss` 固定形式で自動退避し再 clone する。AI はこの退避ディレクトリに触れない
 - **`rm` 絶対禁止**: wrapper 内部も含め `rm` は一切使用しない。許可される移動操作は wrapper 内の `mv`（退避用）のみ
 
 ## 実行フロー
