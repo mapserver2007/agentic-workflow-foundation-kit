@@ -11,11 +11,19 @@ bin/cross-repo-sync-safe sync .cursor/skills/cross-repository-knowledge-link/con
 ```
 
 wrapper が内部で以下を実行する:
-- clone 済み判定（`{clone_base_path}/{name}/.git` の存在確認）
-- 未 clone の場合: `git_protocol` に応じた URL で `git clone`
-- clone 済みの場合: `git fetch --all --prune`
-- 最新ブランチの自動特定（コミット日時が最新のリモートブランチを選択、`origin/HEAD` 除外）
-- ブランチ切り替え + pull
+1. 健全性チェック（`git rev-parse --git-dir`）
+   - ディレクトリ不在 → 通常 clone
+   - ディレクトリ存在かつ健全 → fetch
+   - ディレクトリ存在だが破損（rev-parse 失敗）→ 固定形式 `mv` 退避（`{name}-yyyyMMddhhmmss`）→ 再 clone
+2. `git fetch --all --prune`
+3. 最新ブランチの自動特定（`origin/<branch>` 形式のみ採用。`origin/HEAD` および `origin` 裸 ref を除外）
+4. ブランチ切り替え + pull（pull 失敗時は WARN + exit 0 で継続）
+
+破損退避の詳細:
+- 退避先: `{clone_base_path}/{name}-yyyyMMddhhmmss`（固定形式、連番なし）
+- 退避先が既に存在する場合: exit 1（上書きしない）
+- `rm` は一切使わない。退避残骸は残してよい
+- 退避後の clone 失敗: exit 1（退避物は残る。次回 sync でディレクトリ不在扱いとなり通常 clone）
 
 ## 同期結果の確認
 
@@ -47,10 +55,14 @@ bin/cross-repo-sync-safe status .cursor/skills/cross-repository-knowledge-link/c
 
 ## エラーハンドリング詳細
 
-| エラー | 対処 |
-|--------|------|
-| wrapper exit 2（致命的） | config.json の設定を確認するようユーザーに案内 |
-| wrapper exit 1（操作失敗） | ネットワーク / 認証設定を確認するようユーザーに案内 |
-| clone/pull 失敗 | 関連リポジトリの知識なしで可能な範囲で回答 |
-| AGENTS.md 不在 | パターン B の CLAUDE.md フォールバックへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
-| CLAUDE.md も不在 | パターン C のコードサーチへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
+| エラー | wrapper の挙動 | 対処 |
+|--------|---------------|------|
+| wrapper exit 2（致命的） | 即時終了 | config.json の設定を確認するようユーザーに案内 |
+| 破損検知 → 退避成功 → clone 成功 | exit 0（通常 JSON） | 自動復旧。ユーザー通知不要 |
+| 破損検知 → 退避先衝突 | exit 1 | 退避先ディレクトリの存在を確認するようユーザーに案内。再実行で解決しない |
+| 破損検知 → 退避成功 → clone 失敗 | exit 1（退避物は残る） | ネットワーク / 認証を確認するようユーザーに案内。次回 sync はディレクトリ不在扱いで通常 clone |
+| 健全時の fetch 失敗 | exit 1（退避しない） | ネットワーク / 認証設定を確認するようユーザーに案内 |
+| pull 失敗 | WARN + exit 0（成功 JSON） | fetch 済み状態で継続。知識参照は可能 |
+| clone 失敗（初回） | exit 1 | ネットワーク / 認証設定を確認するようユーザーに案内 |
+| AGENTS.md 不在 | — | パターン B の CLAUDE.md フォールバックへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
+| CLAUDE.md も不在 | — | パターン C のコードサーチへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
