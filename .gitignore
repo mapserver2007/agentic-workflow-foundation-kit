@@ -52,6 +52,3 @@ secret/
 
 # Cursor
 .cursor/plans/
-.cursor/.artifacts/
-.cursor/.session/
-.cursor/.tracking/
