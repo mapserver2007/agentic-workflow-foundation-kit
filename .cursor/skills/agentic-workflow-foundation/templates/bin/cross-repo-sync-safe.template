@@ -150,9 +150,14 @@ if ! git -C "$REPO_PATH" fetch --all --prune --quiet 2>/dev/null; then
 fi
 
 # Find the most recently committed remote branch (origin/<branch> only)
-latest_ref=$(git -C "$REPO_PATH" for-each-ref \
+if ! remote_refs=$(git -C "$REPO_PATH" for-each-ref \
   --sort=-committerdate refs/remotes/origin/ \
-  --format='%(refname:short)' \
+  --format='%(refname:short)'); then
+  echo "ERROR: failed to enumerate origin refs for $REPO_NAME" >&2
+  exit 1
+fi
+
+latest_ref=$(printf '%s\n' "$remote_refs" \
   | grep -E '^origin/.+' \
   | grep -v '^origin/HEAD$' \
   | head -1 || true)
