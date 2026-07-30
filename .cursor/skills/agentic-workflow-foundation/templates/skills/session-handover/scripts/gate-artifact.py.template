@@ -64,6 +64,16 @@ def parse_front_matter(text: str):
     return data, None
 
 
+def _extract_section(text: str, heading: str) -> str:
+    """指定した level-2 見出しの本文だけを返す。"""
+    pattern = re.compile(
+        r"^##\s+" + re.escape(heading) + r"\b.*?\n(.*?)(?=\n##\s|\Z)",
+        re.DOTALL | re.MULTILINE,
+    )
+    match = pattern.search(text)
+    return match.group(1) if match else ""
+
+
 def check_artifact(filepath: str, json_mode: bool = False,
                     expect_step: str | None = None,
                     expect_status: str | None = None):
@@ -336,7 +346,11 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 results.append({"id": "G-ARTIFACT-RA-ACK-003", "level": "FAIL",
                     "msg": f"requirements_ack.status が 'acknowledged' ではありません: {ack_status!r}"})
                 fail = True
-            if not ack_digest or ack_digest != rd:
+            if (
+                not isinstance(ack_digest, str)
+                or not isinstance(rd, str)
+                or ack_digest.casefold() != rd.casefold()
+            ):
                 results.append({"id": "G-ARTIFACT-RA-ACK-004", "level": "FAIL",
                     "msg": f"requirements_ack.digest と requirements_digest が不一致（ack={ack_digest!r}, digest={rd!r}）"})
                 fail = True
@@ -357,12 +371,20 @@ def check_artifact(filepath: str, json_mode: bool = False,
     if step == "step1" and status == "complete":
         for list_key in ("resolved_issues", "non_blocking_issues"):
             items = fm.get(list_key)
-            if isinstance(items, list):
-                for idx, item in enumerate(items):
-                    if isinstance(item, dict) and not item.get("id"):
-                        results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
-                            "msg": f"{list_key}[{idx}] に 'id' がありません"})
-                        fail = True
+            if not isinstance(items, list):
+                results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                    "msg": f"{list_key} が配列ではありません"})
+                fail = True
+                continue
+            for idx, item in enumerate(items):
+                if not isinstance(item, dict):
+                    results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                        "msg": f"{list_key}[{idx}] がマッピングではありません"})
+                    fail = True
+                elif re.fullmatch(r"RA-\d{3}", str(item.get("id", ""))) is None:
+                    results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                        "msg": f"{list_key}[{idx}].id が RA-NNN 形式ではありません: {item.get('id')!r}"})
+                    fail = True
 
     # --- Memo 検査（step1 complete 時）---
     if step == "step1" and status == "complete":
@@ -393,10 +415,11 @@ def check_artifact(filepath: str, json_mode: bool = False,
                         "msg": f"Memo に必須見出し '{heading}' がありません"})
                     fail = True
 
+            ac_section = _extract_section(memo_text, "確定済み受入条件")
             ac_def_pattern = re.compile(
                 r"^[ \t]*[-*]?[ \t]*AC-(\d{3}):[ \t]*\S", re.MULTILINE
             )
-            ac_defs = ac_def_pattern.findall(memo_text)
+            ac_defs = ac_def_pattern.findall(ac_section)
             if len(ac_defs) == 0:
                 results.append({"id": "G-ARTIFACT-RA-MEMO-AC-001", "level": "FAIL",
                     "msg": "Memo 内に AC-NNN 定義が 0 件です（1件以上必須）"})
@@ -407,14 +430,6 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 fail = True
 
             if ac_defs:
-                def _extract_section(text, heading):
-                    pattern = re.compile(
-                        r"^##\s+" + re.escape(heading) + r"\b.*?\n(.*?)(?=\n##\s|\Z)",
-                        re.DOTALL | re.MULTILINE,
-                    )
-                    m = pattern.search(text)
-                    return m.group(1) if m else ""
-
                 test_section = _extract_section(memo_text, "テスト観点")
                 impl_section = _extract_section(memo_text, "実装手順")
                 files_section = _extract_section(memo_text, "変更対象ファイル")
@@ -422,7 +437,7 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 for ac_num in set(ac_defs):
                     ac_id = f"AC-{ac_num}"
                     ac_ref = re.compile(
-                        rf"(?<![A-Za-z0-9-]){re.escape(ac_id)}(?!\d)"
+                        rf"(?<![\w-]){re.escape(ac_id)}(?![\w-])"
                     )
                     in_test = bool(ac_ref.search(test_section))
                     in_impl = bool(ac_ref.search(impl_section))
@@ -458,6 +473,9 @@ def check_artifact(filepath: str, json_mode: bool = False,
         elif isinstance(n_fields, list):
             for fidx, fld in enumerate(n_fields):
                 if not isinstance(fld, dict):
+                    results.append({"id": "G-ARTIFACT-RA-NORM-PROV-003", "level": "FAIL",
+                        "msg": f"fields[{fidx}] がマッピングではありません"})
+                    fail = True
                     continue
                 prov = fld.get("provenance")
                 if not prov or prov not in valid_prov:

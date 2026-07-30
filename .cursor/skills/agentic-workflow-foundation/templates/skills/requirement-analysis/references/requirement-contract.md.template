@@ -196,9 +196,9 @@ Step ① `status: complete` は次を **AND** で満たす場合のみ。
 
 1. 既存: `gate_result` / `requirement_gate` / `spec_consistency_gate` / `feasibility_gate` = `PASS`
 2. 既存: `blocking_open_issues: []`、`analysis_depth ∈ {standard,deep}`、中間 artifact 整合
-3. 追加: `acceptance_criteria_status: complete` かつ Memo 内に `AC-\d+` が1件以上（定義側: 「確定済み受入条件」節。一意・非空）
+3. 追加: `acceptance_criteria_status: complete` かつ Memo 内に `AC-\d{3}` が1件以上（定義側: 「確定済み受入条件」節。一意・非空）
 4. 追加: Memo 12必須見出しがすべて存在
-5. 追加: 各 `AC-*` が **(a)「テスト観点」に1回以上**、かつ **(b)「実装手順」または「変更対象ファイル」の少なくとも一方に1回以上** 言及（AC-ID マッチ規則に従い見出し境界内・完全一致）
+5. 追加: 各 `AC-NNN` が **(a)「テスト観点」に1回以上**、かつ **(b)「実装手順」または「変更対象ファイル」の少なくとも一方に1回以上** 言及（AC-ID マッチ規則に従い見出し境界内・完全一致）
 6. 追加: 正規化要求の各必須項目に `provenance` ∈ `{user_confirmed, docs_derived, undecided, external}`。`undecided` が残る complete は FAIL。必須項目が `external` の間は対応 Issue を `blocked_external` として Step① を `blocked` にし、complete を禁止する。外部回答で解決したら provenance を `user_confirmed` または `docs_derived` に更新して Issue を `resolved` にする
 7. 追加: canonical normalized requirements + AC の `requirements_digest` と、`requirements_ack: {status: acknowledged, digest: <same digest>}` が存在し、digest が一致する。**Class R1 発生時は requirements_digest が変わるため旧 ack は自動的に不一致となり、step2-report PASS 不可**
 

@@ -221,7 +221,7 @@ workflow-gate.sh step6 TICKET-1234
 | G-ARTIFACT-RA-ACK-001 | `requirements_digest` が64桁の SHA-256 hex 文字列として存在する |
 | G-ARTIFACT-RA-ACK-002 | `requirements_ack` がマッピング型である |
 | G-ARTIFACT-RA-ACK-003 | `requirements_ack.status` が `acknowledged` である |
-| G-ARTIFACT-RA-ACK-004 | `requirements_ack.digest` と `requirements_digest` が一致する（R1 無効化検出） |
+| G-ARTIFACT-RA-ACK-004 | `requirements_ack.digest` と `requirements_digest` が文字列として存在し、大小文字非依存で一致する（R1 無効化検出） |
 
 **Step ① AC・Issue・Memo 検査（G-ARTIFACT-RA-ACS/ISSUE/MEMO-*）**: `status=complete` かつ `step=step1` のとき、AC 状態・Issue 構造・Memo 構造を検査する。
 
@@ -229,11 +229,11 @@ workflow-gate.sh step6 TICKET-1234
 | --- | --- |
 | G-ARTIFACT-RA-ACS-001 | `acceptance_criteria_status` が `complete` / `incomplete` のいずれか |
 | G-ARTIFACT-RA-ACS-002 | `acceptance_criteria_status` が `complete` である（complete 時必須） |
-| G-ARTIFACT-RA-ISSUE-001 | `resolved_issues` / `non_blocking_issues` の各要素に `id` が存在する |
+| G-ARTIFACT-RA-ISSUE-001 | `resolved_issues` / `non_blocking_issues` が配列であり、各要素が mapping で、`id` が `RA-NNN` 形式である |
 | G-ARTIFACT-RA-MEMO-001 | Memo に必須 12 見出し（正規化済み要求・確定済み受入条件 等）が存在する |
 | G-ARTIFACT-RA-MEMO-002 | `investigation_memo_path` の参照先ファイルが解決可能である |
-| G-ARTIFACT-RA-MEMO-AC-001 | Memo 内に `AC-NNN:` 定義が 1 件以上存在する |
-| G-ARTIFACT-RA-MEMO-AC-002 | Memo 内の AC-NNN 定義に重複がない |
+| G-ARTIFACT-RA-MEMO-AC-001 | 「確定済み受入条件」節内に `AC-NNN:` 定義が 1 件以上存在する |
+| G-ARTIFACT-RA-MEMO-AC-002 | 「確定済み受入条件」節内の AC-NNN 定義に重複がない |
 | G-ARTIFACT-RA-MEMO-AC-003 | 各 AC-ID が「テスト観点」セクションに出現する |
 | G-ARTIFACT-RA-MEMO-AC-004 | 各 AC-ID が「実装手順」または「変更対象ファイル」に出現する |
 
@@ -243,7 +243,7 @@ workflow-gate.sh step6 TICKET-1234
 | --- | --- |
 | G-ARTIFACT-RA-NORM-PROV-001 | `task_type` が `bug_fix` / `new_feature` / `refactoring` / `performance` のいずれか |
 | G-ARTIFACT-RA-NORM-PROV-002 | `fields[]` が空でない |
-| G-ARTIFACT-RA-NORM-PROV-003 | 各 `fields[].provenance` が `user_confirmed` / `docs_derived` / `undecided` / `external` のいずれか |
+| G-ARTIFACT-RA-NORM-PROV-003 | 各 `fields[]` 要素が mapping で、その `provenance` が `user_confirmed` / `docs_derived` / `undecided` / `external` のいずれか |
 | G-ARTIFACT-RA-NORM-PROV-004 | `provenance=undecided` が complete 時に残存していない |
 | G-ARTIFACT-RA-NORM-PROV-005 | `provenance=external` のまま complete にしていない（blocked にすべき） |
 | G-ARTIFACT-RA-NORM-PROV-006 | `provenance=docs_derived` / `external` の `fields[].evidence_ref` が非空である |
@@ -253,7 +253,7 @@ workflow-gate.sh step6 TICKET-1234
 | 検査 ID | 検査内容 |
 | --- | --- |
 | G-REPORT-RA-AC-001 | レポートに「受入条件」見出しと `AC-NNN:` 定義が 1 件以上存在し重複がない |
-| G-REPORT-RA-DIGEST-001 | レポートの `requirements_digest` が64桁の SHA-256 hex 形式で、Step① envelope の値と完全一致する |
+| G-REPORT-RA-DIGEST-001 | レポートの `requirements_digest` が64桁の SHA-256 hex 形式で、Step① envelope の値と大小文字非依存で一致する |
 {{/if}}
 
 **redispatch ゲート（G-REDISPATCH-*）**: re-dispatch 前に partial artifact の `base_commit_sha` / `changed_files` / `untracked_files` を現在の working tree と照合する。差分不一致時は FAIL（exit 1）で re-dispatch を阻止する。
