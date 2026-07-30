@@ -554,6 +554,23 @@ def test_step1_ack_digest_mismatch_fails():
         assert rc == 1, "ack digest mismatch should FAIL (G-ARTIFACT-RA-ACK-004)"
 
 
+def test_step1_ack_digest_case_difference_passes():
+    """PASS: requirements_ack.digest の大文字小文字差は許容する。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td))
+        content = main.read_text(encoding="utf-8")
+        main.write_text(
+            content.replace(
+                f'  digest: "{_DIGEST_FIXTURE}"',
+                f'  digest: "{_DIGEST_FIXTURE.upper()}"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 0, "ack digest differing only by case should PASS"
+
+
 def test_step1_digest_malformed_fails():
     """FAIL: requirements_digest と ack が同値でも SHA-256 形式ではない。"""
     with tempfile.TemporaryDirectory() as td:
@@ -604,6 +621,33 @@ def test_step1_memo_near_ac_reference_fails():
         main = _build_step1_suite(Path(td), memo_body=memo_body)
         rc = check_artifact(str(main), json_mode=True)
         assert rc == 1, "near AC-ID must not satisfy exact AC reference"
+
+
+def test_step1_memo_ac_outside_acceptance_section_fails():
+    """FAIL: 他節だけの AC-NNN: は受入条件の定義として扱わない。"""
+    with tempfile.TemporaryDirectory() as td:
+        memo_body = _VALID_MEMO_BODY.replace(
+            "AC-001: artifact gate が正常系 fixture を受理する",
+            "受入条件を確認する。",
+            1,
+        )
+        main = _build_step1_suite(Path(td), memo_body=memo_body)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "AC definition outside acceptance section should FAIL"
+
+
+def test_step1_issue_schema_fails():
+    """FAIL: Issue 要素は mapping かつ RA-NNN 形式の id が必須。"""
+    cases = (
+        "resolved_issues:\n  - bad\n",
+        "non_blocking_issues:\n  - id: RA-1\n",
+        "resolved_issues:\n  - id: ISSUE-001\n",
+    )
+    with tempfile.TemporaryDirectory() as td:
+        for case in cases:
+            main = _build_step1_suite(Path(td), main_extra=case)
+            rc = check_artifact(str(main), json_mode=True)
+            assert rc == 1, f"invalid issue schema should FAIL: {case!r}"
 
 
 def test_step1_provenance_undecided_fails():
@@ -689,6 +733,22 @@ def test_step1_invalid_task_type_fails():
         assert rc == 1, "invalid task_type should FAIL (G-ARTIFACT-RA-NORM-PROV-001)"
 
 
+def test_step1_provenance_non_mapping_field_fails():
+    """FAIL: fields[] の非 mapping 要素は PROV-003 で拒否する。"""
+    with tempfile.TemporaryDirectory() as td:
+        bad_norm = (
+            "status: complete\n"
+            "step: step1-normalize\n"
+            "gate_a: PASS\n"
+            "task_type: bug_fix\n"
+            "fields:\n"
+            "  - bad\n"
+        )
+        main = _build_step1_suite(Path(td), norm_fm=bad_norm)
+        rc = check_artifact(str(main), json_mode=True)
+        assert rc == 1, "non-mapping fields item should FAIL (G-ARTIFACT-RA-NORM-PROV-003)"
+
+
 def main() -> int:
     tests = [
         test_step_required_fields_subset_of_doc,
@@ -726,14 +786,18 @@ def main() -> int:
         test_step1_deferred_to_deep_pass,
         test_step1_ack_missing_fails,
         test_step1_ack_digest_mismatch_fails,
+        test_step1_ack_digest_case_difference_passes,
         test_step1_digest_malformed_fails,
         test_step1_memo_unresolvable_fails,
         test_step1_memo_list_ac_definition_passes,
         test_step1_memo_near_ac_reference_fails,
+        test_step1_memo_ac_outside_acceptance_section_fails,
+        test_step1_issue_schema_fails,
         test_step1_provenance_undecided_fails,
         test_step1_provenance_external_complete_fails,
         test_step1_docs_derived_evidence_missing_fails,
         test_step1_invalid_task_type_fails,
+        test_step1_provenance_non_mapping_field_fails,
     ]
     passed = 0
     failed = 0

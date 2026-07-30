@@ -370,6 +370,28 @@ def test_report_digest_matches_step1():
     assert not result["fail"], f"matching report digest should PASS: {result}"
 
 
+def test_report_digest_case_difference_passes():
+    """PASS: report と Step1 の digest の大文字小文字差は許容する。"""
+    mod = _load_gate_report()
+    with tempfile.TemporaryDirectory() as td:
+        step1 = Path(td) / "step1.md"
+        content = (FIXTURES_DIR / "step1-complete.md").read_text(encoding="utf-8")
+        step1.write_text(
+            content.replace(
+                "a1b2c3d4e5f67890a1b2c3d4e5f67890"
+                "a1b2c3d4e5f67890a1b2c3d4e5f67890",
+                "A1B2C3D4E5F67890A1B2C3D4E5F67890"
+                "A1B2C3D4E5F67890A1B2C3D4E5F67890",
+            ),
+            encoding="utf-8",
+        )
+        result = mod.check_report(
+            str(REPORT_FIXTURES_DIR / "sample-report.md"),
+            str(step1),
+        )
+        assert not result["fail"], f"case-only digest difference should PASS: {result}"
+
+
 def test_report_digest_mismatch_fails():
     """FAIL: report の digest が Step1 envelope と不一致。"""
     mod = _load_gate_report()
@@ -450,6 +472,7 @@ def main() -> int:
         test_step4_multiple_reports_exit_2,
         # gate-report.py requirements_digest binding
         test_report_digest_matches_step1,
+        test_report_digest_case_difference_passes,
         test_report_digest_mismatch_fails,
         test_gate_report_artifact_dir_cli,
     ]

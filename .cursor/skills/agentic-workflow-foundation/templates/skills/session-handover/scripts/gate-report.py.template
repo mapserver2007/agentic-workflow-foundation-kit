@@ -205,7 +205,11 @@ def check_report(
             "status": "FAIL",
             "message": f"Step1 envelope から requirements_digest を取得できません: {step1_envelope_path!r}",
         })
-    elif digest_match.group(1) != expected_digest:
+    elif (
+        not isinstance(digest_match.group(1), str)
+        or not isinstance(expected_digest, str)
+        or digest_match.group(1).casefold() != expected_digest.casefold()
+    ):
         results["fail"] = True
         results["checks"].append({
             "id": "G-REPORT-RA-DIGEST-001",
