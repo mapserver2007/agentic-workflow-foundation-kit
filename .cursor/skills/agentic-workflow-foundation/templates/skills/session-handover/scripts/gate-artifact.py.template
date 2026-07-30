@@ -371,16 +371,20 @@ def check_artifact(filepath: str, json_mode: bool = False,
     if step == "step1" and status == "complete":
         for list_key in ("resolved_issues", "non_blocking_issues"):
             items = fm.get(list_key)
-            if isinstance(items, list):
-                for idx, item in enumerate(items):
-                    if not isinstance(item, dict):
-                        results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
-                            "msg": f"{list_key}[{idx}] がマッピングではありません"})
-                        fail = True
-                    elif re.fullmatch(r"RA-\d{3}", str(item.get("id", ""))) is None:
-                        results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
-                            "msg": f"{list_key}[{idx}].id が RA-NNN 形式ではありません: {item.get('id')!r}"})
-                        fail = True
+            if not isinstance(items, list):
+                results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                    "msg": f"{list_key} が配列ではありません"})
+                fail = True
+                continue
+            for idx, item in enumerate(items):
+                if not isinstance(item, dict):
+                    results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                        "msg": f"{list_key}[{idx}] がマッピングではありません"})
+                    fail = True
+                elif re.fullmatch(r"RA-\d{3}", str(item.get("id", ""))) is None:
+                    results.append({"id": "G-ARTIFACT-RA-ISSUE-001", "level": "FAIL",
+                        "msg": f"{list_key}[{idx}].id が RA-NNN 形式ではありません: {item.get('id')!r}"})
+                    fail = True
 
     # --- Memo 検査（step1 complete 時）---
     if step == "step1" and status == "complete":
@@ -433,7 +437,7 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 for ac_num in set(ac_defs):
                     ac_id = f"AC-{ac_num}"
                     ac_ref = re.compile(
-                        rf"(?<![A-Za-z0-9-]){re.escape(ac_id)}(?!\d)"
+                        rf"(?<![\w-]){re.escape(ac_id)}(?![\w-])"
                     )
                     in_test = bool(ac_ref.search(test_section))
                     in_impl = bool(ac_ref.search(impl_section))

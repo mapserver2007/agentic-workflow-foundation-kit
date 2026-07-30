@@ -15,7 +15,10 @@ fixture 検証を行う。
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import json
 import os
 import sys
 from pathlib import Path
@@ -324,6 +327,15 @@ def _build_step1_suite(tmp: Path, slug: str = "T-1",
     return main_path
 
 
+def _check_artifact_json(path: Path) -> tuple[int, set[str]]:
+    """JSON 診断を捕捉し、exit code と検査 ID 集合を返す。"""
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        rc = check_artifact(str(path), json_mode=True)
+    payload = json.loads(output.getvalue())
+    return rc, {check["id"] for check in payload["checks"]}
+
+
 def test_step1_intermediate_pass():
     """正常系: standard 経路で中間 artifact が整合 → PASS。"""
     with tempfile.TemporaryDirectory() as td:
@@ -623,6 +635,45 @@ def test_step1_memo_near_ac_reference_fails():
         assert rc == 1, "near AC-ID must not satisfy exact AC reference"
 
 
+def test_step1_memo_ac_identifier_suffix_fails():
+    """FAIL: 文字・ハイフンが続く AC-ID は完全一致参照ではない。"""
+    cases = (
+        _VALID_MEMO_BODY.replace(
+            "AC-001 で gate が PASS する。",
+            "AC-001foo で gate が PASS する。",
+            1,
+        ),
+        _VALID_MEMO_BODY.replace(
+            "AC-001 で gate が PASS する。",
+            "AC-001-foo で gate が PASS する。",
+            1,
+        ),
+        _VALID_MEMO_BODY.replace(
+            "AC-001 を test fixture で検証する。",
+            "AC-001foo を test fixture で検証する。",
+            1,
+        ).replace(
+            "AC-001 の fixture を検証する。",
+            "AC-001foo の fixture を検証する。",
+            1,
+        ),
+        _VALID_MEMO_BODY.replace(
+            "AC-001 を test fixture で検証する。",
+            "AC-001-foo を test fixture で検証する。",
+            1,
+        ).replace(
+            "AC-001 の fixture を検証する。",
+            "AC-001-foo の fixture を検証する。",
+            1,
+        ),
+    )
+    for memo_body in cases:
+        with tempfile.TemporaryDirectory() as td:
+            main = _build_step1_suite(Path(td), memo_body=memo_body)
+            rc = check_artifact(str(main), json_mode=True)
+            assert rc == 1, "AC-ID with identifier suffix must not satisfy exact reference"
+
+
 def test_step1_memo_ac_outside_acceptance_section_fails():
     """FAIL: 他節だけの AC-NNN: は受入条件の定義として扱わない。"""
     with tempfile.TemporaryDirectory() as td:
@@ -639,15 +690,33 @@ def test_step1_memo_ac_outside_acceptance_section_fails():
 def test_step1_issue_schema_fails():
     """FAIL: Issue 要素は mapping かつ RA-NNN 形式の id が必須。"""
     cases = (
-        "resolved_issues:\n  - bad\n",
-        "non_blocking_issues:\n  - id: RA-1\n",
-        "resolved_issues:\n  - id: ISSUE-001\n",
+        ("resolved_issues:\n  - bad\n", "G-ARTIFACT-RA-ISSUE-001"),
+        ("non_blocking_issues:\n  - id: RA-1\n", "G-ARTIFACT-RA-ISSUE-001"),
+        ("resolved_issues:\n  - id: ISSUE-001\n", "G-ARTIFACT-RA-ISSUE-001"),
+    )
+    with tempfile.TemporaryDirectory() as td:
+        for case, expected_check_id in cases:
+            main = _build_step1_suite(Path(td), main_extra=case)
+            rc, check_ids = _check_artifact_json(main)
+            assert rc == 1, f"invalid issue schema should FAIL: {case!r}"
+            assert expected_check_id in check_ids, (
+                f"expected {expected_check_id} for {case!r}, got {sorted(check_ids)}"
+            )
+
+
+def test_step1_issue_container_schema_fails():
+    """FAIL: Issue コンテナは配列でなければならない。"""
+    cases = (
+        "resolved_issues: bad\n",
+        "resolved_issues: {id: RA-001}\n",
+        "non_blocking_issues: bad\n",
+        "non_blocking_issues: {id: RA-001}\n",
     )
     with tempfile.TemporaryDirectory() as td:
         for case in cases:
             main = _build_step1_suite(Path(td), main_extra=case)
             rc = check_artifact(str(main), json_mode=True)
-            assert rc == 1, f"invalid issue schema should FAIL: {case!r}"
+            assert rc == 1, f"non-list issue container should FAIL: {case!r}"
 
 
 def test_step1_provenance_undecided_fails():
@@ -745,8 +814,11 @@ def test_step1_provenance_non_mapping_field_fails():
             "  - bad\n"
         )
         main = _build_step1_suite(Path(td), norm_fm=bad_norm)
-        rc = check_artifact(str(main), json_mode=True)
+        rc, check_ids = _check_artifact_json(main)
         assert rc == 1, "non-mapping fields item should FAIL (G-ARTIFACT-RA-NORM-PROV-003)"
+        assert "G-ARTIFACT-RA-NORM-PROV-003" in check_ids, (
+            f"expected G-ARTIFACT-RA-NORM-PROV-003, got {sorted(check_ids)}"
+        )
 
 
 def main() -> int:
@@ -791,8 +863,10 @@ def main() -> int:
         test_step1_memo_unresolvable_fails,
         test_step1_memo_list_ac_definition_passes,
         test_step1_memo_near_ac_reference_fails,
+        test_step1_memo_ac_identifier_suffix_fails,
         test_step1_memo_ac_outside_acceptance_section_fails,
         test_step1_issue_schema_fails,
+        test_step1_issue_container_schema_fails,
         test_step1_provenance_undecided_fails,
         test_step1_provenance_external_complete_fails,
         test_step1_docs_derived_evidence_missing_fails,
