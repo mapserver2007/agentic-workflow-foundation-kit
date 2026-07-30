@@ -13,6 +13,7 @@
 
 # Dependency directories
 /vendor/
+node_modules/
 
 # IDE settings
 .idea/
@@ -49,7 +50,5 @@ secret/
 # Archive / superseded docs (any depth)
 **/old/
 
+# Cursor
 .cursor/plans/
-
-# Evaluation-only skill (foundation-kit に同梱しない / 評価専用)
-.cursor/skills/evaluate-agentic-workflow/

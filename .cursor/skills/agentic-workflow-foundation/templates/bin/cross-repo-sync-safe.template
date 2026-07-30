@@ -93,9 +93,19 @@ _clone_url() {
   esac
 }
 
+# --- Helper: verify target is a non-bare worktree root ---
+_is_repo_worktree_root() {
+  local top target_physical top_physical
+  [[ -d "$1" ]] || return 1
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  target_physical=$(cd "$1" && pwd -P) || return 1
+  top_physical=$(cd "$top" && pwd -P) || return 1
+  [[ "$target_physical" == "$top_physical" ]]
+}
+
 # --- Action: status ---
 if [[ "$ACTION" == "status" ]]; then
-  if [[ -d "${REPO_PATH}/.git" ]]; then
+  if _is_repo_worktree_root "$REPO_PATH"; then
     branch=$(git -C "$REPO_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     commit_short=$(git -C "$REPO_PATH" log -1 --format='%h' 2>/dev/null || echo "unknown")
     printf '{"name":"%s","exists":true,"branch":"%s","commit_short":"%s"}\n' \
@@ -109,8 +119,23 @@ fi
 # --- Action: sync ---
 mkdir -p "$CLONE_BASE_PATH"
 
-# Clone if not exists
-if [[ ! -d "${REPO_PATH}/.git" ]]; then
+# Health check → quarantine → (re)clone
+_needs_clone=false
+if [[ ! -d "$REPO_PATH" ]]; then
+  _needs_clone=true
+elif ! _is_repo_worktree_root "$REPO_PATH"; then
+  # Corrupted or invalid .git — quarantine via mv (rm is forbidden)
+  _backup="${CLONE_BASE_PATH}/${REPO_NAME}-$(date +%Y%m%d%H%M%S)"
+  if [[ -e "$_backup" || -L "$_backup" ]]; then
+    echo "ERROR: quarantine destination already exists: $_backup" >&2
+    exit 1
+  fi
+  mv "$REPO_PATH" "$_backup"
+  echo "WARN: corrupted repo quarantined to $_backup" >&2
+  _needs_clone=true
+fi
+
+if [[ "$_needs_clone" == "true" ]]; then
   clone_url=$(_clone_url)
   if ! git clone --quiet "$clone_url" "$REPO_PATH" 2>/dev/null; then
     echo "ERROR: git clone failed for $REPO_NAME. Check network and auth settings." >&2
@@ -124,12 +149,18 @@ if ! git -C "$REPO_PATH" fetch --all --prune --quiet 2>/dev/null; then
   exit 1
 fi
 
-# Find the most recently committed remote branch (exclude origin/HEAD)
-latest_ref=$(git -C "$REPO_PATH" for-each-ref \
+# Find the most recently committed remote branch (origin/<branch> only)
+if ! remote_refs=$(git -C "$REPO_PATH" for-each-ref \
   --sort=-committerdate refs/remotes/origin/ \
-  --format='%(refname:short)' \
+  --format='%(refname:short)'); then
+  echo "ERROR: failed to enumerate origin refs for $REPO_NAME" >&2
+  exit 1
+fi
+
+latest_ref=$(printf '%s\n' "$remote_refs" \
+  | grep -E '^origin/.+' \
   | grep -v '^origin/HEAD$' \
-  | head -1)
+  | head -1 || true)
 
 if [[ -z "$latest_ref" ]]; then
   echo "ERROR: no remote branches found for $REPO_NAME" >&2

@@ -5,7 +5,5 @@
 .env.*
 *.pem
 *.key
-# Node.js 依存ディレクトリを AI コンテキストから除外
-node_modules/
 # MEGA sync (local only)
 .megaignore
