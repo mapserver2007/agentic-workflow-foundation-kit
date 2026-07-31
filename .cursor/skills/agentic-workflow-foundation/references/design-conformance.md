@@ -117,20 +117,49 @@
 
 ## 設計判断: runtime 物質化の `outputs[]` 対象外（D-SOT / D-QUALITY）
 
-Phase 1.68（`materialize_runtime.py`）が生成する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**（アプリ所有ファイル）。
+Phase 1.68 で `provision_runtime --apply` が生成する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**（アプリ所有ファイル）。`materialize_runtime.py` は `--check` のみ（write 禁止）。
 
 - **理由**: `package.json` は PO / アプリ開発者が自由に編集するファイルであり、byte-for-byte 冪等性を audit で強制すると運用が破綻する。kit 所有キー（`scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies）のみ契約更新時に上書きし、それ以外のキーは不可侵とする。
-- **整合性の担保**: `outputs[]` の代わりに Phase 1.7（`check_tech_stack_conformance.py`）が契約確定後の `package.json` 不在と必須 scripts の欠落を fail-closed で検出する。
-- **導出方式**: スタック別テンプレートではなく capability 断片の動的合成。`scripts/capability_registry.py` が Phase 1.65 / 1.68 / generate overlay の共有 SoT。`tech_stack.items` から capability 断片を検出し、gate ごとに contract / scripts / artifact_paths を結合する（manifest seed / root へのキー爆発を回避）。
+- **整合性の担保**: Phase 1.7（`check_tech_stack_conformance.py`）が承認済み `tech_contract.provisioning.preflight_checks` を generic に評価する（subprocess 禁止）。`json-value-pattern` は `re.fullmatch`（exact regex）のみ。`installed-marker` は closed `validation` object（`json-field` / `executable-file`）で marker 内容を意味検証し、`covers_packages` は schema で `required_packages` を exact cover する。`forbidden_packages` は `absent-marker` + `covers_packages` で exact cover する。
+- **postcondition ordering**: command 直後は postcondition が生成する marker を除いた command-owned `writes` のみ存在検査。postcondition 実行（atomic marker write）後に全 `writes` を再検査し、`changed_targets` を digest 差分で再収集する。
+- **postcondition plan 境界**: postcondition の全 payload は親 command の `payload_digest` と承認 plan に含める。`capture-toolchain-version` の subprocess は PATH 上の executable 名 + closed version-query 引数1個だけを許可し、任意 path / script / eval 引数を schema と runtime の双方で拒否する。marker write は plan の `effects` / `writes` に明示する。version query 前後の project tree metadata snapshot に差分があれば exit 2 とし、未宣言変更 path を部分適用レポートへ含める。
+- **state-digests**: apply 後に記録した manifest/lockfile digest を preflight の `state-digests` check が marker 記録値と比較する。全対象 path の存在が必須で、`absent` digest の記録・比較は拒否する。
+- **exit 境界**: 修正可能な command nonzero=1、missing executable / postcondition 不能 / schema 不正 / 環境不能=2。traceback 禁止。
+- **導出方式**: tech 依存値は承認済み `tech_contract` の構造化データから投影する。consumer は契約を解釈せず、技術名・カテゴリ・外部 registry への fallback を持たない。
+
+## 設計判断: command `writes` 宣言境界（D-QUALITY / D-BOUNDARY）
+
+`provisioning.command_actions` で `project_write` / `lockfile_write` effect を宣言する action は **非空 `writes` 必須**（schema 拒否）。apply は command 前後に宣言 path の digest を比較し、変更を `changed_targets` へ記録する。
+
+- **検知限界**: 宣言外 path への変更を OS レベルで完全検知することは不可能。契約境界として **宣言漏れは schema で拒否**し、宣言済み path の変更のみ機械追跡する。
+- **host_write-only**: `host_write` / `network` のみの action は project `writes` 不要。
+- **read-only preflight**: preflight は subprocess を起動せず、宣言的 check（`installed-marker` / `absent-marker` / `json-value-pattern` / `state-digests` / lockfile-present 等）のみ。`installed-marker` は `validation` 成功時のみ package coverage として扱い、schema が `covers_packages` exact cover を検証する。
 
 ## 設計判断: quality_gate_contract の非永続化（D-SOT / D-QUALITY）
 
 `quality_gate_contract`（package script contract の具体文言）は **root `manifest.yaml` に永続化しない**。
 
-- **SoT**: `scripts/capability_registry.py` の純関数 `compose_contract()`。同一 `tech_stack` 入力なら同一導出。
-- **描画経路**: Phase 2 generate 直前に `run_resolved_engine.py` が live compose 結果を一時 resolved manifest へ overlay 注入し、`docs/QUALITY_GATE.md` 等へ展開する。
+- **SoT**: 承認済み `tech_contract.quality_gate`。同一契約なら同一出力となる。
+- **描画経路**: Phase 2 generate 直前に `run_resolved_engine.py` が承認済み contract の値を一時 resolved manifest へ overlay 注入し、`docs/QUALITY_GATE.md` 等へ展開する。
 - **Phase 1.65 の責務**: `project.quality_gate.*_cmd`（抽象 backend）と `session.verification.gate_command` のみ root へ書き込む。移行時は既存 root の `quality_gate_contract` ブロックを削除する。
-- **Follow-up**: `domain_docs` / `coderabbit` の capability 化、`gen_artifact_paths` スキーマ統一は別タスク。
+- **Follow-up**: なし（loop 4 で `gen_artifact_paths` を `tech_contract.quality_gate` へ統一済み）。
+
+## 設計判断: 承認済み tech_contract の consumer 境界（ADR-0002）
+
+`tech_contract` は技術設計書から対話 SKILL が起案し、`scripts/tech_contract.py` の
+schema・canonical digest・source fingerprint・approval 検査を通過した後だけ root
+manifest へ pin する派生 SoT である。品質ゲート、runtime、review、Domain docs の
+tech 依存値はこの契約を consumer とし、registry の live compose や runtime LLM
+fallback を持たない。
+
+- **安全境界**: `apply` は root manifest 全体 preimage を再照合し、tool-owned
+  `tech_contract` block だけを atomic replace する。未承認 draft は manifest、host、
+  dependencies、lockfile を変更できない。
+- **実行境界**: contract command は shell string ではなく argv とし、pipe、redirect、
+  command substitution、secret 参照、破壊的コマンドを検証時に拒否する。
+- **Provisioning**: `bin/project-setup --plan` は read-only、`--apply --plan-file` は
+  contract digest と各 target preimage が一致する場合だけ実行する。品質ゲートは
+  `--preflight` と同等の read-only 検査以外の install/network/write を行わない。
 
 ## 設計判断: root manifest の `outputs` 非保持（D-SOT）
 

@@ -69,8 +69,8 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 タスクレポートの完了チェック 6 項目が全て `[x]` になっているか確認する。
 
 - [ ] 実装完了
-- [ ] テスト完了（G-TEST / `bin/quality-gate test` PASS）
-- [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN / `bin/quality-gate verify`）
+- [ ] テスト完了（G-TEST PASS）
+- [ ] コードゲート通過（`{{session.verification.gate_command}}`）
 - [ ] PRレビュー検証完了
 {{#if agent_workflow.maintenance_docs.enabled}}- [ ] maintenance-docs/ 起票判定（G-DOC-SPEC）
 {{else}}- [ ] docs への仕様反映（G-DOC-SPEC）

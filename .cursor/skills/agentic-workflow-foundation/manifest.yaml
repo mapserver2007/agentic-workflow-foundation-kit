@@ -286,10 +286,10 @@ session:
     gate_command: "[要確認] Phase 1.65 で導出"
 
 # ------------------------------------------------------------
-# (2g) coderabbit — CodeRabbit 設定（tech_stack 従属 / Phase 1.66 自動決定）
-#   Phase 1.66（resolve_coderabbit.py）が tech_stack.items から
-#   有効/無効ツール・path_instructions・path_filters を決定論的に導出する。
-#   以下は seed default。実プロジェクトでは resolve_coderabbit.py の出力で上書きされる。
+# (2g) coderabbit — CodeRabbit 設定（tech_contract 投影 / Phase 1.66）
+#   Phase 1.66（resolve_coderabbit.py）が承認済み tech_contract.review.coderabbit を
+#   解釈せず投影する。tech_stack の技術名・カテゴリから再導出しない。
+#   以下は template 展開用 seed default。
 # ------------------------------------------------------------
 coderabbit:
   enabled: true
@@ -367,12 +367,12 @@ coderabbit:
 
 # ------------------------------------------------------------
 # (2e) quality_gate_contract — seed の schema-default（root 非永続）
-#   capability_registry.py が tech_stack から決定論的に contract を導出する。
-#   root manifest には永続化せず、run_resolved_engine.py が生成時に一時 overlay 注入する。
+#   承認済み tech_contract が決定論的な consumer 入力となる。
+#   tech_contract は root manifest へ pin するが、本ブロック自体は生成時だけ一時 overlay 注入する。
 #   seed にはテンプレート展開用の空構造を schema-default として保持する。
 # ------------------------------------------------------------
-# (2d-2) domain_docs — Phase 1.67 で tech_stack から自動導出されるフィールド。
-#   seed テンプレートの描画に必要な最小デフォルト。tech_stack 取り込み後に上書きされる。
+# (2d-2) domain_docs — Phase 1.67 で承認済み tech_contract から投影されるフィールド。
+#   seed テンプレートの描画に必要な最小デフォルト。consumer は技術名を解釈しない。
 domain_docs:
   primary_language: "[要確認]"
   framework: "[要確認]"
@@ -633,6 +633,45 @@ cross_repo_knowledge:
 foundation:
   enabled: true
 
+# root manifest にのみ承認済みの値を pin する派生 SoT の schema-default。
+# review / Domain docs は契約の構造化入力であり、consumer は技術名を解釈しない。
+# 具体的なスタック契約は対話 SKILL の draft → validate → apply で確定する。
+tech_contract:
+  schema_version: 1
+  approval:
+    status: "unapproved"
+  classification:
+    profile: "unclassified"
+  quality_gate:
+  runtime_materialization:
+    actions:
+  review:
+    coderabbit:
+      enabled: true
+      language: "ja-JP"
+      tools_enabled:
+      tools_disabled:
+      path_filters:
+      path_instructions:
+  domain_docs:
+    resolved:
+      primary_language: "[要確認]"
+      api_style: "[要確認]"
+      database: "[要確認]"
+      architecture: "[要確認]"
+      framework: "[要確認]"
+      test_framework: "[要確認]"
+      package_manager: "[要確認]"
+      spec_sections:
+      architecture_sections:
+      api_sections:
+      data_model_sections:
+      coding_standards_sections:
+      workflow_sections:
+  provisioning:
+    policy: "explicit"
+  source_fingerprint: ""
+
 # ------------------------------------------------------------
 # (2b) outputs — 生成対象ファイルの機械可読カタログ（audit/generate の SoT）
 #   mode: render = テンプレート全展開 / marker = マーカーブロックを既存ファイルへ upsert
@@ -815,8 +854,8 @@ outputs:
     required_sections:
       - "技術スタック一覧とバージョン方針"
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
-  # resolve_domain_docs.py（Phase 1.67）が tech_stack から domain_docs.* を決定し、
-  # テンプレート内の {{#each}} で tech-stack 固有セクションを展開する。
+  # resolve_domain_docs.py（Phase 1.67）が承認済み tech_contract.domain_docs.resolved を投影し、
+  # テンプレート内の {{#each}} で契約済みセクションを展開する。
   - path: docs/spec.md
     template: docs/spec.md.template
     mode: seed
@@ -854,7 +893,7 @@ outputs:
     mode: seed
     required_sections:
       - "## 主要ユースケースの処理フロー"
-  # CodeRabbit 設定（tech_stack 従属 / feature: coderabbit で条件生成）。
+  # CodeRabbit 設定（tech_contract.review.coderabbit 投影 / feature: coderabbit で条件生成）。
   # coderabbit.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
   - path: .coderabbit.yaml
     template: coderabbit.yaml.template
@@ -886,7 +925,7 @@ outputs:
     mode: render
     executable: true
     required_sections:
-      - "session.verification.gate_command"
+      - "quality gate profile"
       - "=== verification gate ==="
   - path: .cursor/skills/session-handover/scripts/session-start-gate.sh
     template: skills/session-handover/scripts/session-start-gate.sh.template
@@ -1140,6 +1179,14 @@ outputs:
       - "build"
       - "lint"
       - "test"
+  - path: bin/project-setup
+    template: bin/project-setup.template
+    mode: render
+    executable: true
+    required_sections:
+      - "project-setup"
+      - "--plan"
+      - "--apply"
   # foundation-gate wrapper（feature: foundation で条件生成。ADR-0001）。
   # 基盤保守の公開入口。foundation.enabled: true の場合のみ生成される。
   - path: bin/foundation-gate
@@ -1586,6 +1633,10 @@ project:
   # init.yaml tech_stack_design.filename から apply_kit_init.py が書き込む。
   # ingest_tech_stack.py が .cursor/docs/{filename} を解決する。
   tech_stack_design_filename: "[要確認]"
+  # init.yaml tech_contract.auto_approve から投影。省略時 false。
+  # true のとき対話 SKILL は validate PASS 後に AskQuestion なしで tech_contract apply する。
+  # sealed tech_contract スキーマには含めない（承認ポリシーは project 側）。
+  tech_contract_auto_approve: false
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
@@ -1604,11 +1655,12 @@ project:
     - "冪等性と Source of Truth 一元化（manifest → 出力）を最優先する"
     - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
-  # 決定論マッピングで自動導出（PO には問わない / AskQuestion 廃止）。
-  # workflow_pattern（ゲート戦略）× tech_stack（ツール系統）から導出する。
-  # G-* は root scripts の canonical entrypoint として決定し、script contract を別途生成する責務を持つ。
-  # 実 script 検出ではなく contract 決定であり、package.json の有無に依存しない。
+  # 承認済み tech_contract.quality_gate から Phase 1.65 が決定論的に投影する。
+  # G-* は root scripts の canonical entrypoint として決定し、script contract も同じ契約から展開する。
+  # tech_stack の技術名推論や package.json の script 検出は行わない。
   quality_gate:
+    # 単一 selector。foundation は kit 自己検証、application は下流 G-* を選ぶ。
+    profile: "application"
     gen_cmd: "[要確認] Phase 1.65 で導出"
     build_cmd: "[要確認] Phase 1.65 で導出"
     lint_cmd: "[要確認] Phase 1.65 で導出"
@@ -1617,6 +1669,7 @@ project:
     # gen_cmd 実行後 git status --porcelain -- <paths> で差分を検査する。
     # 未定義（キー不在）= exit 2（安全側フォールバック禁止）。空リスト = gen 不要（スキップ）。
     gen_artifact_paths:
+    gate_command: "bin/quality-gate verify"
     # 任意。PO が「不要」なら [要確認] のままスキップ可
     extra:
       - "[要確認] 追加ゲート（任意）"

@@ -16,7 +16,7 @@
   - スカラ: 文字列（裸 / `"..."` / `'...'`）・整数・真偽値（true/false）
   - マッピング（`key: value` / ネスト）/ シーケンス（`- item` / `- key: value`）
   - 行頭・行中（` #`）コメント / 空行
-  - 複数行ブロックスカラ（`|`）はサポート対象外（現行 manifest は不使用）
+  - 複数行ブロックスカラ（`|`）をサポート（tech_contract multiline content 用）
 
 テンプレート構文:
   - `{{ dotted.path }}`           : マニフェスト上のスカラを文字列展開
@@ -172,7 +172,8 @@ def _tokenize(text: str):
                 block_lines.pop()
             block_text = "\n".join(block_lines)
             if content.endswith(": |"):
-                key_part = content[:-2].strip()
+                key_part = content[: -len(": |")].strip()
+                block_text = block_text + "\n"
                 tokens.append((indent, f"{key_part}: {_block_quote(block_text)}"))
             else:
                 tokens.append((indent, _block_quote(block_text)))
@@ -189,7 +190,10 @@ def _block_quote(text: str) -> str:
 
 
 def _unquote(s: str) -> str:
-    if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+        inner = s[1:-1]
+        return inner.replace('\\"', '"').replace("\\\\", "\\")
+    if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
         return s[1:-1]
     return s
 
@@ -197,6 +201,10 @@ def _unquote(s: str) -> str:
 def _parse_scalar(val: str):
     if val == "" or val in ("null", "~"):
         return None
+    if val == "[]":
+        return []
+    if val == "{}":
+        return {}
     if val in ("true", "false"):
         return val == "true"
     if re.fullmatch(r"-?\d+", val):

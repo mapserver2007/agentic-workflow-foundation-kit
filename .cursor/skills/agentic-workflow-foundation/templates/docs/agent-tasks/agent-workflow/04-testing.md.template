@@ -25,7 +25,7 @@
 ```
 {{else}}
 ```bash
-bin/quality-gate gen && bin/quality-gate verify
+{{session.verification.gate_command}}
 ```
 {{/if}}
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""tech_stack から Domain 層ドキュメント用の変数を決定する（Phase 1.67）。"""
+"""承認済み tech_contract の Domain docs 構造を generic に投影する。"""
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
@@ -13,478 +15,127 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SKILL_DIR)))
 GENLIB_DIR = os.path.join(ROOT, ".cursor", "skills", "agentic-workflow-engine", "scripts")
 if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
-
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 import genlib  # noqa: E402
+import tech_contract as tc  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
-
-# -- 共通セクション（全 tech-stack 共通） --
-
-SPEC_SECTIONS_COMMON = [
-    {"title": "目的と背景", "guidance": "サービスの目的・解決する課題・非目標を記述する"},
-    {"title": "ドメイン用語集", "guidance": "プロジェクト固有の用語を定義する"},
-    {"title": "システム境界", "guidance": "外部システムとの接続点・責務境界を記述する"},
-    {"title": "不変の設計原則 (MUST)", "guidance": "変更不可の設計原則を列挙する（冪等性、トランザクション境界等）"},
-    {"title": "機能仕様", "guidance": "主要機能の一覧と概要。詳細は docs/spec/{機能名}.md に分割する"},
-    {"title": "非機能要件", "guidance": "SLO・パフォーマンス要件・セキュリティ要件等を記述する"},
-    {"title": "変更に強い点・弱い点", "guidance": "アーキテクチャ上の拡張容易性と制約を記述する"},
-]
-
-ARCHITECTURE_SECTIONS_COMMON = [
-    {"title": "システム全体構成", "guidance": "外部システムとの接続関係を図示する"},
-    {"title": "ディレクトリ/モジュール責務", "guidance": "主要ディレクトリの責務を記述する"},
-    {"title": "主要コンポーネント詳細", "guidance": "コンポーネント間の依存関係と責務を記述する"},
-    {"title": "依存関係方針", "guidance": "依存の方向性・DI 方針・外部ライブラリ選定基準を記述する"},
-]
-
-API_SECTIONS_COMMON = [
-    {"title": "API設計概要", "guidance": "API の設計方針・認証方式・共通仕様を記述する"},
-    {"title": "エンドポイント一覧", "guidance": "主要エンドポイントのパス・メソッド・概要を記述する"},
-    {"title": "エラーハンドリング", "guidance": "共通エラーコード・エラーレスポンス形式を記述する"},
-]
-
-DATA_MODEL_SECTIONS_COMMON = [
-    {"title": "データベース設計思想", "guidance": "DB 設計の基本方針・正規化レベル・命名規約を記述する"},
-    {"title": "主要テーブル/コレクション構成", "guidance": "主要エンティティの構造・カラム・型を記述する"},
-    {"title": "ER図・関係性", "guidance": "エンティティ間のリレーションを図示する"},
-    {"title": "データアクセスパターン", "guidance": "Repository パターン・クエリ方針・トランザクション管理を記述する"},
-]
-
-CODING_STANDARDS_SECTIONS_COMMON = [
-    {"title": "基本方針"},
-    {"title": "命名規約"},
-    {"title": "エラーハンドリング規約"},
-    {"title": "テスト規約"},
-    {"title": "コメント・ドキュメント"},
-    {"title": "静的解析・Lint"},
-]
-
-WORKFLOW_SECTIONS_COMMON = [
-    {"title": "主要ユースケースの処理フロー", "guidance": "主要な業務フローをシーケンス図等で記述する"},
-    {"title": "エラーハンドリング・リトライパターン", "guidance": "外部 API 呼び出しのリトライ・タイムアウト方針を記述する"},
-    {"title": "状態管理・状態遷移", "guidance": "主要エンティティの状態遷移を図示する"},
-]
-
-# -- tech-stack 固有の追加セクション --
-
-API_SECTIONS_OPENAPI = [
-    {"title": "OpenAPI 定義", "guidance": "OpenAPI スキーマの構成・生成コマンド・バリデーション方針を記述する"},
-]
-
-API_SECTIONS_GRPC = [
-    {"title": "Protocol Buffers定義", "guidance": "proto ファイルの構成・生成コマンド・サービス定義を記述する"},
-    {"title": "gRPC サービス一覧", "guidance": "gRPC サービスと RPC メソッドの一覧を記述する"},
-]
-
-API_SECTIONS_GRAPHQL = [
-    {"title": "GraphQL スキーマ", "guidance": "スキーマの構成・リゾルバ方針・型生成を記述する"},
-]
-
-DATA_MODEL_SECTIONS_MIGRATION = [
-    {"title": "マイグレーション規約", "guidance": "マイグレーションの命名・適用手順・ロールバック方針を記述する"},
-]
-
-CODING_STANDARDS_SECTIONS_ARCH = [
-    {"title": "アーキテクチャ規約"},
-]
-
-WORKFLOW_SECTIONS_ASYNC = [
-    {"title": "非同期処理・スケジューラー", "guidance": "バックグラウンドジョブ・スケジュール実行の方針を記述する"},
-]
+SCALAR_KEYS = ("primary_language", "api_style", "database", "architecture", "framework", "test_framework", "package_manager")
+SECTION_KEYS = ("spec_sections", "architecture_sections", "api_sections", "data_model_sections", "coding_standards_sections", "workflow_sections")
 
 
-def _out(level: str, msg: str) -> None:
-    print(f"[resolve_domain_docs] {level}: {msg}")
+def _out(level: str, message: str) -> None:
+    print(f"[resolve_domain_docs] {level}: {message}")
 
 
-def _normalize(value: str) -> str:
-    text = (value or "").replace("`", "").strip().lower()
-    return re.sub(r"\s+", " ", text)
-
-
-def _tech_items(manifest: dict) -> list[dict]:
-    return (manifest.get("tech_stack") or {}).get("items") or []
-
-
-def _tech_names(manifest: dict) -> set[str]:
-    names = set()
-    for item in _tech_items(manifest):
-        if isinstance(item, dict):
-            names.add(_normalize(item.get("technology", "")))
-    return names
-
-
-def _tech_layers(manifest: dict) -> set[str]:
-    layers = set()
-    for item in _tech_items(manifest):
-        if isinstance(item, dict):
-            layers.add(_normalize(item.get("layer", "")))
-    return layers
-
-
-def _has(names: set[str], needle: str) -> bool:
-    n = _normalize(needle)
-    return any(n in name for name in names)
-
-
-def _find_value(manifest: dict, layer_needles: list[str], tech_needles: list[str] | None = None) -> str:
-    """layer 名または technology 名にマッチする最初の technology 値を返す。"""
-    for item in _tech_items(manifest):
-        if not isinstance(item, dict):
-            continue
-        layer = _normalize(item.get("layer", ""))
-        tech = _normalize(item.get("technology", ""))
-        for needle in layer_needles:
-            if _normalize(needle) in layer:
-                return item.get("technology", "").replace("`", "").strip()
-        if tech_needles:
-            for needle in tech_needles:
-                if _normalize(needle) in tech:
-                    return item.get("technology", "").replace("`", "").strip()
-    return ""
-
-
-def _detect_primary_language(manifest: dict) -> str:
-    lang = _find_value(manifest, ["ランタイム言語", "言語", "language"])
-    if lang:
-        return lang
-    names = _tech_names(manifest)
-    for candidate in ["typescript", "go", "python", "rust", "java", "kotlin", "ruby"]:
-        if _has(names, candidate):
-            return candidate.capitalize() if candidate != "go" else "Go"
-    return ""
-
-
-def _detect_api_style(manifest: dict) -> str:
-    names = _tech_names(manifest)
-    parts = []
-    if _has(names, "openapi"):
-        parts.append("REST+OpenAPI")
-    elif _has(names, "rest"):
-        parts.append("REST")
-    if _has(names, "grpc") or _has(names, "protocol buffers"):
-        parts.append("gRPC")
-    if _has(names, "graphql"):
-        parts.append("GraphQL")
-    return " / ".join(parts) if parts else ""
-
-
-def _detect_database(manifest: dict) -> str:
-    return _find_value(manifest, ["database", "db", "データベース"])
-
-
-def _detect_architecture(manifest: dict) -> str:
-    return _find_value(manifest, ["architecture", "アーキテクチャ"], ["clean architecture"])
-
-
-def _detect_framework(manifest: dict) -> str:
-    return _find_value(manifest, ["backend", "frontend", "フレームワーク"])
-
-
-def _detect_test_framework(manifest: dict) -> str:
-    return _find_value(manifest, ["テスト", "契約テスト", "test"])
-
-
-def _detect_package_manager(manifest: dict) -> str:
-    return _find_value(manifest, ["パッケージ管理", "package"])
-
-
-def _resolve_coding_standards_content(manifest: dict) -> list[dict]:
-    """tech_stack からコーディング規約の各セクション content を決定論的に導出する。"""
-    names = _tech_names(manifest)
-    lang = _detect_primary_language(manifest).lower()
-    test_fw = _detect_test_framework(manifest)
-    framework = _detect_framework(manifest)
-    pkg_mgr = _detect_package_manager(manifest)
-
-    is_ts = "typescript" in lang
-    is_go = lang == "go"
-    is_python = "python" in lang
-    has_openapi = _has(names, "openapi")
-    has_hono = _has(names, "hono")
-    has_nextjs = "next" in framework.lower() if framework else False
-    has_workers = _has(names, "cloudflare workers") or _has(names, "workerd")
-    has_vitest = "vitest" in (test_fw or "").lower()
-    has_biome = _has(names, "biome")
-
-    sections: list[dict] = []
-
-    # -- 基本方針 --
-    basic_lines: list[str] = []
-    if is_ts:
-        basic_lines.append("- TypeScript strict モード必須（`noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess` 有効）")
-        basic_lines.append("- `any` 型の使用禁止 — `unknown` + 型ガード / Discriminated Union で安全に絞り込む")
-        basic_lines.append("- immutable-first: `const` / `readonly` / `as const` をデフォルトとし、可変が必要な箇所のみ `let` を使用")
-    if is_go:
-        basic_lines.append("- Effective Go / Go Code Review Comments に準拠する")
-        basic_lines.append("- エラーは値として扱い、`if err != nil` を省略しない")
-    if is_python:
-        basic_lines.append("- PEP 8 / PEP 484 (type hints) に準拠する")
-        basic_lines.append("- `mypy --strict` を通す")
-    basic_lines.append("- 早期 return で正常系パスのネストを浅く保つ")
-    if has_openapi:
-        basic_lines.append("- Contract-First: OpenAPI 定義が API の唯一の正本。実装がスキーマに追従する")
-    if has_workers:
-        basic_lines.append("- Cloudflare Workers ランタイム制約: Web Standard API のみ使用、Node.js globals（`process`, `Buffer`, `__dirname` 等）禁止")
-    sections.append({"title": "基本方針", "content": "\n".join(basic_lines)})
-
-    # -- 命名規約 --
-    naming_lines: list[str] = []
-    if is_ts:
-        naming_lines.append("| 対象 | 規約 | 例 |")
-        naming_lines.append("|------|------|-----|")
-        naming_lines.append("| 変数・関数 | camelCase | `getUserById`, `isActive` |")
-        naming_lines.append("| 型・interface・class | PascalCase | `UserProfile`, `ApiResponse` |")
-        if has_nextjs:
-            naming_lines.append("| React Component | PascalCase（ファイル名も同様） | `UserCard.tsx` |")
-        naming_lines.append("| 定数（環境非依存） | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |")
-        naming_lines.append("| ファイル・ディレクトリ | kebab-case | `user-profile/`, `api-client.ts` |")
-        naming_lines.append("| テストファイル | `{対象}.test.ts` | `user-service.test.ts` |")
-        naming_lines.append("| 型定義ファイル | `{対象}.types.ts` | `api-response.types.ts` |")
-        if has_openapi:
-            naming_lines.append("| OpenAPI 生成型 | そのまま使用（リネーム禁止） | `components[\"schemas\"][\"User\"]` |")
-    elif is_go:
-        naming_lines.append("| 対象 | 規約 | 例 |")
-        naming_lines.append("|------|------|-----|")
-        naming_lines.append("| エクスポート | PascalCase | `GetUserByID` |")
-        naming_lines.append("| 非エクスポート | camelCase | `getUserByID` |")
-        naming_lines.append("| パッケージ | 小文字・単語1つ | `user`, `auth` |")
-        naming_lines.append("| ファイル | snake_case | `user_service.go` |")
-        naming_lines.append("| テストファイル | `{対象}_test.go` | `user_service_test.go` |")
-    elif is_python:
-        naming_lines.append("| 対象 | 規約 | 例 |")
-        naming_lines.append("|------|------|-----|")
-        naming_lines.append("| 変数・関数 | snake_case | `get_user_by_id` |")
-        naming_lines.append("| クラス | PascalCase | `UserProfile` |")
-        naming_lines.append("| 定数 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |")
-        naming_lines.append("| モジュール | snake_case | `user_service.py` |")
-        naming_lines.append("| テストファイル | `test_{対象}.py` | `test_user_service.py` |")
-    sections.append({"title": "命名規約", "content": "\n".join(naming_lines)})
-
-    # -- エラーハンドリング規約 --
-    error_lines: list[str] = []
-    if has_hono:
-        error_lines.append("- Hono: `HTTPException` をスローし `app.onError` で統一的にキャッチ → 構造化エラーレスポンスを返す")
-        error_lines.append("- エラーレスポンス形式は RFC 9457 (Problem Details) に準拠する")
-    if is_ts:
-        error_lines.append("- 想定内エラー（バリデーション失敗等）と想定外エラー（インフラ障害等）を型レベルで区別する")
-    error_lines.append("- エラーを握りつぶさない — `catch` した場合は必ずログ出力 or 再スロー")
-    if has_workers:
-        error_lines.append("- Workers 環境: `console.error()` + 構造化ログ。未ハンドル例外は Workers ランタイムが 500 として返す")
-    sections.append({"title": "エラーハンドリング規約", "content": "\n".join(error_lines)})
-
-    # -- テスト規約 --
-    test_lines: list[str] = []
-    if has_vitest:
-        test_lines.append("| テスト種類 | ディレクトリ | 命名規約 | ツール |")
-        test_lines.append("|-----------|------------|---------|--------|")
-        test_lines.append("| Unit | コロケーション（対象の隣） | `*.test.ts` | Vitest |")
-        if has_workers:
-            test_lines.append("| Integration | `tests/integration/` | `*.integration.test.ts` | Vitest + pool-workers |")
-        else:
-            test_lines.append("| Integration | `tests/integration/` | `*.integration.test.ts` | Vitest |")
-        if has_openapi:
-            test_lines.append("| Contract | `tests/contract/` | `*.contract.test.ts` | Vitest + OpenAPI validator |")
-        test_lines.append("| E2E | `tests/e2e/` | `*.e2e.test.ts` | Playwright |")
-        test_lines.append("")
-        test_lines.append("- describe/it 構造、AAA (Arrange-Act-Assert) パターンを統一する")
-        if has_workers:
-            test_lines.append("- `workerd` 上で実行する前提（Node.js 固有 API をテストコードで使わない）")
-        test_lines.append("- テストの skip は原因仮説をコメントで併記すること（対症療法禁止）")
-        if has_openapi:
-            test_lines.append("- `openapi-typescript` 生成型を import してレスポンスの型整合を検証する")
-    elif is_go:
-        test_lines.append("- `testing` 標準パッケージ + testify (任意) を使用する")
-        test_lines.append("- Table-Driven Tests パターンを推奨する")
-        test_lines.append("- テストの skip は原因仮説をコメントで併記すること")
-    elif is_python:
-        test_lines.append("- pytest を使用する")
-        test_lines.append("- テストの skip は原因仮説をコメントで併記すること")
-    sections.append({"title": "テスト規約", "content": "\n".join(test_lines)})
-
-    # -- コメント・ドキュメント --
-    doc_lines: list[str] = []
-    if is_ts:
-        doc_lines.append("- 公開 API（export された関数・クラス）には TSDoc コメントを付ける")
-    elif is_go:
-        doc_lines.append("- エクスポートされたシンボルには GoDoc コメントを付ける")
-    elif is_python:
-        doc_lines.append("- 公開 API には docstring (Google style) を付ける")
-    doc_lines.append("- 自明なコードにコメントを付けない（コードが語る）")
-    doc_lines.append("- 「なぜ」を説明するコメントのみ有効（「何を」はコード自体が表現する）")
-    doc_lines.append("- TODO コメントは Issue 番号を併記: `// TODO(#123): ...`")
-    if has_openapi:
-        doc_lines.append("- OpenAPI 定義の `description` フィールドがドキュメントの SoT（コード側に重複転記しない）")
-    sections.append({"title": "コメント・ドキュメント", "content": "\n".join(doc_lines)})
-
-    # -- 静的解析・Lint --
-    lint_lines: list[str] = []
-    if is_ts:
-        if has_biome:
-            lint_lines.append("- Biome による静的解析・フォーマット統一")
-        else:
-            lint_lines.append("- Biome（推奨）または ESLint flat config による静的解析・フォーマット統一")
-    elif is_go:
-        lint_lines.append("- golangci-lint による静的解析")
-        lint_lines.append("- gofmt / goimports によるフォーマット統一")
-    elif is_python:
-        lint_lines.append("- Ruff による lint + フォーマット統一")
-        lint_lines.append("- mypy による型検査")
-    if has_openapi:
-        lint_lines.append("- Spectral: OpenAPI lint（ルールセットはリポジトリ管理）")
-        lint_lines.append("- Redocly CLI: OpenAPI bundle 検証 + breaking change 検出")
-    lint_lines.append("- CI で G-LINT ゲートとして必ず実行する")
-    lint_lines.append("- pre-commit hook は任意（CI での保証を優先）")
-    sections.append({"title": "静的解析・Lint", "content": "\n".join(lint_lines)})
-
-    # -- アーキテクチャ規約（条件付き追加） --
-    if _detect_architecture(manifest):
-        arch_lines: list[str] = []
-        arch_lines.append("- レイヤー間の依存方向を厳守する（内側 → 外側への依存禁止）")
-        arch_lines.append("- interface を境界に配置し、実装の差し替え可能性を担保する")
-        sections.append({"title": "アーキテクチャ規約", "content": "\n".join(arch_lines)})
-
-    return sections
-
-
-def _resolve(manifest: dict) -> dict:
-    names = _tech_names(manifest)
-
-    api_sections = list(API_SECTIONS_COMMON)
-    if _has(names, "openapi"):
-        api_sections.extend(API_SECTIONS_OPENAPI)
-    if _has(names, "grpc") or _has(names, "protocol buffers"):
-        api_sections.extend(API_SECTIONS_GRPC)
-    if _has(names, "graphql"):
-        api_sections.extend(API_SECTIONS_GRAPHQL)
-
-    data_model_sections = list(DATA_MODEL_SECTIONS_COMMON)
-    if _detect_database(manifest):
-        data_model_sections.extend(DATA_MODEL_SECTIONS_MIGRATION)
-
-    coding_standards_sections = _resolve_coding_standards_content(manifest)
-
-    workflow_sections = list(WORKFLOW_SECTIONS_COMMON)
-    workflow_sections.extend(WORKFLOW_SECTIONS_ASYNC)
-
-    return {
-        "primary_language": _detect_primary_language(manifest) or "\u2014",
-        "api_style": _detect_api_style(manifest) or "\u2014",
-        "database": _detect_database(manifest) or "\u2014",
-        "architecture": _detect_architecture(manifest) or "\u2014",
-        "framework": _detect_framework(manifest) or "\u2014",
-        "test_framework": _detect_test_framework(manifest) or "\u2014",
-        "package_manager": _detect_package_manager(manifest) or "\u2014",
-        "spec_sections": SPEC_SECTIONS_COMMON,
-        "architecture_sections": ARCHITECTURE_SECTIONS_COMMON,
-        "api_sections": api_sections,
-        "data_model_sections": data_model_sections,
-        "coding_standards_sections": coding_standards_sections,
-        "workflow_sections": workflow_sections,
-    }
+def _resolve(manifest_path: str) -> dict:
+    path = Path(manifest_path)
+    design_doc = tc.resolve_design_doc(path)
+    contract = tc.load_approved(path, design_doc)
+    resolved = (contract.get("domain_docs") or {}).get("resolved")
+    if not isinstance(resolved, dict):
+        raise ValueError("tech_contract.domain_docs.resolved がありません")
+    required = set(SCALAR_KEYS + SECTION_KEYS)
+    if not required.issubset(resolved):
+        raise ValueError("tech_contract.domain_docs.resolved が完全ではありません。fallback は許可されません")
+    for key in SCALAR_KEYS:
+        if not isinstance(resolved[key], str) or not resolved[key]:
+            raise ValueError(f"tech_contract.domain_docs.resolved.{key} が不正です")
+    for key in SECTION_KEYS:
+        if not isinstance(resolved[key], list) or not all(
+            isinstance(item, dict) and isinstance(item.get("title"), str)
+            and isinstance(item.get("content", item.get("guidance")), str)
+            for item in resolved[key]
+        ):
+            raise ValueError(f"tech_contract.domain_docs.resolved.{key} が不正です")
+    return resolved
 
 
 def _yaml_quote(value: str) -> str:
-    s = "" if value is None else str(value)
-    if '"' in s:
-        return "'" + s.replace("'", "''") + "'"
-    return '"' + s + '"'
+    return json.dumps(value, ensure_ascii=False)
 
 
 def _indent_of(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
 
 
-def _find_top_block(lines, key: str):
-    start = None
-    for idx, line in enumerate(lines):
-        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
-            start = idx
-            break
+def _find_top_block(lines: list[str], key: str) -> tuple[int | None, int | None]:
+    start = next((index for index, line in enumerate(lines) if line.rstrip() == f"{key}:" and _indent_of(line) == 0), None)
     if start is None:
         return None, None
-    last = start
-    j = start + 1
-    while j < len(lines):
-        if lines[j].strip() == "":
-            j += 1
-            continue
-        if _indent_of(lines[j]) > 0:
-            last = j
-            j += 1
-            continue
-        break
-    return start, last
+    end = start
+    for index in range(start + 1, len(lines)):
+        if lines[index].strip() and _indent_of(lines[index]) == 0:
+            break
+        end = index
+    return start, end
 
 
 def _domain_docs_block(resolved: dict) -> list[str]:
     lines = ["domain_docs:"]
-    for key in ("primary_language", "api_style", "database", "architecture",
-                "framework", "test_framework", "package_manager"):
+    for key in SCALAR_KEYS:
         lines.append(f"  {key}: {_yaml_quote(resolved[key])}")
-    for section_key in ("spec_sections", "architecture_sections", "api_sections",
-                        "data_model_sections", "coding_standards_sections",
-                        "workflow_sections"):
-        lines.append(f"  {section_key}:")
-        for item in resolved[section_key]:
+    for key in SECTION_KEYS:
+        lines.append(f"  {key}:")
+        for item in resolved[key]:
             lines.append(f"    - title: {_yaml_quote(item['title'])}")
-            if "content" in item:
+            field = "content" if "content" in item else "guidance"
+            if field == "content":
                 lines.append("      content: |")
-                for content_line in item["content"].split("\n"):
-                    lines.append(f"        {content_line}")
-            elif "guidance" in item:
-                lines.append(f"      guidance: {_yaml_quote(item['guidance'])}")
+                lines.extend(f"        {line}" for line in item[field].splitlines())
+            else:
+                lines.append(f"      guidance: {_yaml_quote(item[field])}")
     return lines
 
 
 def _render_manifest(content: str, resolved: dict) -> str:
     newline = "\r\n" if "\r\n" in content else "\n"
-    lines = [ln.rstrip("\r") for ln in content.split("\n")]
+    lines = [line.rstrip("\r") for line in content.split("\n")]
+    start, end = _find_top_block(lines, "domain_docs")
     block = _domain_docs_block(resolved)
-    start, last = _find_top_block(lines, "domain_docs")
-    if start is not None:
-        lines = lines[:start] + block + lines[last + 1:]
-    else:
-        a_start, a_last = _find_top_block(lines, "quality_gate_contract")
-        if a_start is not None:
-            insert_at = a_last + 1
-            lines = lines[:insert_at] + [""] + block + lines[insert_at:]
-        else:
-            lines = lines + [""] + block
-    return newline.join(lines)
+    return newline.join(lines[:start] + block + lines[end + 1:] if start is not None else lines + [""] + block)
 
 
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="tech_stack から Domain 層ドキュメント変数を決定する")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="tech_contract から Domain docs を投影する")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-
     if not os.path.exists(args.manifest):
         _out("ERROR", f"manifest が見つからない: {args.manifest}")
         return 2
     try:
-        manifest = genlib.load_manifest(args.manifest)
-    except genlib.YamlError as e:
-        _out("ERROR", f"manifest 解析失敗: {e}")
+        resolved = _resolve(args.manifest)
+    except tc.ContractError as exc:
+        _out("ERROR", str(exc))
+        return 1
+    except (
+        tc.SchemaError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        OSError,
+        re.error,
+    ) as exc:
+        _out("ERROR", str(exc))
         return 2
-
-    resolved = _resolve(manifest)
-
-    with open(args.manifest, "r", encoding="utf-8") as f:
-        content = f.read()
-    new_content = _render_manifest(content, resolved)
-    changed = new_content != content
-
+    except genlib.YamlError as exc:
+        _out("ERROR", str(exc))
+        return 2
+    with open(args.manifest, encoding="utf-8") as handle:
+        content = handle.read()
+    rendered = _render_manifest(content, resolved)
     if args.check:
-        _out("INFO", f"domain_docs 解決結果: {resolved['primary_language']} / {resolved['api_style']} / 書き換え{'あり' if changed else 'なし'}（--check）")
+        _out("INFO", f"domain_docs 解決結果: 書き換え{'あり' if rendered != content else 'なし'}（--check）")
         return 0
-    if changed:
-        with open(args.manifest, "w", encoding="utf-8", newline="") as f:
-            f.write(new_content)
-    _out("PASS", f"domain_docs を root manifest へ反映（{'更新あり' if changed else '更新なし=冪等'}）")
+    if rendered != content:
+        with open(args.manifest, "w", encoding="utf-8", newline="") as handle:
+            handle.write(rendered)
+    _out("PASS", "contract.domain_docs を root manifest へ投影")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

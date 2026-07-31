@@ -155,6 +155,80 @@ def main() -> int:
     if result.returncode != 0:
         errors.append(f"idempotency: second ingest exit {result.returncode}")
 
+    # 7. 未知技術名でも Python mapping なしで取り込める
+    unknown_doc = DESIGN_DOC_FIXTURE.replace("Next.js", "UnknownStackXYZ")
+    rc, out, log = _run(mtext, unknown_doc, design_doc_name="TECH.md")
+    if rc != 0:
+        errors.append(f"unknown tech: expected exit 0, got {rc}\n{log}")
+    if "UnknownStackXYZ" not in out:
+        errors.append("unknown tech: technology name not preserved in manifest")
+
+    # 8. §9 不在 → exit 1
+    no_section9 = "# Tech Stack Design\n\n### 10. 次セクション\n"
+    rc, _, log = _run(mtext, no_section9, design_doc_name="TECH.md")
+    if rc != 1:
+        errors.append(f"no section9: expected exit 1, got {rc}\n{log}")
+
+    # 9. 未 pin（source_fingerprint 空）→ §9 取り込みは継続（kit 初回 bootstrap）
+    unpinned_manifest = mtext + """
+tech_contract:
+  schema_version: 1
+  approval:
+    status: "unapproved"
+  source_fingerprint: ""
+"""
+    rc, out, log = _run(unpinned_manifest, DESIGN_DOC_FIXTURE, design_doc_name="TECH.md")
+    if rc != 0:
+        errors.append(f"unpinned contract: expected exit 0, got {rc}\n{log}")
+    if "Node.js" not in out:
+        errors.append(f"unpinned contract: tech_stack should be ingested\n{out}")
+
+    # 10. pin 済み + fingerprint 不一致 → exit 1（設計書更新後の再起案）
+    stale_manifest = mtext + """
+tech_contract:
+  schema_version: 1
+  approval:
+    status: "approved"
+  source_fingerprint: "deadbeef00000000000000000000000000000000000000000000000000000000"
+"""
+    rc, _, log = _run(stale_manifest, DESIGN_DOC_FIXTURE, design_doc_name="TECH.md")
+    if rc != 1:
+        errors.append(f"stale fingerprint: expected exit 1, got {rc}\n{log}")
+    if "source_fingerprint" not in log:
+        errors.append(f"stale fingerprint: expected mismatch message\n{log}")
+
+    # 11. malformed manifest + CLI override → exit 2 かつ入力 manifest 不変
+    malformed_manifest = (
+        "version: 1\n"
+        "project:\n"
+        "    name: test-project\n"
+        "  malformed: true\n"
+        "tech_stack:\n"
+        "  note: seed default\n"
+        "  items: []\n"
+    )
+    with tempfile.TemporaryDirectory(prefix="test-ingest-malformed-") as tmp:
+        manifest = Path(tmp) / "manifest.yaml"
+        manifest.write_text(malformed_manifest, encoding="utf-8")
+        before = manifest.read_bytes()
+        cli_doc = Path(tmp) / "custom-design.md"
+        cli_doc.write_text(DESIGN_DOC_FIXTURE, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(INGEST),
+             "--manifest", str(manifest),
+             "--design-doc", str(cli_doc)],
+            check=False, capture_output=True, text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        after = manifest.read_bytes()
+    if result.returncode != 2:
+        errors.append(
+            f"malformed manifest: expected exit 2, got {result.returncode}\n"
+            f"{result.stdout}{result.stderr}"
+        )
+    if after != before:
+        errors.append("malformed manifest: input manifest changed before exit 2")
+
     if errors:
         for e in errors:
             print(f"[test_ingest_tech_stack] FAIL: {e}", file=sys.stderr)

@@ -39,7 +39,7 @@ disable-model-invocation: true
 {{session.verification.gate_command}}
 ```
 
-このコマンドは `resolve_quality_gate.py` が `tech_stack` から生成した `session.verification.gate_command` を展開する。
+このコマンドは `resolve_quality_gate.py` が承認済み `tech_contract` / `project.quality_gate.profile` から投影した `session.verification.gate_command` を展開する。
 
 補助スクリプト:
 

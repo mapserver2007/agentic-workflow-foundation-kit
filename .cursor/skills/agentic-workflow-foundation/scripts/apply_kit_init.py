@@ -29,15 +29,17 @@ import genlib  # noqa: E402
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
 
-ALLOWED_TOP_KEYS = {"version", "project", "context_budget", "tech_stack_design"}
+ALLOWED_TOP_KEYS = {"version", "project", "context_budget", "tech_stack_design", "tech_contract"}
 ALLOWED_PROJECT_KEYS = {"name"}
 ALLOWED_CONTEXT_BUDGET_KEYS = {"min_context_window_tokens"}
 ALLOWED_TECH_STACK_DESIGN_KEYS = {"filename"}
+ALLOWED_TECH_CONTRACT_KEYS = {"auto_approve"}
 FORBIDDEN_TOP_KEYS = {"workflow_pattern", "features", "deep_thinking", "cross_repo_knowledge"}
 
 FIXED_WORKFLOW_PATTERN = "開発型"
 MIN_CONTEXT_WINDOW = 50000
 DEFAULT_CONTEXT_WINDOW = 200000
+DEFAULT_TECH_CONTRACT_AUTO_APPROVE = False
 
 
 def _out(level: str, msg: str) -> None:
@@ -119,6 +121,20 @@ def _validate_init(init: dict) -> list[str]:
             if not fn.endswith(".md"):
                 errors.append(f"tech_stack_design.filename は .md で終わる必要がある: {fn!r}")
 
+    tc = init.get("tech_contract")
+    if tc is not None:
+        if not isinstance(tc, dict):
+            errors.append(f"tech_contract はマッピング必須（実際: {type(tc).__name__}）")
+        else:
+            for key in tc:
+                if key not in ALLOWED_TECH_CONTRACT_KEYS:
+                    errors.append(f"未知キー tech_contract.{key}")
+            auto = tc.get("auto_approve")
+            if auto is not None and not isinstance(auto, bool):
+                errors.append(
+                    f"tech_contract.auto_approve は bool 必須（実際: {type(auto).__name__}）"
+                )
+
     return errors
 
 
@@ -127,6 +143,7 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     project = init.get("project") or {}
     ctx = init.get("context_budget") or {}
     tsd = init.get("tech_stack_design") or {}
+    tc = init.get("tech_contract") or {}
 
     name = project.get("name")
     if name is None:
@@ -145,12 +162,19 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     if not tech_stack_design_filename:
         raise ValueError("tech_stack_design.filename が未設定")
 
+    auto_approve = tc.get("auto_approve")
+    if auto_approve is None:
+        auto_approve = DEFAULT_TECH_CONTRACT_AUTO_APPROVE
+    else:
+        auto_approve = bool(auto_approve)
+
     return {
         "name": name,
         "slug": slug,
         "workflow_pattern": FIXED_WORKFLOW_PATTERN,
         "min_context_window_tokens": min_tokens,
         "tech_stack_design_filename": tech_stack_design_filename,
+        "tech_contract_auto_approve": auto_approve,
     }
 
 
@@ -279,6 +303,11 @@ def _render_manifest(content: str, values: dict) -> str:
         _yaml_quote(values["tech_stack_design_filename"]),
         after_key="workflow_pattern",
     )
+    lines = _set_or_insert_scalar(
+        lines, "project", "tech_contract_auto_approve",
+        "true" if values["tech_contract_auto_approve"] else "false",
+        after_key="tech_stack_design_filename",
+    )
     lines = _set_nested_scalar(
         lines, "project", "context_budget",
         "min_context_window_tokens", str(values["min_context_window_tokens"])
@@ -304,6 +333,10 @@ def _verify_owned_keys(manifest: dict) -> list[str]:
     tsd_fn = project.get("tech_stack_design_filename")
     if tsd_fn is None or tsd_fn == "[要確認]":
         issues.append(f"project.tech_stack_design_filename が未確定: {tsd_fn!r}")
+
+    auto = project.get("tech_contract_auto_approve")
+    if auto is not None and not isinstance(auto, bool):
+        issues.append(f"project.tech_contract_auto_approve は bool 必須: {auto!r}")
 
     ctx = project.get("context_budget") or {}
     raw = ctx.get("min_context_window_tokens")
@@ -355,6 +388,7 @@ def main(argv=None) -> int:
     _out("INFO", f"name={values['name']!r} slug={values['slug']!r} "
          f"workflow_pattern={values['workflow_pattern']!r} "
          f"tech_stack_design_filename={values['tech_stack_design_filename']!r} "
+         f"tech_contract_auto_approve={values['tech_contract_auto_approve']} "
          f"min_context_window_tokens={values['min_context_window_tokens']}")
 
     if args.check:

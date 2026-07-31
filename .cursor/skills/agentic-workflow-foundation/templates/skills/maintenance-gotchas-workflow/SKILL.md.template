@@ -109,8 +109,8 @@ actionable エントリに対し影響範囲・修正コスト・再発頻度で
 
 | 修復種別 | 必須検証 |
 | --- | --- |
-| ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`bin/quality-gate verify`） |
-| 設定/manifest 変更 | {{#if foundation.enabled}}`bin/foundation-gate self`（kit 自己検証）+ {{/if}}`bin/quality-gate verify`（G-BUILD + G-LINT + G-TEST） |
+| ゲート/Hook 修正 | 対象スクリプトの動作確認 + コードゲート（`{{session.verification.gate_command}}`） |
+| 設定/manifest 変更 | `{{session.verification.gate_command}}`（profile selector 由来） |
 | Meta 層 docs 修正（seed / 直接追記） | リンク検証 + 構造検証（見出し階層の整合） |
 | Domain 層 docs 修正 | リンク検証 + 構造検証（見出し階層の整合） |
 | テスト追加 | G-TEST（追加テストが PASS + 既存テスト非破壊） |

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""tech_stack から G-* と package script contract を決定する（Phase 1.65）。"""
+"""承認済み tech_contract から G-* と package script contract を投影する（Phase 1.65）。"""
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import sys
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
@@ -14,9 +17,13 @@ if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
-
 import genlib  # noqa: E402
-import capability_registry as reg  # noqa: E402
+import tech_contract as tc  # noqa: E402
+from contract_projection import (  # noqa: E402
+    _require_gen_artifact_paths,
+    gate_command_for_profile,
+    project_quality_gate,
+)
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 
@@ -32,21 +39,37 @@ def _yaml_quote(value: str) -> str:
     return '"' + s + '"'
 
 
-def _resolve(manifest: dict):
-    status, reason = reg.check_eligibility(manifest)
-    if status == "FATAL":
-        return "FATAL", reason
-    if status == "SKIP":
-        return None, reason
-
-    gate_cmds = reg.compose_gate_cmds(manifest)
-    if not gate_cmds:
-        return None, "パッケージマネージャ capability が不足"
-
+def _resolve(manifest_path: str, has_gen_paths: bool):
+    try:
+        path = Path(manifest_path)
+        design_doc = tc.resolve_design_doc(path)
+        contract = tc.load_approved(path, design_doc)
+    except tc.ContractError as exc:
+        return None, str(exc)
+    except (
+        tc.SchemaError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        OSError,
+        re.error,
+    ) as exc:
+        return "FATAL", str(exc)
+    quality = contract.get("quality_gate")
+    if not isinstance(quality, dict):
+        return "FATAL", "tech_contract.quality_gate が不正です"
+    try:
+        paths = _require_gen_artifact_paths(contract)
+    except tc.SchemaError as exc:
+        return "FATAL", str(exc)
+    if not has_gen_paths and "gen_artifact_paths" not in quality:
+        return "FATAL", "tech_contract.quality_gate.gen_artifact_paths が欠落しています"
+    gate_cmds = project_quality_gate(contract)
     return {
         "quality_gate": gate_cmds,
-        "gate_command": "bin/quality-gate verify",
-        "contract": reg.compose_contract(manifest),
+        "gate_command": gate_command_for_profile(gate_cmds["profile"]),
+        "contract": {gate: quality[gate].get("contract", []) for gate in ("gen", "build", "lint", "test")},
     }, None
 
 
@@ -124,10 +147,13 @@ def _remove_top_block(lines, key: str):
 def _quality_gate_block(values):
     return [
         "  quality_gate:",
+        f"    profile: {_yaml_quote(values['profile'])}",
         f"    gen_cmd: {_yaml_quote(values['gen_cmd'])}",
         f"    build_cmd: {_yaml_quote(values['build_cmd'])}",
         f"    lint_cmd: {_yaml_quote(values['lint_cmd'])}",
         f"    test_cmd: {_yaml_quote(values['test_cmd'])}",
+        "    gen_artifact_paths:",
+        *[f"      - {_yaml_quote(path)}" for path in values["gen_artifact_paths"]],
     ]
 
 
@@ -148,7 +174,7 @@ def _render_manifest(content: str, resolved: dict) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="tech_stack から G-* と script contract を決定する")
+    parser = argparse.ArgumentParser(description="承認済み tech_contract から G-* と script contract を投影する")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
@@ -162,16 +188,19 @@ def main(argv=None) -> int:
         _out("ERROR", f"manifest 解析失敗: {e}")
         return 2
 
-    resolved, reason = _resolve(manifest)
+    with open(args.manifest, "r", encoding="utf-8") as f:
+        content = f.read()
+    has_gen_paths = bool(
+        re.search(r"^\s+gen_artifact_paths:", content.split("tech_contract:", 1)[-1], re.MULTILINE)
+    )
+    resolved, reason = _resolve(args.manifest, has_gen_paths)
     if resolved == "FATAL":
         _out("ERROR", reason)
         return 2
     if resolved is None:
-        _out("WARN", reason or "G-* を決定できないため既存値を維持")
-        return 0
+        _out("ERROR", reason or "G-* を決定できないため fail-closed")
+        return 1
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
-        content = f.read()
     new_content = _render_manifest(content, resolved)
     changed = new_content != content
     contract_count = sum(len(v) for v in resolved["contract"].values())

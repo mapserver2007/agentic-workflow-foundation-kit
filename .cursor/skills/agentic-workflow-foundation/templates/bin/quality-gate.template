@@ -35,32 +35,66 @@ fi
 # --- downstream project commands (backend) ---
 
 _run_backend() {
-  local cmd="$1"
-  if [[ -z "$cmd" || "$cmd" == \[* ]]; then
-    echo "WARN: backend command is not configured (placeholder). Skipping." >&2
-    return 0
+  if [[ "$#" -eq 0 ]]; then
+    echo "ERROR: approved argv is not configured. Run tech-contract status." >&2
+    return 2
   fi
-  bash -lc "$cmd"
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: backend command not found: $1" >&2
+    return 2
+  fi
+  "$@"
+  local code=$?
+  case "$code" in
+    0) return 0 ;;
+    2) return 2 ;;
+    127) echo "ERROR: backend command not found: $1" >&2; return 2 ;;
+    *) return 1 ;;
+  esac
+}
+
+_contract_status() {
+  local design_doc="$ROOT_DIR/.cursor/docs/{{project.tech_stack_design_filename}}"
+  python3 "$ROOT_DIR/.cursor/skills/agentic-workflow-foundation/scripts/tech_contract.py" \
+    status \
+    --manifest "$ROOT_DIR/manifest.yaml" \
+    --design-doc "$design_doc"
+}
+
+_preflight() {
+  if [[ ! -x "$ROOT_DIR/bin/project-setup" ]]; then
+    echo "ERROR: provisioning wrapper がありません。bin/project-setup --plan を確認してください。" >&2
+    return 2
+  fi
+  "$ROOT_DIR/bin/project-setup" --preflight
 }
 
 case "$SUBCMD" in
   gen)
-    _run_backend "{{project.quality_gate.gen_cmd}}"
+    cmd=({{#each tech_contract.quality_gate.gen.argv}} "{{this}}"{{/each}} )
+    _contract_status && _preflight && _run_backend "${cmd[@]}"
     ;;
   build)
-    _run_backend "{{project.quality_gate.build_cmd}}"
+    cmd=({{#each tech_contract.quality_gate.build.argv}} "{{this}}"{{/each}} )
+    _contract_status && _preflight && _run_backend "${cmd[@]}"
     ;;
   lint)
-    _run_backend "{{project.quality_gate.lint_cmd}}"
+    cmd=({{#each tech_contract.quality_gate.lint.argv}} "{{this}}"{{/each}} )
+    _contract_status && _preflight && _run_backend "${cmd[@]}"
     ;;
   test)
-    _run_backend "{{project.quality_gate.test_cmd}}"
+    cmd=({{#each tech_contract.quality_gate.test.argv}} "{{this}}"{{/each}} )
+    _contract_status && _preflight && _run_backend "${cmd[@]}"
     ;;
   verify)
     echo "=== quality-gate verify ==="
-    _run_backend "{{project.quality_gate.build_cmd}}" && \
-    _run_backend "{{project.quality_gate.lint_cmd}}" && \
-    _run_backend "{{project.quality_gate.test_cmd}}"
+    build_cmd=({{#each tech_contract.quality_gate.build.argv}} "{{this}}"{{/each}} )
+    lint_cmd=({{#each tech_contract.quality_gate.lint.argv}} "{{this}}"{{/each}} )
+    test_cmd=({{#each tech_contract.quality_gate.test.argv}} "{{this}}"{{/each}} )
+    _contract_status && _preflight && \
+    _run_backend "${build_cmd[@]}" && \
+    _run_backend "${lint_cmd[@]}" && \
+    _run_backend "${test_cmd[@]}"
     ;;
   audit|check|scripts|self|adr)
     echo "ERROR: '$SUBCMD' は bin/quality-gate から削除されました（ADR-0001）。" >&2

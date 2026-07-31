@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -u
+
+# project-setup — 承認済み tech_contract の明示 provisioning 入口。
+# --plan / --preflight は read-only。--apply は承認済み plan file と plan digest を必須とする。
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+FOUNDATION_SCRIPTS="$ROOT_DIR/.cursor/skills/agentic-workflow-foundation/scripts"
+DESIGN_DOC="$ROOT_DIR/.cursor/docs/{{project.tech_stack_design_filename}}"
+
+case "${1:-}" in
+  --plan|--preflight)
+    exec python3 "$FOUNDATION_SCRIPTS/provision_runtime.py" "$1" --manifest "$ROOT_DIR/manifest.yaml" --design-doc "$DESIGN_DOC"
+    ;;
+  --apply)
+    shift
+    exec python3 "$FOUNDATION_SCRIPTS/provision_runtime.py" --apply --manifest "$ROOT_DIR/manifest.yaml" --design-doc "$DESIGN_DOC" "$@"
+    ;;
+  *)
+    echo "Usage: bin/project-setup --plan | --preflight | --apply --plan-file PATH --approve-plan PLAN_DIGEST" >&2
+    exit 2
+    ;;
+esac
