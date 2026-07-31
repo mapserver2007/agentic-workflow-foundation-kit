@@ -157,6 +157,52 @@ tech_contract:
   extra: bad
 """
 
+INIT_PROVISIONING_AUTO_APPROVE_TRUE = """version: 1
+project:
+  name: provisioning-auto-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: true
+"""
+
+INIT_PROVISIONING_AUTO_APPROVE_FALSE = """version: 1
+project:
+  name: provisioning-manual-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: false
+"""
+
+INIT_PROVISIONING_AUTO_APPROVE_BAD_TYPE = """version: 1
+project:
+  name: provisioning-bad-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: "yes"
+"""
+
+INIT_PROVISIONING_AUTO_APPROVE_NULL = """version: 1
+project:
+  name: provisioning-null-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: null
+"""
+
+INIT_PROVISIONING_AUTO_APPROVE_UNKNOWN_KEY = """version: 1
+project:
+  name: provisioning-bad-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: true
+  extra: bad
+"""
+
 
 def _run(manifest_text: str, init_text: str, extra_args: list[str] | None = None) -> tuple[int, str, str]:
     with tempfile.TemporaryDirectory(prefix="test-apply-") as tmp:
@@ -335,6 +381,48 @@ def main() -> int:
     rc, _, log = _run(MANIFEST_FIXTURE, INIT_AUTO_APPROVE_UNKNOWN_KEY)
     if rc != 2:
         errors.append(f"auto_approve unknown key: expected exit 2, got {rc}\n{log}")
+
+    # 23. provisioning.auto_approve: true → project.provisioning_auto_approve: true
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_TRUE)
+    if rc != 0:
+        errors.append(f"provisioning auto_approve true: expected exit 0, got {rc}\n{log}")
+    if "provisioning_auto_approve: true" not in out:
+        errors.append(f"provisioning auto_approve true: missing projection\n{out}")
+
+    # 24. provisioning.auto_approve: false → explicit false
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_FALSE)
+    if rc != 0:
+        errors.append(f"provisioning auto_approve false: expected exit 0, got {rc}\n{log}")
+    if "provisioning_auto_approve: false" not in out:
+        errors.append(f"provisioning auto_approve false: missing projection\n{out}")
+
+    # 25. provisioning 省略時 → false（既定）
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_VALID)
+    if rc != 0:
+        errors.append(f"provisioning auto_approve omit: expected exit 0, got {rc}\n{log}")
+    if "provisioning_auto_approve: false" not in out:
+        errors.append(f"provisioning auto_approve omit: expected default false\n{out}")
+
+    # 26. provisioning.auto_approve が非 bool → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_BAD_TYPE)
+    if rc != 2:
+        errors.append(
+            f"provisioning auto_approve bad type: expected exit 2, got {rc}\n{log}"
+        )
+
+    # 27. provisioning.auto_approve: null（明示）→ exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_NULL)
+    if rc != 2:
+        errors.append(
+            f"provisioning auto_approve null: expected exit 2, got {rc}\n{log}"
+        )
+
+    # 28. provisioning 未知キー → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_UNKNOWN_KEY)
+    if rc != 2:
+        errors.append(
+            f"provisioning auto_approve unknown key: expected exit 2, got {rc}\n{log}"
+        )
 
     if errors:
         for e in errors:

@@ -33,6 +33,7 @@
 | `project.name` / `project.one_liner` | `AGENTS.md` / `CLAUDE.md` |
 | `project.boundaries` | `AGENTS.md`（Boundaries）/ `.cursor/rules/01-critical-constraints.mdc` |
 | `project.quality_gate` | `docs/QUALITY_GATE.md` / `AGENTS.md`（Key Commands）。`profile` は唯一の selector（`foundation` = `bin/foundation-gate self`、`application` = `bin/quality-gate verify`）、`gen_artifact_paths` は G-GEN porcelain 対象の唯一の canonical path。 |
+| `project.provisioning_auto_approve` | Phase 1.68 の対話承認ポリシー。`true` は plan 検証後の AskQuestion だけを省略し、`bin/project-setup --apply --plan-file <plan_file> --approve-plan <plan_digest>` の digest 検証は維持する。CI / 非対話 generate は参照しない。 |
 | `tech_contract` | `scripts/tech_contract.py` が canonical digest・設計書 fingerprint・approval を検証して pin する承認済み派生 SoT。`docs/QUALITY_GATE.md` / `bin/quality-gate` / runtime / review / Domain docs の唯一の tech 依存 consumer 入力。CI・generate・品質ゲートは LLM を呼ばない |
 | `tech_contract.quality_gate` | `docs/QUALITY_GATE.md`（package script contract）/ `bin/quality-gate`（argv 実行）。`project.quality_gate` は互換表示用の展開値であり、契約の代替 SoT ではない |
 | `tech_contract.runtime_materialization` | `scripts/provision_runtime.py` / `bin/project-setup`。`--plan` は read-only、`--apply` は contract digest と target preimage が一致する承認済み plan だけを実行する |

@@ -29,7 +29,7 @@ Agentic Workflow 基盤ファイル群を、**immutable upstream SoT（統一設
 >
 > 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で `ingest_tech_stack.py` が Domain サマリ用 `tech_stack` を root manifest へ取り込む。**G-* / runtime / review / domain docs / provisioning の consumer 入力は承認済み `tech_contract` のみ**（tech 名カテゴリ推論・legacy live compose・AI path hash は使用しない）。
 >
-> リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。tech 依存値は承認済み `tech_contract` を派生 SoT とし、対話 SKILL が作成した draft を `tech_contract.py validate/apply` で pin した後だけ consumer が利用する。承認は既定で `AskQuestion`。`init.yaml > tech_contract.auto_approve: true`（→ `project.tech_contract_auto_approve`）のときだけ validate PASS 後に AskQuestion なしで apply する。
+> リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。tech 依存値は承認済み `tech_contract` を派生 SoT とし、対話 SKILL が作成した draft を `tech_contract.py validate/apply` で pin した後だけ consumer が利用する。承認は既定で `AskQuestion`。`init.yaml > tech_contract.auto_approve: true`（→ `project.tech_contract_auto_approve`）のときだけ validate PASS 後に契約 pin の AskQuestion を省略する。Provisioning は別ポリシー `init.yaml > provisioning.auto_approve`（→ `project.provisioning_auto_approve`）で Phase 1.68 の AskQuestion 省略を制御する。
 
 ## アーキテクチャ（stateless 決定論型）
 
@@ -204,7 +204,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 - 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
 - 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
-- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve` / `provisioning.auto_approve`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
 
 **apply が書くもの**:
 
@@ -214,8 +214,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 4. `project.tech_stack_design_filename`（`init.yaml > tech_stack_design.filename` から。必須）
 5. `project.context_budget.min_context_window_tokens`
 6. `project.tech_contract_auto_approve`（`init.yaml > tech_contract.auto_approve`。省略時 `false`）
+7. `project.provisioning_auto_approve`（`init.yaml > provisioning.auto_approve`。省略時 `false`）
 
-**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（`auto_approve` は project 側のポリシー投影）。
+**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（2つの `auto_approve` は project 側の対話承認ポリシー投影）。
 
 feature の seed default はいずれも `enabled: true`。無効化したい場合のみ root `manifest.yaml` を直接編集して再生成する（`init.yaml` では設定しない）。
 
@@ -227,6 +228,7 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 - `project.name` は文字列または null（空文字 / 非 string は exit 2）
 - `tech_stack_design` は必須。`tech_stack_design.filename` は basename のみ（`/` `\` `..` 禁止）、`.md` 末端、非空（省略時 exit 2）
 - `tech_contract` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
+- `provisioning` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
 - `context_budget.min_context_window_tokens` は正の整数かつ 50000 以上（省略時 200000）
 - 未知キーは exit 2
 - apply 後に所有キーに `"開発型"` 以外の `workflow_pattern` や `[要確認]` が残存なら exit 1
@@ -246,7 +248,7 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 
 - auto_approve は **PO が init.yaml に書いた明示 opt-in** であり、CI / 非対話 generate が勝手に true にする経路はない。
 - validate FAIL 時は auto_approve でも apply しない。
-- **provisioning**（`bin/project-setup --apply`）の計画承認には使わない。契約 pin 専用。
+- **provisioning**（`bin/project-setup --apply`）の計画承認には使わない。契約 pin 専用であり、Provisioning は `project.provisioning_auto_approve` で別に制御する。
 - sealed `tech_contract` スキーマに `auto_approve` を混ぜない（`project.tech_contract_auto_approve` が投影先）。
 
 ### Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
@@ -322,9 +324,15 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 # renderability 検査（書込みなし）
 python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py --check
 
-# 唯一の write path
-bin/project-setup --plan
-bin/project-setup --apply --approve-plan <plan_digest>
+# 唯一の write path（plan JSON は一時ファイルへ保存）
+plan_file="$(mktemp)"
+cleanup_plan_file() { rm -f -- "$plan_file"; }
+trap cleanup_plan_file EXIT INT TERM
+bin/project-setup --plan > "$plan_file"
+bin/project-setup --apply --plan-file "$plan_file" --approve-plan <plan_digest>
+cleanup_plan_file
+trap - EXIT INT TERM
+bin/project-setup --preflight
 ```
 
 - **深さ**: file action 適用 + 宣言的 preflight + 明示承認済み command action のみ。任意 subprocess preflight は禁止。
@@ -332,6 +340,28 @@ bin/project-setup --apply --approve-plan <plan_digest>
 - **所有権**: `owned_keys` は JSON Pointer leaf 単位。merge_owned は非所有 nested key を保持。
 - **gen_artifact_paths**: `tech_contract.quality_gate.gen_artifact_paths` が SoT。projection で `project.quality_gate.gen_artifact_paths` へ決定論投影。
 - **pin/round-trip**: draft→pin は genlib loader で data/digest 一致を検証。multiline content は block literal で byte 保持。
+- **承認ポリシー境界**: `init.yaml > provisioning.auto_approve` は Phase 1.68 の対話承認ポリシーであり、sealed `tech_contract.provisioning.preflight_checks`（runtime 検証契約）とは別物とする。
+
+| `project.provisioning_auto_approve` | 挙動 |
+| --- | --- |
+| `false`（省略時既定） | `--plan` の JSON を一時 plan file に保存し、`AskQuestion` で PO 承認後に `--apply --plan-file <plan_file> --approve-plan <plan_digest>` |
+| `true`（`init.yaml > provisioning.auto_approve: true`） | AskQuestion を出さず、同じ apply コマンドを実行。ログに「init.yaml opt-in provisioning auto_approve」と記録する |
+
+実行順は次のとおり。
+
+1. `materialize_runtime.py --check` を実行し、PASS しなければ中断する。
+2. 一時 plan file の作成直後に cleanup finalizer を登録してから、`bin/project-setup --plan` の stdout JSON を保存する。shell の同一実行 scope なら `trap`、AskQuestion をまたぐ orchestration なら同等の `try/finally` を使う。plan が exit 0 でなければ apply せず、finalizer で削除してから中断する。
+3. plan JSON から `plan_digest` を抽出する。欠落・不正なら finalizer で一時 plan file を削除し、exit 2 相当として中断する。
+4. `project.provisioning_auto_approve` で承認分岐する。拒否・キャンセル時も finalizer で削除してから中断する。承認時は `--apply --plan-file <plan_file> --approve-plan <plan_digest>` を実行する。`true` は AskQuestion の省略だけを意味し、CLI の明示承認トークンを省略しない。
+5. apply の成否にかかわらず finalizer で一時 plan file を削除する。成功時に明示 cleanup した場合は二重削除を防ぐため finalizer を解除する。cleanup 完了前に postflight へ進まない。
+6. apply 後に `bin/project-setup --preflight` と Phase 1.7 を実行する。初回 provisioning 前の preflight は apply 前ゲートにしない。
+
+追加制約:
+
+- auto approve は、承認済み contract に宣言された file action / command action（network / host write を含む）を実行することへの PO の明示 opt-in である。
+- auto approve は対話 SKILL の承認分岐だけが参照する。`provision_runtime.py` に AskQuestion や manifest flag の強制ロジックを追加せず、既存の contract digest / target preimage / plan digest 検証を安全境界として維持する。
+- CI / 非対話 generate / quality gate は auto apply しない。
+- command action の途中失敗による部分変更は既存制約どおり rollback を保証しない。成功済み action・未実行 action・変更対象・復旧手順を報告する。
 
 ### Phase 1.7: techstack 整合ゲート（contract declarative preflight）
 

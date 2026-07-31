@@ -1637,6 +1637,10 @@ project:
   # true のとき対話 SKILL は validate PASS 後に AskQuestion なしで tech_contract apply する。
   # sealed tech_contract スキーマには含めない（承認ポリシーは project 側）。
   tech_contract_auto_approve: false
+  # init.yaml provisioning.auto_approve から投影。省略時 false。
+  # true は Phase 1.68 の対話承認を省略する PO opt-in。plan digest 検証は常に維持する。
+  # sealed tech_contract.provisioning とは別の対話承認ポリシー。
+  provisioning_auto_approve: false
   # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、

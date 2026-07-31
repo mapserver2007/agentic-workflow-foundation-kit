@@ -23,8 +23,16 @@ tech_stack_design:
 # auto_approve: true のとき、対話 SKILL は validate PASS 後に AskQuestion を出さず
 # tech_contract.py apply で pin する。責任の所在は本ファイル（PO が書いた設定）。
 # 省略時 / false は従来どおり AskQuestion で明示承認。
-# provisioning（bin/project-setup --apply）の承認には使わない。
+# provisioning（bin/project-setup --apply）は下記の別ポリシーで扱う。
 tech_contract:
+  auto_approve: true
+
+# Phase 1.68 provisioning の対話承認ポリシー（PO 明示の opt-in）。
+# auto_approve: true は plan 検証後の AskQuestion だけを省略する。
+# --approve-plan の digest 検証は維持し、承認済み tech_contract に宣言された
+# file / command action（network / host write を含む）を実行する。
+# sealed tech_contract.provisioning.preflight_checks とは別の対話ポリシー。
+provisioning:
   auto_approve: true
 
 context_budget:
