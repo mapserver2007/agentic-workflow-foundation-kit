@@ -6,10 +6,8 @@ import argparse
 import copy
 import hashlib
 import json
-import os
 import re
 import sys
-import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -984,10 +982,7 @@ def pin_contract(manifest_path: Path, contract: dict, expected_preimage: str) ->
         new_raw = raw[: span[0]] + replacement + raw[span[1] :]
     _verify_pin_roundtrip(new_raw, finalized)
     genlib.parse_yaml(new_raw.decode("utf-8"))
-    with tempfile.NamedTemporaryFile(dir=manifest_path.parent, delete=False) as tmp:
-        tmp.write(new_raw)
-        temp_name = tmp.name
-    os.replace(temp_name, manifest_path)
+    rp._atomic_write_bytes(manifest_path, new_raw)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -149,10 +149,7 @@ def _contract_fingerprint_stale(manifest_path: str, design_doc: Path) -> bool:
     source_fingerprint が空 / 未設定のときは未 pin（kit 初回 bootstrap 等）とみなし、
     Phase 1.6 の §9 取り込みは継続する。非空の fingerprint のみ stale 判定対象。
     """
-    try:
-        manifest = genlib.load_manifest(manifest_path)
-    except genlib.YamlError:
-        return False
+    manifest = genlib.load_manifest(manifest_path)
     contract = manifest.get("tech_contract")
     if not isinstance(contract, dict):
         return False
@@ -195,7 +192,12 @@ def main(argv=None) -> int:
             note = ""
 
     fingerprint = tc.source_fingerprint(design_doc)
-    if _contract_fingerprint_stale(args.manifest, design_doc):
+    try:
+        contract_stale = _contract_fingerprint_stale(args.manifest, design_doc)
+    except genlib.YamlError as exc:
+        print(f"[ingest_tech_stack] ERROR: manifest YAML 読み込み失敗: {exc}")
+        return 2
+    if contract_stale:
         print(
             "[ingest_tech_stack] ERROR: tech_contract.source_fingerprint が設計書と不一致です。"
             " validate/apply で契約を再起案してください"

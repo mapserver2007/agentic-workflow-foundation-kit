@@ -198,7 +198,7 @@ workflow-gate.sh step6 TICKET-1234
 .cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
 ```
 
-**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
+**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。tech stack 変更時は、対話 SKILL で contract draft を起案 → `tech_contract.py validate --check` → PO 承認 → `tech_contract.py apply` で root manifest に pin → 承認済み contract を quality gate / CodeRabbit / Domain docs へ投影 → `run_resolved_engine.py generate` / `audit` の順に反映・検証する。
 
 **archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 
@@ -333,7 +333,7 @@ workflow-gate.sh step6 TICKET-1234
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step2`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001）+ `workflow-gate.sh step2-report`（G-ARTIFACT step1/step2 complete envelope 必須 + `gate-report.py`） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → profile selector: foundation=`bin/foundation-gate self` / application=G-GEN 対象変更検出） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → profile selector: foundation=`bin/foundation-gate self` / application=`gen_artifact_paths` 非空時の `bin/quality-gate gen` + 対象パス限定 porcelain 確認 → `bin/quality-gate verify`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step5`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}

@@ -1,6 +1,7 @@
 """承認済み tech_contract から resolved manifest への決定論投影。"""
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import tech_contract as tc  # noqa: E402
@@ -42,7 +43,7 @@ def project_quality_gate(contract: dict) -> dict:
         argv = item.get("argv")
         if not isinstance(argv, list) or not argv:
             raise tc.SchemaError(f"tech_contract.quality_gate.{gate}.argv が不正です")
-        result[f"{gate}_cmd"] = " ".join(argv)
+        result[f"{gate}_cmd"] = shlex.join(argv)
     result["gen_artifact_paths"] = _require_gen_artifact_paths(contract)
     return result
 

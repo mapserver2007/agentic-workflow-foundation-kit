@@ -38,9 +38,16 @@ def main() -> int:
         design = root / "docs" / "TECH.md"
         design.parent.mkdir(parents=True, exist_ok=True)
         design.write_text(design_text, encoding="utf-8")
+        fixture_contract = web_lifecycle_contract(tc.source_fingerprint(design))
+        fixture_contract["quality_gate"]["gen"]["argv"] = [
+            "pnpm",
+            "run",
+            "generate api",
+            "--output=generated/api bundle.yaml",
+        ]
         manifest, design = write_sealed_manifest(
             root,
-            web_lifecycle_contract(tc.source_fingerprint(design)),
+            fixture_contract,
             design_text,
         )
         contract = tc.load_approved(manifest, design)
@@ -78,8 +85,9 @@ def main() -> int:
         if not domain_docs_equals_contract(resolved, contract):
             print("FAIL: stale domain_docs not overwritten by contract")
             return 1
-        if resolved["project"]["quality_gate"]["gen_cmd"] != "pnpm gen":
-            print("FAIL: stale gen_cmd not projected from contract")
+        expected_gen_cmd = "pnpm run 'generate api' '--output=generated/api bundle.yaml'"
+        if resolved["project"]["quality_gate"]["gen_cmd"] != expected_gen_cmd:
+            print("FAIL: gen_cmd not shell-quoted from contract argv")
             return 1
         if resolved["session"]["verification"]["gate_command"] != "bin/quality-gate verify":
             print("FAIL: gate_command not derived from profile")

@@ -213,17 +213,19 @@ def state_digest_absent_rejected() -> bool:
         approved = tc.load_approved(manifest, design)
         marker = root / ".cursor" / ".runtime" / "provision-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
+        lockfile = root / "pnpm-lock.yaml"
+        lockfile.write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
         marker.write_text('{"digests":{"pnpm-lock.yaml":"absent"}}\n', encoding="utf-8")
         try:
-            errors = rp.run_preflight(approved, root)
-        except rp.PreflightFatal:
-            pass
-        else:
-            if not errors:
-                print("FAIL: absent digest accepted", file=sys.stderr)
+            rp.run_preflight(approved, root)
+        except rp.PreflightFatal as exc:
+            if "absent" not in str(exc):
+                print("FAIL: unexpected absent digest rejection", exc, file=sys.stderr)
                 return False
-        if (root / "pnpm-lock.yaml").is_file():
-            (root / "pnpm-lock.yaml").unlink()
+        else:
+            print("FAIL: absent digest accepted for existing target", file=sys.stderr)
+            return False
+        lockfile.unlink()
         marker.write_text('{"digests":{"pnpm-lock.yaml":"deadbeef"}}\n', encoding="utf-8")
         errors = rp.run_preflight(approved, root)
         if not any("pnpm-lock.yaml" in e and "がありません" in e for e in errors):

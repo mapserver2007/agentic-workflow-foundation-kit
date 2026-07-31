@@ -26,6 +26,43 @@ def project(manifest: Path) -> int:
     return 0
 
 
+def domain_docs_escaped_scalar_roundtrip() -> bool:
+    scalar = r'TypeScript "strict" C:\\toolchains\\\\node\\bin'
+    guidance = r'Use "quoted" paths C:\\docs\\\\specs\\current'
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        design_text = "# fixture\nTypeScript\n"
+        design = root / "docs" / "TECH.md"
+        design.parent.mkdir(parents=True, exist_ok=True)
+        design.write_text(design_text, encoding="utf-8")
+        contract = consumer_contract(tc.source_fingerprint(design), "TypeScript", "pnpm")
+        resolved = contract["domain_docs"]["resolved"]
+        resolved["primary_language"] = scalar
+        resolved["spec_sections"][0]["title"] = scalar
+        resolved["spec_sections"][0]["guidance"] = guidance
+        manifest, design = write_consumer_manifest(root, contract, design_text)
+
+        result = subprocess.run(
+            [sys.executable, str(DOMAIN), "--manifest", str(manifest)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print("FAIL: escaped domain docs projection", result.stdout, result.stderr)
+            return False
+
+        tc.load_approved(manifest, design)
+        projected = tc.load_yaml(manifest)["domain_docs"]
+        if projected["primary_language"] != scalar:
+            print("FAIL: projected scalar escape round-trip")
+            return False
+        section = projected["spec_sections"][0]
+        if section["title"] != scalar or section["guidance"] != guidance:
+            print("FAIL: projected section escape round-trip")
+            return False
+    return True
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -54,6 +91,8 @@ def main() -> int:
             if needle not in go_output:
                 print(f"FAIL: Go contract projection missing {needle}")
                 return 1
+    if not domain_docs_escaped_scalar_roundtrip():
+        return 1
     print("[test_contract_consumers] PASS")
     return 0
 

@@ -197,6 +197,38 @@ tech_contract:
     if "source_fingerprint" not in log:
         errors.append(f"stale fingerprint: expected mismatch message\n{log}")
 
+    # 11. malformed manifest + CLI override → exit 2 かつ入力 manifest 不変
+    malformed_manifest = (
+        "version: 1\n"
+        "project:\n"
+        "    name: test-project\n"
+        "  malformed: true\n"
+        "tech_stack:\n"
+        "  note: seed default\n"
+        "  items: []\n"
+    )
+    with tempfile.TemporaryDirectory(prefix="test-ingest-malformed-") as tmp:
+        manifest = Path(tmp) / "manifest.yaml"
+        manifest.write_text(malformed_manifest, encoding="utf-8")
+        before = manifest.read_bytes()
+        cli_doc = Path(tmp) / "custom-design.md"
+        cli_doc.write_text(DESIGN_DOC_FIXTURE, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(INGEST),
+             "--manifest", str(manifest),
+             "--design-doc", str(cli_doc)],
+            check=False, capture_output=True, text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        after = manifest.read_bytes()
+    if result.returncode != 2:
+        errors.append(
+            f"malformed manifest: expected exit 2, got {result.returncode}\n"
+            f"{result.stdout}{result.stderr}"
+        )
+    if after != before:
+        errors.append("malformed manifest: input manifest changed before exit 2")
+
     if errors:
         for e in errors:
             print(f"[test_ingest_tech_stack] FAIL: {e}", file=sys.stderr)

@@ -809,9 +809,12 @@ def main(argv=None) -> int:
 
     try:
         manifest = resolved_manifest(args.seed_manifest, args.root_manifest)
+        resolved_parent = os.path.join(work_root, ".cursor", "skills")
+        if args.command in ("generate", "check"):
+            os.makedirs(resolved_parent, exist_ok=True)
         with tempfile.TemporaryDirectory(
             prefix=".resolved-agentic-workflow-foundation-",
-            dir=os.path.join(work_root, ".cursor", "skills"),
+            dir=resolved_parent,
         ) as tmp_skill_dir:
             resolved_dir = prepare_skill_dir(tmp_skill_dir, manifest)
             rc = run_engine(args.command, resolved_dir, manifest, work_root=work_root)

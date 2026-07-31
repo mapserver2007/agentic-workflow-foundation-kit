@@ -53,7 +53,7 @@ def _resolve(manifest_path: str) -> dict:
 
 
 def _yaml_quote(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'" if '"' in value else f'"{value}"'
+    return json.dumps(value, ensure_ascii=False)
 
 
 def _indent_of(line: str) -> int:

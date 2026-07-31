@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -178,6 +179,26 @@ def check_ownership_conflict(action: dict, root: Path) -> str | None:
     return f"{action['target']} の conflict_policy では上書きできません"
 
 
+def _atomic_write_bytes(path: Path, payload: bytes, default_mode: int = 0o644) -> None:
+    """既存 mode を保って置換し、失敗時は一時ファイルを除去する。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    target_mode = stat.S_IMODE(path.stat().st_mode) if path.is_file() else default_mode
+    temp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+            temp_name = tmp.name
+            tmp.write(payload)
+        os.chmod(temp_name, target_mode)
+        os.replace(temp_name, path)
+    except BaseException:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+        raise
+
+
 def apply_file_action(action: dict, root: Path, dry_run: bool = False) -> None:
     target = resolve_in_project(root, action["target"])
     conflict = check_ownership_conflict(action, root)
@@ -188,11 +209,7 @@ def apply_file_action(action: dict, root: Path, dry_run: bool = False) -> None:
     content = render_file_bytes(action, root)
     if dry_run:
         return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
-        tmp.write(content)
-        temp_name = tmp.name
-    os.replace(temp_name, target)
+    _atomic_write_bytes(target, content)
 
 
 def collect_file_actions(contract: dict) -> list[dict]:
@@ -319,12 +336,8 @@ def _json_pointer_get(data: object, pointer: str) -> object:
 
 
 def _atomic_write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
-        tmp.write(payload)
-        temp_name = tmp.name
-    os.replace(temp_name, path)
+    _atomic_write_bytes(path, payload)
 
 
 def _postcondition_generated_paths(action: dict) -> set[str]:

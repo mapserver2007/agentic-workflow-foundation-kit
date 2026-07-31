@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -102,6 +104,27 @@ def test_generate_calls_cleanup():
     assert result["cleanup_triage"], "generate MUST call _cleanup_legacy_workflow_triage"
 
 
+def _assert_fresh_work_root_supported(command: str) -> None:
+    with tempfile.TemporaryDirectory(dir=engine.ROOT) as tmp:
+        work_root = Path(tmp) / "fresh-work-root"
+        with patch(RESOLVED_MANIFEST_FN, return_value=_make_mock_manifest()), \
+             patch(PREPARE_SKILL_DIR_FN, side_effect=lambda path, manifest: path), \
+             patch(RUN_ENGINE_FN, return_value=0):
+            rc = engine.main([command, "--work-root", str(work_root)])
+        assert rc == 0, f"{command} must support a fresh --work-root"
+        assert (work_root / ".cursor" / "skills").is_dir(), (
+            f"{command} must create the TemporaryDirectory parent"
+        )
+
+
+def test_generate_supports_fresh_work_root():
+    _assert_fresh_work_root_supported("generate")
+
+
+def test_check_supports_fresh_work_root():
+    _assert_fresh_work_root_supported("check")
+
+
 def main() -> int:
     tests = [
         test_audit_does_not_call_migration,
@@ -110,6 +133,8 @@ def main() -> int:
         test_check_does_not_call_cleanup,
         test_generate_calls_migration,
         test_generate_calls_cleanup,
+        test_generate_supports_fresh_work_root,
+        test_check_supports_fresh_work_root,
     ]
     passed = 0
     failed = 0

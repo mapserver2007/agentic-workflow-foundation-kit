@@ -6,7 +6,6 @@ outputs / quality_gate_contract が root に持ち込まれない・既存から
 """
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 import tempfile
@@ -189,13 +188,12 @@ def test_05_crlf_no_crash():
 
 
 def test_06_resolved_equivalent():
-    """dead block 除去前後で resolved_manifest() の結果が等価。"""
-    seed_path = str(ROOT / "manifest.yaml")
-    if not os.path.isfile(seed_path):
-        print("root manifest not found, skip", file=sys.stderr)
-        return 0
-    manifest = genlib.load_manifest(seed_path)
-    design_name = (manifest.get("project") or {}).get("tech_stack_design_filename")
+    """正規 seed + root overlay の本番 resolver で dead block 除去前後が等価。"""
+    seed_path = ROOT / ".cursor" / "skills" / "agentic-workflow-foundation" / "manifest.yaml"
+    root_overlay_path = ROOT / "manifest.yaml"
+    seed_manifest = genlib.load_manifest(str(seed_path))
+    root_overlay = genlib.load_manifest(str(root_overlay_path))
+    design_name = (root_overlay.get("project") or {}).get("tech_stack_design_filename")
     design_src = ROOT / ".cursor" / "docs" / str(design_name)
     if not design_src.is_file():
         design_src = ROOT / "docs" / str(design_name)
@@ -206,24 +204,33 @@ def test_06_resolved_equivalent():
         tmp_root = Path(tmp)
         root_with = tmp_root / "root_with.yaml"
         root_without = tmp_root / "root_without.yaml"
-        seed_text = Path(seed_path).read_text(encoding="utf-8")
-        root_with.write_text(seed_text, encoding="utf-8")
-        lines = seed_text.splitlines()
-        stripped = rre._strip_dead_blocks(list(lines))
-        root_without.write_text("\n".join(stripped) + "\n", encoding="utf-8")
+        overlay_text = root_overlay_path.read_text(encoding="utf-8")
+        stripped = rre._strip_dead_blocks(overlay_text.splitlines())
+        clean_overlay = "\n".join(stripped).rstrip("\n") + "\n"
+        dead_blocks = (
+            "# test-only dead blocks\n"
+            "quality_gate_contract:\n"
+            "  gen:\n"
+            "    - legacy\n"
+            "outputs:\n"
+            "  - path: legacy.txt\n"
+            "    template: legacy.template\n"
+            "    mode: render\n"
+        )
+        root_with.write_text(clean_overlay + dead_blocks, encoding="utf-8")
+        root_without.write_text(clean_overlay, encoding="utf-8")
         design_dst = tmp_root / ".cursor" / "docs" / str(design_name)
         design_dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(design_src, design_dst)
 
-        m1 = rre.resolved_manifest(seed_path, str(root_with))
-        m2 = rre.resolved_manifest(seed_path, str(root_without))
+        m1 = rre.resolved_manifest(str(seed_path), str(root_with))
+        m2 = rre.resolved_manifest(str(seed_path), str(root_without))
 
-        for key in rre.ROOT_OVERLAY_KEYS:
-            if m1.get(key) != m2.get(key):
-                print(f"resolved differs at {key}", file=sys.stderr)
-                return 1
-        if m1.get("quality_gate_contract") != m2.get("quality_gate_contract"):
-            print("quality_gate_contract differs after resolve", file=sys.stderr)
+        if m1 != m2:
+            print("resolved manifest differs after dead block removal", file=sys.stderr)
+            return 1
+        if not m1.get("outputs") or m1.get("marker_id") != seed_manifest.get("marker_id"):
+            print("canonical seed defaults were not included by resolver", file=sys.stderr)
             return 1
     return 0
 

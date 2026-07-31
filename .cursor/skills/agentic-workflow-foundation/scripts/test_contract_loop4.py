@@ -138,14 +138,14 @@ def test_block_replacement(root: Path, design: Path, fp: str) -> bool:
     preimage = tc.file_digest(manifest)
     tc.seal_contract(manifest, contract, preimage)
     text = manifest.read_text(encoding="utf-8")
-    if "schema_version: 1\n  classification:" in text and text.count("tech_contract:") != 1:
+    if text.count("tech_contract:") != 1:
+        print("FAIL: tech_contract block count is not one", file=sys.stderr)
+        return False
+    if "argv: [old]" in text or "evidence_ref: old" in text:
         print("FAIL: old block remnants", file=sys.stderr)
         return False
-    if not text.endswith(suffix.lstrip("\n")) and "framework:\n  version: 99" not in text:
+    if not text.endswith(suffix.lstrip("\n")):
         print("FAIL: suffix not preserved", file=sys.stderr)
-        return False
-    if "argv: [old]" in text:
-        print("FAIL: old argv remained", file=sys.stderr)
         return False
     return True
 
