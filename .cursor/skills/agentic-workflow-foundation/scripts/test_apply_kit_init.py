@@ -184,6 +184,15 @@ provisioning:
   auto_approve: "yes"
 """
 
+INIT_PROVISIONING_AUTO_APPROVE_NULL = """version: 1
+project:
+  name: provisioning-null-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+provisioning:
+  auto_approve: null
+"""
+
 INIT_PROVISIONING_AUTO_APPROVE_UNKNOWN_KEY = """version: 1
 project:
   name: provisioning-bad-auto
@@ -401,7 +410,14 @@ def main() -> int:
             f"provisioning auto_approve bad type: expected exit 2, got {rc}\n{log}"
         )
 
-    # 27. provisioning 未知キー → exit 2
+    # 27. provisioning.auto_approve: null（明示）→ exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_NULL)
+    if rc != 2:
+        errors.append(
+            f"provisioning auto_approve null: expected exit 2, got {rc}\n{log}"
+        )
+
+    # 28. provisioning 未知キー → exit 2
     rc, _, log = _run(MANIFEST_FIXTURE, INIT_PROVISIONING_AUTO_APPROVE_UNKNOWN_KEY)
     if rc != 2:
         errors.append(

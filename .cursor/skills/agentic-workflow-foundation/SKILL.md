@@ -325,8 +325,14 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py --check
 
 # 唯一の write path（plan JSON は一時ファイルへ保存）
-bin/project-setup --plan > <plan_file>
-bin/project-setup --apply --plan-file <plan_file> --approve-plan <plan_digest>
+plan_file="$(mktemp)"
+cleanup_plan_file() { rm -f -- "$plan_file"; }
+trap cleanup_plan_file EXIT INT TERM
+bin/project-setup --plan > "$plan_file"
+bin/project-setup --apply --plan-file "$plan_file" --approve-plan <plan_digest>
+cleanup_plan_file
+trap - EXIT INT TERM
+bin/project-setup --preflight
 ```
 
 - **深さ**: file action 適用 + 宣言的 preflight + 明示承認済み command action のみ。任意 subprocess preflight は禁止。
@@ -344,10 +350,10 @@ bin/project-setup --apply --plan-file <plan_file> --approve-plan <plan_digest>
 実行順は次のとおり。
 
 1. `materialize_runtime.py --check` を実行し、PASS しなければ中断する。
-2. `bin/project-setup --plan` の stdout JSON を一時 plan file に保存する。exit 0 でなければ apply しない。
-3. plan JSON から `plan_digest` を抽出する。欠落・不正なら exit 2 相当として中断する。
-4. `project.provisioning_auto_approve` で承認分岐し、`--apply --plan-file <plan_file> --approve-plan <plan_digest>` を実行する。`true` は AskQuestion の省略だけを意味し、CLI の明示承認トークンを省略しない。
-5. apply の成否にかかわらず一時 plan file を削除する。
+2. 一時 plan file の作成直後に cleanup finalizer を登録してから、`bin/project-setup --plan` の stdout JSON を保存する。shell の同一実行 scope なら `trap`、AskQuestion をまたぐ orchestration なら同等の `try/finally` を使う。plan が exit 0 でなければ apply せず、finalizer で削除してから中断する。
+3. plan JSON から `plan_digest` を抽出する。欠落・不正なら finalizer で一時 plan file を削除し、exit 2 相当として中断する。
+4. `project.provisioning_auto_approve` で承認分岐する。拒否・キャンセル時も finalizer で削除してから中断する。承認時は `--apply --plan-file <plan_file> --approve-plan <plan_digest>` を実行する。`true` は AskQuestion の省略だけを意味し、CLI の明示承認トークンを省略しない。
+5. apply の成否にかかわらず finalizer で一時 plan file を削除する。成功時に明示 cleanup した場合は二重削除を防ぐため finalizer を解除する。cleanup 完了前に postflight へ進まない。
 6. apply 後に `bin/project-setup --preflight` と Phase 1.7 を実行する。初回 provisioning 前の preflight は apply 前ゲートにしない。
 
 追加制約:

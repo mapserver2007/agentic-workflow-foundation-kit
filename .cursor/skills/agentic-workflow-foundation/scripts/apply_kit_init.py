@@ -151,7 +151,7 @@ def _validate_init(init: dict) -> list[str]:
                 if key not in ALLOWED_PROVISIONING_KEYS:
                     errors.append(f"未知キー provisioning.{key}")
             auto = provisioning.get("auto_approve")
-            if auto is not None and not isinstance(auto, bool):
+            if "auto_approve" in provisioning and not isinstance(auto, bool):
                 errors.append(
                     f"provisioning.auto_approve は bool 必須（実際: {type(auto).__name__}）"
                 )
