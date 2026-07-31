@@ -19,6 +19,14 @@ project:
 tech_stack_design:
   filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
 
+# tech_contract の承認ポリシー（PO 明示の opt-in）。
+# auto_approve: true のとき、対話 SKILL は validate PASS 後に AskQuestion を出さず
+# tech_contract.py apply で pin する。責任の所在は本ファイル（PO が書いた設定）。
+# 省略時 / false は従来どおり AskQuestion で明示承認。
+# provisioning（bin/project-setup --apply）の承認には使わない。
+tech_contract:
+  auto_approve: true
+
 context_budget:
   # 使用する全モデルのうち、最小のコンテキストウィンドウを token 単位で指定する。
   # 複数モデルを使う場合は最大値ではなく最小値を設定する。

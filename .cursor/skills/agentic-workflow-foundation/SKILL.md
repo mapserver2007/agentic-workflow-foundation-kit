@@ -29,7 +29,7 @@ Agentic Workflow 基盤ファイル群を、**immutable upstream SoT（統一設
 >
 > 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で `ingest_tech_stack.py` が Domain サマリ用 `tech_stack` を root manifest へ取り込む。**G-* / runtime / review / domain docs / provisioning の consumer 入力は承認済み `tech_contract` のみ**（tech 名カテゴリ推論・legacy live compose・AI path hash は使用しない）。
 >
-> リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。tech 依存値は承認済み `tech_contract` を派生 SoT とし、対話 SKILL が作成した draft を `tech_contract.py validate/apply` で pin した後だけ consumer が利用する。
+> リポジトリ直下 `manifest.yaml` は本スキル実行の生成物であり、生成ファイルの評価は PO が別途行う。tech 依存値は承認済み `tech_contract` を派生 SoT とし、対話 SKILL が作成した draft を `tech_contract.py validate/apply` で pin した後だけ consumer が利用する。承認は既定で `AskQuestion`。`init.yaml > tech_contract.auto_approve: true`（→ `project.tech_contract_auto_approve`）のときだけ validate PASS 後に AskQuestion なしで apply する。
 
 ## アーキテクチャ（stateless 決定論型）
 
@@ -204,7 +204,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 - 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
 - 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
-- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
 
 **apply が書くもの**:
 
@@ -213,8 +213,9 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 3. `project.workflow_pattern: "開発型"`（固定）
 4. `project.tech_stack_design_filename`（`init.yaml > tech_stack_design.filename` から。必須）
 5. `project.context_budget.min_context_window_tokens`
+6. `project.tech_contract_auto_approve`（`init.yaml > tech_contract.auto_approve`。省略時 `false`）
 
-**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。
+**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（`auto_approve` は project 側のポリシー投影）。
 
 feature の seed default はいずれも `enabled: true`。無効化したい場合のみ root `manifest.yaml` を直接編集して再生成する（`init.yaml` では設定しない）。
 
@@ -225,11 +226,28 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 - `project.workflow_pattern` / `features` / `deep_thinking` / `cross_repo_knowledge` キーが `init.yaml` にあれば exit 2（禁止キー）
 - `project.name` は文字列または null（空文字 / 非 string は exit 2）
 - `tech_stack_design` は必須。`tech_stack_design.filename` は basename のみ（`/` `\` `..` 禁止）、`.md` 末端、非空（省略時 exit 2）
+- `tech_contract` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
 - `context_budget.min_context_window_tokens` は正の整数かつ 50000 以上（省略時 200000）
 - 未知キーは exit 2
 - apply 後に所有キーに `"開発型"` 以外の `workflow_pattern` や `[要確認]` が残存なら exit 1
 
 **冪等性**: `init.yaml` が不変なら再 apply しても root manifest は変化しない。
+
+#### tech_contract 承認（AskQuestion / auto-apply）
+
+未 pin または fingerprint stale のとき、対話 SKILL は draft を起案し `tech_contract.py validate --check` する。承認経路は次のとおり。
+
+| `project.tech_contract_auto_approve` | 挙動 |
+| --- | --- |
+| `false`（省略時既定） | `AskQuestion` で PO 明示承認後に `tech_contract.py apply` |
+| `true`（`init.yaml > tech_contract.auto_approve: true`） | AskQuestion を出さず、validate PASS 後に即 `apply`。ログに「init.yaml opt-in auto_approve」と記録する |
+
+制約:
+
+- auto_approve は **PO が init.yaml に書いた明示 opt-in** であり、CI / 非対話 generate が勝手に true にする経路はない。
+- validate FAIL 時は auto_approve でも apply しない。
+- **provisioning**（`bin/project-setup --apply`）の計画承認には使わない。契約 pin 専用。
+- sealed `tech_contract` スキーマに `auto_approve` を混ぜない（`project.tech_contract_auto_approve` が投影先）。
 
 ### Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 
@@ -255,6 +273,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 - CLI `--design-doc` 明示指定時はその値を使用し、未指定時は manifest `project.tech_stack_design_filename` から解決する。いずれも未設定、または対象ファイルが存在しない場合は exit 2。
 - 生成前の `docs/tech-stack.md` は存在しなくてよい。ここで更新するのは生成元データ root `manifest.yaml > tech_stack`。
 - seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書）から決まる。
+- `tech_contract.source_fingerprint` の stale 検査は **pin 済み（非空 fingerprint）のときのみ**発火する。bootstrap 直後の未 pin placeholder（空 fingerprint）では §9 取り込みを継続する。設計書更新で pin 済み fingerprint と不一致のときだけ exit 1（再起案）。契約 consumer（Phase 1.65 以降）は引き続き承認済み `tech_contract` を要求する。
 
 ### Phase 1.65: G-* / script contract 投影（contract-only）
 

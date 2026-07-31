@@ -144,6 +144,11 @@ def _resolve_design_doc(cli_design_doc: str | None, manifest_path: str) -> Path:
 
 
 def _contract_fingerprint_stale(manifest_path: str, design_doc: Path) -> bool:
+    """pin 済み契約が現行設計書と乖離しているか。
+
+    source_fingerprint が空 / 未設定のときは未 pin（kit 初回 bootstrap 等）とみなし、
+    Phase 1.6 の §9 取り込みは継続する。非空の fingerprint のみ stale 判定対象。
+    """
     try:
         manifest = genlib.load_manifest(manifest_path)
     except genlib.YamlError:
@@ -151,8 +156,10 @@ def _contract_fingerprint_stale(manifest_path: str, design_doc: Path) -> bool:
     contract = manifest.get("tech_contract")
     if not isinstance(contract, dict):
         return False
-    current = tc.source_fingerprint(design_doc)
-    return contract.get("source_fingerprint") != current
+    pinned = contract.get("source_fingerprint")
+    if not isinstance(pinned, str) or not pinned.strip():
+        return False
+    return pinned != tc.source_fingerprint(design_doc)
 
 
 def main(argv=None) -> int:

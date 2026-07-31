@@ -169,6 +169,34 @@ def main() -> int:
     if rc != 1:
         errors.append(f"no section9: expected exit 1, got {rc}\n{log}")
 
+    # 9. 未 pin（source_fingerprint 空）→ §9 取り込みは継続（kit 初回 bootstrap）
+    unpinned_manifest = mtext + """
+tech_contract:
+  schema_version: 1
+  approval:
+    status: "unapproved"
+  source_fingerprint: ""
+"""
+    rc, out, log = _run(unpinned_manifest, DESIGN_DOC_FIXTURE, design_doc_name="TECH.md")
+    if rc != 0:
+        errors.append(f"unpinned contract: expected exit 0, got {rc}\n{log}")
+    if "Node.js" not in out:
+        errors.append(f"unpinned contract: tech_stack should be ingested\n{out}")
+
+    # 10. pin 済み + fingerprint 不一致 → exit 1（設計書更新後の再起案）
+    stale_manifest = mtext + """
+tech_contract:
+  schema_version: 1
+  approval:
+    status: "approved"
+  source_fingerprint: "deadbeef00000000000000000000000000000000000000000000000000000000"
+"""
+    rc, _, log = _run(stale_manifest, DESIGN_DOC_FIXTURE, design_doc_name="TECH.md")
+    if rc != 1:
+        errors.append(f"stale fingerprint: expected exit 1, got {rc}\n{log}")
+    if "source_fingerprint" not in log:
+        errors.append(f"stale fingerprint: expected mismatch message\n{log}")
+
     if errors:
         for e in errors:
             print(f"[test_ingest_tech_stack] FAIL: {e}", file=sys.stderr)

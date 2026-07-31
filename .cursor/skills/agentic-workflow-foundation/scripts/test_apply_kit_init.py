@@ -120,6 +120,43 @@ context_budget:
   min_context_window_tokens: 200000
 """
 
+INIT_AUTO_APPROVE_TRUE = """version: 1
+project:
+  name: auto-approve-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+tech_contract:
+  auto_approve: true
+"""
+
+INIT_AUTO_APPROVE_FALSE = """version: 1
+project:
+  name: manual-approve-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+tech_contract:
+  auto_approve: false
+"""
+
+INIT_AUTO_APPROVE_BAD_TYPE = """version: 1
+project:
+  name: bad-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+tech_contract:
+  auto_approve: "yes"
+"""
+
+INIT_AUTO_APPROVE_UNKNOWN_KEY = """version: 1
+project:
+  name: bad-auto
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+tech_contract:
+  auto_approve: true
+  extra: bad
+"""
+
 
 def _run(manifest_text: str, init_text: str, extra_args: list[str] | None = None) -> tuple[int, str, str]:
     with tempfile.TemporaryDirectory(prefix="test-apply-") as tmp:
@@ -267,6 +304,37 @@ def main() -> int:
         errors.append("tsd idempotency: second apply changed manifest")
     if r.returncode != 0:
         errors.append(f"tsd idempotency: second apply exit {r.returncode}")
+
+    # 18. tech_contract.auto_approve: true → project.tech_contract_auto_approve: true
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_AUTO_APPROVE_TRUE)
+    if rc != 0:
+        errors.append(f"auto_approve true: expected exit 0, got {rc}\n{log}")
+    if "tech_contract_auto_approve: true" not in out:
+        errors.append(f"auto_approve true: missing projection\n{out}")
+
+    # 19. tech_contract.auto_approve: false → explicit false
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_AUTO_APPROVE_FALSE)
+    if rc != 0:
+        errors.append(f"auto_approve false: expected exit 0, got {rc}\n{log}")
+    if "tech_contract_auto_approve: false" not in out:
+        errors.append(f"auto_approve false: missing projection\n{out}")
+
+    # 20. 省略時 → false（既定）
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_VALID)
+    if rc != 0:
+        errors.append(f"auto_approve omit: expected exit 0, got {rc}\n{log}")
+    if "tech_contract_auto_approve: false" not in out:
+        errors.append(f"auto_approve omit: expected default false\n{out}")
+
+    # 21. auto_approve が非 bool → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_AUTO_APPROVE_BAD_TYPE)
+    if rc != 2:
+        errors.append(f"auto_approve bad type: expected exit 2, got {rc}\n{log}")
+
+    # 22. tech_contract 未知キー → exit 2
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_AUTO_APPROVE_UNKNOWN_KEY)
+    if rc != 2:
+        errors.append(f"auto_approve unknown key: expected exit 2, got {rc}\n{log}")
 
     if errors:
         for e in errors:
