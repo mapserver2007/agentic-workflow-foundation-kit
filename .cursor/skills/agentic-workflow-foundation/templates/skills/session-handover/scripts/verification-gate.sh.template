@@ -2,21 +2,14 @@
 set -u
 
 echo "=== verification gate ==="
-echo "session.verification.gate_command: {{session.verification.gate_command}}"
-
-cmd="{{session.verification.gate_command}}"
-if [[ -z "$cmd" || "$cmd" == \[* ]]; then
-  echo "WARN: verification gate command is not configured; update parent manifest.yaml > session.verification.gate_command."
-  exit 0
-fi
+PROFILE="{{project.quality_gate.profile}}"
+echo "quality gate profile: $PROFILE"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-cmd_exe="${cmd%% *}"
-if [[ -x "$ROOT_DIR/$cmd_exe" || "$cmd_exe" == bin/quality-gate* ]]; then
-  read -ra cmd_arr <<< "$cmd"
-  "$ROOT_DIR/${cmd_arr[0]}" "${cmd_arr[@]:1}"
-else
-  bash -lc "$cmd"
-fi
+case "$PROFILE" in
+  foundation) exec "$ROOT_DIR/bin/foundation-gate" self ;;
+  application) exec "$ROOT_DIR/bin/quality-gate" verify ;;
+  *) echo "ERROR: unknown project.quality_gate.profile: $PROFILE" >&2; exit 2 ;;
+esac

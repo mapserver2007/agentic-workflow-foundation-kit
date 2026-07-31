@@ -21,6 +21,8 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 ### 1.1 コードゲート（実装 / PR 前の必須）
 
+**profile selector**: `manifest.yaml > project.quality_gate.profile` が唯一の選択子である。`foundation` は kit 自己検証（`bin/foundation-gate self`）、`application` は下流アプリの `bin/quality-gate verify` を選ぶ。個別 workflow / review / maintenance 文書は selector 以外の検証コマンドを固定しない。
+
 | ゲート | コマンド | 合格条件 |
 | --- | --- | --- |
 | G-GEN | `bin/quality-gate gen` | exit 0 かつ **生成対象パスに差分なし** — `git status --porcelain -- <gen_artifact_paths>` が空（`manifest.yaml > project.quality_gate.gen_artifact_paths` で対象を限定） |
@@ -28,7 +30,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-LINT | `bin/quality-gate lint` | exit 0 |
 | G-TEST | `bin/quality-gate test` | exit 0（全テスト PASS） |
 
-**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は「gen 対象パスの変更検出 → 必要時だけ gen 実行 → 対象パスのみ `git status --porcelain` → build/lint/test」の順で実行する。gen 対象パスに変更がない場合は gen をスキップし build/lint/test のみ実行する。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
+**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:
 - 生成物に関わる変更: `bin/quality-gate gen && bin/quality-gate verify`
@@ -196,7 +198,7 @@ workflow-gate.sh step6 TICKET-1234
 .cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
 ```
 
-**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。内部コマンド（backend command 等）は `manifest.yaml > project.quality_gate` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
+**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。tech stack 変更時は manifest を差し替えて再生成する。
 
 **archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 
@@ -260,7 +262,7 @@ workflow-gate.sh step6 TICKET-1234
 
 **step2-report envelope 必須検査**: `workflow-gate.sh step2-report` はレポート構造検査（`gate-report.py`）の前に、対応する step1/step2 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。step2 envelope の `report_path` が対象レポートと一致することも検査する。envelope 欠落・不正・不一致は exit 1（`gate-report.py` を実行しない）。
 
-**step4 envelope 必須検査**: `workflow-gate.sh step4` はコードゲート（gen/build/lint/test）の前に、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。envelope 欠落・不正は exit 1（`bin/quality-gate verify` を実行しない）。
+**step4 envelope 必須検査**: `workflow-gate.sh step4` はコードゲートの前に、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。envelope 欠落・不正は exit 1（profile に応じた code gate を実行しない）。`foundation` profile では `bin/foundation-gate self`、`application` profile では G-GEN + `bin/quality-gate verify` を実行する。
 {{/if}}
 {{/if}}
 
@@ -331,7 +333,7 @@ workflow-gate.sh step6 TICKET-1234
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step2`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001）+ `workflow-gate.sh step2-report`（G-ARTIFACT step1/step2 complete envelope 必須 + `gate-report.py`） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → gen 対象変更を自動検出し必要時のみ gen 実行） |
+| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → profile selector: foundation=`bin/foundation-gate self` / application=G-GEN 対象変更検出） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step5`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}

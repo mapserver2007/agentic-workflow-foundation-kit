@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
@@ -20,11 +21,10 @@ import genlib  # noqa: E402
 
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
-import capability_registry as reg  # noqa: E402
-
 ROOT_OVERLAY_KEYS = (
     "project",
     "tech_stack",
+    "tech_contract",
     "session",
     "domain_docs",
     "code_review",
@@ -553,18 +553,17 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     merged = _apply_framework_overlay(merged, overlay)
     merged = _apply_upstream_design_inputs(merged)
     _validate_project_gate_command(merged)
-    merged = _inject_composed_quality_gate_contract(merged)
+    merged = _inject_approved_tech_contract(merged, root_manifest_path)
     return _filter_outputs_by_features(merged)
 
 
-def _inject_composed_quality_gate_contract(manifest: dict) -> dict:
-    """tech_stack から live compose した contract を一時 resolved manifest へ注入する。"""
-    status, _ = reg.check_eligibility(manifest)
-    if status != "PASS":
+def _inject_approved_tech_contract(manifest: dict, root_manifest_path: str) -> dict:
+    """承認済み契約を検証し、consumer 投影を overlay 上書き不能な順序で適用する。"""
+    if not isinstance(manifest.get("tech_contract"), dict):
         return manifest
-    manifest = dict(manifest)
-    manifest["quality_gate_contract"] = reg.compose_contract(manifest)
-    return manifest
+    import contract_projection as cp  # noqa: WPS433
+
+    return cp.apply_contract_projection(manifest, root_manifest_path)
 
 
 def _indent_of(line: str) -> int:
@@ -750,7 +749,8 @@ def _run_worker_contract_validator() -> int:
     return rc
 
 
-def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) -> int:
+def run_engine(command: str, resolved_dir: str, manifest: dict | None = None, work_root: str | None = None) -> int:
+    cwd = work_root or ROOT
     if command in ("generate", "check"):
         args = [
             sys.executable,
@@ -769,7 +769,7 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None) ->
         ]
     else:
         raise ValueError(f"未知の command: {command}")
-    rc = subprocess.call(args, cwd=ROOT)
+    rc = subprocess.call(args, cwd=cwd)
     if rc != 0:
         return rc
     if command == "audit" and manifest is not None:
@@ -791,9 +791,11 @@ def main(argv=None) -> int:
     parser.add_argument("command", choices=("generate", "audit", "check", "bootstrap"))
     parser.add_argument("--seed-manifest", default=os.path.join(SKILL_DIR, "manifest.yaml"))
     parser.add_argument("--root-manifest", default=os.path.join(ROOT, "manifest.yaml"))
+    parser.add_argument("--work-root", help="generate/check の出力先リポジトリルート（省略時 kit ROOT）")
     args = parser.parse_args(argv)
+    work_root = os.path.abspath(args.work_root) if args.work_root else ROOT
 
-    if args.command == "generate":
+    if args.command == "generate" and work_root == ROOT:
         rc = _migrate_root_manifest_file(args.root_manifest)
         if rc != 0:
             return rc
@@ -809,13 +811,13 @@ def main(argv=None) -> int:
         manifest = resolved_manifest(args.seed_manifest, args.root_manifest)
         with tempfile.TemporaryDirectory(
             prefix=".resolved-agentic-workflow-foundation-",
-            dir=os.path.join(ROOT, ".cursor", "skills"),
+            dir=os.path.join(work_root, ".cursor", "skills"),
         ) as tmp_skill_dir:
             resolved_dir = prepare_skill_dir(tmp_skill_dir, manifest)
-            rc = run_engine(args.command, resolved_dir, manifest)
+            rc = run_engine(args.command, resolved_dir, manifest, work_root=work_root)
             if rc != 0:
                 return rc
-            if args.command == "generate":
+            if args.command == "generate" and work_root == ROOT:
                 rc = _cleanup_legacy_workflow_docs()
                 if rc != 0:
                     return rc
@@ -836,6 +838,16 @@ def main(argv=None) -> int:
     except OSError as e:
         print(f"FATAL: resolved skill-dir 作成失敗: {e}", file=sys.stderr)
         return 2
+    except Exception as e:
+        import tech_contract as tc  # noqa: WPS433
+
+        if isinstance(e, tc.ContractError):
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+        if isinstance(e, tc.SchemaError):
+            print(f"FATAL: {e}", file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":

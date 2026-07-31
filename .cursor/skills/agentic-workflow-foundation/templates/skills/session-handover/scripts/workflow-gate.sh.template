@@ -6,7 +6,7 @@
 #   step1        = ①→② 調査→レポート境界（gate-artifact.py 拡張済み Step① schema）
 #   step2        = ②→③ 計画→実装境界（plan-gate.sh report）
 #   step2-report = ② レポート構造検査（必須10セクション充足）
-#   step4        = ④ 実装→検証（コードゲート: gen/build/lint/test）
+#   step4        = ④ 実装→検証（profile selector: foundation=self / application=G-*）
 #   step5        = ④→⑤ 検証→PR（verification-gate.sh）
 #   step6        = ⑤→⑥ PR→完了（plan-gate.sh review）
 #   adr          = ADR 起票内容の機械検査（gate-adr.py）
@@ -149,10 +149,9 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     exec python3 "$SCRIPT_DIR/gate-report.py" --artifact-dir "$ARTIFACT_DIR" "$@"
     ;;
   step4)
-    # ④ コードゲート（決定 10: G-GEN パス限定 porcelain チェック）
-    # 順序: envelope 検査 → gen 対象変更検出 → 必要時だけ gen → 対象パスだけ porcelain 検査 → verify
-    # ADR-0001: tech stack 固有コマンドは bin/quality-gate wrapper 経由で実行する
-    echo "--- code gate (via bin/quality-gate wrapper) ---"
+    # ④ コードゲート — profile selector が唯一の分岐入力（ADR-0002 Decision 7）
+    # foundation: bin/foundation-gate self（kit 自己検証）
+    # application: G-GEN パス限定 porcelain + bin/quality-gate verify
     ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
     ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
     REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
@@ -212,52 +211,62 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     fi
 
     if [[ $ENVELOPE_FAIL -ne 0 ]]; then
-      echo "=== workflow gate step4: FAIL (envelope 検査失敗 — verify 未実行) ==="
+      echo "=== workflow gate step4: FAIL (envelope 検査失敗 — code gate 未実行) ==="
       exit 1
     fi
 
     echo "PASS: step3/step4 envelope 検査通過"
 
-    {{#if project.quality_gate.gen_artifact_paths}}
-    # --- G-GEN: 生成対象パス限定 porcelain チェック ---
-    GEN_PATHS=({{#each project.quality_gate.gen_artifact_paths}} "{{this}}"{{/each}} )
+    PROFILE="{{project.quality_gate.profile}}"
+    echo "quality gate profile: $PROFILE"
 
-    # gen 対象に変更があるか検出（staged + unstaged）
-    GEN_DIRTY=$(git diff --name-only -- "${GEN_PATHS[@]}" 2>/dev/null || true)
-    GEN_DIRTY_CACHED=$(git diff --cached --name-only -- "${GEN_PATHS[@]}" 2>/dev/null || true)
+    case "$PROFILE" in
+      foundation)
+        echo "--- code gate (foundation profile: bin/foundation-gate self) ---"
+        "$ROOT_DIR/bin/foundation-gate" self
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          echo "FAIL: bin/foundation-gate self が exit $rc で失敗"
+          exit "$rc"
+        fi
+        ;;
+      application)
+        echo "--- code gate (application profile: G-GEN + build/lint/test) ---"
+        {{#if project.quality_gate.gen_artifact_paths}}
+        GEN_PATHS=({{#each project.quality_gate.gen_artifact_paths}} "{{this}}"{{/each}} )
 
-    if [[ -n "$GEN_DIRTY" || -n "$GEN_DIRTY_CACHED" ]]; then
-      echo "--- G-GEN: gen 対象に変更あり → gen 実行 ---"
-      "$ROOT_DIR/bin/quality-gate" gen
-      GEN_EXIT=$?
-      if [[ $GEN_EXIT -ne 0 ]]; then
-        echo "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
-        exit "$GEN_EXIT"
-      fi
-      # gen 後の porcelain 検査（対象パスのみ）
-      GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
-      if [[ -n "$GEN_STATUS" ]]; then
-        echo "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
-        echo "$GEN_STATUS"
-        echo "生成物をコミットしてから再実行してください。"
-        exit 1
-      fi
-      echo "PASS: G-GEN — 生成物は最新（差分なし）"
-    else
-      echo "SKIP: G-GEN — gen 対象に変更なし（verify のみ実行）"
-    fi
-    {{else}}
-    echo "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
-    {{/if}}
+        echo "--- G-GEN: gen_artifact_paths 非空 → gen 必須実行 ---"
+        "$ROOT_DIR/bin/quality-gate" gen
+        GEN_EXIT=$?
+        if [[ $GEN_EXIT -ne 0 ]]; then
+          echo "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
+          exit "$GEN_EXIT"
+        fi
+        GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
+        if [[ -n "$GEN_STATUS" ]]; then
+          echo "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
+          echo "$GEN_STATUS"
+          echo "生成物をコミットしてから再実行してください。"
+          exit 1
+        fi
+        echo "PASS: G-GEN — 生成物は最新（差分なし）"
+        {{else}}
+        echo "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
+        {{/if}}
 
-    # --- build / lint / test (via wrapper) ---
-    echo "--- verify ---"
-    "$ROOT_DIR/bin/quality-gate" verify
-    rc=$?
-    if [[ $rc -ne 0 ]]; then
-      echo "FAIL: bin/quality-gate verify が exit $rc で失敗"
-      exit "$rc"
-    fi
+        echo "--- verify ---"
+        "$ROOT_DIR/bin/quality-gate" verify
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          echo "FAIL: bin/quality-gate verify が exit $rc で失敗"
+          exit "$rc"
+        fi
+        ;;
+      *)
+        echo "ERROR: unknown project.quality_gate.profile: $PROFILE" >&2
+        exit 2
+        ;;
+    esac
     ;;
   step5)
     # ④→⑤ 検証→PR: verification-gate.sh（session.verification.gate_command）

@@ -256,7 +256,7 @@ def test_step2_report_envelope_missing_step2():
 
 
 def test_step4_envelope_missing_step3():
-    """step4: step3 envelope 欠落で verify 未実行・exit 1。"""
+    """step4: step3 envelope 欠落で code gate 未実行・exit 1。"""
     gate = _find_workflow_gate()
     if not gate.exists():
         print("  SKIP: workflow-gate.sh not found (pre-generate)", file=sys.stderr)
@@ -282,11 +282,12 @@ def test_step4_envelope_missing_step3():
         assert "envelope 検査失敗" in result.stdout, (
             f"expected envelope failure message\nstdout: {result.stdout}"
         )
-        assert "--- verify ---" not in result.stdout, "verify block must not be reached"
+        assert "--- verify ---" not in result.stdout, "application code gate must not be reached"
+        assert "foundation-gate self" not in result.stdout, "foundation code gate must not be reached"
 
 
 def test_step4_envelope_missing_step4():
-    """step4: step4 envelope 欠落で verify 未実行・exit 1。"""
+    """step4: step4 envelope 欠落で code gate 未実行・exit 1。"""
     gate = _find_workflow_gate()
     if not gate.exists():
         print("  SKIP: workflow-gate.sh not found (pre-generate)", file=sys.stderr)

@@ -7,6 +7,7 @@ outputs / quality_gate_contract が root に持ち込まれない・既存から
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -189,18 +190,30 @@ def test_05_crlf_no_crash():
 
 def test_06_resolved_equivalent():
     """dead block 除去前後で resolved_manifest() の結果が等価。"""
-    seed_path = str(HERE.parent / "manifest.yaml")
+    seed_path = str(ROOT / "manifest.yaml")
     if not os.path.isfile(seed_path):
-        print("seed manifest not found, skip", file=sys.stderr)
+        print("root manifest not found, skip", file=sys.stderr)
+        return 0
+    manifest = genlib.load_manifest(seed_path)
+    design_name = (manifest.get("project") or {}).get("tech_stack_design_filename")
+    design_src = ROOT / ".cursor" / "docs" / str(design_name)
+    if not design_src.is_file():
+        design_src = ROOT / "docs" / str(design_name)
+    if not design_src.is_file():
+        print(f"design doc not found for {design_name}, skip", file=sys.stderr)
         return 0
     with tempfile.TemporaryDirectory() as tmp:
-        root_with = Path(tmp) / "root_with.yaml"
-        root_without = Path(tmp) / "root_without.yaml"
+        tmp_root = Path(tmp)
+        root_with = tmp_root / "root_with.yaml"
+        root_without = tmp_root / "root_without.yaml"
         seed_text = Path(seed_path).read_text(encoding="utf-8")
         root_with.write_text(seed_text, encoding="utf-8")
         lines = seed_text.splitlines()
         stripped = rre._strip_dead_blocks(list(lines))
         root_without.write_text("\n".join(stripped) + "\n", encoding="utf-8")
+        design_dst = tmp_root / ".cursor" / "docs" / str(design_name)
+        design_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(design_src, design_dst)
 
         m1 = rre.resolved_manifest(seed_path, str(root_with))
         m2 = rre.resolved_manifest(seed_path, str(root_without))

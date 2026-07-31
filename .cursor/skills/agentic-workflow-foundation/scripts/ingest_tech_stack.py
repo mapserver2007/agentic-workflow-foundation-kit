@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(HERE)
@@ -14,34 +14,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SKILL_DIR)))
 GENLIB_DIR = os.path.join(ROOT, ".cursor", "skills", "agentic-workflow-engine", "scripts")
 if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
 import genlib  # noqa: E402
+import tech_contract as tc  # noqa: E402
 
-CURSOR_DOCS_DIR = os.path.join(ROOT, ".cursor", "docs")
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
-DEFAULT_PACKAGE_JSON = os.path.join(ROOT, "package.json")
-
-NAME_MAP = {
-    "next.js": "next",
-    "@opennextjs/cloudflare": "@opennextjs/cloudflare",
-    "hono": "hono",
-    "wrangler": "wrangler",
-    "typescript": "typescript",
-    "vitest": "vitest",
-    "turborepo": "turbo",
-    "spectral": "@stoplight/spectral-cli",
-    "redocly cli": "@redocly/cli",
-    "openapi-typescript": "openapi-typescript",
-    "openapi-fetch": "openapi-fetch",
-    "openapi-react-query": "openapi-react-query",
-    "orval": "orval",
-    "prism": "@stoplight/prism-cli",
-    "pnpm": "__packageManager__",
-}
-
-
-def warn(msg: str) -> None:
-    print(f"[ingest_tech_stack] WARN: {msg}")
 
 
 def info(msg: str) -> None:
@@ -95,61 +74,6 @@ def parse_section9(text: str):
     return note, items
 
 
-def load_package_versions(package_json_path: str):
-    if not os.path.exists(package_json_path):
-        return None
-    try:
-        with open(package_json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError) as e:
-        warn(f"package.json の読込/解析に失敗（上書きをスキップ）: {e}")
-        return None
-    versions = {}
-    for key in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
-        block = data.get(key)
-        if isinstance(block, dict):
-            for name, ver in block.items():
-                if isinstance(ver, str):
-                    versions[name] = ver
-    pm = data.get("packageManager")
-    if isinstance(pm, str):
-        versions["__packageManager__"] = pm
-    return versions
-
-
-def _normalize_tech(technology: str) -> str:
-    return technology.replace("`", "").strip().lower()
-
-
-def _match_package_name(technology: str, versions: dict):
-    norm = _normalize_tech(technology)
-    if norm in NAME_MAP:
-        return NAME_MAP[norm]
-    for key, pkg in NAME_MAP.items():
-        if key in norm:
-            return pkg
-    return None
-
-
-def apply_real_versions(items, versions):
-    if not versions:
-        return 0
-    overridden = 0
-    for it in items:
-        pkg = _match_package_name(it["technology"], versions)
-        if not pkg:
-            continue
-        ver = versions.get(pkg)
-        if not ver:
-            continue
-        if pkg == "__packageManager__":
-            ver = ver.split("@")[-1]
-        if it["version_policy"] != ver:
-            it["version_policy"] = ver
-            overridden += 1
-    return overridden
-
-
 def _yaml_quote(value: str) -> str:
     s = "" if value is None else str(value)
     if '"' in s:
@@ -200,7 +124,7 @@ def write_back(manifest_path: str, note, items):
     start, last = _find_block_span(lines)
     block = build_block(note, items)
     if start is None:
-        warn("manifest に tech_stack: ブロックが無いため末尾に追記する")
+        info("manifest に tech_stack: ブロックが無いため末尾に追記する")
         new_lines = lines + [""] + block
     else:
         new_lines = lines[:start] + block + lines[last + 1:]
@@ -212,32 +136,29 @@ def write_back(manifest_path: str, note, items):
     return True
 
 
-def _resolve_design_doc(cli_design_doc: str | None, manifest_path: str) -> str | None:
-    """CLI 明示指定 > manifest project.tech_stack_design_filename の優先順位で解決する。
-
-    manifest_path の親ディレクトリをリポジトリルートとみなし、
-    .cursor/docs/{filename} を解決する。
-    """
+def _resolve_design_doc(cli_design_doc: str | None, manifest_path: str) -> Path:
     if cli_design_doc is not None:
-        return cli_design_doc
+        return Path(cli_design_doc)
+    manifest = Path(manifest_path)
+    return tc.resolve_design_doc(manifest)
 
+
+def _contract_fingerprint_stale(manifest_path: str, design_doc: Path) -> bool:
     try:
         manifest = genlib.load_manifest(manifest_path)
     except genlib.YamlError:
-        return None
-    project = manifest.get("project") or {}
-    filename = project.get("tech_stack_design_filename")
-    if filename and isinstance(filename, str):
-        repo_root = os.path.dirname(os.path.abspath(manifest_path))
-        return os.path.join(repo_root, ".cursor", "docs", filename)
-    return None
+        return False
+    contract = manifest.get("tech_contract")
+    if not isinstance(contract, dict):
+        return False
+    current = tc.source_fingerprint(design_doc)
+    return contract.get("source_fingerprint") != current
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="techstack §9 を生成済み root manifest.yaml の tech_stack へ取り込む")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--design-doc", default=None)
-    parser.add_argument("--package-json", default=DEFAULT_PACKAGE_JSON)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
 
@@ -245,41 +166,52 @@ def main(argv=None) -> int:
         print(f"[ingest_tech_stack] ERROR: manifest が見つからない: {args.manifest}")
         return 2
 
-    design_doc = _resolve_design_doc(args.design_doc, args.manifest)
-    if design_doc is None:
-        print("[ingest_tech_stack] ERROR: 設計書パスが未設定（--design-doc または manifest project.tech_stack_design_filename が必要）")
+    try:
+        design_doc = _resolve_design_doc(args.design_doc, args.manifest)
+    except tc.SchemaError as exc:
+        print(f"[ingest_tech_stack] ERROR: {exc}")
         return 2
-    if not os.path.exists(design_doc):
+
+    if not design_doc.is_file():
         print(f"[ingest_tech_stack] ERROR: 設計書が見つからない: {design_doc}")
         return 2
 
     with open(design_doc, "r", encoding="utf-8") as f:
         note, items = parse_section9(f.read())
     if not items:
-        warn("§9 の技術スタック表が見つからないため取り込みをスキップ（既定値を維持）")
-        return 0
+        print("[ingest_tech_stack] ERROR: §9 の技術スタック表が見つかりません。契約再起案が必要です")
+        return 1
     if note is None:
         try:
             note = (genlib.load_manifest(args.manifest).get("tech_stack") or {}).get("note") or ""
         except genlib.YamlError:
             note = ""
 
-    versions = load_package_versions(args.package_json)
-    if versions is None:
-        info("package.json が無いため version_policy は設計書の方針を採用（fail-open）")
-    else:
-        info(f"package.json から {apply_real_versions(items, versions)} 件の version_policy を実態優先で上書き")
+    fingerprint = tc.source_fingerprint(design_doc)
+    if _contract_fingerprint_stale(args.manifest, design_doc):
+        print(
+            "[ingest_tech_stack] ERROR: tech_contract.source_fingerprint が設計書と不一致です。"
+            " validate/apply で契約を再起案してください"
+        )
+        return 1
 
     if args.check:
         with open(args.manifest, "r", encoding="utf-8") as f:
             lines = [ln.rstrip("\r") for ln in f.read().split("\n")]
         start, last = _find_block_span(lines)
         would_change = start is None or lines[start:last + 1] != build_block(note, items)
-        info(f"取り込み対象 {len(items)} 技術。書き換え{'あり' if would_change else 'なし'}（--check）")
+        info(
+            f"取り込み対象 {len(items)} 技術。"
+            f"source_fingerprint={fingerprint[:16]}… "
+            f"書き換え{'あり' if would_change else 'なし'}（--check）"
+        )
         return 0
 
     changed = write_back(args.manifest, note, items)
-    info(f"{len(items)} 技術を root manifest tech_stack へ取り込み（{'更新あり' if changed else '更新なし=冪等'}）")
+    info(
+        f"{len(items)} 技術を root manifest tech_stack へ取り込み"
+        f"（{'更新あり' if changed else '更新なし=冪等'}）"
+    )
     return 0
 
 

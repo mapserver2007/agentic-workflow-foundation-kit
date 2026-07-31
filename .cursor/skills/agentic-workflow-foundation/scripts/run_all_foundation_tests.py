@@ -20,6 +20,20 @@ TESTS_IN_ORDER = [
     "test_engine_readonly.py",
     "test_apply_kit_init.py",
     "test_ingest_tech_stack.py",
+    "test_tech_contract.py",
+    "test_contract_lifecycle_e2e.py",
+    "test_contract_loop4.py",
+    "test_contract_loop5.py",
+    "test_contract_loop6.py",
+    "test_contract_loop7.py",
+    "test_contract_loop8.py",
+    "test_contract_loop9.py",
+    "test_contract_loop10.py",
+    "test_resolved_contract_projection.py",
+    "test_full_lifecycle_e2e.py",
+    "test_profile_selector_static.py",
+    "test_contract_consumers.py",
+    "test_provision_runtime.py",
     "test_resolve_quality_gate.py",
     "test_materialize_runtime.py",
     "test_check_tech_stack_conformance.py",
@@ -31,6 +45,7 @@ TESTS_IN_ORDER = [
     "test_gate_maintenance_docs.py",
     "test_project_gate_command.py",
     "test_workflow_orchestrator_gate_matrix.py",
+    "test_workflow_gate_step4_profile.py",
     "test_envelope_enforcement.py",
     "test_plan_gate_review.py",
     "test_bootstrap_dead_blocks.py",
@@ -38,6 +53,9 @@ TESTS_IN_ORDER = [
 
 
 def main() -> int:
+    from test_root_snapshot import assert_unchanged, snapshot  # noqa: WPS433
+
+    before = snapshot()
     total = 0
     passed = 0
     for test_name in TESTS_IN_ORDER:
@@ -56,8 +74,33 @@ def main() -> int:
             print(f"[run_all_foundation_tests] FAIL: {test_name} (exit {result.returncode})")
             return 1
         passed += 1
+        drift = assert_unchanged(before, snapshot())
+        if drift:
+            print(f"[run_all_foundation_tests] FAIL: root snapshot drift after {test_name}: {drift}")
+            return 1
 
-    print(f"[run_all_foundation_tests] {passed}/{total} passed")
+    print(f"[run_all_foundation_tests] {passed}/{total} passed (pass 1)")
+    passed2 = 0
+    for test_name in TESTS_IN_ORDER:
+        test_path = HERE / test_name
+        if not test_path.exists():
+            continue
+        print(f"[run_all_foundation_tests] RUN (pass 2): {test_name}")
+        result = subprocess.run(
+            [sys.executable, str(test_path)],
+            cwd=str(HERE),
+            env=dict(os.environ),
+        )
+        if result.returncode != 0:
+            print(f"[run_all_foundation_tests] FAIL pass 2: {test_name} (exit {result.returncode})")
+            return 1
+        passed2 += 1
+        drift = assert_unchanged(before, snapshot())
+        if drift:
+            print(f"[run_all_foundation_tests] FAIL: root snapshot drift pass 2 after {test_name}: {drift}")
+            return 1
+
+    print(f"[run_all_foundation_tests] {passed2}/{total} passed (pass 2)")
     return 0
 
 

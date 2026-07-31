@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 # このファイルは agentic-workflow-foundation スキルの生成物。
-# 直接編集せず manifest.yaml（tech_stack）を更新して再生成する。
+# 直接編集せず、承認済み manifest.yaml > tech_contract を更新して再生成する。
 
 language: "{{coderabbit.language}}"
 

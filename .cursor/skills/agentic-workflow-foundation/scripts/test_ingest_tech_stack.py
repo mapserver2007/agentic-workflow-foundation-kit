@@ -155,6 +155,20 @@ def main() -> int:
     if result.returncode != 0:
         errors.append(f"idempotency: second ingest exit {result.returncode}")
 
+    # 7. 未知技術名でも Python mapping なしで取り込める
+    unknown_doc = DESIGN_DOC_FIXTURE.replace("Next.js", "UnknownStackXYZ")
+    rc, out, log = _run(mtext, unknown_doc, design_doc_name="TECH.md")
+    if rc != 0:
+        errors.append(f"unknown tech: expected exit 0, got {rc}\n{log}")
+    if "UnknownStackXYZ" not in out:
+        errors.append("unknown tech: technology name not preserved in manifest")
+
+    # 8. §9 不在 → exit 1
+    no_section9 = "# Tech Stack Design\n\n### 10. 次セクション\n"
+    rc, _, log = _run(mtext, no_section9, design_doc_name="TECH.md")
+    if rc != 1:
+        errors.append(f"no section9: expected exit 1, got {rc}\n{log}")
+
     if errors:
         for e in errors:
             print(f"[test_ingest_tech_stack] FAIL: {e}", file=sys.stderr)

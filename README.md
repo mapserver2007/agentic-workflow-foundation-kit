@@ -37,8 +37,9 @@ agentic-workflow-foundation（What）
   seed manifest + templates + resolver scripts
         │
         ├─ bootstrap: root manifest.yaml を生成 / framework 同期
-        ├─ ingest: tech_stack を root manifest.yaml へ取り込み
-        ├─ resolve: budget thresholds / quality gate / CodeRabbit / domain docs 設定を導出
+        ├─ ingest: tech_stack を Domain サマリとして root manifest.yaml へ取り込み
+        ├─ contract: tech stack SoT → LLM draft → validate / PO approval → tech_contract pin
+        ├─ resolve: 承認済み tech_contract を quality gate / runtime / review / domain docs へ投影
         ▼
 run_resolved_engine.py
   seed + upstream metadata + root manifest overlay から
@@ -54,7 +55,7 @@ agentic-workflow-engine（How）
 
 中核は **What / How の分離**です。
 
-`agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack 取り込み、budget thresholds / quality gate / CodeRabbit / domain docs 解決を担当します。
+`agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack の事実取り込み、承認済み `tech_contract` の検証・投影を担当します。G-* / runtime / CodeRabbit / Domain docs / Provisioning の技術依存入力は `tech_contract` のみです。
 
 `agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。
 
@@ -134,6 +135,9 @@ agentic-workflow-foundation-kit/
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
         │       ├── resolve_domain_docs.py
+        │       ├── tech_contract.py
+        │       ├── provision_runtime.py
+        │       ├── runtime_plan.py
         │       ├── materialize_runtime.py
         │       ├── check_tech_stack_conformance.py
         │       ├── validate_deep_thinking.py
@@ -158,7 +162,7 @@ agentic-workflow-foundation-kit/
 
 | スキル | 役割 |
 | --- | --- |
-| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 取り込み、budget thresholds / quality gate / CodeRabbit 解決、一時 resolved skill-dir 作成、生成・監査の orchestration を担う |
+| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査の orchestration を担う |
 | [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) | 生成・監査エンジン。設定スキルから渡された `manifest.yaml + templates/` を決定論的に変換する |
 
 生成先プロジェクトで利用可能になるスキル（本リポジトリでは dogfooding 済み）:
@@ -195,7 +199,7 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
-> Phase 1.68（`materialize_runtime.py`）が tech_stack capability から `package.json`（scripts / devDependencies / packageManager）等を自動物質化します。深さは「呼び出し可能まで」で、`pnpm install` や最小アプリ生成は範囲外です。`package.json` はアプリ所有ファイルであり `outputs[]` / audit の対象外ですが、kit 所有キー（scripts / packageManager / tech_stack 由来 deps）は契約更新時に上書きされます。
+> Phase 1.68 は承認済み `tech_contract.runtime_materialization.actions` を扱います。`materialize_runtime.py --check` は read-only の renderability 検査だけを行い、file action・install・lockfile 更新は `bin/project-setup --plan` で提示した計画を明示承認した後の `--apply` だけが実行します。`package.json` 等はアプリ所有ファイルであり `outputs[]` / audit の対象外です。
 
 ## 生成ワークフロー
 
@@ -206,14 +210,15 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で `project.name` / `slug` / `workflow_pattern`（開発型固定）/ `context_budget` を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
 5. **Phase 1.6**: `init.yaml > tech_stack_design.filename` で指定された設計書から `tech_stack` を root `manifest.yaml` へ取り込む
-6. **Phase 1.65**: `tech_stack` から `G-GEN`、`G-BUILD`、`G-LINT`、`G-TEST` と package script contract を導出する
-7. **Phase 1.66**: CodeRabbit が有効な場合、tools / path filters / path instructions を解決する
-8. **Phase 1.67**: `tech_stack` から Domain 層ドキュメント用の tech-stack 固有セクションリストを解決する
-9. **Phase 1.68**: `tech_stack` capability から `package.json`（scripts / devDependencies / packageManager）等の runtime 前提を物質化する（呼び出し可能まで。`pnpm install` / 最小アプリ生成は範囲外）
-10. **Phase 1.7**: tech stack policy と実リポジトリの整合をチェックする（契約確定後の `package.json` 不在は fail-closed）
-11. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-12. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
-13. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+6. **Contract lifecycle**: SoT fingerprint 不一致時だけ対話 SKILL が draft を起案し、schema・安全性検証と PO 承認後に root `manifest.yaml > tech_contract` へ pinする
+7. **Phase 1.65**: 承認済み `tech_contract.quality_gate` を G-* と package script contract へ投影する
+8. **Phase 1.66**: `tech_contract.review.coderabbit` を CodeRabbit 設定へ投影する
+9. **Phase 1.67**: `tech_contract.domain_docs.resolved` を Domain 層ドキュメント入力へ投影する
+10. **Phase 1.68**: `materialize_runtime.py --check` で read-only 検査し、必要な書込みは明示承認付き `project-setup --apply` で行う
+11. **Phase 1.7**: 承認済み契約の declarative preflight と実リポジトリの整合をチェックする
+12. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
+13. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
+14. **Phase 4**: 確定値、生成物、ゲート結果を報告する
 
 ## 手動実行
 
@@ -232,17 +237,21 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresh
 # tech stack を root manifest.yaml > tech_stack へ取り込み
 python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 
-# quality gate / package script contract を tech_stack から導出
+# 承認済み tech_contract から quality gate / package script contract を投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.py
 
-# CodeRabbit 設定を tech_stack から導出（coderabbit.enabled: true の場合）
+# CodeRabbit 設定を承認済み tech_contract から投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 
-# Domain 層ドキュメント用の tech-stack 固有セクションを導出
+# Domain 層ドキュメント入力を承認済み tech_contract から投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
 
-# tech_stack capability から package.json 等の runtime 前提を物質化
-python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py
+# runtime action の read-only renderability 検査
+python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py --check
+
+# runtime / dependency 変更計画の提示と明示承認後の適用
+bin/project-setup --plan
+bin/project-setup --apply --plan-file <plan.json> --approve-plan <plan_digest>
 
 # tech stack policy と実リポジトリの整合確認
 python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conformance.py
@@ -325,7 +334,7 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### root manifest の責務を分ける
 
-root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。`outputs` / `quality_gate_contract` は root に保持しません（seed が単一 SoT / capability_registry から一時導出）。手編集してよいのは、Phase 1.5 / 1.55 / 1.6 / 1.65 / 1.66 / 1.67 が扱う `project`、`tech_stack`、`session`、`domain_docs`、`code_review`、`github_pr`、`github_issue`、`coderabbit`、`agent_workflow`、`deep_thinking`、`cross_repo_knowledge` などの per-project 値です。
+root `manifest.yaml` は対象プロジェクトの正式 project manifest です。ただし `framework:` ブロックの SoT は seed manifest で、root 側は同期された複製です。`framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きします。`outputs` / `quality_gate_contract` は root に保持せず seed / 承認済み `tech_contract` から一時展開します。`tech_contract` は手編集せず、対話 SKILL の draft → validate → PO 承認 → apply で pin します。
 
 ### upstream docs は immutable input
 
@@ -333,7 +342,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### tech stack は project input
 
-技術スタック統一設計書はプロジェクトごとに変わる入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。`ingest_tech_stack.py` が root `manifest.yaml > tech_stack` へ取り込み、`docs/tech-stack.md`、quality gate、CodeRabbit 設定、Domain 層ドキュメントの元データになります。
+技術スタック統一設計書はプロジェクトごとに変わる技術入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。`ingest_tech_stack.py` が事実表を `tech_stack` へ取り込み、`docs/tech-stack.md` の Domain サマリに使います。G-* / runtime / CodeRabbit / Domain docs / Provisioning は、設計書から対話 SKILL が起案し承認後に pin した `tech_contract` だけを入力にします。
 
 ### Context Budget は Hook で観測する
 

@@ -66,6 +66,7 @@ bin/foundation-gate self     # kit 自己検証（audit + foundation tests）
 ### Quality Gate Contract
 
 G-* は技術スタック由来の root scripts を外部インターフェース contract とする。`G-GEN` は開発中の生成用、`G-BUILD` はデプロイ直前やローカル実行直前の build 用として責務を分離し、`package.json` の各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たす責務を負う。
+検証入口は `project.quality_gate.profile` の単一 selector で決定する。`foundation` は `bin/foundation-gate self`、`application` は `bin/quality-gate verify` を実行する。
 
 ## Session Protocol
 
@@ -86,7 +87,7 @@ G-* は技術スタック由来の root scripts を外部インターフェー�
 ### セッション終了
 
 1. 追跡ドキュメントの「完了チェック / 次セッションTODO / 残作業」を最新化
-2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: `bin/quality-gate verify`
+2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: profile selector に従う（`foundation` = `bin/foundation-gate self` / `application` = `bin/quality-gate verify`）
 3. 設計次元 D-* を変更する判断が発生した場合は ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記のフローで `docs/DECISIONS.md` に記録する（承認前は直接追記しない）
 4. 失敗・踏み外しの学びが発生した場合は `docs/GOTCHAS.md` の起票トリガーを確認し、未追記なら同ファイルに直接追記（検知時に即追記済みなら確認のみ）
 5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-{session_id}.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
