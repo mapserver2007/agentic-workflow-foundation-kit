@@ -46,15 +46,23 @@ def version_fullmatch() -> bool:
     if not manifest.is_file():
         return True
     contract = tc.load_approved(manifest, design)
+    pattern_checks = [
+        check
+        for check in contract["provisioning"]["preflight_checks"]
+        if check.get("kind") == "json-value-pattern"
+    ]
+    if not pattern_checks:
+        print("FAIL: json-value-pattern preflight is missing", file=sys.stderr)
+        return False
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "package.json").write_text('{"packageManager":"pnpm@11.17.0-extra"}\n', encoding="utf-8")
+        (root / "package.json").write_text('{"packageManager":"pnpm@11.17.0"}\n', encoding="utf-8")
         marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"pnpm":{"version":"11.17.0-suffix"}}\n', encoding="utf-8")
         errors = rp.run_preflight(contract, root)
         bad = [e for e in errors if "json-value-pattern" in e]
-        if len(bad) < 2:
+        if len(bad) != len(pattern_checks):
             print("FAIL: suffix/prefix values should fail fullmatch", errors, file=sys.stderr)
             return False
     with tempfile.TemporaryDirectory() as tmp:
