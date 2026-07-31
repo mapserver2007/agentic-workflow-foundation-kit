@@ -29,17 +29,22 @@ import genlib  # noqa: E402
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
 
-ALLOWED_TOP_KEYS = {"version", "project", "context_budget", "tech_stack_design", "tech_contract"}
+ALLOWED_TOP_KEYS = {
+    "version", "project", "context_budget", "tech_stack_design",
+    "tech_contract", "provisioning",
+}
 ALLOWED_PROJECT_KEYS = {"name"}
 ALLOWED_CONTEXT_BUDGET_KEYS = {"min_context_window_tokens"}
 ALLOWED_TECH_STACK_DESIGN_KEYS = {"filename"}
 ALLOWED_TECH_CONTRACT_KEYS = {"auto_approve"}
+ALLOWED_PROVISIONING_KEYS = {"auto_approve"}
 FORBIDDEN_TOP_KEYS = {"workflow_pattern", "features", "deep_thinking", "cross_repo_knowledge"}
 
 FIXED_WORKFLOW_PATTERN = "開発型"
 MIN_CONTEXT_WINDOW = 50000
 DEFAULT_CONTEXT_WINDOW = 200000
 DEFAULT_TECH_CONTRACT_AUTO_APPROVE = False
+DEFAULT_PROVISIONING_AUTO_APPROVE = False
 
 
 def _out(level: str, msg: str) -> None:
@@ -135,6 +140,22 @@ def _validate_init(init: dict) -> list[str]:
                     f"tech_contract.auto_approve は bool 必須（実際: {type(auto).__name__}）"
                 )
 
+    provisioning = init.get("provisioning")
+    if provisioning is not None:
+        if not isinstance(provisioning, dict):
+            errors.append(
+                f"provisioning はマッピング必須（実際: {type(provisioning).__name__}）"
+            )
+        else:
+            for key in provisioning:
+                if key not in ALLOWED_PROVISIONING_KEYS:
+                    errors.append(f"未知キー provisioning.{key}")
+            auto = provisioning.get("auto_approve")
+            if auto is not None and not isinstance(auto, bool):
+                errors.append(
+                    f"provisioning.auto_approve は bool 必須（実際: {type(auto).__name__}）"
+                )
+
     return errors
 
 
@@ -144,6 +165,7 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     ctx = init.get("context_budget") or {}
     tsd = init.get("tech_stack_design") or {}
     tc = init.get("tech_contract") or {}
+    provisioning = init.get("provisioning") or {}
 
     name = project.get("name")
     if name is None:
@@ -168,6 +190,12 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     else:
         auto_approve = bool(auto_approve)
 
+    provisioning_auto_approve = provisioning.get("auto_approve")
+    if provisioning_auto_approve is None:
+        provisioning_auto_approve = DEFAULT_PROVISIONING_AUTO_APPROVE
+    else:
+        provisioning_auto_approve = bool(provisioning_auto_approve)
+
     return {
         "name": name,
         "slug": slug,
@@ -175,6 +203,7 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
         "min_context_window_tokens": min_tokens,
         "tech_stack_design_filename": tech_stack_design_filename,
         "tech_contract_auto_approve": auto_approve,
+        "provisioning_auto_approve": provisioning_auto_approve,
     }
 
 
@@ -308,6 +337,11 @@ def _render_manifest(content: str, values: dict) -> str:
         "true" if values["tech_contract_auto_approve"] else "false",
         after_key="tech_stack_design_filename",
     )
+    lines = _set_or_insert_scalar(
+        lines, "project", "provisioning_auto_approve",
+        "true" if values["provisioning_auto_approve"] else "false",
+        after_key="tech_contract_auto_approve",
+    )
     lines = _set_nested_scalar(
         lines, "project", "context_budget",
         "min_context_window_tokens", str(values["min_context_window_tokens"])
@@ -337,6 +371,12 @@ def _verify_owned_keys(manifest: dict) -> list[str]:
     auto = project.get("tech_contract_auto_approve")
     if auto is not None and not isinstance(auto, bool):
         issues.append(f"project.tech_contract_auto_approve は bool 必須: {auto!r}")
+
+    provisioning_auto = project.get("provisioning_auto_approve")
+    if provisioning_auto is not None and not isinstance(provisioning_auto, bool):
+        issues.append(
+            f"project.provisioning_auto_approve は bool 必須: {provisioning_auto!r}"
+        )
 
     ctx = project.get("context_budget") or {}
     raw = ctx.get("min_context_window_tokens")
@@ -389,6 +429,7 @@ def main(argv=None) -> int:
          f"workflow_pattern={values['workflow_pattern']!r} "
          f"tech_stack_design_filename={values['tech_stack_design_filename']!r} "
          f"tech_contract_auto_approve={values['tech_contract_auto_approve']} "
+         f"provisioning_auto_approve={values['provisioning_auto_approve']} "
          f"min_context_window_tokens={values['min_context_window_tokens']}")
 
     if args.check:
