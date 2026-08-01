@@ -167,6 +167,36 @@ def production_root_command_postcondition_flow() -> bool:
     return True
 
 
+def production_root_toolchain_order() -> bool:
+    manifest = ROOT / "manifest.yaml"
+    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+    if not manifest.is_file():
+        print("SKIP: no root manifest", file=sys.stderr)
+        return True
+    contract = tc.load_approved(manifest, design)
+    actual = [
+        action.get("argv")
+        for action in rp.collect_command_actions(contract)
+    ]
+    expected = [
+        ["corepack", "enable"],
+        ["corepack", "prepare", "pnpm@9.15.0", "--activate"],
+        ["pnpm", "install", "--frozen-lockfile=false"],
+    ]
+    if actual != expected:
+        print("FAIL: root host toolchain command order", actual, file=sys.stderr)
+        return False
+    package_action = next(
+        action
+        for action in contract["runtime_materialization"]["actions"]
+        if action.get("target") == "package.json"
+    )
+    if package_action["values"].get("packageManager") != "pnpm@9.15.0":
+        print("FAIL: corepack pin differs from packageManager", file=sys.stderr)
+        return False
+    return True
+
+
 def marker_version_mismatch_fails() -> bool:
     manifest = ROOT / "manifest.yaml"
     design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
@@ -188,7 +218,7 @@ def marker_version_mismatch_fails() -> bool:
         marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         # production pattern は semver fullmatch。suffix 付き値で json-value-pattern 不一致を検証する。
-        bad_version = "11.17.0-suffix"
+        bad_version = "9.15.0-suffix"
         marker.write_text(
             json.dumps({"pnpm": {"version": bad_version}}, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -331,6 +361,7 @@ def main() -> int:
         "generic_covers_packages_no_node_inference": generic_covers_packages_no_node_inference,
         "postcondition_marker_created_after_command": postcondition_marker_created_after_command,
         "production_root_command_postcondition_flow": production_root_command_postcondition_flow,
+        "production_root_toolchain_order": production_root_toolchain_order,
         "marker_version_mismatch_fails": marker_version_mismatch_fails,
         "required_package_marker_missing_fails": required_package_marker_missing_fails,
         "state_digest_mismatch_fails": state_digest_mismatch_fails,

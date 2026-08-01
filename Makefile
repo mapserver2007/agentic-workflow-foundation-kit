@@ -1,7 +1,7 @@
 .PHONY: install check
 
 BREW     := $(shell command -v brew 2>/dev/null)
-REQUIRED := python3 git jq gh
+REQUIRED := python3 node git jq gh
 
 install: _ensure_brew
 	@echo "==> Installing dependencies for agentic-workflow-foundation-kit (macOS)"

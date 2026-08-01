@@ -21,6 +21,7 @@ import resolve_quality_gate as rq  # noqa: E402
 import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
 from test_contract_fixture import (  # noqa: E402
+    FIXTURE_RUNNER,
     WEB_PNPM_WS,
     WEB_TSCONFIG,
     base_contract,
@@ -280,25 +281,46 @@ def missing_executable_no_traceback_exit2() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp)
-        contract["provisioning"]["command_actions"] = [{
-            "argv": ["nonexistent-loop5-cmd-xyz"],
-            "cwd": ".",
-            "effects": ["host_write"],
-            "writes": [".cursor/.runtime/host-marker.json"],
-            "postconditions": [{
-                "kind": "record-state-digest",
-                "marker": ".cursor/.runtime/host-marker.json",
-                "paths": ["package.json"],
+        later_write = "after-missing-command"
+        contract["provisioning"]["command_actions"] = [
+            {
+                "argv": ["nonexistent-loop5-cmd-xyz"],
+                "cwd": ".",
+                "effects": ["host_write"],
+                "writes": [".cursor/.runtime/host-marker.json"],
+                "postconditions": [{
+                    "kind": "record-state-digest",
+                    "marker": ".cursor/.runtime/host-marker.json",
+                    "paths": ["package.json"],
+                    "evidence_ref": "x",
+                }],
                 "evidence_ref": "x",
-            }],
-            "evidence_ref": "x",
-        }]
+            },
+            {
+                "argv": [
+                    sys.executable,
+                    str(FIXTURE_RUNNER),
+                    "touch",
+                    "--root",
+                    ".",
+                    "--writes",
+                    later_write,
+                ],
+                "cwd": ".",
+                "effects": ["project_write"],
+                "writes": [later_write],
+                "evidence_ref": "x",
+            },
+        ]
         manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
         approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
         code, report = rp.apply_plan(plan, approved, root)
         if code != 2 or "Traceback" in str(report):
             print("FAIL: missing executable handling", code, report, file=sys.stderr)
+            return False
+        if (root / later_write).exists() or "command:1" not in report.get("pending", []):
+            print("FAIL: command after missing executable was not kept pending", report, file=sys.stderr)
             return False
         result = subprocess.run(
             [sys.executable, str(HERE / "provision_runtime.py"),

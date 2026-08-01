@@ -116,6 +116,51 @@ def unsafe_capture_argv_rejected_without_side_effect() -> bool:
     return True
 
 
+def host_toolchain_actions_validate() -> bool:
+    with tempfile.TemporaryDirectory() as tmp:
+        design = Path(tmp) / "TECH.md"
+        design.write_text("# fixture\n", encoding="utf-8")
+        contract = base_contract(tc.source_fingerprint(design), with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
+        contract["runtime_materialization"]["actions"] = []
+        marker = ".cursor/.runtime/toolchain-state.json"
+        contract["provisioning"]["command_actions"] = [
+            {
+                "argv": ["corepack", "enable"],
+                "cwd": ".",
+                "effects": ["host_write"],
+                "writes": [marker],
+                "postconditions": [{
+                    "kind": "capture-toolchain-version",
+                    "argv": ["corepack", "--version"],
+                    "marker": marker,
+                    "pointer": "corepack.version",
+                    "pattern": r"^\d+\.\d+\.\d+$",
+                    "evidence_ref": "design §9",
+                }],
+                "evidence_ref": "design §9",
+            },
+            {
+                "argv": ["corepack", "prepare", "pnpm@9.15.0", "--activate"],
+                "cwd": ".",
+                "effects": ["host_write", "network"],
+                "writes": [marker],
+                "postconditions": [{
+                    "kind": "capture-toolchain-version",
+                    "argv": ["pnpm", "--version"],
+                    "marker": marker,
+                    "pointer": "pnpm.version",
+                    "pattern": r"^\d+\.\d+\.\d+$",
+                    "evidence_ref": "design §9",
+                }],
+                "evidence_ref": "design §9",
+            },
+        ]
+        contract["provisioning"]["preflight_checks"] = []
+        tc.validate(contract, design, require_approval=False)
+    return True
+
+
 def safe_capture_apply_is_tracked() -> bool:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -195,6 +240,7 @@ def main() -> int:
     checks = {
         "postcondition_visible_and_digest_bound": postcondition_visible_and_digest_bound,
         "unsafe_capture_argv_rejected_without_side_effect": unsafe_capture_argv_rejected_without_side_effect,
+        "host_toolchain_actions_validate": host_toolchain_actions_validate,
         "safe_capture_apply_is_tracked": safe_capture_apply_is_tracked,
         "allowed_shape_hidden_write_is_detected_and_reported": allowed_shape_hidden_write_is_detected_and_reported,
     }
