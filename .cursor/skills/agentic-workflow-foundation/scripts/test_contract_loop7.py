@@ -79,6 +79,7 @@ def postcondition_marker_created_after_command() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
         contract["provisioning"]["command_actions"] = [fixture_command_action(".provision-marker")]
         contract["provisioning"]["preflight_checks"] = []
@@ -172,14 +173,28 @@ def marker_version_mismatch_fails() -> bool:
     if not manifest.is_file():
         return True
     contract = tc.load_approved(manifest, design)
+    pattern_checks = [
+        check
+        for check in contract["provisioning"]["preflight_checks"]
+        if check.get("kind") == "json-value-pattern"
+    ]
+    if not pattern_checks:
+        print("FAIL: production root missing json-value-pattern preflight", file=sys.stderr)
+        return False
+    isolated = copy.deepcopy(contract)
+    isolated["provisioning"]["preflight_checks"] = pattern_checks
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "package.json").write_text('{"packageManager":"pnpm@11.17.0"}\n', encoding="utf-8")
         marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('{"pnpm":{"version":"1.0.0"}}\n', encoding="utf-8")
-        errors = rp.run_preflight(contract, root)
-        if not any("json-value-pattern" in e and "1.0.0" in e for e in errors):
+        # production pattern は semver fullmatch。suffix 付き値で json-value-pattern 不一致を検証する。
+        bad_version = "11.17.0-suffix"
+        marker.write_text(
+            json.dumps({"pnpm": {"version": bad_version}}, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        errors = rp.run_preflight(isolated, root)
+        if not any("json-value-pattern" in e and bad_version in e for e in errors):
             print("FAIL: version mismatch not detected", errors, file=sys.stderr)
             return False
     return True
@@ -243,6 +258,7 @@ def invalid_path_element_schema_error() -> bool:
         doc.write_text("# x\n", encoding="utf-8")
         fp = tc.source_fingerprint(doc)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["provisioning"]["command_actions"] = [{
             "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", "."],
             "cwd": ".",

@@ -140,6 +140,7 @@ def invalid_utf8_state_fatal_all_clis() -> bool:
             design.write_text("# x\n", encoding="utf-8")
             fp = tc.source_fingerprint(design)
             contract = base_contract(fp, with_file_action=False)
+            contract["provisioning"]["policy"] = "explicit"
             contract["runtime_materialization"]["actions"] = [{
                 "kind": "json-key-merge",
                 "target": "package.json",

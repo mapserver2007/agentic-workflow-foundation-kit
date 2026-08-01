@@ -417,7 +417,8 @@ def run_preflight(contract: dict, root: Path) -> list[str]:
     errors: list[str] = []
     file_actions = collect_file_actions(contract)
     command_actions = collect_command_actions(contract)
-    if not file_actions and not command_actions:
+    policy = (contract.get("provisioning") or {}).get("policy")
+    if not file_actions and not command_actions and policy != "none":
         errors.append("runtime_materialization.actions と provisioning.command_actions が共に空です")
     for index, check in enumerate(collect_preflight_checks(contract)):
         kind = check.get("kind")
@@ -702,7 +703,15 @@ def apply_plan(
 ) -> tuple[int, dict]:
     file_actions = collect_file_actions(contract)
     command_actions = collect_command_actions(contract)
+    policy = (contract.get("provisioning") or {}).get("policy")
     if not file_actions and not command_actions:
+        if policy == "none":
+            return 0, {
+                "completed": [],
+                "pending": [],
+                "changed_targets": [],
+                "recovery": "不要",
+            }
         return 2, _report([], plan.get("actions", []), [], "runtime_materialization.actions と command_actions が共に空です")
     completed: list[str] = []
     changed_targets: list[str] = []

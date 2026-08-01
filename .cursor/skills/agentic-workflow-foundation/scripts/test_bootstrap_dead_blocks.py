@@ -174,7 +174,8 @@ def test_05_crlf_no_crash():
         root = Path(tmp) / "root.yaml"
         seed.write_text(SEED_FIXTURE, encoding="utf-8")
         crlf = ROOT_WITH_DEAD.replace("\n", "\r\n")
-        root.write_text(crlf, encoding="utf-8", newline="")
+        with root.open("w", encoding="utf-8", newline="") as f:
+            f.write(crlf)
         rc = rre.bootstrap_root_manifest(str(seed), str(root))
         if rc != 0:
             print(f"bootstrap crashed with CRLF input: exit {rc}", file=sys.stderr)
