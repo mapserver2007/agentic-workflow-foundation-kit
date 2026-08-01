@@ -152,13 +152,13 @@ def base_contract(fingerprint: str, *, with_file_action: bool = True, profile: s
             },
         },
         "provisioning": {
-            "policy": "explicit",
+            "policy": "explicit" if with_file_action else "none",
             "evidence_ref": "design §9",
             "preflight_checks": [{
                 "kind": "non-empty-workspace",
                 "evidence_ref": "design §9",
                 "guidance": "bin/project-setup --plan を確認してください",
-            }],
+            }] if with_file_action else [],
             "command_actions": [],
         },
         "source_fingerprint": fingerprint,
@@ -219,6 +219,7 @@ def pnpm_quality_contract(fingerprint: str, *, gen_paths: list[str] | None = Non
 
 def conformance_contract(fingerprint: str) -> dict:
     contract = base_contract(fingerprint, with_file_action=False)
+    contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = [{
         "kind": "json-key-merge",
         "target": "package.json",
@@ -249,6 +250,7 @@ def conformance_contract(fingerprint: str) -> dict:
 
 def go_lifecycle_contract(fingerprint: str) -> dict:
     contract = base_contract(fingerprint, with_file_action=False, profile="application")
+    contract["provisioning"]["policy"] = "explicit"
     for gate in ("gen", "build", "lint", "test"):
         contract["quality_gate"][gate] = _gate_item(["go", gate])
     contract["runtime_materialization"]["actions"] = [{
@@ -278,6 +280,7 @@ def go_lifecycle_contract(fingerprint: str) -> dict:
 
 def web_lifecycle_contract(fingerprint: str) -> dict:
     contract = consumer_contract(fingerprint, "TypeScript", "pnpm")
+    contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = [{
         "kind": "json-key-merge",
         "target": "package.json",

@@ -82,7 +82,9 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
-> 依存: Python 3 標準ライブラリのみ（PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
+> 依存: Python 3.9 以上（標準ライブラリのみ、PyYAML 不要）。Hook 実行時は `jq` を推奨（未インストール時はフェイルオープン）。
+>
+> Python runtime contract: Python 3.9 以上。生成する Python スクリプトで PEP 604 (`X | Y`) や built-in generics (`list[str]` 等) を使う場合は、全 `*.py.template` 先頭に `from __future__ import annotations` を置く。
 
 ## ワークフロー（6フェーズ）
 
@@ -312,6 +314,8 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 
 - 入力は承認済み `tech_contract.domain_docs.resolved` のみ。`tech_stack.items` の layer/technology 分析は行わない。
 - テンプレートは `{{#each domain_docs.xxx_sections}}` で展開する。
+- section item は `title` とテンプレート対応の本文フィールドのみを指定する。`coding_standards_sections` は `content` のみ、`api_sections` / `data_model_sections` / `workflow_sections` は `guidance` のみを許可する。逆フィールドおよび `guidance` と `content` の同時指定は許可しない。
+- pin 前に `tech_contract.py validate --check` を実行し、section 契約と全テンプレート参照が解決できることを確認する。
 - root `manifest.yaml > domain_docs` へ書き込む。`run_resolved_engine.py` の `ROOT_OVERLAY_KEYS` に `domain_docs` が含まれており、resolved manifest に overlay される。
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
@@ -350,11 +354,12 @@ bin/project-setup --preflight
 実行順は次のとおり。
 
 1. `materialize_runtime.py --check` を実行し、PASS しなければ中断する。
-2. 一時 plan file の作成直後に cleanup finalizer を登録してから、`bin/project-setup --plan` の stdout JSON を保存する。shell の同一実行 scope なら `trap`、AskQuestion をまたぐ orchestration なら同等の `try/finally` を使う。plan が exit 0 でなければ apply せず、finalizer で削除してから中断する。
-3. plan JSON から `plan_digest` を抽出する。欠落・不正なら finalizer で一時 plan file を削除し、exit 2 相当として中断する。
-4. `project.provisioning_auto_approve` で承認分岐する。拒否・キャンセル時も finalizer で削除してから中断する。承認時は `--apply --plan-file <plan_file> --approve-plan <plan_digest>` を実行する。`true` は AskQuestion の省略だけを意味し、CLI の明示承認トークンを省略しない。
-5. apply の成否にかかわらず finalizer で一時 plan file を削除する。成功時に明示 cleanup した場合は二重削除を防ぐため finalizer を解除する。cleanup 完了前に postflight へ進まない。
-6. apply 後に `bin/project-setup --preflight` と Phase 1.7 を実行する。初回 provisioning 前の preflight は apply 前ゲートにしない。
+2. `tech_contract.provisioning.policy` を確認する。`none` では AskQuestion と `--apply` をスキップし、`bin/project-setup --preflight` へ進む。foundation かつ runtime 不要の draft は `policy: none`、空 actions、空 reality とする。`none` は変更操作なしを意味するが、既存 runtime の marker 等を検査する preflight-only は許容する。`non-empty-workspace` は使わない。空通過の根拠は `auto_approve` ではなく policy である。
+3. `explicit` のときだけ、一時 plan file の作成直後に cleanup finalizer を登録してから、`bin/project-setup --plan` の stdout JSON を保存する。shell の同一実行 scope なら `trap`、AskQuestion をまたぐ orchestration なら同等の `try/finally` を使う。plan が exit 0 でなければ apply せず、finalizer で削除してから中断する。
+4. plan JSON から `plan_digest` を抽出する。欠落・不正なら finalizer で一時 plan file を削除し、exit 2 相当として中断する。`none` でも `--plan` は `actions: []` と `plan_digest` を exit 0 で返すが、通常フローでは apply しない。
+5. `project.provisioning_auto_approve` で承認分岐する。拒否・キャンセル時も finalizer で削除してから中断する。承認時は `--apply --plan-file <plan_file> --approve-plan <plan_digest>` を実行する。`true` は AskQuestion の省略だけを意味し、CLI の明示承認トークンを省略しない。
+6. apply の成否にかかわらず finalizer で一時 plan file を削除する。成功時に明示 cleanup した場合は二重削除を防ぐため finalizer を解除する。cleanup 完了前に postflight へ進まない。
+7. `explicit` の apply 後、または `none` の policy 分岐後に `bin/project-setup --preflight` と Phase 1.7 を実行する。初回 provisioning 前の preflight は apply 前ゲートにしない。
 
 追加制約:
 
@@ -423,6 +428,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 ## 重要な制約
 
 - **出力ファイルを直接編集しない**。変更は必ず immutable upstream docs / seed `manifest.yaml` / 生成済み root `manifest.yaml` / `templates/` / stateless resolver を編集して再生成する。
+- **Python template 追加時は `from __future__ import annotations` を先頭へ置き、Python 3.9 互換性チェックを追加・実行する**。
 - **root `manifest.yaml` の `framework:` ブロックを手編集しない**。framework の SoT は seed `manifest.yaml` であり、root へは Phase 1.45 の `run_resolved_engine.py bootstrap` で同期する。ただし `framework.budget_thresholds` は Phase 1.55 の `resolve_budget_thresholds.py` が `project.context_budget.min_context_window_tokens` から算出して上書きする（唯一の例外）。root を直接書き換えてよいのは Phase 1.5/1.55/1.6/1.65 が扱う `project.*` / `framework.budget_thresholds`（resolver 経由）/ `tech_stack` / `quality_gate*` / `session` の per-project 値（およびスクリプトによる自動反映）に限る。
 - **unified/bas は immutable 実行時入力として扱う**。読み取り専用で、スキル内部に前回実行状態を保存しない。seed manifest/templates を実行結果で永続更新しない。
 - **techstack は root `manifest.yaml > tech_stack` へ取り込んでから生成する**。生成物 `docs/tech-stack.md` を事前入力として扱わない。

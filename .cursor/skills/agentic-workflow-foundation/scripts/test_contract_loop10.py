@@ -18,6 +18,7 @@ from test_contract_fixture import base_contract, fixture_command_action, write_s
 
 def _contract_with_capture(fingerprint: str) -> dict:
     contract = base_contract(fingerprint, with_file_action=False)
+    contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = []
     action = fixture_command_action(".provision-marker")
     marker = ".cursor/.runtime/toolchain-state.json"
@@ -78,6 +79,7 @@ def unsafe_capture_argv_rejected_without_side_effect() -> bool:
         design = root / "TECH.md"
         design.write_text("# fixture\n", encoding="utf-8")
         contract = base_contract(tc.source_fingerprint(design), with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         action = {
             "argv": ["true"],
             "cwd": ".",
@@ -150,6 +152,7 @@ def allowed_shape_hidden_write_is_detected_and_reported() -> bool:
         design.parent.mkdir(parents=True, exist_ok=True)
         design.write_text("# fixture\n", encoding="utf-8")
         contract = base_contract(tc.source_fingerprint(design), with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
         contract["provisioning"]["preflight_checks"] = []
         contract["provisioning"]["command_actions"] = [{

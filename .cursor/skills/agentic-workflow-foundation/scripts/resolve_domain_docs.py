@@ -45,7 +45,6 @@ def _resolve(manifest_path: str) -> dict:
     for key in SECTION_KEYS:
         if not isinstance(resolved[key], list) or not all(
             isinstance(item, dict) and isinstance(item.get("title"), str)
-            and isinstance(item.get("content", item.get("guidance")), str)
             for item in resolved[key]
         ):
             raise ValueError(f"tech_contract.domain_docs.resolved.{key} が不正です")

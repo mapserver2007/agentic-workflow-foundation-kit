@@ -95,8 +95,8 @@ def main() -> int:
         data["provisioning"]["command_actions"] = []
         manifest, design = write_sealed_manifest(root, data, design_text)
         code, _, err = invoke(["--preflight", "--manifest", str(manifest), "--design-doc", str(design)])
-        if code != 2:
-            print("FAIL: empty workspace preflight did not exit 2", err)
+        if code != 0:
+            print("FAIL: policy none empty workspace preflight did not exit 0", err)
             return 1
 
     print("[test_provision_runtime] PASS")

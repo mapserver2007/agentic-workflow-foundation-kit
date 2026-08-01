@@ -108,6 +108,7 @@ def command_missing_declared_write_fails() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
         contract["provisioning"]["command_actions"] = [{
             "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", ".", "--writes", ".provision-marker"],
@@ -142,6 +143,7 @@ def command_only_allowed() -> bool:
         doc.write_text("# x\n", encoding="utf-8")
         fp = tc.source_fingerprint(doc)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
         contract["provisioning"]["command_actions"] = [fixture_command_action(".provision-marker")]
         contract["provisioning"]["preflight_checks"] = []
@@ -157,6 +159,7 @@ def postcondition_marker_reported() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
         contract["provisioning"]["command_actions"] = [fixture_command_action(".provision-marker")]
         contract["provisioning"]["preflight_checks"] = []

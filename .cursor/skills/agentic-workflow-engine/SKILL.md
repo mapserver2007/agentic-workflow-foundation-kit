@@ -32,7 +32,7 @@ Agentic Workflow 基盤の **生成/監査エンジン（How）** を提供す�
 | `scripts/generate.py` | `--skill-dir <dir>` の `manifest.yaml` + `templates/` から `outputs[]` を生成。モードは `render`（ファイル全体）/ `marker`（`.gitignore` 等のマーカーブロック upsert）/ `seed`（不在時のみ初期生成・存在時は不可侵）。`--check` で冪等性ドライラン。`executable: true` の出力には実行ビット付与。 |
 | `scripts/audit.py` | `--skill-dir <dir>` を監査。(1) 冪等性（出力 == 再生成結果、差分があれば直接編集とみなす）、(2) `outputs[].required_sections` の充足を検査し、exit code を返す。 |
 
-> 依存: **Python 3 標準ライブラリのみ（PyYAML 不要）**。`manifest.yaml` は次の最小 YAML サブセットで記述する: block style のみ（flow `{}` / `[]` 不可）/ インデント半角スペース2 / スカラは 裸・`"…"`・`'…'`・整数・真偽値 / マッピング・シーケンス（`- item` / `- key: value`）/ 行頭・行中 `#` コメント。**複数行ブロックスカラ（`|` / `>`）は非対応**（現行 manifest は不使用）。
+> 依存: **Python 3.9 以上（標準ライブラリのみ、PyYAML 不要）**。`manifest.yaml` は次の最小 YAML サブセットで記述する: block style のみ（flow `{}` / `[]` 不可）/ インデント半角スペース2 / スカラは 裸・`"…"`・`'…'`・整数・真偽値 / マッピング・シーケンス（`- item` / `- key: value`）/ 行頭・行中 `#` コメント。**複数行ブロックスカラ（`|` / `>`）は非対応**（現行 manifest は不使用）。
 
 > 実装メモ: `scripts/genlib.py` / `generate.py` / `audit.py` は本スキルのデリバリ（ツール本体＝正本）。生成物ではないため改修時は直接編集してよい（設定スキルの生成出力ではない）。`agentic-workflow-foundation/scripts/`（`ingest_tech_stack.py` / `check_tech_stack_conformance.py`）はスキル境界を越えて `genlib` を import するため、本スクリプト群は同梱前提とする。
 

@@ -35,7 +35,7 @@ COMMAND_EFFECTS = rp.COMMAND_EFFECTS
 PREFLIGHT_KINDS = rp.PREFLIGHT_KINDS
 SHELL_METACHARACTERS = frozenset("|&;<>()$`\\")
 DESTRUCTIVE_ARGV = frozenset({"rm", "rmdir", "mkfs", "dd", "shutdown", "reboot", "touch"})
-PROVISIONING_POLICIES = frozenset({"explicit"})
+PROVISIONING_POLICIES = frozenset({"explicit", "none"})
 
 TOP_LEVEL_KEYS = frozenset({
     "schema_version",
@@ -63,6 +63,13 @@ PREFLIGHT_KEYS = frozenset({
 VALIDATION_KEYS = frozenset({"kind", "pointer", "expected", "version_pattern"})
 JSON_POINTER_LEAF = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 SECTION_ITEM_KEYS = frozenset({"title", "guidance", "content"})
+# value は title 以外に許可する本文フィールド。map 対象はちょうど 1 つを必須にする。
+SECTION_REQUIRED_FIELDS = {
+    "coding_standards_sections": ("content",),
+    "api_sections": ("guidance",),
+    "data_model_sections": ("guidance",),
+    "workflow_sections": ("guidance",),
+}
 TOOL_ITEM_KEYS = frozenset({"name"})
 PATH_INSTRUCTION_KEYS = frozenset({"path", "instructions"})
 RUNTIME_MAT_KEYS = frozenset({"actions", "reality"})
@@ -440,11 +447,21 @@ def _validate_preflight_check(check: dict, index: int) -> None:
             _validate_relative_path(rel, f"{label}.paths")
 
 
-def _validate_section_item(item: object, label: str) -> None:
+def _validate_section_item(item: object, label: str, section_key: str) -> None:
     if not isinstance(item, dict):
         raise SchemaError(f"{label} はオブジェクトが必要です")
     _reject_unknown(item, SECTION_ITEM_KEYS, label)
     _require_str(item.get("title"), f"{label}.title")
+    required_fields = SECTION_REQUIRED_FIELDS.get(section_key)
+    if required_fields is not None:
+        required_field = required_fields[0]
+        forbidden_field = "guidance" if required_field == "content" else "content"
+        _require_str(item.get(required_field), f"{label}.{required_field}")
+        if forbidden_field in item:
+            raise SchemaError(
+                f"{label}.{forbidden_field} は {section_key} では許可されません"
+            )
+        return
     has_guidance = "guidance" in item
     has_content = "content" in item
     if not has_guidance and not has_content:
@@ -514,7 +531,11 @@ def _validate_domain_docs(contract: dict) -> None:
             if not isinstance(sections, list):
                 raise SchemaError(f"domain_docs.resolved.{key} は配列が必要です")
             for index, item in enumerate(sections):
-                _validate_section_item(item, f"domain_docs.resolved.{key}[{index}]")
+                _validate_section_item(
+                    item,
+                    f"domain_docs.resolved.{key}[{index}]",
+                    section_key=key,
+                )
         else:
             _require_str(resolved.get(key), f"domain_docs.resolved.{key}")
 
@@ -561,6 +582,26 @@ def _validate_provisioning(contract: dict) -> None:
         if digest in seen_commands:
             raise SchemaError(f"provisioning.command_actions[{index}] が重複 payload です")
         seen_commands.add(digest)
+
+    file_actions = rp.collect_file_actions(contract)
+    if policy == "none":
+        if file_actions or commands:
+            raise SchemaError(
+                "provisioning.policy=none では runtime_materialization.actions と "
+                "provisioning.command_actions は共に空である必要があります"
+            )
+        if any(check.get("kind") == "non-empty-workspace" for check in checks):
+            raise SchemaError(
+                "provisioning.policy=none では non-empty-workspace preflight は許可されません"
+            )
+        # none は変更操作なしを表す。外部で充足済みの runtime を検査する
+        # required/forbidden_packages と marker preflight は許容する。foundation kit
+        # で reality を空にすることは運用規則であり、schema では強制しない。
+    elif not file_actions and not commands:
+        raise SchemaError(
+            "provisioning.policy=explicit では runtime_materialization.actions または "
+            "provisioning.command_actions が1件以上必要です"
+        )
     _validate_reality_preflight_coverage(contract)
     _validate_forbidden_preflight_coverage(contract)
 

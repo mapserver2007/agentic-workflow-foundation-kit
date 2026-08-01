@@ -117,6 +117,7 @@ def mixed_newline_existing_block_sealed() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = [{
             "kind": "owned-text-render",
             "target": "mixed.txt",
@@ -175,6 +176,7 @@ def nested_schema_rejection() -> bool:
             print("FAIL: gen path traversal accepted", file=sys.stderr)
             return False
         bad3 = base_contract(fp, with_file_action=False)
+        bad3["provisioning"]["policy"] = "explicit"
         bad3["provisioning"]["command_actions"] = [{
             "argv": ["true"], "cwd": ".", "effects": ["project_write"], "evidence_ref": "x",
         }]
@@ -186,6 +188,7 @@ def nested_schema_rejection() -> bool:
             print("FAIL: undeclared writes accepted", file=sys.stderr)
             return False
         c1 = base_contract(fp, with_file_action=False)
+        c1["provisioning"]["policy"] = "explicit"
         d1 = tc.projection_digest(c1)
         c1["runtime_materialization"]["actions"] = [{
             "kind": "create-if-missing", "target": "x.txt", "ownership": "project",
@@ -230,6 +233,7 @@ def preflight_no_subprocess_and_version_marker() -> bool:
         design.write_text("# x\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = [{
             "kind": "create-if-missing", "target": "package.json", "ownership": "project",
             "conflict_policy": "fail", "evidence_ref": "x",
@@ -313,6 +317,7 @@ def undeclared_writes_schema_rejection() -> bool:
         doc.write_text("# x\n", encoding="utf-8")
         fp = tc.source_fingerprint(doc)
         bad = base_contract(fp, with_file_action=False)
+        bad["provisioning"]["policy"] = "explicit"
         bad["provisioning"]["command_actions"] = [{
             "argv": ["true"], "cwd": ".", "effects": ["lockfile_write"], "evidence_ref": "x",
         }]

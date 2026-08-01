@@ -28,6 +28,7 @@ def _run_cli(args: list[str]) -> tuple[int, str, str]:
 
 def test_multiline_pin_roundtrip(root: Path, design: Path, fp: str) -> bool:
     contract = base_contract(fp, with_file_action=False)
+    contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = [{
         "kind": "owned-text-render",
         "target": "pnpm-workspace.yaml",
@@ -205,6 +206,7 @@ def test_nested_merge_preserves(root: Path) -> bool:
 
 def test_command_writes_on_failure(root: Path, design: Path, fp: str) -> bool:
     contract = base_contract(fp, with_file_action=False)
+    contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = [{
         "kind": "create-if-missing",
         "target": "go.mod",
