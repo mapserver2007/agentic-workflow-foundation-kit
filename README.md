@@ -351,7 +351,8 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 ## 前提条件
 
 - Python 3（生成・監査エンジンは標準ライブラリのみ）
-- Node.js 18 以上（`corepack` 同梱。application profile の host toolchain 準備に使用）
+- Node.js 18 以上（application profile の host toolchain 準備に使用）
+- `corepack`（Node.js とは別に利用可能であること。未導入時は `make install` が npm 経由で導入）
 - `pnpm` は承認済み契約の `corepack prepare` で `packageManager` と同じバージョンを有効化するため、`npm install -g pnpm` による手動導入は不要
 - PyYAML（`agent_workflow.enabled: true` で step artifact ゲートを使う場合）
 - `git`

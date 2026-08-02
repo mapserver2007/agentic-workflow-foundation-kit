@@ -13,8 +13,8 @@
 | ツール | 用途 | 必須/推奨 |
 | --- | --- | --- |
 | `python3` | 生成エンジン・resolver スクリプトの実行 | 必須 |
-| `node` | application profile の JavaScript toolchain 実行（Node.js 18 以上、`corepack` 同梱） | 必須 |
-| `corepack` | 承認済み契約に従って `pnpm` を有効化 | 必須 |
+| `node` | application profile の JavaScript toolchain 実行（Node.js 18 以上） | 必須 |
+| `corepack` | Node.js とは別に、承認済み契約に従って `pnpm` を有効化 | 必須 |
 | `git` | バージョン管理 | 必須 |
 | `jq` | Hook スクリプトの JSON 処理 | 推奨（未インストール時はフェイルオープン） |
 | `gh` | GitHub CLI（PR 操作等） | 推奨（agent-code-review 使用時は wrapper が代替） |
@@ -25,6 +25,8 @@ make check     # インストール状況を確認
 ```
 
 > `python3` は標準ライブラリのみ使用（PyYAML 不要）。
+>
+> `make install` は `corepack` が未導入の場合、`npm install --global corepack` で導入します。
 >
 > `pnpm` は `bin/project-setup --apply` が契約内の `corepack prepare` で固定バージョンを有効化する。契約外の `npm install -g pnpm` は行わない。
 
@@ -279,8 +281,8 @@ Quality Gate の自動実行を CI で行う場合は、GitHub Actions ワーク
 
 ### 必須
 
-- [ ] `python3` / `node` / `git` がインストール済み（`make check`）
-- [ ] Node.js 同梱の `corepack` が利用可能
+- [ ] `python3` / `node` / `corepack` / `git` がインストール済み（`make check`）
+- [ ] Node.js 18 以上と `corepack` が利用可能
 - [ ] Cursor Settings → Features → Hooks が有効
 - [ ] 基盤ファイルの初回生成が完了（`agentic-workflow-foundation` スキルを実行）
 

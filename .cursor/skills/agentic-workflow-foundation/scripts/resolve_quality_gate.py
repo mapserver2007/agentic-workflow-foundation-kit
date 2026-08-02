@@ -174,7 +174,9 @@ def _render_manifest(content: str, resolved: dict) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="承認済み tech_contract から G-* と script contract を投影する")
+    parser = argparse.ArgumentParser(
+        description="承認済み tech_contract から G-* と quality gate backend contract を投影する"
+    )
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)

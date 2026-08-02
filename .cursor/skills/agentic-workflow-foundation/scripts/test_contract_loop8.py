@@ -54,8 +54,15 @@ def version_fullmatch() -> bool:
     if not pattern_checks:
         print("FAIL: json-value-pattern preflight is missing", file=sys.stderr)
         return False
+    toolchain_check = next(
+        (check for check in pattern_checks if check.get("pointer") == "pnpm.version"),
+        None,
+    )
+    if toolchain_check is None:
+        print("FAIL: pnpm.version json-value-pattern preflight is missing", file=sys.stderr)
+        return False
     isolated = copy.deepcopy(contract)
-    isolated["provisioning"]["preflight_checks"] = copy.deepcopy(pattern_checks)
+    isolated["provisioning"]["preflight_checks"] = [copy.deepcopy(toolchain_check)]
     isolated["provisioning"]["preflight_checks"][0]["target"] = ".state/toolchain-state.json"
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -64,9 +71,8 @@ def version_fullmatch() -> bool:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"pnpm":{"version":"11.17.0-suffix"}}\n', encoding="utf-8")
         errors = rp.run_preflight(isolated, root)
-        bad = [e for e in errors if "json-value-pattern" in e]
-        if len(bad) != len(pattern_checks):
-            print("FAIL: suffix/prefix values should fail fullmatch", errors, file=sys.stderr)
+        if not any("11.17.0-suffix" in error for error in errors):
+            print("FAIL: suffix value should fail pnpm.version fullmatch", errors, file=sys.stderr)
             return False
     with tempfile.TemporaryDirectory() as tmp:
         doc = Path(tmp) / "TECH.md"

@@ -1,6 +1,6 @@
 # QUALITY_GATE — 検証ゲートの通過基準
 
-<!-- このファイルは agentic-workflow-foundation スキルの生成物。プロジェクト固有のコマンド/ゲートは manifest.yaml の project.quality_gate を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。quality gate backend contract は承認済み tech_contract.quality_gate を更新・承認して再生成する。project.quality_gate は selector / 互換表示用の projection であり、直接変更しない。 -->
 
 > {{project.name}} でセッション終了 / PR マージ / フェーズ境界で実行する品質ゲートの定義。**検証ゲートは exit code ベースのスクリプトで実装する** 原則に基づく。
 >
