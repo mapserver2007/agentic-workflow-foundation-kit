@@ -35,6 +35,14 @@ tech_contract:
 provisioning:
   auto_approve: true
 
+# AI が GitHub API と HTTPS Git に使用する credential provider。
+# token / PAT / JWT 本体は保存せず、provider と Keychain locator だけを宣言する。
+github_access:
+  api_credential_provider: github_app
+  keychain:
+    service: agentic-workflow-github-api
+    account: ""
+
 context_budget:
   # 使用する全モデルのうち、最小のコンテキストウィンドウを token 単位で指定する。
   # 複数モデルを使う場合は最大値ではなく最小値を設定する。

@@ -613,6 +613,17 @@ agent_kaizen:
     - "SESS"
     - "NDST"
 
+# ------------------------------------------------------------
+# (2n) github_access — AI の GitHub API / HTTPS Git credential provider
+#   init.yaml が provider と Keychain locator だけを所有する。token / PAT / JWT は保存しない。
+#   API と Git transport は同一 provider を使い、AI の Git network operation は HTTPS 固定。
+# ------------------------------------------------------------
+github_access:
+  api_credential_provider: "github_app"
+  keychain:
+    service: "agentic-workflow-github-api"
+    account: ""
+
 #   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
@@ -622,7 +633,6 @@ agent_kaizen:
 cross_repo_knowledge:
   enabled: true
   clone_base_path: "/tmp/cross-repo-knowledge"
-  git_protocol: "ssh"
 
 # ------------------------------------------------------------
 # (2l) foundation — 基盤保守ゲート（条件生成 / ADR-0001）
@@ -1139,13 +1149,56 @@ outputs:
     mode: render
     feature: github_issue
     executable: true
-  # GitHub App 認証 helper と PR 作成 wrapper は基盤必須出力として常時生成する。
-  # レビュー用 wrapper は feature: code_review で条件生成される。
+  # GitHub provider dispatcher / backend は GitHub API または Git network feature の OR 条件で生成する。
+  # 各 operation wrapper は対応 feature で条件生成する。
   # .cursorignore で AI アクセスを遮断する。
+  - path: bin/_github-auth.sh
+    template: bin/_github-auth.sh.template
+    mode: render
+    feature:
+      - code_review
+      - github_pr
+      - github_issue
+      - cross_repo_knowledge
+    executable: true
+    required_sections:
+      - "_get_github_token"
+      - "_github_git_with_remote"
+      - "GIT_ASKPASS"
+      - "credential.helper="
+  - path: bin/_github-keychain-auth.sh
+    template: bin/_github-keychain-auth.sh.template
+    mode: render
+    feature:
+      - code_review
+      - github_pr
+      - github_issue
+      - cross_repo_knowledge
+    executable: true
+    required_sections:
+      - "_github_keychain_get_token"
+      - "/usr/bin/security"
   - path: bin/_github-app-auth.sh
     template: bin/_github-app-auth.sh.template
     mode: render
+    feature:
+      - code_review
+      - github_pr
+      - github_issue
+      - cross_repo_knowledge
     executable: true
+    required_sections:
+      - "_github_app_get_token"
+      - "/repos/${owner}/${repo}/installation"
+      - "/app/installations/${installation_id}/access_tokens"
+  - path: bin/github-git-fetch-safe
+    template: bin/github-git-fetch-safe.template
+    mode: render
+    feature: code_review
+    executable: true
+    required_sections:
+      - "_github_git_with_remote"
+      - "fetch"
   - path: bin/github-pr-reviews-safe
     template: bin/github-pr-reviews-safe.template
     mode: render
@@ -1164,7 +1217,11 @@ outputs:
   - path: bin/github-pr-create-safe
     template: bin/github-pr-create-safe.template
     mode: render
+    feature: github_pr
     executable: true
+    required_sections:
+      - "_github_git_with_remote"
+      - "_github_api_request"
   # quality-gate wrapper（常時生成・必須。ADR-0001）。
   # アプリ品質の公開入口。AI・docs・gate scripts はこの wrapper 経由で検証を実行する。
   - path: bin/quality-gate
@@ -1682,6 +1739,7 @@ project:
     always:
       - "出力ファイルを直接編集しない（manifest.yaml / templates を編集して再生成する）"
       - "変更前に関連ファイルを全体読み込みする"
+      - "AI の GitHub API と git clone/fetch/pull/push は、init.yaml で選択した provider を使う bin/*-safe wrapper 経由の HTTPS に限定する（ユーザー直接 SSH は対象外）"
     ask_first:
       - "framework.* の変更（Meta 層の設計判断）"
       - "git commit / push などの履歴操作"
@@ -1690,7 +1748,7 @@ project:
       - "自己完結 SoT（manifest / templates）を迂回して生成物（AGENTS.md / rules / hooks / docs）を直接改変する"
       - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
       - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials / ~/.netrc / ~/.ssh/**）を読み取る"
-      - "OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）に直接アクセスする"
+      - "AI シェルから OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）へ直接アクセスする（bin/*-safe wrapper 内部の選択 provider 取得だけを許可）"
   # 固定値（生成物 docs/tech-stack.md + Domain 層ドキュメント群を指す。PO には問わない）。
   doc_navigation:
     domain:

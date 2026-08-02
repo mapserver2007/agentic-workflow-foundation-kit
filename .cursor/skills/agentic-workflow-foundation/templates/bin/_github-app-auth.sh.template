@@ -1,40 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set +x
 
-# GitHub App installation token を発行する共通ヘルパー。
-# 各 wrapper スクリプトが source して使用する。
-# credentials は ~/.config/github-apps/config.env から読み込む。
+# GitHub App backend。対象 owner/repo の installation を毎回解決し、
+# repository-scoped installation token を GITHUB_AUTH_TOKEN に設定する。
 
-CONFIG_ENV="${HOME}/.config/github-apps/config.env"
-
-if [[ ! -f "$CONFIG_ENV" ]]; then
-  echo "ERROR: $CONFIG_ENV が見つかりません。setup.md §4.3 を参照してください。" >&2
-  exit 2
-fi
-
-# shellcheck source=/dev/null
-source "$CONFIG_ENV"
-
-for var in GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID; do
-  if [[ -z "${!var:-}" ]]; then
-    echo "ERROR: $var が config.env に設定されていません。" >&2
-    exit 2
-  fi
-done
-
-PRIVATE_KEY_PATH="${GITHUB_APP_PRIVATE_KEY_PATH:-${HOME}/.config/github-apps/private-key.pem}"
-
-if [[ ! -f "$PRIVATE_KEY_PATH" ]]; then
-  echo "ERROR: private key が見つかりません: $PRIVATE_KEY_PATH" >&2
-  exit 2
-fi
+readonly GITHUB_APP_CONFIG_ENV="${HOME}/.config/github-apps/config.env"
 
 _base64url() {
   openssl base64 -A | tr '+/' '-_' | tr -d '='
 }
 
 _generate_jwt() {
-  local now header payload header_payload signature
+  local private_key_path now header payload header_payload signature
+  private_key_path="${GITHUB_APP_PRIVATE_KEY_PATH:-${HOME}/.config/github-apps/private-key.pem}"
+  if [[ ! -f "$private_key_path" ]]; then
+    echo "ERROR: GitHub App private key が見つかりません" >&2
+    return 2
+  fi
   now=$(date +%s)
 
   header=$(printf '{"alg":"RS256","typ":"JWT"}' | _base64url)
@@ -43,55 +26,98 @@ _generate_jwt() {
 
   header_payload="${header}.${payload}"
   signature=$(printf '%s' "$header_payload" \
-    | openssl dgst -sha256 -sign "$PRIVATE_KEY_PATH" -binary \
+    | openssl dgst -sha256 -sign "$private_key_path" -binary \
     | _base64url)
 
   printf '%s.%s' "$header_payload" "$signature"
 }
 
-_get_installation_token() {
-  local jwt response token
+_github_app_get_token() {
+  local owner="$1" repo="$2" operation="$3"
+  local jwt installation_id payload parsed permission
+  if [[ ! -f "$GITHUB_APP_CONFIG_ENV" ]]; then
+    echo "ERROR: GitHub App config が見つかりません。setup.md を参照してください。" >&2
+    return 2
+  fi
+  # shellcheck source=/dev/null
+  source "$GITHUB_APP_CONFIG_ENV"
+  if [[ -z "${GITHUB_APP_ID:-}" ]]; then
+    echo "ERROR: GITHUB_APP_ID が設定されていません" >&2
+    return 2
+  fi
   jwt=$(_generate_jwt)
 
-  response=$(curl -s -w "\n%{http_code}" \
-    -X POST \
-    -H "Authorization: Bearer ${jwt}" \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/app/installations/${GITHUB_APP_INSTALLATION_ID}/access_tokens")
-
-  local http_code body
-  http_code=$(echo "$response" | tail -1)
-  body=$(echo "$response" | sed '$d')
-
-  if [[ "$http_code" != "201" ]]; then
-    echo "ERROR: installation token の発行に失敗しました (HTTP $http_code)" >&2
-    echo "$body" >&2
-    exit 2
+  _github_http_request_secret "$jwt" GET \
+    "https://api.github.com/repos/${owner}/${repo}/installation" || {
+      jwt=""
+      echo "ERROR: GitHub App installation lookup transport failed" >&2
+      return 2
+    }
+  jwt=""
+  if [[ "$GITHUB_HTTP_CODE" != "200" ]]; then
+    _github_api_error "$GITHUB_HTTP_CODE" "$GITHUB_HTTP_BODY"
+    GITHUB_HTTP_BODY=""
+    return 2
+  fi
+  installation_id=$(printf '%s' "$GITHUB_HTTP_BODY" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except Exception:
+    value = {}
+identifier = value.get("id")
+print(identifier if isinstance(identifier, int) else "")
+')
+  GITHUB_HTTP_BODY=""
+  if [[ -z "$installation_id" ]]; then
+    echo "ERROR: 対象 repository の installation ID を解決できません" >&2
+    return 2
   fi
 
-  token=$(echo "$body" | jq -r '.token')
-  if [[ -z "$token" || "$token" == "null" ]]; then
-    echo "ERROR: レスポンスから token を抽出できませんでした" >&2
-    exit 2
+  payload=$(printf '{"repositories":[%s]}' \
+    "$(printf '%s' "$repo" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
+  jwt=$(_generate_jwt)
+  _github_http_request_secret "$jwt" POST \
+    "https://api.github.com/app/installations/${installation_id}/access_tokens" \
+    "$payload" || {
+      jwt=""
+      echo "ERROR: GitHub App token transport failed" >&2
+      return 2
+    }
+  jwt=""
+  if [[ "$GITHUB_HTTP_CODE" != "201" ]]; then
+    _github_api_error "$GITHUB_HTTP_CODE" "$GITHUB_HTTP_BODY"
+    GITHUB_HTTP_BODY=""
+    return 2
   fi
-
-  echo "$token"
-}
-
-_detect_owner_repo() {
-  local remote_url
-  remote_url=$(git remote get-url origin 2>/dev/null || true)
-
-  if [[ -z "$remote_url" ]]; then
-    echo "ERROR: git remote origin が設定されていません" >&2
-    exit 1
+  parsed=$(printf '%s' "$GITHUB_HTTP_BODY" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except Exception:
+    value = {}
+token = value.get("token")
+permission = (value.get("permissions") or {}).get("contents", "")
+if isinstance(token, str):
+    print(token)
+    print(permission if isinstance(permission, str) else "")
+')
+  GITHUB_HTTP_BODY=""
+  GITHUB_AUTH_TOKEN="${parsed%%$'\n'*}"
+  permission="${parsed#*$'\n'}"
+  if [[ -z "$GITHUB_AUTH_TOKEN" || "$parsed" != *$'\n'* ]]; then
+    GITHUB_AUTH_TOKEN=""
+    echo "ERROR: GitHub App installation token を抽出できません" >&2
+    return 2
   fi
-
-  if [[ "$remote_url" =~ github\.com[:/]([^/]+)/([^/.]+) ]]; then
-    OWNER="${BASH_REMATCH[1]}"
-    REPO="${BASH_REMATCH[2]}"
-  else
-    echo "ERROR: origin URL から owner/repo を抽出できません: $remote_url" >&2
-    exit 1
+  if [[ "$operation" == "git-read" && "$permission" != "read" && "$permission" != "write" ]]; then
+    GITHUB_AUTH_TOKEN=""
+    echo "ERROR: GitHub App installation に Contents read 権限がありません" >&2
+    return 2
+  fi
+  if [[ "$operation" == "git-write" && "$permission" != "write" ]]; then
+    GITHUB_AUTH_TOKEN=""
+    echo "ERROR: GitHub App installation に Contents write 権限がありません" >&2
+    return 2
   fi
 }

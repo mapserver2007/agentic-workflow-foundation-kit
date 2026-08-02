@@ -203,6 +203,78 @@ provisioning:
   extra: bad
 """
 
+INIT_GITHUB_APP = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: github_app
+"""
+
+INIT_GITHUB_KEYCHAIN = """version: 1
+project:
+  name: github-keychain-project
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: keychain
+  keychain:
+    service: custom-github-service
+    account: bot@example.com
+"""
+
+INIT_GITHUB_BAD_PROVIDER = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: gh
+"""
+
+INIT_GITHUB_EMPTY_ACCOUNT = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: keychain
+  keychain:
+    account: ""
+"""
+
+INIT_GITHUB_BAD_SERVICE = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  keychain:
+    service: ""
+"""
+
+INIT_GITHUB_UNKNOWN_KEY = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  extra: bad
+"""
+
+INIT_GITHUB_BAD_TYPE = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access: github_app
+"""
+
+INIT_GITHUB_CONTROL_CHAR = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: keychain
+  keychain:
+    account: "bad\x7faccount"
+"""
+
+MANIFEST_WITH_GITHUB_ACCESS = MANIFEST_FIXTURE + """github_access:
+  api_credential_provider: github_app
+  keychain:
+    service: old-service
+    account: old-account
+"""
+
 
 def _run(manifest_text: str, init_text: str, extra_args: list[str] | None = None) -> tuple[int, str, str]:
     with tempfile.TemporaryDirectory(prefix="test-apply-") as tmp:
@@ -423,6 +495,65 @@ def main() -> int:
         errors.append(
             f"provisioning auto_approve unknown key: expected exit 2, got {rc}\n{log}"
         )
+
+    # 29. github_access 省略時 → github_app + default service
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_MINIMAL)
+    if rc != 0:
+        errors.append(f"github_access default: expected exit 0, got {rc}\n{log}")
+    for needle in (
+        'api_credential_provider: "github_app"',
+        'service: "agentic-workflow-github-api"',
+        'account: ""',
+    ):
+        if needle not in out:
+            errors.append(f"github_access default: missing {needle!r}\n{out}")
+
+    # 30. provider=keychain → locator を root manifest へ投影
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_GITHUB_KEYCHAIN)
+    if rc != 0:
+        errors.append(f"github_access keychain: expected exit 0, got {rc}\n{log}")
+    for needle in (
+        'api_credential_provider: "keychain"',
+        'service: "custom-github-service"',
+        'account: "bot@example.com"',
+    ):
+        if needle not in out:
+            errors.append(f"github_access keychain: missing {needle!r}\n{out}")
+
+    # 31. 既存 github_access block を置換し、2回目は byte-identical
+    rc, out1, log = _run(MANIFEST_WITH_GITHUB_ACCESS, INIT_GITHUB_KEYCHAIN)
+    if rc != 0:
+        errors.append(f"github_access update: expected exit 0, got {rc}\n{log}")
+    with tempfile.TemporaryDirectory(prefix="test-github-idempotent-") as tmp:
+        m = Path(tmp) / "manifest.yaml"
+        i = Path(tmp) / "init.yaml"
+        m.write_text(out1, encoding="utf-8")
+        i.write_text(INIT_GITHUB_KEYCHAIN, encoding="utf-8")
+        r = subprocess.run(
+            [sys.executable, str(APPLY), "--manifest", str(m), "--init", str(i)],
+            check=False, capture_output=True, text=True, env=dict(os.environ),
+        )
+        out2 = m.read_text(encoding="utf-8")
+    if r.returncode != 0 or out1 != out2:
+        errors.append("github_access idempotency: second apply changed manifest or failed")
+
+    # 32. github_access schema violations → exit 2
+    for label, fixture in (
+        ("bad provider", INIT_GITHUB_BAD_PROVIDER),
+        ("empty keychain account", INIT_GITHUB_EMPTY_ACCOUNT),
+        ("empty service", INIT_GITHUB_BAD_SERVICE),
+        ("unknown key", INIT_GITHUB_UNKNOWN_KEY),
+        ("bad type", INIT_GITHUB_BAD_TYPE),
+        ("control character", INIT_GITHUB_CONTROL_CHAR),
+    ):
+        rc, _, log = _run(MANIFEST_FIXTURE, fixture)
+        if rc != 2:
+            errors.append(f"github_access {label}: expected exit 2, got {rc}\n{log}")
+
+    # 33. github_app は空 account を許容
+    rc, _, log = _run(MANIFEST_FIXTURE, INIT_GITHUB_APP)
+    if rc != 0:
+        errors.append(f"github_access github_app: expected exit 0, got {rc}\n{log}")
 
     if errors:
         for e in errors:

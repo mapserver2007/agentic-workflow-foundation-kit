@@ -10,12 +10,12 @@
 bin/cross-repo-sync-safe sync .cursor/skills/cross-repository-knowledge-link/config.json {name}
 ```
 
-wrapper が内部で以下を実行する:
+wrapper が内部で以下を実行する。network operation はすべて `github_access` の選択 provider + HTTPS を使い、既存 SSH origin は恒久変更しない:
 1. 健全性チェック（対象パスが `git rev-parse --show-toplevel` と一致する非 bare 作業ツリーの root か検証）
    - 対象パス不在 → 通常 clone
    - 既存パスが健全 → fetch
    - 既存だが非健全なパス（通常ファイル・dangling symlink を含む。破損・bare・親リポジトリ配下のサブディレクトリ）→ 固定形式 `mv` 退避（`{name}-yyyyMMddhhmmss`）→ 再 clone
-2. `git fetch --all --prune`
+2. origin を invocation 単位で HTTPS に上書きして fetch
 3. 最新ブランチの自動特定（remote ref 列挙失敗は exit 1。列挙成功後、`origin/<branch>` 形式のみ採用し、`origin/HEAD` および `origin` 裸 ref を除外）
 4. ブランチ切り替え + pull（pull 失敗時は WARN + exit 0 で継続）
 

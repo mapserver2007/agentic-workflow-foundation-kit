@@ -14,6 +14,7 @@ description: 絶対に守るべき制約（違反すると致命的な問題が�
 - 明示的指示がない限り push / commit / `--force` は禁止
 - `--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*` は [`.cursor/hooks/guard-git-write.sh`](mdc:.cursor/hooks/guard-git-write.sh) で deterministic deny
 - `git commit --amend` / `git rebase` は ask（ユーザー承認）
+- AI の GitHub API と git clone/fetch/pull/push は `github_access` で選択した provider を使う `bin/*-safe` wrapper 経由の HTTPS のみ。ユーザー直接 SSH は対象外
 - Hook 強制範囲の SoT: [`docs/QUALITY_GATE.md §2.1`](mdc:docs/QUALITY_GATE.md)
 
 ## ファイル操作（Always）

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+# macOS Keychain backend。専用 generic password を service/account 完全一致で取得する。
+
+_github_keychain_security() {
+  [[ -x /usr/bin/security ]] || return 127
+  /usr/bin/security "$@"
+}
+
+_github_keychain_get_token() {
+  local owner="$1" repo="$2" operation="$3" token
+  : "$owner" "$repo" "$operation"
+  if [[ "$(uname -s 2>/dev/null || true)" != "Darwin" ]]; then
+    echo "ERROR: github_access provider=keychain は macOS のみ対応しています" >&2
+    return 2
+  fi
+  if [[ -z "$GITHUB_KEYCHAIN_SERVICE" || -z "$GITHUB_KEYCHAIN_ACCOUNT" ]]; then
+    echo "ERROR: Keychain service/account が設定されていません" >&2
+    return 2
+  fi
+  if ! token=$(
+    _github_keychain_security find-generic-password \
+      -s "$GITHUB_KEYCHAIN_SERVICE" \
+      -a "$GITHUB_KEYCHAIN_ACCOUNT" \
+      -w 2>/dev/null
+  ); then
+    echo "ERROR: 専用 GitHub credential を Keychain から取得できません" >&2
+    return 2
+  fi
+  if [[ -z "$token" || "$token" == *$'\n'* || "$token" == *$'\r'* ]]; then
+    token=""
+    echo "ERROR: Keychain credential が空または不正です" >&2
+    return 2
+  fi
+  GITHUB_AUTH_TOKEN="$token"
+  token=""
+}

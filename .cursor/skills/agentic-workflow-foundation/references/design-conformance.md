@@ -34,7 +34,7 @@
 - `sessionStart` / `stop`: Context Budget Auto-Handoff の最小構成イベント。
 
 ### .cursor/hooks/*.sh（unified §13.5 / ADR Context Budget）
-- `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask（Advisory→Deterministic 昇格）。`gh` CLI 全般を deny し、GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由へ誘導する。`deny_class_failclose` で deny クラスは入力解析不能時もフェイルクローズ（`ask`）。
+- `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask。`gh` CLI 全般と AI シェルからの credential store 取得を deny し、GitHub API / Git network operation は `github_access` の選択 provider を使う wrapper へ誘導する。wrapper 内 subprocess は Hook の直接入力外。raw AI SSH は論理禁止で、物理的な fail-closed 遮断はしない。
 - `session-bootstrap.sh`: `additional_context` で handoff manifest 注入。
 - `session-budget-evaluator.sh`: `followup_message` で `[CONTEXT_BUDGET=...]` を AI に通知。
 - **二段階フェイル戦略**: `session-*` 系と `guard-git-write.sh` の deny 対象以外はフェイルオープン（`{}` 素通り）。`guard-git-write.sh` の deny クラスのみフェイルクローズ（解析不能時 `ask`）。

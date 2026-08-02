@@ -20,6 +20,9 @@ set -euo pipefail
 #   status: JSON { "name", "exists", "branch", "commit_short" } or { "name", "exists": false }
 
 readonly SCRIPT_NAME="cross-repo-sync-safe"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-auth.sh
+source "${SCRIPT_DIR}/_github-auth.sh"
 
 # --- Argument validation ---
 if [[ $# -lt 3 ]]; then
@@ -59,7 +62,6 @@ fi
 
 readonly CLONE_BASE_PATH=$(jq -r '.clone_base_path // empty' "$CONFIG_JSON")
 readonly GITHUB_ORG=$(jq -r '.github_org // empty' "$CONFIG_JSON")
-readonly GIT_PROTOCOL=$(jq -r '.git_protocol // "ssh"' "$CONFIG_JSON")
 
 if [[ -z "$CLONE_BASE_PATH" ]]; then
   echo "ERROR: clone_base_path is not set in config.json" >&2
@@ -80,18 +82,6 @@ if [[ "$REPO_ACTIVE" != "true" ]]; then
 fi
 
 readonly REPO_PATH="${CLONE_BASE_PATH}/${REPO_NAME}"
-
-# --- Helper: construct clone URL ---
-_clone_url() {
-  case "$GIT_PROTOCOL" in
-    ssh)   echo "git@github.com:${GITHUB_ORG}/${REPO_NAME}.git" ;;
-    https) echo "https://github.com/${GITHUB_ORG}/${REPO_NAME}.git" ;;
-    *)
-      echo "ERROR: unsupported git_protocol: $GIT_PROTOCOL" >&2
-      exit 2
-      ;;
-  esac
-}
 
 # --- Helper: verify target is a non-bare worktree root ---
 _is_repo_worktree_root() {
@@ -136,15 +126,20 @@ elif ! _is_repo_worktree_root "$REPO_PATH"; then
 fi
 
 if [[ "$_needs_clone" == "true" ]]; then
-  clone_url=$(_clone_url)
-  if ! git clone --quiet "$clone_url" "$REPO_PATH" 2>/dev/null; then
+  clone_url="https://github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+  if ! _github_git_run "$GITHUB_ORG" "$REPO_NAME" git-read \
+    clone --quiet "$clone_url" "$REPO_PATH"; then
     echo "ERROR: git clone failed for $REPO_NAME. Check network and auth settings." >&2
     exit 1
   fi
 fi
 
-# Fetch all remotes
-if ! git -C "$REPO_PATH" fetch --all --prune --quiet 2>/dev/null; then
+# Existing clone の origin（SSH を含む）は transport の入力にしない。設定から構成した
+# HTTPS URL で remote-tracking refs を更新し、永続 remote URL は変更しない。
+readonly HTTPS_REPO_URL="https://github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+if ! _github_git_run "$GITHUB_ORG" "$REPO_NAME" git-read \
+  -C "$REPO_PATH" fetch --prune --quiet "$HTTPS_REPO_URL" \
+  "+refs/heads/*:refs/remotes/origin/*"; then
   echo "ERROR: git fetch failed for $REPO_NAME" >&2
   exit 1
 fi
@@ -178,7 +173,8 @@ if ! git -C "$REPO_PATH" checkout --quiet "$branch" 2>/dev/null; then
   fi
 fi
 
-if ! git -C "$REPO_PATH" pull --quiet origin "$branch" 2>/dev/null; then
+if ! _github_git_run "$GITHUB_ORG" "$REPO_NAME" git-read \
+  -C "$REPO_PATH" pull --quiet "$HTTPS_REPO_URL" "$branch"; then
   echo "WARN: git pull failed, continuing with fetched state" >&2
 fi
 

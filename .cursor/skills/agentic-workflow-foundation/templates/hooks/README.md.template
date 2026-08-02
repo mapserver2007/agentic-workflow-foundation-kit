@@ -8,7 +8,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
-| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作（`--force` push / 保護ブランチ直 push / `git reset --hard origin/*` 等）を deny、履歴書き換え（`--amend` / `rebase`）を ask、**`gh` CLI 全般を deny**（PAT 未設定で認証不可 — wrapper `bin/github-pr-*-safe` を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
+| [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作を deny、履歴書き換えを ask、**`gh` CLI 全般を deny**（選択 provider の境界を迂回するため wrapper を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
 | [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-{session_id}.md` をスキャン（0/1/2+ 分岐）して `additional_context` 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）・アーカイブ + pre-compact スナップショットと manifest の突合。2+ 件時は AskQuestion マーカー注入。handoff なし時は pre-compact snapshot から fallback 注入 | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く。prompt テキスト先頭 1000 bytes を `turns.jsonl` に追記 | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
@@ -79,10 +79,11 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 ## 設計原則
 
-- **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。正規ワークフロー（`git commit` / `git push -u origin HEAD`）には干渉しない。GitHub API 操作は wrapper (`bin/github-pr-*-safe`) 経由でのみ実行可能（PAT 未設定のため `gh` 直接実行は認証不可）。
+- **Enforcement**: `guard-git-write.sh` は Git の危険操作を deny / ask し、`gh` CLI 全般を deny する。AI の GitHub API / Git network operation は `bin/*-safe` wrapper 経由に限定する。ユーザー直接 SSH は対象外で、raw AI SSH は論理禁止に留める。
 - **観測 + 助言**: `session-*` 系は AI をブロックせず、state を蓄積してしきい値超過時のみ助言を返す。
-- **認証モデル**: 本 kit は PAT / `GITHUB_TOKEN` を使用しない設計であり、GitHub API 操作はすべて wrapper (`bin/github-pr-*-safe`) 経由で行う。wrapper のみが `~/.config/github-apps/` の認証情報（GitHub App private key）にアクセスでき、内部で installation token を発行する。AI が `gh` CLI を直接実行しても認証が通らず失敗するため、deny はこの認証モデルを Hook レベルで反映したものである。
-- **素通し（既存ワークフロー維持）**: `git add` / `git commit`（amend 無し）/ `git push -u origin HEAD` / 全ての git 読み取り系。
+- **認証モデル**: `init.yaml > github_access.api_credential_provider` が API と AI HTTPS Git の単一 SoT。`github_app` は対象 repo の installation token、`keychain` は専用 service/account の PAT を wrapper 内部だけで取得する。`gh` CLI は認証状態にかかわらず provider 境界を迂回するため deny。
+- **Hook 境界**: Cursor が Hook へ渡すのは AI の直接 shell command。許可済み `bin/*-safe` wrapper が内部で起動する `security` / `git` / `curl` subprocess は `beforeShellExecution` の直接入力ではない。
+- **素通し（ローカル操作）**: `git add` / `git commit`（amend 無し）/ network を伴わない git 読み取り系。AI の fetch/push/clone/pull は専用 wrapper を使う。
 - **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
   - **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
   - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
@@ -186,7 +187,7 @@ Yellow/Red が checkpoint と同時に発火する場合は Yellow/Red が優先
 echo '{"command":"git push --force"}' | .cursor/hooks/guard-git-write.sh   # {"permission":"deny",...}
 echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
 echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
-echo '{"command":"gh pr list"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...} (PAT 未設定)
+echo '{"command":"gh pr list"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...} (provider 境界)
 # ASK
 echo '{"command":"git commit --amend -m fix"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
 # ALLOW

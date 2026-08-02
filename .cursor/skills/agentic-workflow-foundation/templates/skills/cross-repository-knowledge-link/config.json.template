@@ -1,6 +1,5 @@
 {
   "clone_base_path": "/tmp/cross-repo-knowledge",
   "github_org": "",
-  "git_protocol": "ssh",
   "repositories": []
 }

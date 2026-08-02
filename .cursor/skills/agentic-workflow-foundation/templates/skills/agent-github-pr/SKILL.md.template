@@ -3,8 +3,8 @@ name: agent-github-pr
 description: >-
   What - ローカルの diff / commit 履歴を分析して PR タイトル・本文を自動生成し、
   ユーザー承認後に固定 wrapper（github-pr-create-safe）経由で GitHub PR を作成する。
-  AI は gh CLI / GITHUB_TOKEN を直接使用せず、wrapper 内部で GitHub App
-  installation token を発行して安全に PR を作成する。
+  AI は gh CLI / credential store を直接使用せず、wrapper 内部で init.yaml の
+  選択 provider を使って HTTPS push と PR 作成を行う。
   Use when - 「PR 作成」「プルリクエスト作って」「PR 出して」等の指示。
   Do NOT use for - (1) PR 作成後のレビュー対応（agent-code-review を使う）、
   (2) PR マージ（禁止操作）、(3) issue 作成やリリースノート作成。
@@ -30,7 +30,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 - `bin/github-pr-create-safe` がスキル実行（Phase 2）で生成済み
 
-> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。GitHub Apps のセットアップは [references/pr-commands.md §0](references/pr-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
+> wrapper は `github_app` または `keychain` の選択 provider を API / HTTPS Git に共通利用し、AI に token を露出しない。セットアップは [references/pr-commands.md §0](references/pr-commands.md) を参照。
 
 ---
 
@@ -40,7 +40,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
 | Step | 入口条件 | 退出条件 |
 | --- | --- | --- |
-| **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 + リモート push 済み |
+| **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 |
 | **2 PR 内容生成** | Step 1 完了 + リモートにコミット済み変更あり | タイトル・本文の草案完成 |
 | **3 ユーザー承認** | Step 2 完了 | AskQuestion でユーザーが承認 |
 | **4 PR 作成** | Step 3 承認済み | PR URL 取得 + 出力 |
@@ -66,17 +66,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
    - 未コミットファイルがある旨をユーザーに通知するが、コミットは案内しない
    - コミット済みの変更（リモートブランチに push 済みのコミット）のみを PR 対象とする
 
-3. リモートブランチへの push 状態を確認する:
-
-   ```bash
-   git log origin/{head}..HEAD --oneline 2>/dev/null
-   ```
-
-   - リモートに未 push のコミットがある場合は **中断**し、`git push` を案内する
-   - リモートブランチが存在しない場合（初回 push 前）も **中断**し、`git push -u origin {head}` を案内する
-   - **AI がコミットや push を代行することは禁止**。ユーザー自身の操作を待つ
-
-4. ベースブランチを決定する:
+3. ベースブランチを決定する:
 
    ```bash
    git log --oneline --decorate -1
@@ -87,7 +77,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
      - リリースブランチ候補: `git branch -r --list 'origin/release/v*' --sort=-version:refname | head -1`
      - Other（ユーザー指定）
 
-5. head / base ブランチを記録して Step 2 へ。
+4. head / base ブランチを記録して Step 2 へ。リモート反映は Step 4 の `bin/github-pr-create-safe` が選択 provider + HTTPS で実行する。
 
 ### Step 2: diff 分析 + PR タイトル・本文生成
 
@@ -185,7 +175,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 3. 結果を処理する:
    - exit 0: PR URL を出力し、完了メッセージを表示する
    - exit 1: API エラーの内容をユーザーに報告する（ベースブランチ自動判定の誤りが原因の場合あり — Step 1 のブランチ選択を再確認）
-   - exit 2: GitHub App の認証エラー。セットアップを案内する
+   - exit 2: 選択 provider の設定・credential エラー。セットアップを案内する
 
 4. 成功時の出力:
 

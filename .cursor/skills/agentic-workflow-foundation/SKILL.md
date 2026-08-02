@@ -72,7 +72,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `references/source-mapping.md` | manifest キー → 出力ファイル のトレーサビリティ |
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
-| `templates/bin/*` | wrapper スクリプトのテンプレート。`github-pr-create-safe` / `_github-app-auth.sh` は基盤必須出力として常に生成。`github-pr-{reviews,comment,reply}-safe` は `code_review` 有効時のみ生成。`.cursorignore` で AI アクセス遮断 |
+| `templates/bin/*` | wrapper スクリプトのテンプレート。`_github-auth.sh` が `github_app` / `keychain` を dispatch し、GitHub API と AI の Git network operation を同一 provider + HTTPS に統一する。`.cursorignore` で AI アクセス遮断 |
 | `scripts/ingest_tech_stack.py` | techstack 設計書 §9 → root `manifest.yaml > tech_stack` 取り込み |
 | `scripts/resolve_quality_gate.py` | 承認済み `tech_contract.quality_gate` を `project.quality_gate` へ投影 |
 | `scripts/materialize_runtime.py` | 承認済み `tech_contract.runtime_materialization.actions` の renderability 検査（`--check` のみ。書込みは `provision_runtime` 単一路） |
@@ -206,7 +206,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 - 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
 - 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
-- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve` / `provisioning.auto_approve`。`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve` / `provisioning.auto_approve`、`github_access` の provider / Keychain locator。token / PAT / JWT、`framework` / `tech_stack` / `quality_gate*` / feature フラグは書かない。
 
 **apply が書くもの**:
 
@@ -217,6 +217,8 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 5. `project.context_budget.min_context_window_tokens`
 6. `project.tech_contract_auto_approve`（`init.yaml > tech_contract.auto_approve`。省略時 `false`）
 7. `project.provisioning_auto_approve`（`init.yaml > provisioning.auto_approve`。省略時 `false`）
+8. `github_access.api_credential_provider`（`github_app | keychain`。省略時 `github_app`）
+9. `github_access.keychain.service` / `account`（service 既定 `agentic-workflow-github-api`。provider=`keychain` は account 非空必須）
 
 **apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`tech_stack`、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（2つの `auto_approve` は project 側の対話承認ポリシー投影）。
 
@@ -232,6 +234,7 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 - `tech_contract` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
 - `provisioning` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
 - `context_budget.min_context_window_tokens` は正の整数かつ 50000 以上（省略時 200000）
+- `github_access` は `api_credential_provider` / `keychain` のみ。provider は `github_app | keychain`、service/account は制御文字と shell 展開文字を含まない文字列。provider=`keychain` では account 非空必須
 - 未知キーは exit 2
 - apply 後に所有キーに `"開発型"` 以外の `workflow_pattern` や `[要確認]` が残存なら exit 1
 
@@ -393,7 +396,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
-- `bin/github-pr-create-safe` / `bin/_github-app-auth.sh` は基盤の**必須出力**として常に `bin/` に生成し実行ビットを付与する（ADR-0001）。`code_review.enabled` が `true` の場合は追加で `bin/github-pr-{reviews,comment,reply}-safe` も生成する。`.cursorignore` のマーカーブロックに `bin/` を含めて AI アクセスを遮断する。GitHub App が未設定の場合、wrapper は exit 2（致命的エラー）で終了する。
+- `bin/_github-auth.sh` / `bin/_github-{app,keychain}-auth.sh` は `code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に生成し、各 operation wrapper は対応 feature で条件生成する。API と Git は `init.yaml` の単一 provider を使用する。`github_app` は対象 owner/repo の installation を動的解決し、`keychain` は専用 service/account の PAT を完全一致で取得する。AI の clone/fetch/pull/push は wrapper 内で HTTPS + operation-scoped `GIT_ASKPASS` を使い、既存 credential helper と SSH remote を恒久変更しない。
 - `session-planning` / `session-handover` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
 
 ### Phase 3: 監査ゲート
@@ -435,7 +438,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - **unified design / root manifest overlay は foundation 側の `run_resolved_engine.py` で行う**。engine に foundation 固有の upstream / per-project 解決ロジックを追加しない。
 - **`project.*` は AskQuestion / 自動導出 / 固定値の3分類で確定し、`framework.accd_axes` は自動導出で確定する**。`framework.accd_axes` は開発型 / パイプライン型 / ドキュメント型では軽量実装を自動導出し、ACCD 軸ごとの AskQuestion は行わない。未確定で残った `[要確認]` は audit が WARN 扱い。
 - **`quality_gate` は承認済み `tech_contract.quality_gate` から投影する**。tech_stack 表や workflow_pattern から backend command を再導出したり、`package.json` の script を検出したりしない。公開入口は `bin/quality-gate`（ADR-0001）。
-- **wrapper スクリプト（`bin/`）は生成物であり直接編集しない**。変更は `templates/bin/*.template` を編集して再生成する。`.cursorignore` により AI のコンテキストから除外されるが、`templates/bin/` は除外対象外であり SoT として編集可能。`bin/github-pr-create-safe` と `bin/_github-app-auth.sh` は基盤の**必須出力**であり、GitHub App のセットアップが foundation kit の前提要件となる（ADR-0001）。GitHub App 未設定時は wrapper が exit 2（致命的エラー）で終了する設計とし、今後 git 操作に関する skill が追加される場合も同様に wrapper + GitHub App 経由を前提とする。
+- **wrapper スクリプト（`bin/`）は生成物であり直接編集しない**。変更は `templates/bin/*.template` を編集して再生成する。`.cursorignore` により AI のコンテキストから除外されるが、`templates/bin/` は SoT として編集可能。GitHub API と AI の Git network operation は `github_access` の選択 provider + HTTPS wrapper を前提とし、第2の provider / transport selector を追加しない。
 - 既存の `.gitignore` / `.cursorignore` の他の行を消さない（マーカーブロックのみ管理）。
 - 不要になった `agentic-session-management` は再作成しない。session 系出力は生成済み root manifest から生成する。
 - **`AGENTS.md` 出力仕様の変更（例: `Context Budget Protocol` 節の追加）は、本来 `templates/AGENTS.md.template` と、必要なら `manifest.yaml` / `references/design-conformance.md` を更新して再生成する対象である**。ただし PO が明示的に「`SKILL.md` 内部のみの修正」を指定した場合は、生成物（`AGENTS.md` / `templates/*` / `manifest.yaml`）を変更せず、要件と手順の文書化だけに留める。その場合 `SKILL.md` の記述と実出力の間に一時的な乖離が残ることを許容し、後続の再生成タスクで解消する。

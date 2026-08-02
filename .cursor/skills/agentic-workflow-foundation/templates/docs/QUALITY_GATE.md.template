@@ -294,10 +294,10 @@ workflow-gate.sh step6 TICKET-1234
 | `git reset --hard origin/*` / `upstream/*` | deny | ローカル変更の不可逆消失 |
 | `gh pr merge` | deny | 明示指示なきマージ禁止（AGENTS.md > Never） |
 | `gh repo delete` / `gh repo archive` | deny | 不可逆 |
-| `gh pr create` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-create-safe` を案内 |
-| `gh pr comment` / `gh pr review` / `gh issue comment` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` を案内 |
-| `gh api` | deny | PAT 未設定で認証不可。wrapper `bin/github-pr-reviews-safe` 等を案内 |
-| `gh`（上記以外の全サブコマンド） | deny | PAT 未設定で認証不可。wrapper 一覧を案内 |
+| `gh pr create` | deny | 選択 provider の境界を迂回するため、wrapper `bin/github-pr-create-safe` を案内 |
+| `gh pr comment` / `gh pr review` / `gh issue comment` | deny | 選択 provider の境界を迂回するため、対応 wrapper を案内 |
+| `gh api` | deny | 選択 provider の境界を迂回するため、`bin/github-*-safe` を案内 |
+| `gh`（上記以外の全サブコマンド） | deny | provider に依存せず直接実行禁止。wrapper 一覧を案内 |
 | `git commit --amend` | ask | 履歴改ざんのためユーザー承認 |
 | `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask | 履歴書き換えのためユーザー承認 |
 
@@ -309,7 +309,7 @@ workflow-gate.sh step6 TICKET-1234
 | `gh auth status --show-token` / `-t` | deny | 認証トークン漏洩防止 |
 | `gh auth login --with-token` | deny | 認証設定の無断変更防止 |
 | `echo`/`printf` による `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN` の出力 | deny | token 環境変数の漏洩防止 |
-| `security find-generic-password` / `find-internet-password` / `dump-keychain` | deny | macOS Keychain への直接アクセス防止 |
+| `security find-generic-password` / `find-internet-password` / `dump-keychain` | deny | AI シェルからの直接アクセス防止。`bin/*-safe` wrapper 内部の provider 取得は Hook の直接入力外 |
 | `op read` / `op item get` / `aws secretsmanager` / `gcloud secrets` / `vault kv get` / `pass show` | deny | secret store への直接アクセス防止 |
 | `git credential fill` / `approve` / `reject` | deny | Git 認証情報の漏洩防止 |
 | `git config --global`\|`--system --get credential.*` | deny | Git 認証設定の漏洩防止 |

@@ -37,6 +37,7 @@ ROOT_OVERLAY_KEYS = (
     "requirement_analysis",
     "agent_kaizen",
     "foundation",
+    "github_access",
 )
 FRAMEWORK_OVERLAY_KEYS = ("accd_axes",)
 UPSTREAM_DESIGN_INPUTS = (
