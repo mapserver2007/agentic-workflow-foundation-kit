@@ -114,10 +114,10 @@ def command_missing_declared_write_fails() -> bool:
             "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", ".", "--writes", ".provision-marker"],
             "cwd": ".",
             "effects": ["project_write"],
-            "writes": [".provision-marker", ".cursor/.runtime/provision-state.json"],
+            "writes": [".provision-marker", ".state/provision-state.json"],
             "postconditions": [{
                 "kind": "record-state-digest",
-                "marker": ".cursor/.runtime/provision-state.json",
+                "marker": ".state/provision-state.json",
                 "paths": [".provision-marker"],
                 "evidence_ref": "x",
             }],
@@ -167,7 +167,7 @@ def postcondition_marker_reported() -> bool:
         approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
         code, report = rp.apply_plan(plan, approved, root)
-        marker = ".cursor/.runtime/provision-state.json"
+        marker = ".state/provision-state.json"
         if code != 0 or marker not in report.get("changed_targets", []):
             print("FAIL: postcondition marker not reported", report, file=sys.stderr)
             return False
@@ -185,14 +185,14 @@ def marker_version_mismatch() -> bool:
         contract["provisioning"]["command_actions"] = []
         contract["provisioning"]["preflight_checks"] = [{
             "kind": "json-value-pattern",
-            "target": ".cursor/.runtime/toolchain-state.json",
+            "target": ".state/toolchain-state.json",
             "pointer": "pnpm.version",
             "pattern": r"^9\.\d+\.\d+$",
             "evidence_ref": "x",
             "guidance": "version mismatch expected",
         }]
         manifest, design = write_sealed_manifest(root, contract, "# x\n")
-        marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
+        marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"pnpm":{"version":"11.0.0"}}\n', encoding="utf-8")
         errors = rp.run_preflight(tc.load_approved(manifest, design), root)
@@ -242,13 +242,13 @@ def lockfile_state_digest_mismatch() -> bool:
         contract["provisioning"]["command_actions"] = []
         contract["provisioning"]["preflight_checks"] = [{
             "kind": "state-digests",
-            "marker": ".cursor/.runtime/provision-state.json",
+            "marker": ".state/provision-state.json",
             "paths": ["pnpm-lock.yaml"],
             "evidence_ref": "x",
             "guidance": "digest mismatch expected",
         }]
         manifest, design = write_sealed_manifest(root, contract, "# x\n")
-        marker = root / ".cursor" / ".runtime" / "provision-state.json"
+        marker = root / ".state" / "provision-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"digests":{"pnpm-lock.yaml":"deadbeef"}}\n', encoding="utf-8")
         (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")

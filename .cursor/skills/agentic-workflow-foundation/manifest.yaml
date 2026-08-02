@@ -812,7 +812,7 @@ outputs:
       - "G-GEN"
       - "Hook"
       - "リンク衛生"
-      - "package script contract"
+      - "quality gate backend contract"
       - "検査 ID"
       - "セッション開始ゲート"
       - "計画ライフサイクルゲート"
@@ -1660,7 +1660,7 @@ project:
     - "出力ファイルの直接編集ではなく manifest/templates 経由の再生成で変更する"
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
   # 承認済み tech_contract.quality_gate から Phase 1.65 が決定論的に投影する。
-  # G-* は root scripts の canonical entrypoint として決定し、script contract も同じ契約から展開する。
+  # G-* の canonical backend argv と backend contract は同じ契約から展開する。
   # tech_stack の技術名推論や package.json の script 検出は行わない。
   quality_gate:
     # 単一 selector。foundation は kit 自己検証、application は下流 G-* を選ぶ。

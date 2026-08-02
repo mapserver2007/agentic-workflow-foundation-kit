@@ -54,13 +54,16 @@ def version_fullmatch() -> bool:
     if not pattern_checks:
         print("FAIL: json-value-pattern preflight is missing", file=sys.stderr)
         return False
+    isolated = copy.deepcopy(contract)
+    isolated["provisioning"]["preflight_checks"] = copy.deepcopy(pattern_checks)
+    isolated["provisioning"]["preflight_checks"][0]["target"] = ".state/toolchain-state.json"
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "package.json").write_text('{"packageManager":"pnpm@11.17.0"}\n', encoding="utf-8")
-        marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
+        marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"pnpm":{"version":"11.17.0-suffix"}}\n', encoding="utf-8")
-        errors = rp.run_preflight(contract, root)
+        errors = rp.run_preflight(isolated, root)
         bad = [e for e in errors if "json-value-pattern" in e]
         if len(bad) != len(pattern_checks):
             print("FAIL: suffix/prefix values should fail fullmatch", errors, file=sys.stderr)
@@ -212,14 +215,14 @@ def state_digest_absent_rejected() -> bool:
         contract["provisioning"]["command_actions"] = []
         contract["provisioning"]["preflight_checks"] = [{
             "kind": "state-digests",
-            "marker": ".cursor/.runtime/provision-state.json",
+            "marker": ".state/provision-state.json",
             "paths": ["pnpm-lock.yaml"],
             "evidence_ref": "x",
             "guidance": "digest required",
         }]
         manifest, design = write_sealed_manifest(root, contract, "# x\n")
         approved = tc.load_approved(manifest, design)
-        marker = root / ".cursor" / ".runtime" / "provision-state.json"
+        marker = root / ".state" / "provision-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         lockfile = root / "pnpm-lock.yaml"
         lockfile.write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
@@ -280,13 +283,13 @@ def malformed_state_runtime_no_traceback_all_clis() -> bool:
         contract = base_contract(fp, with_file_action=False)
         contract["provisioning"]["preflight_checks"] = [{
             "kind": "state-digests",
-            "marker": ".cursor/.runtime/provision-state.json",
+            "marker": ".state/provision-state.json",
             "paths": ["pnpm-lock.yaml"],
             "evidence_ref": "x",
             "guidance": "x",
         }]
         tc.seal_contract(marker_bad, contract, tc.file_digest(marker_bad))
-        state = root / ".cursor" / ".runtime" / "provision-state.json"
+        state = root / ".state" / "provision-state.json"
         state.parent.mkdir(parents=True, exist_ok=True)
         state.write_text('"not-a-mapping"\n', encoding="utf-8")
         code, combined = _run_cli(conf.__file__, ["--manifest", str(marker_bad)])

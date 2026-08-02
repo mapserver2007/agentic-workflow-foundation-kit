@@ -8,7 +8,7 @@
 
 > {{tech_stack.note}}
 >
-> 各技術が対応する品質ゲート（G-GEN / G-BUILD / G-LINT / G-TEST）の内訳は [`docs/QUALITY_GATE.md §1.1 package script contract`](QUALITY_GATE.md) を参照。
+> 各技術が対応する品質ゲート（G-GEN / G-BUILD / G-LINT / G-TEST）の内訳は [`docs/QUALITY_GATE.md §1.1 quality gate backend contract`](QUALITY_GATE.md) を参照。
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""承認済み tech_contract から G-* と package script contract を投影する（Phase 1.65）。"""
+"""承認済み tech_contract から G-* と quality gate backend contract を投影する（Phase 1.65）。"""
 from __future__ import annotations
 
 import argparse

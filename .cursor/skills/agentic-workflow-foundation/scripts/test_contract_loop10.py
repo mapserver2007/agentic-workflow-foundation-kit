@@ -21,7 +21,7 @@ def _contract_with_capture(fingerprint: str) -> dict:
     contract["provisioning"]["policy"] = "explicit"
     contract["runtime_materialization"]["actions"] = []
     action = fixture_command_action(".provision-marker")
-    marker = ".cursor/.runtime/toolchain-state.json"
+    marker = ".state/toolchain-state.json"
     action["writes"].append(marker)
     action["postconditions"].append({
         "kind": "capture-toolchain-version",
@@ -62,7 +62,7 @@ def postcondition_visible_and_digest_bound() -> bool:
         if capture.get("effects") != ["project_write"]:
             print("FAIL: postcondition effects missing from plan", capture, file=sys.stderr)
             return False
-        if capture.get("writes") != [".cursor/.runtime/toolchain-state.json"]:
+        if capture.get("writes") != [".state/toolchain-state.json"]:
             print("FAIL: postcondition writes missing from plan", capture, file=sys.stderr)
             return False
         changed = copy.deepcopy(approved["provisioning"]["command_actions"][0])
@@ -84,11 +84,11 @@ def unsafe_capture_argv_rejected_without_side_effect() -> bool:
             "argv": ["true"],
             "cwd": ".",
             "effects": ["host_write"],
-            "writes": [".cursor/.runtime/toolchain-state.json"],
+            "writes": [".state/toolchain-state.json"],
             "postconditions": [{
                 "kind": "capture-toolchain-version",
                 "argv": [sys.executable, "-c", "open('hidden.out','w').write('x')"],
-                "marker": ".cursor/.runtime/toolchain-state.json",
+                "marker": ".state/toolchain-state.json",
                 "pointer": "python.version",
                 "pattern": ".*",
                 "evidence_ref": "design §9",
@@ -123,7 +123,7 @@ def host_toolchain_actions_validate() -> bool:
         contract = base_contract(tc.source_fingerprint(design), with_file_action=False)
         contract["provisioning"]["policy"] = "explicit"
         contract["runtime_materialization"]["actions"] = []
-        marker = ".cursor/.runtime/toolchain-state.json"
+        marker = ".state/toolchain-state.json"
         contract["provisioning"]["command_actions"] = [
             {
                 "argv": ["corepack", "enable"],
@@ -172,7 +172,7 @@ def safe_capture_apply_is_tracked() -> bool:
         approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
         code, report = rp.apply_plan(plan, approved, root)
-        marker = ".cursor/.runtime/toolchain-state.json"
+        marker = ".state/toolchain-state.json"
         if code != 0 or marker not in report.get("changed_targets", []):
             print("FAIL: safe capture marker not tracked", code, report, file=sys.stderr)
             return False
