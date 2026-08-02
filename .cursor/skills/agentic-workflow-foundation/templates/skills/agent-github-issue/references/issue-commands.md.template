@@ -4,7 +4,7 @@
 
 `agent-github-issue` スキルで使用する固定 wrapper コマンドと関連コマンド集。GitHub API へのアクセスは wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
 
-> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で `github_access` の選択 provider を使い、AI に token を露出しない。
 
 ---
 
@@ -12,10 +12,10 @@
 
 ### 必要なもの
 
-- GitHub App（Repository permissions: `Issues: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
 - `bin/github-issue-create-safe` がスキル実行（Phase 2）で生成済み
 - `bin/github-issue-read-safe` がスキル実行（Phase 2）で生成済み
-- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
+- `github_app`: 対象 repo に App installation と Issues 権限がある
+- `keychain`: 専用 item の PAT が対象 repo の Issues 権限を持つ
 
 ### 起動チェック
 
@@ -43,7 +43,7 @@ wrapper が見つからない場合は `agentic-workflow-foundation` スキル�
 wrapper 内部で以下を順に実行する（AI が直接これらのコマンドを実行する必要はない）:
 
 1. `_detect_owner_repo` で origin URL から owner/repo を自動解決
-2. `_get_installation_token` で GitHub App installation token を発行
+2. `_get_github_token <owner> <repo> api-write` で選択 provider の credential を取得
 3. GitHub REST API（`POST /repos/{owner}/{repo}/issues`）を `curl` で呼び出して Issue を作成
 4. Issue URL を標準出力に返却
 
@@ -65,7 +65,7 @@ bin/github-issue-create-safe /tmp/issue-title.txt /tmp/issue-body.md enhancement
 #### 内部動作
 
 1. `_detect_owner_repo` で origin URL から owner/repo を自動解決
-2. `_get_installation_token` で GitHub App installation token を発行
+2. `_get_github_token <owner> <repo> api-read` で選択 provider の credential を取得
 3. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}`）で Issue 本体を取得
 4. GitHub REST API（`GET /repos/{owner}/{repo}/issues/{number}/comments`）でコメントを取得
 5. 構造化 Markdown 形式で標準出力に返却
@@ -127,7 +127,7 @@ bin/github-issue-read-safe 42
 | --- | --- |
 | `bin/github-issue-*-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `github_issue.enabled: true` で再実行する |
 | exit 1（API エラー） | GitHub API 側のエラー。考えられる原因: リポジトリが存在しない / Issue 番号が不正 / ラベルが未定義。エラーメッセージをユーザーに報告 |
-| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| exit 2（設定・認証エラー） | 選択 provider の設定不備、対象 repo の権限不足、Keychain 非対応環境。`setup.md` を案内 |
 | Hook により `deny` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh` を直接実行しようとした場合は deny を返し wrapper を案内する |
 
 ---

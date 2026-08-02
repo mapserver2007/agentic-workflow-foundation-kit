@@ -4,7 +4,7 @@
 
 `agent-github-pr` スキルで使用する固定 wrapper コマンドと git コマンド集。GitHub API へのアクセスは wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
 
-> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で `github_app` または `keychain` の選択 provider を API / HTTPS Git に共通利用し、AI に token を露出しない。
 
 ---
 
@@ -12,11 +12,9 @@
 
 ### 必要なもの
 
-- GitHub App（Repository permissions: `Pull requests: Read and write` + `Contents: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
 - `bin/github-pr-create-safe` がスキル実行（Phase 2）で生成済み
-- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
-
-> `Contents: Read and write` は wrapper 内部で `git push` を実行するために必要。
+- `github_access.api_credential_provider=github_app`: App が対象 repo に installation 済みで、`Pull requests` / `Contents` の read-write 権限を持つ
+- `github_access.api_credential_provider=keychain`: 専用 Keychain item の PAT が対象 repo の Pull requests / Contents write 権限を持つ
 
 ### 起動チェック
 
@@ -42,10 +40,9 @@ wrapper が見つからない場合は `agentic-workflow-foundation` スキル�
 wrapper 内部で以下を順に実行する（AI が直接これらのコマンドを実行する必要はない）:
 
 1. `git branch --show-current` で head branch を自動解決
-2. `git push -u origin HEAD` でリモートに push
-3. GitHub App の JWT を生成し、installation access token を発行
-4. GitHub REST API（`POST /repos/{owner}/{repo}/pulls`）を `curl` で呼び出して PR を作成
-5. PR URL を標準出力に返却
+2. 選択 provider を取得し、SSH origin でも invocation 単位の HTTPS + `GIT_ASKPASS` で head branch を push
+3. 同じ provider で GitHub REST API（`POST /repos/{owner}/{repo}/pulls`）を呼び出す
+4. PR URL を標準出力に返却
 
 ### 呼び出し例
 
@@ -110,10 +107,10 @@ ls .github/pull_request_template.md 2>/dev/null || ls .github/PULL_REQUEST_TEMPL
 | --- | --- |
 | `bin/github-pr-create-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `github_pr.enabled: true` で再実行する |
 | exit 1（API エラー） | GitHub API 側のエラー。考えられる原因: 同名ブランチの PR が既に存在 / ベースブランチが不正 / push 先が保護ブランチ。エラーメッセージをユーザーに報告 |
-| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
+| exit 2（設定・認証エラー） | 選択 provider の設定不備、対象 repo の権限不足、Keychain 非対応環境。`setup.md` の該当 provider 手順を案内 |
 | `git branch --show-current` が空 | デタッチド HEAD 状態。ユーザーにブランチのチェックアウトを案内 |
 | `git status --porcelain` に出力あり | 未コミットの変更あり。スキルを中断し、コミットを案内 |
-| Hook により `deny` で停止 | wrapper コマンドは Hook 対象外（素通し）。`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper (`bin/github-pr-create-safe`) を案内する |
+| Hook により `deny` で停止 | `gh` は provider 境界を迂回するため、認証状態にかかわらず deny。`bin/github-pr-create-safe` を使用する |
 
 ---
 

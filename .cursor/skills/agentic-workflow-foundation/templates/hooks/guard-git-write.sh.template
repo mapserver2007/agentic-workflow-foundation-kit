@@ -141,7 +141,7 @@ fi
 # macOS Keychain への直接アクセス
 if [[ "$CMD_N" =~ security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain)([[:space:]]|$) ]]; then
   deny "macOS Keychain への直接アクセスはブロック" \
-       "Keychain からの credential 取得はユーザーが直接実行してください。"
+       "AI シェルからの Keychain 取得は禁止です。provider=keychain の場合も bin/*-safe wrapper 内部だけが専用項目を取得します。"
 fi
 
 # パスワードマネージャー / secret store
@@ -194,35 +194,44 @@ if [[ "$CMD_N" =~ git[[:space:]]+config[[:space:]]+(--(global|system)[[:space:]]
 fi
 
 # ============================================================
-# DENY パターン（gh CLI 全般 — PAT 未設定のため認証不可 / wrapper 強制）
-# 認証モデル: 本 kit は PAT / GITHUB_TOKEN を使用しない。GitHub API 操作は
-# wrapper (bin/github-pr-*-safe) 経由でのみ実行可能。gh CLI の直接実行は
-# 認証が通らず失敗するため、deny で wrapper を案内する。
+# DENY パターン（gh CLI 全般 — provider に依存せず wrapper 強制）
+# 認証モデル: GitHub API / AI の HTTPS Git は init.yaml の単一 provider を使う。
+# gh CLI は provider 境界を迂回するため、認証状態にかかわらず deny する。
 # ============================================================
 
 # gh pr create → 対応 wrapper: bin/github-pr-create-safe
 if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
-  deny "gh pr create は PAT 未設定のため実行不可。wrapper 経由で PR を作成する" \
-       "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+  deny "gh pr create は選択 provider の境界を迂回するため禁止。wrapper 経由で PR を作成する" \
+       "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。"
 fi
 
 # gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
-   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
-  deny "gh pr/issue コメント・レビューは PAT 未設定のため実行不可。wrapper 経由で投稿する" \
-       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]; then
+  deny "gh pr コメント・レビューは選択 provider の境界を迂回するため禁止" \
+       "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。"
+fi
+
+# gh issue comment → 対応 wrapper は未実装
+if [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+  deny "gh issue comment は選択 provider の境界を迂回するため禁止" \
+       "Issue コメント投稿 wrapper は現在未対応です。対応する wrapper が追加されるまで実行できません。"
 fi
 
 # gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)
 if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
-  deny "gh api は PAT 未設定のため実行不可。wrapper 経由で GitHub API を操作する" \
-       "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。gh CLI は認証情報が設定されていないため直接実行できません。"
+  deny "gh api は選択 provider の境界を迂回するため禁止" \
+       "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。"
 fi
 
-# gh catch-all（上記パターンに該当しないすべての gh コマンド）
-if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]] ]]; then
-  deny "gh CLI は PAT 未設定のため直接実行不可。GitHub 操作は wrapper を使用する" \
-       "本環境では PAT / GITHUB_TOKEN が設定されていないため gh CLI は認証できません。GitHub API 操作は以下の wrapper を使用してください: bin/github-pr-create-safe / bin/github-pr-reviews-safe / bin/github-pr-comment-safe / bin/github-pr-reply-safe。対応する wrapper がない操作は現在実行できません。"
+# gh catch-all（command 経由・パス指定を含む、上記に該当しないすべての gh コマンド）
+GH_DIRECT_RE='(^|[;|&][[:space:]]*)gh([[:space:]]|$)'
+GH_COMMAND_RE='(^|[;|&][[:space:]]*)command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+gh([[:space:]]|$)'
+GH_PATH_RE='(^|[;|&][[:space:]]*)/[^[:space:];|&]*/gh([[:space:]]|$)'
+if [[ "$CMD_N" =~ $GH_DIRECT_RE ]] \
+   || [[ "$CMD_N" =~ $GH_COMMAND_RE ]] \
+   || [[ "$CMD_N" =~ $GH_PATH_RE ]]; then
+  deny "gh CLI は provider に依存せず直接実行禁止。GitHub 操作は wrapper を使用する" \
+       "GitHub 操作は bin/github-*-safe / bin/cross-repo-sync-safe を使用してください。対応する wrapper がない操作は現在実行できません。"
 fi
 
 # ============================================================

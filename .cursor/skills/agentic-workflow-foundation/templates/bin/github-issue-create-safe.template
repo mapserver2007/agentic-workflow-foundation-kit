@@ -6,8 +6,8 @@ set -euo pipefail
 # Exit:  0=成功, 1=API エラー, 2=認証エラー
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=_github-app-auth.sh
-source "${SCRIPT_DIR}/_github-app-auth.sh"
+# shellcheck source=_github-auth.sh
+source "${SCRIPT_DIR}/_github-auth.sh"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: github-issue-create-safe <title-file> <body-file> [label1 label2 ...]" >&2
@@ -27,12 +27,7 @@ for f in "$TITLE_FILE" "$BODY_FILE"; do
 done
 
 _detect_owner_repo
-TOKEN=$(_get_installation_token)
-
-TITLE=$(cat "$TITLE_FILE")
-BODY_CONTENT=$(cat "$BODY_FILE")
-
-TITLE_JSON=$(printf '%s' "$TITLE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+TITLE_JSON=$(python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' < "$TITLE_FILE")
 BODY_JSON=$(python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' < "$BODY_FILE")
 
 LABELS_JSON="[]"
@@ -40,20 +35,8 @@ if [[ ${#LABELS[@]} -gt 0 ]]; then
   LABELS_JSON=$(printf '%s\n' "${LABELS[@]}" | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
 fi
 
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X POST \
-  -H "Authorization: token ${TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  -d "{\"title\":${TITLE_JSON},\"body\":${BODY_JSON},\"labels\":${LABELS_JSON}}" \
-  "https://api.github.com/repos/${OWNER}/${REPO}/issues")
-
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-RESP_BODY=$(echo "$RESPONSE" | sed '$d')
-
-if [[ "$HTTP_CODE" != "201" ]]; then
-  echo "ERROR: Issue 作成に失敗しました (HTTP $HTTP_CODE)" >&2
-  echo "$RESP_BODY" >&2
-  exit 1
-fi
-
-echo "$RESP_BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["html_url"])'
+PAYLOAD="{\"title\":${TITLE_JSON},\"body\":${BODY_JSON},\"labels\":${LABELS_JSON}}"
+_github_api_request "$OWNER" "$REPO" api-write POST \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues" 201 "$PAYLOAD" || exit $?
+printf '%s' "$GITHUB_HTTP_BODY" |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["html_url"])'

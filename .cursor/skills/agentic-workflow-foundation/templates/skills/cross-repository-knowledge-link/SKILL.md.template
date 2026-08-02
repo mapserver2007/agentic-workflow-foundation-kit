@@ -33,6 +33,7 @@ description: >
 ## 安全対策（不変条件）
 
 - git 操作はすべて `bin/cross-repo-sync-safe` wrapper 経由。**AI が直接 git / mv / rm コマンドを実行してはならない**
+- transport は HTTPS 固定で、`github_access` の選択 provider を API と共用する。既存 clone の origin が SSH でも恒久変更せず invocation 単位で HTTPS を使う
 - clone 先は `clone_base_path` 配下のみ。clone 先への書き込み（コミット・プッシュ等）は一切禁止
 - `name` は `^[A-Za-z0-9._-]+$` でバリデーション済みの値のみ使用（wrapper が検証）
 - 知識参照のたびに `bin/cross-repo-sync-safe sync` を毎回実行する（clone 済みでも省略しない）

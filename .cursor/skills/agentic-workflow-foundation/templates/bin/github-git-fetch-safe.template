@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+# current repository の read-only fetch wrapper。
+# Usage: github-git-fetch-safe [remote]
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_github-auth.sh
+source "${SCRIPT_DIR}/_github-auth.sh"
+
+if [[ $# -gt 1 ]]; then
+  echo "Usage: github-git-fetch-safe [remote]" >&2
+  exit 2
+fi
+
+REMOTE="${1:-origin}"
+if ! _github_git_with_remote "." "$REMOTE" git-read fetch --prune "$REMOTE"; then
+  echo "ERROR: git fetch failed" >&2
+  exit 1
+fi

@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+# GitHub API / HTTPS Git の共通 provider dispatcher。
+# token は operation 中の shell memory / askpass environment だけに保持する。
+
+readonly GITHUB_CREDENTIAL_PROVIDER="{{github_access.api_credential_provider}}"
+readonly GITHUB_KEYCHAIN_SERVICE="{{github_access.keychain.service}}"
+readonly GITHUB_KEYCHAIN_ACCOUNT="{{github_access.keychain.account}}"
+readonly GITHUB_API_ACCEPT="application/vnd.github+json"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_github-app-auth.sh
+source "${SCRIPT_DIR}/_github-app-auth.sh"
+# shellcheck source=_github-keychain-auth.sh
+source "${SCRIPT_DIR}/_github-keychain-auth.sh"
+
+GITHUB_AUTH_TOKEN=""
+GITHUB_HTTP_CODE=""
+GITHUB_HTTP_BODY=""
+OWNER=""
+REPO=""
+
+_github_validate_name() {
+  local label="$1" value="$2"
+  if [[ -z "$value" || ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "ERROR: invalid GitHub ${label}" >&2
+    return 2
+  fi
+}
+
+_github_parse_remote_url() {
+  local url="$1" owner="" repo=""
+  if [[ "$url" =~ ^https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)(\.git)?$ ]]; then
+    owner="${BASH_REMATCH[1]}"
+    repo="${BASH_REMATCH[2]}"
+  elif [[ "$url" =~ ^git@github\.com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)(\.git)?$ ]]; then
+    owner="${BASH_REMATCH[1]}"
+    repo="${BASH_REMATCH[2]}"
+  elif [[ "$url" =~ ^ssh://git@github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)(\.git)?$ ]]; then
+    owner="${BASH_REMATCH[1]}"
+    repo="${BASH_REMATCH[2]}"
+  else
+    echo "ERROR: GitHub remote URL は userinfo なしの github.com SSH/HTTPS 正規形式が必要です" >&2
+    return 2
+  fi
+  repo="${repo%.git}"
+  _github_validate_name owner "$owner" || return 2
+  _github_validate_name repo "$repo" || return 2
+  OWNER="$owner"
+  REPO="$repo"
+}
+
+_detect_owner_repo() {
+  local remote="${1:-origin}" fetch_url push_url fetch_owner fetch_repo
+  _github_validate_name remote "$remote" || return 2
+  fetch_url=$(git remote get-url "$remote" 2>/dev/null) || {
+    echo "ERROR: git remote '${remote}' が設定されていません" >&2
+    return 1
+  }
+  push_url=$(git remote get-url --push "$remote" 2>/dev/null) || {
+    echo "ERROR: git remote '${remote}' の push URL を取得できません" >&2
+    return 1
+  }
+  _github_parse_remote_url "$fetch_url" || return $?
+  fetch_owner="$OWNER"
+  fetch_repo="$REPO"
+  _github_parse_remote_url "$push_url" || return $?
+  if [[ "$OWNER" != "$fetch_owner" || "$REPO" != "$fetch_repo" ]]; then
+    echo "ERROR: fetch URL と push URL の対象 owner/repo が一致しません" >&2
+    return 2
+  fi
+}
+
+_get_github_token() {
+  local owner="$1" repo="$2" operation="$3"
+  _github_validate_name owner "$owner" || return 2
+  _github_validate_name repo "$repo" || return 2
+  case "$operation" in
+    api-read|api-write|git-read|git-write) ;;
+    *)
+      echo "ERROR: unsupported GitHub operation" >&2
+      return 2
+      ;;
+  esac
+  GITHUB_AUTH_TOKEN=""
+  case "$GITHUB_CREDENTIAL_PROVIDER" in
+    github_app)
+      _github_app_get_token "$owner" "$repo" "$operation" || return $?
+      ;;
+    keychain)
+      _github_keychain_get_token "$owner" "$repo" "$operation" || return $?
+      ;;
+    *)
+      echo "ERROR: unsupported github_access.api_credential_provider" >&2
+      return 2
+      ;;
+  esac
+  if [[ -z "$GITHUB_AUTH_TOKEN" || "$GITHUB_AUTH_TOKEN" == *$'\n'* || "$GITHUB_AUTH_TOKEN" == *$'\r'* ]]; then
+    GITHUB_AUTH_TOKEN=""
+    echo "ERROR: credential provider returned an invalid token" >&2
+    return 2
+  fi
+}
+
+_github_curl_config_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+_github_http_request_secret() {
+  local secret="$1" method="$2" url="$3" payload="${4:-}" response payload_file=""
+  local escaped_secret
+  local -a args
+  escaped_secret=$(_github_curl_config_escape "$secret")
+  args=(-sS -w $'\n%{http_code}' -X "$method" -H "Accept: ${GITHUB_API_ACCEPT}")
+  if [[ -n "$payload" ]]; then
+    umask 077
+    payload_file=$(mktemp "${TMPDIR:-/tmp}/github-api-body.XXXXXX") || return 1
+    trap 'rm -f -- "$payload_file"' RETURN
+    printf '%s' "$payload" > "$payload_file"
+    args+=(-H "Content-Type: application/json")
+  fi
+  if ! response=$(
+    {
+      printf 'header = "Authorization: Bearer %s"\n' "$escaped_secret"
+      if [[ -n "$payload_file" ]]; then
+        printf 'data-binary = "@%s"\n' "$payload_file"
+      fi
+    } |
+      curl --config - "${args[@]}" "$url"
+  ); then
+    trap - RETURN
+    [[ -z "$payload_file" ]] || rm -f -- "$payload_file"
+    GITHUB_HTTP_CODE=""
+    GITHUB_HTTP_BODY=""
+    return 1
+  fi
+  trap - RETURN
+  [[ -z "$payload_file" ]] || rm -f -- "$payload_file"
+  GITHUB_HTTP_CODE="${response##*$'\n'}"
+  GITHUB_HTTP_BODY="${response%$'\n'*}"
+}
+
+_github_api_request() {
+  local owner="$1" repo="$2" operation="$3" method="$4" url="$5"
+  local expected="$6" payload="${7:-}"
+  _get_github_token "$owner" "$repo" "$operation" || return $?
+  _github_http_request_secret "$GITHUB_AUTH_TOKEN" "$method" "$url" "$payload" || {
+    GITHUB_AUTH_TOKEN=""
+    echo "ERROR: GitHub API transport failed" >&2
+    return 1
+  }
+  GITHUB_AUTH_TOKEN=""
+  if [[ "$GITHUB_HTTP_CODE" != "$expected" ]]; then
+    _github_api_error "$GITHUB_HTTP_CODE" "$GITHUB_HTTP_BODY"
+    return 1
+  fi
+}
+
+_github_api_error() {
+  local code="$1" body="$2" safe
+  safe=$(printf '%s' "$body" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except Exception:
+    value = {}
+doc = value.get("documentation_url")
+print(doc if isinstance(doc, str) and doc.startswith("https://docs.github.com/") else "")
+')
+  if [[ -n "$safe" ]]; then
+    echo "ERROR: GitHub API failed (HTTP ${code}): ${safe}" >&2
+  else
+    echo "ERROR: GitHub API failed (HTTP ${code})" >&2
+  fi
+}
+
+_github_download_text() {
+  local owner="$1" repo="$2" url="$3" max_size="$4" content escaped_token
+  if [[ ! "$url" =~ ^https://github\.com/user-attachments/files/ ]]; then
+    echo "ERROR: unsupported attachment URL" >&2
+    return 2
+  fi
+  _get_github_token "$owner" "$repo" api-read || return $?
+  escaped_token=$(_github_curl_config_escape "$GITHUB_AUTH_TOKEN")
+  if ! content=$(
+    printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" |
+      curl --config - -sSL --max-filesize "$max_size" "$url"
+  ); then
+    GITHUB_AUTH_TOKEN=""
+    GITHUB_HTTP_BODY=""
+    return 1
+  fi
+  GITHUB_AUTH_TOKEN=""
+  GITHUB_HTTP_BODY="$content"
+}
+
+_github_write_askpass() {
+  local path="$1"
+  cat > "$path" <<'ASKPASS'
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+case "${1:-}" in
+  *sername*|*Username*) printf '%s\n' "x-access-token" ;;
+  *assword*|*Password*) printf '%s\n' "${GITHUB_OPERATION_TOKEN:?}" ;;
+  *) exit 1 ;;
+esac
+ASKPASS
+  chmod 700 "$path"
+}
+
+_github_git_run() {
+  local owner="$1" repo="$2" operation="$3"
+  shift 3
+  _get_github_token "$owner" "$repo" "$operation" || return $?
+  (
+    set +x
+    umask 077
+    askpass=$(mktemp "${TMPDIR:-/tmp}/github-askpass.XXXXXX")
+    trap 'rm -f -- "$askpass"' EXIT INT TERM HUP
+    _github_write_askpass "$askpass"
+    GIT_TERMINAL_PROMPT=0 \
+      GIT_ASKPASS="$askpass" \
+      GCM_INTERACTIVE=Never \
+      GITHUB_OPERATION_TOKEN="$GITHUB_AUTH_TOKEN" \
+      git -c credential.helper= -c credential.useHttpPath=true "$@"
+  )
+  local rc=$?
+  GITHUB_AUTH_TOKEN=""
+  return "$rc"
+}
+
+_github_git_with_remote() {
+  local worktree="$1" remote="$2" operation="$3"
+  shift 3
+  local before_fetch before_push after_fetch after_push https_url
+  _github_validate_name remote "$remote" || return 2
+  before_fetch=$(git -C "$worktree" remote get-url "$remote" 2>/dev/null) || return 1
+  before_push=$(git -C "$worktree" remote get-url --push "$remote" 2>/dev/null) || return 1
+  (
+    cd "$worktree"
+    _detect_owner_repo "$remote" || exit $?
+    https_url="https://github.com/${OWNER}/${REPO}.git"
+    _github_git_run "$OWNER" "$REPO" "$operation" \
+      -c "remote.${remote}.url=${https_url}" "$@"
+  )
+  local rc=$?
+  after_fetch=$(git -C "$worktree" remote get-url "$remote" 2>/dev/null) || return 1
+  after_push=$(git -C "$worktree" remote get-url --push "$remote" 2>/dev/null) || return 1
+  if [[ "$before_fetch" != "$after_fetch" || "$before_push" != "$after_push" ]]; then
+    echo "ERROR: Git operation changed the persistent remote URL" >&2
+    return 2
+  fi
+  return "$rc"
+}

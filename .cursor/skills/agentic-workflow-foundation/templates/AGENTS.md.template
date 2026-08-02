@@ -111,6 +111,7 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 ## Boundaries
 
 > Git 不可逆操作（強制 push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*`）は [`.cursor/hooks/guard-git-write.sh`](.cursor/hooks/guard-git-write.sh) で deterministic deny。Hook 強制範囲の SoT は [`docs/QUALITY_GATE.md §2.1`](docs/QUALITY_GATE.md)。
+> AI の GitHub API / Git network operation は `github_access.api_credential_provider` の単一 provider と `bin/*-safe` wrapper に限定する。wrapper 内 subprocess は Cursor の `beforeShellExecution` Hook の直接入力ではない。ユーザーが端末で行う SSH 操作は本境界の対象外。
 
 ### Always
 {{#each project.boundaries.always}}- {{this}}

@@ -4,7 +4,7 @@
 
 `agent-code-review` スキルで使用する固定 wrapper コマンド集。GitHub API へのアクセスはすべて wrapper 経由で行い、`gh` CLI や `GITHUB_TOKEN` を AI が直接使用しない。
 
-> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。wrapper 内部で GitHub App installation token を発行し、AI に token を露出しない。
+> **セキュリティルール**: [`AGENTS.md > Boundaries`](../../../../AGENTS.md) を参照。API と HTTPS Git は `github_access` の同一 provider を使う wrapper に限定し、AI に token を露出しない。
 
 ---
 
@@ -12,14 +12,15 @@
 
 ### 必要なもの
 
-- GitHub App（Repository permissions: `Pull requests: Read and write` + `Metadata: Read`）が対象リポジトリにインストール済み
-- wrapper 3 コマンドが `bin/` にスキル実行（Phase 2）で生成済み
-- GitHub App の private key が `~/.config/github-apps/` に配置済み（AI からは読めない権限）
+- wrapper 4 コマンド（fetch / reviews / comment / reply）が `bin/` にスキル実行（Phase 2）で生成済み
+- `github_app`: 対象 repo に App installation と Pull requests 権限がある
+- `keychain`: 専用 item の PAT が対象 repo の Pull requests 権限を持つ
 
 ### 起動チェック
 
 ```bash
 test -x bin/github-pr-reviews-safe \
+  && test -x bin/github-git-fetch-safe \
   && test -x bin/github-pr-comment-safe \
   && test -x bin/github-pr-reply-safe \
   || { echo "GitHub wrapper not found" >&2; exit 1; }
@@ -44,7 +45,7 @@ git branch --show-current
 ### 1.2 リリースブランチ取得（マージ先候補）
 
 ```bash
-git fetch --prune
+bin/github-git-fetch-safe origin
 git branch -r --list 'origin/release/v*' --sort=-version:refname | head -2 | sed 's| *origin/||'
 ```
 
@@ -210,6 +211,6 @@ bin/github-pr-reply-safe {pr_number} {comment_id} /tmp/reply-{comment_id}.md
 | --- | --- |
 | `bin/github-pr-reviews-safe` が存在しない | wrapper が生成されていない。`agentic-workflow-foundation` スキルを `code_review.enabled: true` で再実行する |
 | exit 1（API エラー） | GitHub API 側のエラー。60 秒待機してリトライ。複数回続く場合はユーザーに報告 |
-| exit 2（認証エラー） | GitHub App 未設定 / private key 不正 / installation token 発行失敗。ユーザーに GitHub App セットアップを案内 |
-| Hook により `deny` で停止 | [`.cursor/hooks/guard-git-write.sh`](../../../hooks/guard-git-write.sh) による Deterministic ガード。wrapper コマンドは Hook の対象外（素通し）だが、`gh` を直接実行しようとした場合は PAT 未設定のため deny を返し wrapper を案内する |
+| exit 2（設定・認証エラー） | 選択 provider の設定不備、対象 repo の権限不足、Keychain 非対応環境。`setup.md` を案内 |
+| Hook により `deny` で停止 | `gh` は provider 境界を迂回するため認証状態にかかわらず deny。対応 wrapper を案内する |
 | API 呼び出し失敗（その他） | エラー内容をユーザーに報告し、手動対応を案内 |

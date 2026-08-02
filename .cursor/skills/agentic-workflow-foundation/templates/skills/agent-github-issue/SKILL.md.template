@@ -6,7 +6,7 @@ description: >-
   固定フォーマットで issue を作成する。  read モードでは issue 本文・コメント・
   リンク先リポジトリ内ファイル・テキスト添付ファイルの中身を取得して表示または他スキルへ返却する。
   wrapper（github-issue-create-safe / github-issue-read-safe）経由で
-  GitHub App installation token を発行し、AI に token を露出しない。
+  init.yaml で選択した provider を使い、AI に token を露出しない。
   Use when - 「issue 作成」「issue 読み取り」「issue 化して」「issue の内容を確認」等の指示。
   他スキルからモードと引数を指定して呼び出される場合もある。
   Do NOT use for - (1) PR 作成（agent-github-pr を使う）、
@@ -34,7 +34,7 @@ test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || ec
 - `bin/github-issue-create-safe` がスキル実行（Phase 2）で生成済み
 - `bin/github-issue-read-safe` がスキル実行（Phase 2）で生成済み
 
-> wrapper は GitHub App installation token を内部で発行し、AI に token を露出しない。GitHub Apps のセットアップは [references/issue-commands.md §0](references/issue-commands.md) を参照。`gh` CLI や `GITHUB_TOKEN` 環境変数は不要。
+> wrapper は `github_app` または `keychain` の選択 provider を使い、AI に token を露出しない。セットアップは [references/issue-commands.md §0](references/issue-commands.md) を参照。
 
 ---
 
@@ -155,7 +155,7 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
 3. 結果を処理する:
    - exit 0: Issue URL を出力し、完了メッセージを表示する
    - exit 1: API エラーの内容をユーザーに報告する
-   - exit 2: GitHub App の認証エラー。セットアップを案内する
+   - exit 2: 選択 provider の設定・認証エラー。セットアップを案内する
 
 4. 成功時の出力:
 
@@ -192,7 +192,7 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
    - テキスト系拡張子（`.md` `.txt` `.json` `.yaml` `.csv` `.log` `.sh` `.py` `.js` `.ts` 等）は中身を取得し `## Attachments` セクションとして出力に含める
    - バイナリファイル（`.png` `.jpg` `.pdf` 等）は URL のみを出力する
    - ファイルサイズ上限: 1 MB（超過時は取得スキップ）
-   - public repo は認証なしで取得。private repo は GitHub App token で 302 を解決し S3 presigned URL 経由で取得する
+   - public repo は認証なしで取得。private repo は選択 provider を wrapper 内部で使い、redirect 先を取得する
 
 #### Step 3-R: 結果出力
 

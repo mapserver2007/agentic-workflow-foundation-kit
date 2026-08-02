@@ -19,7 +19,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | Tech Stack | `docs/tech-stack.md`（Domain 層）、quality gate contract、CodeRabbit / Domain docs の自動解決 |
 | Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥）、`docs/agent-tasks/{reports,maintenance-docs}/`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` |
 | Multi-perspective | 任意の `.cursor/skills/deep-thinking/**`（A/B 並列分析 + C 統合裁定） |
-| GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe`、任意の `bin/github-pr-{reviews,comment,reply}-safe`、`bin/github-issue-{create,read}-safe` |
+| GitHub Wrappers | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh`、`bin/github-git-fetch-safe`、`bin/github-*-safe`、`bin/cross-repo-sync-safe` |
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
 
@@ -67,14 +67,15 @@ agentic-workflow-foundation-kit/
 ├── setup.md                           # 外部サービス・Cursor 設定手順
 ├── LICENSE
 ├── Makefile                           # CLI 依存の install / check
-├── init.yaml                          # 初期入力 SoT（name / tech_stack_design / context_budget。生成対象外）
+├── init.yaml                          # 初期入力 SoT（project / tech stack / context budget / github_access。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
 │
 ├── AGENTS.md                          ┐
 ├── CLAUDE.md                          │
 ├── .coderabbit.yaml                   │
 ├── bin/                               │ 生成物（dogfooding）
-│   ├── _github-app-auth.sh            │
+│   ├── _github-auth.sh                │
+│   ├── _github-{app,keychain}-auth.sh │
 │   ├── github-pr-*-safe               │
 │   ├── github-issue-*-safe            │
 │   └── cross-repo-sync-safe           │
@@ -122,7 +123,7 @@ agentic-workflow-foundation-kit/
         │   │   │                             # workflow-orchestrator, requirement-analysis,
         │   │   │                             # maintenance-*-workflow, cross-repository-
         │   │   │                             # knowledge-link, deep-thinking, agent-kaizen
-        │   │   └── bin/                      # _github-app-auth.sh, github-*-safe,
+        │   │   └── bin/                      # provider auth helpers, github-*-safe,
         │   │                                 # cross-repo-sync-safe
         │   ├── references/
         │   │   ├── source-mapping.md
@@ -176,11 +177,17 @@ agentic-workflow-foundation-kit/
 | [`maintenance-docs-workflow`](.cursor/skills/maintenance-docs-workflow/SKILL.md) | 起票キューから Domain 層 docs を反映する独立パイプライン |
 | [`maintenance-gotchas-workflow`](.cursor/skills/maintenance-gotchas-workflow/SKILL.md) | GOTCHAS の再発防止策を Meta 層へ反映する独立パイプライン |
 | [`agent-code-review`](.cursor/skills/agent-code-review/SKILL.md) | PR レビューコメントの検証・返答 |
-| [`agent-github-pr`](.cursor/skills/agent-github-pr/SKILL.md) | GitHub App wrapper 経由の PR 作成 |
-| [`agent-github-issue`](.cursor/skills/agent-github-issue/SKILL.md) | GitHub App wrapper 経由の Issue 作成・読み取り |
+| [`agent-github-pr`](.cursor/skills/agent-github-pr/SKILL.md) | 選択 provider + HTTPS wrapper 経由の push / PR 作成 |
+| [`agent-github-issue`](.cursor/skills/agent-github-issue/SKILL.md) | 選択 provider wrapper 経由の Issue 作成・読み取り |
 | [`cross-repository-knowledge-link`](.cursor/skills/cross-repository-knowledge-link/SKILL.md) | 登録済み関連リポジトリの docs / コード参照 |
 | [`deep-thinking`](.cursor/skills/deep-thinking/SKILL.md) | A/B 並列分析 + C 統合裁定による多角評価 |
 | [`agent-kaizen`](.cursor/skills/agent-kaizen/SKILL.md) | kit 内部の manifest→生成物チェーンの整合性検査（18 評価観点） |
+
+## GitHub credential provider
+
+`init.yaml > github_access.api_credential_provider` は、GitHub API と AI が行う HTTPS Git network operation の単一 SoT です。既定の `github_app` は対象 `owner/repo` の installation を動的解決し、`keychain` は専用 service/account の PAT を完全一致で取得します。両 provider の併用や `git_protocol` selector はありません。
+
+AI の push/fetch/clone/pull は `bin/*-safe` wrapper 経由の HTTPS に限定し、既存 SSH remote は invocation 中だけ上書きして恒久変更しません。ユーザーが端末から直接行う SSH 操作は kit の対象外です。
 
 ## seed default（オプション機能）
 
@@ -188,8 +195,8 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 
 | 設定キー | seed default | 生成物 |
 | --- | --- | --- |
-| `code_review.enabled` | `true` | `agent-code-review`、`bin/github-pr-{reviews,comment,reply}-safe` |
-| `github_pr.enabled` | `true` | `agent-github-pr` |
+| `code_review.enabled` | `true` | `agent-code-review`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` |
+| `github_pr.enabled` | `true` | `agent-github-pr`、`bin/github-pr-create-safe` |
 | `github_issue.enabled` | `true` | `agent-github-issue`、`bin/github-issue-{create,read}-safe` |
 | `coderabbit.enabled` | `true` | `.coderabbit.yaml` |
 | `agent_workflow.enabled` | `true` | `docs/agent-tasks/**`、`workflow-orchestrator`、`requirement-analysis`、各種 gate スクリプト |
@@ -199,6 +206,8 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
 
+`bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` は、`code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に共通 backend として生成されます。
+
 > Phase 1.68 は承認済み `tech_contract.runtime_materialization.actions` を扱います。`materialize_runtime.py --check` は read-only の renderability 検査だけを行い、file action・install・lockfile 更新は `bin/project-setup --plan` で提示した計画を明示承認した後の `--apply` だけが実行します。`package.json` 等はアプリ所有ファイルであり `outputs[]` / audit の対象外です。
 
 ## 生成ワークフロー
@@ -207,7 +216,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 
 1. **Phase 1**: seed manifest / templates / resolver を変更する必要がある場合だけ更新する
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
-3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で `project.name` / `slug` / `workflow_pattern`（開発型固定）/ `context_budget` を確定する
+3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で project / context budget / `github_access`（API と AI HTTPS Git の単一 credential provider）を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
 5. **Phase 1.6**: `init.yaml > tech_stack_design.filename` で指定された設計書から `tech_stack` を root `manifest.yaml` へ取り込む
 6. **Contract lifecycle**: SoT fingerprint 不一致時だけ対話 SKILL が draft を起案し、schema・安全性検証と PO 承認後に root `manifest.yaml > tech_contract` へ pinする
@@ -286,9 +295,9 @@ bin/quality-gate verify
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/tech-stack.md`、`docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py` |
-| GitHub Wrappers | `bin/_github-app-auth.sh`、`bin/github-pr-create-safe` |
-| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
-| Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
+| Shared GitHub Auth | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh` |
+| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
+| Optional GitHub PR | `.cursor/skills/agent-github-pr/**`、`bin/github-pr-create-safe` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
 | Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/{reports,maintenance-docs}/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/requirement-analysis/**`、任意の `.cursor/skills/maintenance-{docs,gotchas}-workflow/**` |
 | Optional Deep Thinking | `.cursor/skills/deep-thinking/SKILL.md`、`.cursor/skills/deep-thinking/config.yaml`、`.cursor/skills/deep-thinking/README.md`、`.cursor/skills/deep-thinking/references/**` |
@@ -298,8 +307,9 @@ bin/quality-gate verify
 
 各オプション出力の条件:
 
-- `.cursor/skills/agent-code-review/**` と `bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
-- `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
+- `bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` — `code_review.enabled` / `github_pr.enabled` / `github_issue.enabled` / `cross_repo_knowledge.enabled` のいずれかが `true` の場合
+- `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
+- `.cursor/skills/agent-github-pr/**` と `bin/github-pr-create-safe` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
 - `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/**`、各種 workflow gate スクリプト — `agent_workflow.enabled: true` の場合のみ

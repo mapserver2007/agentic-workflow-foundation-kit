@@ -34,7 +34,15 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         seed = root / "seed.yaml"
-        seed.write_text(MINIMAL_SEED, encoding="utf-8")
+        seed.write_text(
+            MINIMAL_SEED
+            + "github_access:\n"
+            + "  api_credential_provider: github_app\n"
+            + "  keychain:\n"
+            + "    service: seed-service\n"
+            + "    account: \"\"\n",
+            encoding="utf-8",
+        )
         design = root / "docs" / "TECH.md"
         design.parent.mkdir(parents=True, exist_ok=True)
         design.write_text(design_text, encoding="utf-8")
@@ -75,6 +83,11 @@ def main() -> int:
             "  data_model_sections: []\n"
             "  coding_standards_sections: []\n"
             "  workflow_sections: []\n"
+            "github_access:\n"
+            "  api_credential_provider: keychain\n"
+            "  keychain:\n"
+            "    service: custom-service\n"
+            "    account: bot@example.com\n"
         )
         manifest.write_text(stale_block + text, encoding="utf-8")
 
@@ -91,6 +104,15 @@ def main() -> int:
             return 1
         if resolved["session"]["verification"]["gate_command"] != "bin/quality-gate verify":
             print("FAIL: gate_command not derived from profile")
+            return 1
+        if resolved.get("github_access") != {
+            "api_credential_provider": "keychain",
+            "keychain": {
+                "service": "custom-service",
+                "account": "bot@example.com",
+            },
+        }:
+            print("FAIL: github_access root overlay did not override seed default")
             return 1
 
         design.write_text(design_text + "\n# stale change\n", encoding="utf-8")

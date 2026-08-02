@@ -7,8 +7,8 @@ set -euo pipefail
 # Output: Issue 本文 + コメントを Markdown 構造化形式で標準出力に返す
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=_github-app-auth.sh
-source "${SCRIPT_DIR}/_github-app-auth.sh"
+# shellcheck source=_github-auth.sh
+source "${SCRIPT_DIR}/_github-auth.sh"
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: github-issue-read-safe <issue-number>" >&2
@@ -23,37 +23,17 @@ if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
 fi
 
 _detect_owner_repo
-TOKEN=$(_get_installation_token)
 
 # Issue 本体を取得
-ISSUE_RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -H "Authorization: token ${TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}")
-
-ISSUE_HTTP=$(echo "$ISSUE_RESPONSE" | tail -1)
-ISSUE_BODY=$(echo "$ISSUE_RESPONSE" | sed '$d')
-
-if [[ "$ISSUE_HTTP" != "200" ]]; then
-  echo "ERROR: Issue の取得に失敗しました (HTTP $ISSUE_HTTP)" >&2
-  echo "$ISSUE_BODY" >&2
-  exit 1
-fi
+_github_api_request "$OWNER" "$REPO" api-read GET \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}" 200 || exit $?
+ISSUE_BODY="$GITHUB_HTTP_BODY"
 
 # コメントを取得（最大 100 件）
-COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -H "Authorization: token ${TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}/comments?per_page=100")
-
-COMMENTS_HTTP=$(echo "$COMMENTS_RESPONSE" | tail -1)
-COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | sed '$d')
-
-if [[ "$COMMENTS_HTTP" != "200" ]]; then
-  echo "ERROR: コメントの取得に失敗しました (HTTP $COMMENTS_HTTP)" >&2
-  echo "$COMMENTS_BODY" >&2
-  exit 1
-fi
+_github_api_request "$OWNER" "$REPO" api-read GET \
+  "https://api.github.com/repos/${OWNER}/${REPO}/issues/${ISSUE_NUMBER}/comments?per_page=100" \
+  200 || exit $?
+COMMENTS_BODY="$GITHUB_HTTP_BODY"
 
 # JSON を一時ファイル経由で渡す（ARG_MAX 超過防止）
 ISSUE_JSON_FILE=$(mktemp)
@@ -150,11 +130,9 @@ if [[ -n "$ATTACHMENT_URLS" ]]; then
       # public repo: curl -sL で直接取得
       att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_url" 2>/dev/null || true)
       if [[ -z "$att_content" ]]; then
-        # private repo fallback: token 付きで 302 先を解決し、S3 URL を token なしで取得
-        att_redirect=$(curl -s -o /dev/null -w "%{redirect_url}" \
-          -H "Authorization: token ${TOKEN}" "$att_url" 2>/dev/null || true)
-        if [[ -n "$att_redirect" ]]; then
-          att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_redirect" 2>/dev/null || true)
+        # private repo fallback: provider credential は argv に載せず共通 helper で渡す
+        if _github_download_text "$OWNER" "$REPO" "$att_url" "$MAX_SIZE"; then
+          att_content="$GITHUB_HTTP_BODY"
         fi
       fi
 

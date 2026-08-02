@@ -8,7 +8,8 @@ config.json から以下の値を取得し、各ステップで使用する:
 
 - `{clone_base_path}`: `clone_base_path` フィールドの値（リポジトリのクローン先ベースパス）
 - `{github_org}`: `github_org` フィールドの値
-- `{git_protocol}`: `git_protocol` フィールドの値（`ssh` または `https`）
+
+transport selector は持たない。AI の cross-repo transport は HTTPS 固定で、credential は root manifest の `github_access` を使う。
 
 ## 設定のバリデーション
 

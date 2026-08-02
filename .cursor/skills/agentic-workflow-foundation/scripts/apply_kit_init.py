@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""init.yaml から root manifest.yaml の project.* と context_budget を適用する（Phase 1.5）。
+"""init.yaml から root manifest.yaml の project.*、context_budget、github_access を適用する（Phase 1.5）。
 
 init.yaml は生成物ではなく、初回実行前から存在する初期入力 SoT。
 workflow_pattern は "開発型" 固定。feature フラグは触らない。
@@ -31,13 +31,15 @@ DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
 
 ALLOWED_TOP_KEYS = {
     "version", "project", "context_budget", "tech_stack_design",
-    "tech_contract", "provisioning",
+    "tech_contract", "provisioning", "github_access",
 }
 ALLOWED_PROJECT_KEYS = {"name"}
 ALLOWED_CONTEXT_BUDGET_KEYS = {"min_context_window_tokens"}
 ALLOWED_TECH_STACK_DESIGN_KEYS = {"filename"}
 ALLOWED_TECH_CONTRACT_KEYS = {"auto_approve"}
 ALLOWED_PROVISIONING_KEYS = {"auto_approve"}
+ALLOWED_GITHUB_ACCESS_KEYS = {"api_credential_provider", "keychain"}
+ALLOWED_GITHUB_KEYCHAIN_KEYS = {"service", "account"}
 FORBIDDEN_TOP_KEYS = {"workflow_pattern", "features", "deep_thinking", "cross_repo_knowledge"}
 
 FIXED_WORKFLOW_PATTERN = "開発型"
@@ -45,6 +47,9 @@ MIN_CONTEXT_WINDOW = 50000
 DEFAULT_CONTEXT_WINDOW = 200000
 DEFAULT_TECH_CONTRACT_AUTO_APPROVE = False
 DEFAULT_PROVISIONING_AUTO_APPROVE = False
+DEFAULT_GITHUB_CREDENTIAL_PROVIDER = "github_app"
+DEFAULT_GITHUB_KEYCHAIN_SERVICE = "agentic-workflow-github-api"
+GITHUB_CREDENTIAL_PROVIDERS = {"github_app", "keychain"}
 
 
 def _out(level: str, msg: str) -> None:
@@ -55,6 +60,15 @@ def _slugify(name: str) -> str:
     s = name.lower().strip()
     s = re.sub(r"[^a-z0-9\u3040-\u9fff]+", "-", s)
     return s.strip("-")
+
+
+def _valid_locator(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value != ""
+        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+        and not any(char in value for char in '"\\$`')
+    )
 
 
 def _validate_init(init: dict) -> list[str]:
@@ -156,6 +170,54 @@ def _validate_init(init: dict) -> list[str]:
                     f"provisioning.auto_approve は bool 必須（実際: {type(auto).__name__}）"
                 )
 
+    github_access = init.get("github_access")
+    if github_access is not None:
+        if not isinstance(github_access, dict):
+            errors.append(
+                f"github_access はマッピング必須（実際: {type(github_access).__name__}）"
+            )
+        else:
+            for key in github_access:
+                if key not in ALLOWED_GITHUB_ACCESS_KEYS:
+                    errors.append(f"未知キー github_access.{key}")
+            provider = github_access.get(
+                "api_credential_provider", DEFAULT_GITHUB_CREDENTIAL_PROVIDER
+            )
+            if not isinstance(provider, str) or provider not in GITHUB_CREDENTIAL_PROVIDERS:
+                errors.append(
+                    "github_access.api_credential_provider は "
+                    f"{sorted(GITHUB_CREDENTIAL_PROVIDERS)} のいずれか必須（実際: {provider!r}）"
+                )
+            keychain = github_access.get("keychain")
+            if keychain is not None and not isinstance(keychain, dict):
+                errors.append(
+                    f"github_access.keychain はマッピング必須（実際: {type(keychain).__name__}）"
+                )
+            else:
+                keychain = keychain or {}
+                for key in keychain:
+                    if key not in ALLOWED_GITHUB_KEYCHAIN_KEYS:
+                        errors.append(f"未知キー github_access.keychain.{key}")
+                service = keychain.get("service", DEFAULT_GITHUB_KEYCHAIN_SERVICE)
+                account = keychain.get("account", "")
+                if not _valid_locator(service):
+                    errors.append(
+                        "github_access.keychain.service は空でない制御文字なし文字列必須"
+                    )
+                if not isinstance(account, str) or any(
+                    ord(char) < 32
+                    or ord(char) == 127
+                    or char in '"\\$`'
+                    for char in account
+                ):
+                    errors.append(
+                        "github_access.keychain.account は制御文字なし文字列必須"
+                    )
+                elif provider == "keychain" and account == "":
+                    errors.append(
+                        "provider=keychain では github_access.keychain.account は非空必須"
+                    )
+
     return errors
 
 
@@ -166,6 +228,8 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     tsd = init.get("tech_stack_design") or {}
     tc = init.get("tech_contract") or {}
     provisioning = init.get("provisioning") or {}
+    github_access = init.get("github_access") or {}
+    keychain = github_access.get("keychain") or {}
 
     name = project.get("name")
     if name is None:
@@ -196,6 +260,14 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     else:
         provisioning_auto_approve = bool(provisioning_auto_approve)
 
+    github_credential_provider = github_access.get(
+        "api_credential_provider", DEFAULT_GITHUB_CREDENTIAL_PROVIDER
+    )
+    github_keychain_service = keychain.get(
+        "service", DEFAULT_GITHUB_KEYCHAIN_SERVICE
+    )
+    github_keychain_account = keychain.get("account", "")
+
     return {
         "name": name,
         "slug": slug,
@@ -204,6 +276,9 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
         "tech_stack_design_filename": tech_stack_design_filename,
         "tech_contract_auto_approve": auto_approve,
         "provisioning_auto_approve": provisioning_auto_approve,
+        "github_credential_provider": github_credential_provider,
+        "github_keychain_service": github_keychain_service,
+        "github_keychain_account": github_keychain_account,
     }
 
 
@@ -320,6 +395,27 @@ def _set_or_insert_scalar(lines: list[str], parent: str, key: str, value: str,
     return lines
 
 
+def _set_github_access(lines: list[str], values: dict) -> list[str]:
+    block = [
+        "github_access:",
+        f"  api_credential_provider: {_yaml_quote(values['github_credential_provider'])}",
+        "  keychain:",
+        f"    service: {_yaml_quote(values['github_keychain_service'])}",
+        f"    account: {_yaml_quote(values['github_keychain_account'])}",
+    ]
+    start, last = _find_top_block(lines, "github_access")
+    if start is not None:
+        return lines[:start] + block + lines[last + 1:]
+
+    insert_at = len(lines)
+    context_start, _ = _find_top_block(lines, "context_budget")
+    if context_start is not None:
+        insert_at = context_start
+    prefix = [] if insert_at == 0 or lines[insert_at - 1].strip() == "" else [""]
+    suffix = [] if insert_at >= len(lines) or lines[insert_at].strip() == "" else [""]
+    return lines[:insert_at] + prefix + block + suffix + lines[insert_at:]
+
+
 def _render_manifest(content: str, values: dict) -> str:
     newline = "\r\n" if "\r\n" in content else "\n"
     lines = [ln.rstrip("\r") for ln in content.split("\n")]
@@ -346,11 +442,12 @@ def _render_manifest(content: str, values: dict) -> str:
         lines, "project", "context_budget",
         "min_context_window_tokens", str(values["min_context_window_tokens"])
     )
+    lines = _set_github_access(lines, values)
 
     return newline.join(lines)
 
 
-def _verify_owned_keys(manifest: dict) -> list[str]:
+def _verify_owned_keys(manifest: dict, expected: dict | None = None) -> list[str]:
     """apply 所有キーが正しく設定されているか検証する。"""
     issues: list[str] = []
     project = manifest.get("project") or {}
@@ -382,6 +479,35 @@ def _verify_owned_keys(manifest: dict) -> list[str]:
     raw = ctx.get("min_context_window_tokens")
     if raw is None or str(raw) == "[要確認]":
         issues.append(f"project.context_budget.min_context_window_tokens が未確定: {raw!r}")
+
+    github_access = manifest.get("github_access") or {}
+    keychain = github_access.get("keychain") or {}
+    actual = {
+        "github_credential_provider": github_access.get("api_credential_provider"),
+        "github_keychain_service": keychain.get("service"),
+        "github_keychain_account": keychain.get("account"),
+    }
+    if actual["github_credential_provider"] not in GITHUB_CREDENTIAL_PROVIDERS:
+        issues.append(
+            "github_access.api_credential_provider が不正: "
+            f"{actual['github_credential_provider']!r}"
+        )
+    if not _valid_locator(actual["github_keychain_service"]):
+        issues.append("github_access.keychain.service が未確定または不正")
+    account = actual["github_keychain_account"]
+    if not isinstance(account, str) or any(
+        ord(char) < 32 or ord(char) == 127 or char in '"\\$`'
+        for char in account
+    ):
+        issues.append("github_access.keychain.account が不正")
+    if actual["github_credential_provider"] == "keychain" and account == "":
+        issues.append("provider=keychain で github_access.keychain.account が空")
+    if expected is not None:
+        for key, actual_value in actual.items():
+            if actual_value != expected[key]:
+                issues.append(
+                    f"{key} の投影不一致: expected={expected[key]!r}, actual={actual_value!r}"
+                )
 
     return issues
 
@@ -430,6 +556,9 @@ def main(argv=None) -> int:
          f"tech_stack_design_filename={values['tech_stack_design_filename']!r} "
          f"tech_contract_auto_approve={values['tech_contract_auto_approve']} "
          f"provisioning_auto_approve={values['provisioning_auto_approve']} "
+         f"github_provider={values['github_credential_provider']!r} "
+         f"github_keychain_service={values['github_keychain_service']!r} "
+         f"github_keychain_account={values['github_keychain_account']!r} "
          f"min_context_window_tokens={values['min_context_window_tokens']}")
 
     if args.check:
@@ -447,7 +576,7 @@ def main(argv=None) -> int:
 
     # 書き込み後の検証
     updated_manifest = genlib.load_manifest(args.manifest)
-    issues = _verify_owned_keys(updated_manifest)
+    issues = _verify_owned_keys(updated_manifest, values)
     if issues:
         for issue in issues:
             _out("WARN", issue)
