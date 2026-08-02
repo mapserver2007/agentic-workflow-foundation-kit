@@ -195,8 +195,8 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 
 | 設定キー | seed default | 生成物 |
 | --- | --- | --- |
-| `code_review.enabled` | `true` | `agent-code-review`、`bin/_github-{auth,app-auth,keychain-auth}.sh`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` |
-| `github_pr.enabled` | `true` | `agent-github-pr` |
+| `code_review.enabled` | `true` | `agent-code-review`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` |
+| `github_pr.enabled` | `true` | `agent-github-pr`、`bin/github-pr-create-safe` |
 | `github_issue.enabled` | `true` | `agent-github-issue`、`bin/github-issue-{create,read}-safe` |
 | `coderabbit.enabled` | `true` | `.coderabbit.yaml` |
 | `agent_workflow.enabled` | `true` | `docs/agent-tasks/**`、`workflow-orchestrator`、`requirement-analysis`、各種 gate スクリプト |
@@ -205,6 +205,8 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 | `deep_thinking.enabled` | `true` | `deep-thinking`（`config.yaml` + references） |
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
+
+`bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` は、`code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に共通 backend として生成されます。
 
 > Phase 1.68 は承認済み `tech_contract.runtime_materialization.actions` を扱います。`materialize_runtime.py --check` は read-only の renderability 検査だけを行い、file action・install・lockfile 更新は `bin/project-setup --plan` で提示した計画を明示承認した後の `--apply` だけが実行します。`package.json` 等はアプリ所有ファイルであり `outputs[]` / audit の対象外です。
 
@@ -293,9 +295,9 @@ bin/quality-gate verify
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/tech-stack.md`、`docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py` |
-| GitHub Wrappers | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh`、`bin/github-git-fetch-safe`、`bin/github-*-safe`、`bin/cross-repo-sync-safe` |
-| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
-| Optional GitHub PR | `.cursor/skills/agent-github-pr/**` |
+| Shared GitHub Auth | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh` |
+| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
+| Optional GitHub PR | `.cursor/skills/agent-github-pr/**`、`bin/github-pr-create-safe` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
 | Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/{reports,maintenance-docs}/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/requirement-analysis/**`、任意の `.cursor/skills/maintenance-{docs,gotchas}-workflow/**` |
 | Optional Deep Thinking | `.cursor/skills/deep-thinking/SKILL.md`、`.cursor/skills/deep-thinking/config.yaml`、`.cursor/skills/deep-thinking/README.md`、`.cursor/skills/deep-thinking/references/**` |
@@ -305,8 +307,9 @@ bin/quality-gate verify
 
 各オプション出力の条件:
 
-- `.cursor/skills/agent-code-review/**` と `bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
-- `.cursor/skills/agent-github-pr/**` — `github_pr.enabled: true` の場合のみ
+- `bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` — `code_review.enabled` / `github_pr.enabled` / `github_issue.enabled` / `cross_repo_knowledge.enabled` のいずれかが `true` の場合
+- `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
+- `.cursor/skills/agent-github-pr/**` と `bin/github-pr-create-safe` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
 - `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/**`、各種 workflow gate スクリプト — `agent_workflow.enabled: true` の場合のみ
