@@ -41,7 +41,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 | Step | 入口条件 | 退出条件 |
 | --- | --- | --- |
 | **1 ブランチ確認** | wrapper 前提条件 OK | head / base ブランチ確定 |
-| **2 PR 内容生成** | Step 1 完了 + リモートにコミット済み変更あり | タイトル・本文の草案完成 |
+| **2 PR 内容生成** | Step 1 完了 + コミット済み変更あり | タイトル・本文の草案完成 |
 | **3 ユーザー承認** | Step 2 完了 | AskQuestion でユーザーが承認 |
 | **4 PR 作成** | Step 3 承認済み | PR URL 取得 + 出力 |
 
@@ -64,7 +64,7 @@ test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
 
    - 未コミットの変更がある場合でも **コミット操作は禁止**（意図的に未コミットの場合があるため）
    - 未コミットファイルがある旨をユーザーに通知するが、コミットは案内しない
-   - コミット済みの変更（リモートブランチに push 済みのコミット）のみを PR 対象とする
+   - コミット済みの変更のみを PR 対象とする。リモート未反映のコミットは Step 4 の wrapper が push する
 
 3. ベースブランチを決定する:
 

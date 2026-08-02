@@ -104,9 +104,18 @@ _get_github_token() {
   fi
 }
 
+_github_curl_config_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
 _github_http_request_secret() {
   local secret="$1" method="$2" url="$3" payload="${4:-}" response payload_file=""
+  local escaped_secret
   local -a args
+  escaped_secret=$(_github_curl_config_escape "$secret")
   args=(-sS -w $'\n%{http_code}' -X "$method" -H "Accept: ${GITHUB_API_ACCEPT}")
   if [[ -n "$payload" ]]; then
     umask 077
@@ -117,7 +126,7 @@ _github_http_request_secret() {
   fi
   if ! response=$(
     {
-      printf 'header = "Authorization: Bearer %s"\n' "$secret"
+      printf 'header = "Authorization: Bearer %s"\n' "$escaped_secret"
       if [[ -n "$payload_file" ]]; then
         printf 'data-binary = "@%s"\n' "$payload_file"
       fi
@@ -171,14 +180,15 @@ print(doc if isinstance(doc, str) and doc.startswith("https://docs.github.com/")
 }
 
 _github_download_text() {
-  local owner="$1" repo="$2" url="$3" max_size="$4" content
+  local owner="$1" repo="$2" url="$3" max_size="$4" content escaped_token
   if [[ ! "$url" =~ ^https://github\.com/user-attachments/files/ ]]; then
     echo "ERROR: unsupported attachment URL" >&2
     return 2
   fi
   _get_github_token "$owner" "$repo" api-read || return $?
+  escaped_token=$(_github_curl_config_escape "$GITHUB_AUTH_TOKEN")
   if ! content=$(
-    printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_AUTH_TOKEN" |
+    printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" |
       curl --config - -sSL --max-filesize "$max_size" "$url"
   ); then
     GITHUB_AUTH_TOKEN=""
@@ -234,7 +244,7 @@ _github_git_with_remote() {
   before_push=$(git -C "$worktree" remote get-url --push "$remote" 2>/dev/null) || return 1
   (
     cd "$worktree"
-    _detect_owner_repo "$remote"
+    _detect_owner_repo "$remote" || exit $?
     https_url="https://github.com/${OWNER}/${REPO}.git"
     _github_git_run "$OWNER" "$REPO" "$operation" \
       -c "remote.${remote}.url=${https_url}" "$@"

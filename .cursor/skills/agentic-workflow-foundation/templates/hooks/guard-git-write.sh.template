@@ -206,10 +206,15 @@ if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
 fi
 
 # gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]] \
-   || [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
-  deny "gh pr/issue コメント・レビューは選択 provider の境界を迂回するため禁止" \
+if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]; then
+  deny "gh pr コメント・レビューは選択 provider の境界を迂回するため禁止" \
        "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。"
+fi
+
+# gh issue comment → 対応 wrapper は未実装
+if [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+  deny "gh issue comment は選択 provider の境界を迂回するため禁止" \
+       "Issue コメント投稿 wrapper は現在未対応です。対応する wrapper が追加されるまで実行できません。"
 fi
 
 # gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)

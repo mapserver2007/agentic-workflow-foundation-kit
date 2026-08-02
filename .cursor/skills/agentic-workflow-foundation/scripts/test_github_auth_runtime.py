@@ -272,6 +272,8 @@ def _test_api_secret_transport(errors: list[str]) -> None:
         script = f"""
 source {bin_dir / "_github-auth.sh"}
 export TMPDIR={temp_dir}
+escaped=$(_github_curl_config_escape 'a"b\\c')
+[[ "$escaped" == 'a\\"b\\\\c' ]]
 _github_keychain_get_token() {{ GITHUB_AUTH_TOKEN='SENTINEL_API'; }}
 curl() {{
   local config arg
@@ -377,6 +379,14 @@ git() {{
     return 85
   fi
 }}
+_github_git_run() {{ touch {root / "invalid-git-run"}; return 0; }}
+if _github_git_with_remote . origin git-read fetch origin; then
+  exit 87
+else
+  rc=$?
+fi
+[[ "$rc" -eq 2 ]]
+[[ ! -e {root / "invalid-git-run"} ]]
 if _detect_owner_repo origin; then
   exit 86
 else
@@ -539,6 +549,13 @@ def _test_static_contract(errors: list[str]) -> None:
         "JWT generation failures are not propagated at both call sites",
         errors,
     )
+    _assert(
+        "_github_curl_config_escape" in common
+        and 'printf \'header = "Authorization: Bearer %s"\\n\' "$escaped_secret"' in common
+        and 'printf \'header = "Authorization: Bearer %s"\\n\' "$escaped_token"' in common,
+        "curl config secrets are not escaped at every call site",
+        errors,
+    )
     _assert("GITHUB_APP_INSTALLATION_ID" not in app, "fixed installation ID remains", errors)
     _assert("/usr/bin/security" in keychain and "-s \"$GITHUB_KEYCHAIN_SERVICE\"" in keychain,
             "Keychain exact service lookup missing", errors)
@@ -606,6 +623,25 @@ def _test_guard_gh_invocations(errors: list[str]) -> None:
         check=False,
     )
     _assert(result.stdout.strip() == "{}", "guard blocked a local git read", errors)
+
+    result = subprocess.run(
+        ["bash", str(guard)],
+        input=json.dumps({"command": "gh issue comment 1 --body test"}),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        errors.append(f"guard returned invalid JSON for issue comment: {result.stdout!r}")
+    else:
+        _assert(
+            response.get("permission") == "deny"
+            and "現在未対応" in response.get("agent_message", ""),
+            "guard did not mark issue comment posting as unsupported",
+            errors,
+        )
 
 
 def _test_feature_matrix(errors: list[str]) -> None:
@@ -752,6 +788,9 @@ def _test_generated_legacy_audit(errors: list[str]) -> None:
     generated_skills = (ROOT / ".cursor" / "skills")
     forbidden = ("PAT 未設定だから gh deny", "GitHub App 常時必須", "git_protocol:")
     for path in generated_docs:
+        if not path.is_file():
+            errors.append(f"generated doc missing: {path}")
+            continue
         text = path.read_text(encoding="utf-8")
         for legacy in forbidden:
             _assert(legacy not in text, f"generated legacy text remains: {path}: {legacy}", errors)
