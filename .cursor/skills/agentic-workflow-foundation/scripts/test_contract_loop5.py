@@ -21,8 +21,7 @@ import resolve_quality_gate as rq  # noqa: E402
 import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
 from test_contract_fixture import (  # noqa: E402
-    WEB_PNPM_WS,
-    WEB_TSCONFIG,
+    FIXTURE_RUNNER,
     base_contract,
     consumer_contract,
     go_lifecycle_contract,
@@ -33,9 +32,6 @@ from test_contract_fixture import (  # noqa: E402
 TECH_SCRIPT = HERE / "tech_contract.py"
 ENGINE = HERE / "run_resolved_engine.py"
 SKILL_MANIFEST = HERE.parent / "manifest.yaml"
-
-PNPM_WS = WEB_PNPM_WS
-TSCONFIG = WEB_TSCONFIG
 
 
 def _run_cli(args: list[str]) -> tuple[int, str, str]:
@@ -61,17 +57,28 @@ def root_multiline_exact_bytes() -> bool:
         print("SKIP root_multiline_exact_bytes: no root manifest", file=sys.stderr)
         return True
     contract = tc.load_approved(manifest, design)
-    for action in rp.collect_file_actions(contract):
-        if action["target"] == "pnpm-workspace.yaml":
-            if action["content"] != PNPM_WS:
-                print("FAIL: pnpm-workspace content not real newlines", file=sys.stderr)
-                return False
-            if "\\n" in manifest.read_text(encoding="utf-8").split("pnpm-workspace.yaml", 1)[-1][:200]:
-                print("FAIL: manifest still has literal \\\\n", file=sys.stderr)
-                return False
-        if action["target"] == "tsconfig.json" and action["content"] != TSCONFIG:
-            print("FAIL: tsconfig content mismatch", file=sys.stderr)
-            return False
+    package_action = next(
+        (action for action in rp.collect_file_actions(contract) if action["target"] == "package.json"),
+        None,
+    )
+    if package_action is None:
+        print("FAIL: root package.json action missing", file=sys.stderr)
+        return False
+    if package_action.get("kind") != "owned-text-render":
+        print("FAIL: root package action must be owned-text-render", file=sys.stderr)
+        return False
+    expected_content = package_action["content"]
+    if "\\n" in manifest.read_text(encoding="utf-8").split("package.json", 1)[-1][:400]:
+        print("FAIL: manifest still has literal \\\\n", file=sys.stderr)
+        return False
+    try:
+        package_data = json.loads(expected_content)
+    except json.JSONDecodeError as exc:
+        print("FAIL: package action content is invalid JSON", exc, file=sys.stderr)
+        return False
+    if package_data.get("packageManager") != "pnpm@9.15.0":
+        print("FAIL: packageManager pin mismatch", file=sys.stderr)
+        return False
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         design_path = root / "docs" / "TECH.md"
@@ -94,17 +101,13 @@ def root_multiline_exact_bytes() -> bool:
         if code != 0:
             print("FAIL: provision apply", apply_out, file=sys.stderr)
             return False
-        ws = root / "pnpm-workspace.yaml"
-        ts = root / "tsconfig.json"
-        if ws.read_bytes() != PNPM_WS.encode("utf-8"):
-            print("FAIL: pnpm-workspace exact bytes", file=sys.stderr)
+        package_path = root / "package.json"
+        if package_path.read_bytes() != expected_content.encode("utf-8"):
+            print("FAIL: package.json exact bytes", file=sys.stderr)
             return False
-        if ts.read_bytes() != TSCONFIG.encode("utf-8"):
-            print("FAIL: tsconfig exact bytes", file=sys.stderr)
-            return False
-        json.loads(ts.read_text(encoding="utf-8"))
-        if "packages:" not in ws.read_text(encoding="utf-8"):
-            print("FAIL: pnpm-workspace parse", file=sys.stderr)
+        rendered = json.loads(package_path.read_text(encoding="utf-8"))
+        if rendered.get("packageManager") != "pnpm@9.15.0":
+            print("FAIL: rendered packageManager pin mismatch", file=sys.stderr)
             return False
     return True
 
@@ -242,7 +245,7 @@ def preflight_no_subprocess_and_version_marker() -> bool:
         contract["provisioning"]["preflight_checks"] = [
             {
                 "kind": "json-value-pattern",
-                "target": ".cursor/.runtime/toolchain-state.json",
+                "target": ".state/toolchain-state.json",
                 "pointer": "pnpm.version",
                 "pattern": r"\d+\.\d+\.\d+",
                 "evidence_ref": "x",
@@ -261,7 +264,7 @@ def preflight_no_subprocess_and_version_marker() -> bool:
         if not errors:
             print("FAIL: preflight should fail before marker", file=sys.stderr)
             return False
-        marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
+        marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"pnpm":{"version":"9.1.0"}}\n', encoding="utf-8")
         (root / "pnpm-lock.yaml").write_text("lock:\n", encoding="utf-8")
@@ -280,25 +283,46 @@ def missing_executable_no_traceback_exit2() -> bool:
         design.write_text("# x\nGo\n", encoding="utf-8")
         fp = tc.source_fingerprint(design)
         contract = base_contract(fp)
-        contract["provisioning"]["command_actions"] = [{
-            "argv": ["nonexistent-loop5-cmd-xyz"],
-            "cwd": ".",
-            "effects": ["host_write"],
-            "writes": [".cursor/.runtime/host-marker.json"],
-            "postconditions": [{
-                "kind": "record-state-digest",
-                "marker": ".cursor/.runtime/host-marker.json",
-                "paths": ["package.json"],
+        later_write = "after-missing-command"
+        contract["provisioning"]["command_actions"] = [
+            {
+                "argv": ["nonexistent-loop5-cmd-xyz"],
+                "cwd": ".",
+                "effects": ["host_write"],
+                "writes": [".state/host-marker.json"],
+                "postconditions": [{
+                    "kind": "record-state-digest",
+                    "marker": ".state/host-marker.json",
+                    "paths": ["package.json"],
+                    "evidence_ref": "x",
+                }],
                 "evidence_ref": "x",
-            }],
-            "evidence_ref": "x",
-        }]
+            },
+            {
+                "argv": [
+                    sys.executable,
+                    str(FIXTURE_RUNNER),
+                    "touch",
+                    "--root",
+                    ".",
+                    "--writes",
+                    later_write,
+                ],
+                "cwd": ".",
+                "effects": ["project_write"],
+                "writes": [later_write],
+                "evidence_ref": "x",
+            },
+        ]
         manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
         approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
         code, report = rp.apply_plan(plan, approved, root)
         if code != 2 or "Traceback" in str(report):
             print("FAIL: missing executable handling", code, report, file=sys.stderr)
+            return False
+        if (root / later_write).exists() or "command:1" not in report.get("pending", []):
+            print("FAIL: command after missing executable was not kept pending", report, file=sys.stderr)
             return False
         result = subprocess.run(
             [sys.executable, str(HERE / "provision_runtime.py"),
@@ -437,7 +461,8 @@ def regenerate_drift_check() -> bool:
         print("FAIL: run_resolved_engine check after generate", check.stdout, check.stderr, file=sys.stderr)
         return False
     qg = ROOT / "bin" / "quality-gate"
-    if not qg.is_file() or "pnpm" not in qg.read_text(encoding="utf-8"):
+    qg_text = qg.read_text(encoding="utf-8") if qg.is_file() else ""
+    if not qg.is_file() or "bin/foundation-gate" not in qg_text:
         print("FAIL: bin/quality-gate missing contract argv", file=sys.stderr)
         return False
     coderabbit = ROOT / ".coderabbit.yaml"

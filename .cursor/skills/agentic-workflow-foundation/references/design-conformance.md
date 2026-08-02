@@ -48,7 +48,7 @@
 - `G-GEN`: OpenAPI 由来の生成を `G-BUILD` から分離し、開発中の自動生成 / 生成物差分確認を独立して扱うこと（合格条件は exit 0 かつ生成物差分なし=コミット済み）。
 - `Hook`: §2.1 Deterministic 強制範囲。根拠列・`gh api` 書込/`gh pr comment` 等の ask 行・二段階フェイル戦略（deny=フェイルクローズ / それ以外=フェイルオープン）を含むこと。
 - `リンク衛生`: 原則5 コンテキスト保護。
-- `package script contract`: 技術スタックから導出された G-* の内訳を、`package.json` の有無に依存せず復元できること。
+- `quality gate backend contract`: 承認済み `tech_contract.quality_gate` から導出された G-* backend argv とセマンティクスを、`package.json` の有無に依存せず復元できること。
 - `検査 ID`: §1.4 スクリプト実装ゲートの安定検査 ID 命名規約（`G-{GATE}-{CATEGORY}-{NNN}`）。BAS Finding Code 79 種体系は採用せず軽量 ID 運用に留めること（`framework.accd_axes[B].not_adopted` の死守）。
 - `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / `archive/` 取り残し）の定義と検査 ID を含むこと。
 - `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。専用 `gate-*.py` は持たず既存ゲート + Advisory ループで運用する軽量実装であること。
@@ -117,9 +117,9 @@
 
 ## 設計判断: runtime 物質化の `outputs[]` 対象外（D-SOT / D-QUALITY）
 
-Phase 1.68 で `provision_runtime --apply` が生成する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**（アプリ所有ファイル）。`materialize_runtime.py` は `--check` のみ（write 禁止）。
+Phase 1.68 で `provision_runtime --apply` が materialize する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**。`materialize_runtime.py` は `--check` のみ（write 禁止）。
 
-- **理由**: `package.json` は PO / アプリ開発者が自由に編集するファイルであり、byte-for-byte 冪等性を audit で強制すると運用が破綻する。kit 所有キー（`scripts.{gen,build,lint,test}` / `packageManager` / tech_stack 由来 devDependencies）のみ契約更新時に上書きし、それ以外のキーは不可侵とする。
+- **理由**: runtime file の所有権と更新方式は、承認済み `tech_contract.runtime_materialization.actions` が決定する。`json-key-merge` は宣言した owned keys を更新し、`owned-text-render` は契約で指定した完全内容を materialize する。いずれも `outputs[]` の byte-for-byte audit から分離する。
 - **整合性の担保**: Phase 1.7（`check_tech_stack_conformance.py`）が承認済み `tech_contract.provisioning.preflight_checks` を generic に評価する（subprocess 禁止）。`json-value-pattern` は `re.fullmatch`（exact regex）のみ。`installed-marker` は closed `validation` object（`json-field` / `executable-file`）で marker 内容を意味検証し、`covers_packages` は schema で `required_packages` を exact cover する。`forbidden_packages` は `absent-marker` + `covers_packages` で exact cover する。
 - **postcondition ordering**: command 直後は postcondition が生成する marker を除いた command-owned `writes` のみ存在検査。postcondition 実行（atomic marker write）後に全 `writes` を再検査し、`changed_targets` を digest 差分で再収集する。
 - **postcondition plan 境界**: postcondition の全 payload は親 command の `payload_digest` と承認 plan に含める。`capture-toolchain-version` の subprocess は PATH 上の executable 名 + closed version-query 引数1個だけを許可し、任意 path / script / eval 引数を schema と runtime の双方で拒否する。marker write は plan の `effects` / `writes` に明示する。version query 前後の project tree metadata snapshot に差分があれば exit 2 とし、未宣言変更 path を部分適用レポートへ含める。
@@ -137,7 +137,7 @@ Phase 1.68 で `provision_runtime --apply` が生成する `package.json` / `tsc
 
 ## 設計判断: quality_gate_contract の非永続化（D-SOT / D-QUALITY）
 
-`quality_gate_contract`（package script contract の具体文言）は **root `manifest.yaml` に永続化しない**。
+`quality_gate_contract`（quality gate backend contract の具体文言）は **root `manifest.yaml` に永続化しない**。
 
 - **SoT**: 承認済み `tech_contract.quality_gate`。同一契約なら同一出力となる。
 - **描画経路**: Phase 2 generate 直前に `run_resolved_engine.py` が承認済み contract の値を一時 resolved manifest へ overlay 注入し、`docs/QUALITY_GATE.md` 等へ展開する。

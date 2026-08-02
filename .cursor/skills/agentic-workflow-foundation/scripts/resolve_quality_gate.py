@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""承認済み tech_contract から G-* と package script contract を投影する（Phase 1.65）。"""
+"""承認済み tech_contract から G-* と quality gate backend contract を投影する（Phase 1.65）。"""
 from __future__ import annotations
 
 import argparse
@@ -174,7 +174,9 @@ def _render_manifest(content: str, resolved: dict) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="承認済み tech_contract から G-* と script contract を投影する")
+    parser = argparse.ArgumentParser(
+        description="承認済み tech_contract から G-* と quality gate backend contract を投影する"
+    )
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)

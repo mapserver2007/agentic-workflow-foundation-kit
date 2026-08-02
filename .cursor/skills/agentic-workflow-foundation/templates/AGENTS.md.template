@@ -65,7 +65,7 @@ bin/foundation-gate self     # kit 自己検証（audit + foundation tests）
 
 ### Quality Gate Contract
 
-G-* は技術スタック由来の root scripts を外部インターフェース contract とする。`G-GEN` は開発中の生成用、`G-BUILD` はデプロイ直前やローカル実行直前の build 用として責務を分離し、`package.json` の各 script は `docs/QUALITY_GATE.md > package script contract` の内訳を満たす責務を負う。
+G-* は承認済み `tech_contract.quality_gate` の backend argv を外部インターフェース contract とする。`G-GEN` は開発中の生成用、`G-BUILD` はデプロイ直前やローカル実行直前の build 用として責務を分離する。backend の内訳は `docs/QUALITY_GATE.md > quality gate backend contract` を参照し、`package.json` の scripts は必須ではない。
 検証入口は `project.quality_gate.profile` の単一 selector で決定する。`foundation` は `bin/foundation-gate self`、`application` は `bin/quality-gate verify` を実行する。
 
 ## Session Protocol

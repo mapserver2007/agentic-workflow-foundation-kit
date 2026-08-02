@@ -86,7 +86,7 @@ def postcondition_marker_created_after_command() -> bool:
         manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
         approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
-        marker = root / ".cursor" / ".runtime" / "provision-state.json"
+        marker = root / ".state" / "provision-state.json"
         if marker.is_file():
             print("FAIL: marker pre-exists", file=sys.stderr)
             return False
@@ -97,7 +97,7 @@ def postcondition_marker_created_after_command() -> bool:
         if not marker.is_file():
             print("FAIL: marker not created by postcondition", file=sys.stderr)
             return False
-        if ".cursor/.runtime/provision-state.json" not in report.get("changed_targets", []):
+        if ".state/provision-state.json" not in report.get("changed_targets", []):
             print("FAIL: marker not in changed_targets", report, file=sys.stderr)
             return False
     return True
@@ -142,11 +142,11 @@ def production_root_command_postcondition_flow() -> bool:
             "writes": [
                 "pnpm-lock.yaml",
                 "node_modules/.bin/turbo",
-                ".cursor/.runtime/provision-state.json",
+                ".state/provision-state.json",
             ],
             "postconditions": [{
                 "kind": "record-state-digest",
-                "marker": ".cursor/.runtime/provision-state.json",
+                "marker": ".state/provision-state.json",
                 "paths": ["pnpm-lock.yaml"],
                 "evidence_ref": "fixture",
             }],
@@ -167,6 +167,44 @@ def production_root_command_postcondition_flow() -> bool:
     return True
 
 
+def production_root_toolchain_order() -> bool:
+    manifest = ROOT / "manifest.yaml"
+    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+    if not manifest.is_file():
+        print("SKIP: no root manifest", file=sys.stderr)
+        return True
+    contract = tc.load_approved(manifest, design)
+    actual = [
+        action.get("argv")
+        for action in rp.collect_command_actions(contract)
+    ]
+    expected = [
+        ["corepack", "enable"],
+        ["corepack", "prepare", "pnpm@9.15.0", "--activate"],
+        ["pnpm", "install", "--config.confirm-modules-purge=false", "--frozen-lockfile=false"],
+    ]
+    if actual != expected:
+        print("FAIL: root host toolchain command order", actual, file=sys.stderr)
+        return False
+    package_action = next(
+        action
+        for action in contract["runtime_materialization"]["actions"]
+        if action.get("target") == "package.json"
+    )
+    if package_action.get("kind") != "owned-text-render":
+        print("FAIL: root package action must own the complete package JSON", file=sys.stderr)
+        return False
+    try:
+        package_data = json.loads(package_action["content"])
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        print("FAIL: root package action content is invalid JSON", exc, file=sys.stderr)
+        return False
+    if package_data.get("packageManager") != "pnpm@9.15.0":
+        print("FAIL: corepack pin differs from packageManager", file=sys.stderr)
+        return False
+    return True
+
+
 def marker_version_mismatch_fails() -> bool:
     manifest = ROOT / "manifest.yaml"
     design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
@@ -182,13 +220,14 @@ def marker_version_mismatch_fails() -> bool:
         print("FAIL: production root missing json-value-pattern preflight", file=sys.stderr)
         return False
     isolated = copy.deepcopy(contract)
-    isolated["provisioning"]["preflight_checks"] = pattern_checks
+    isolated["provisioning"]["preflight_checks"] = copy.deepcopy(pattern_checks)
+    isolated["provisioning"]["preflight_checks"][0]["target"] = ".state/toolchain-state.json"
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        marker = root / ".cursor" / ".runtime" / "toolchain-state.json"
+        marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         # production pattern は semver fullmatch。suffix 付き値で json-value-pattern 不一致を検証する。
-        bad_version = "11.17.0-suffix"
+        bad_version = "9.15.0-suffix"
         marker.write_text(
             json.dumps({"pnpm": {"version": bad_version}}, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -235,14 +274,14 @@ def state_digest_mismatch_fails() -> bool:
         contract["provisioning"]["command_actions"] = []
         contract["provisioning"]["preflight_checks"] = [{
             "kind": "state-digests",
-            "marker": ".cursor/.runtime/provision-state.json",
+            "marker": ".state/provision-state.json",
             "paths": ["pnpm-lock.yaml"],
             "evidence_ref": "x",
             "guidance": "digest mismatch",
         }]
         manifest, design = write_sealed_manifest(root, contract, "# x\n")
         (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
-        marker = root / ".cursor" / ".runtime" / "provision-state.json"
+        marker = root / ".state" / "provision-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text('{"digests":{"pnpm-lock.yaml":"deadbeef"}}\n', encoding="utf-8")
         errors = rp.run_preflight(tc.load_approved(manifest, design), root)
@@ -263,10 +302,10 @@ def invalid_path_element_schema_error() -> bool:
             "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", "."],
             "cwd": ".",
             "effects": ["project_write"],
-            "writes": [".provision-marker", ".cursor/.runtime/provision-state.json"],
+            "writes": [".provision-marker", ".state/provision-state.json"],
             "postconditions": [{
                 "kind": "record-state-digest",
-                "marker": ".cursor/.runtime/provision-state.json",
+                "marker": ".state/provision-state.json",
                 "paths": [""],
                 "evidence_ref": "x",
             }],
@@ -331,6 +370,7 @@ def main() -> int:
         "generic_covers_packages_no_node_inference": generic_covers_packages_no_node_inference,
         "postcondition_marker_created_after_command": postcondition_marker_created_after_command,
         "production_root_command_postcondition_flow": production_root_command_postcondition_flow,
+        "production_root_toolchain_order": production_root_toolchain_order,
         "marker_version_mismatch_fails": marker_version_mismatch_fails,
         "required_package_marker_missing_fails": required_package_marker_missing_fails,
         "state_digest_mismatch_fails": state_digest_mismatch_fails,

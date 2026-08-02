@@ -1,6 +1,6 @@
 # QUALITY_GATE — 検証ゲートの通過基準
 
-<!-- このファイルは agentic-workflow-foundation スキルの生成物。プロジェクト固有のコマンド/ゲートは manifest.yaml の project.quality_gate を更新して再生成する。 -->
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。quality gate backend contract は承認済み tech_contract.quality_gate を更新・承認して再生成する。project.quality_gate は selector / 互換表示用の projection であり、直接変更しない。 -->
 
 > {{project.name}} でセッション終了 / PR マージ / フェーズ境界で実行する品質ゲートの定義。**検証ゲートは exit code ベースのスクリプトで実装する** 原則に基づく。
 >
@@ -38,26 +38,26 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 **G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
 
-#### package script contract
+#### quality gate backend contract
 
-G-* は技術スタックから決まる root scripts を外部インターフェース contract として定義する。`package.json` の各 script は、この contract を満たす責務を負う（実体が contract に追従する）。
+G-* の backend argv とセマンティクスは、承認済み `tech_contract.quality_gate` から直接決定する外部インターフェース contract である。`package.json` の scripts はこの contract の要件ではない。
 
-**gen script (`bin/quality-gate gen` → backend: `{{project.quality_gate.gen_cmd}}`)**
+**gen backend (`bin/quality-gate gen` → backend: `{{project.quality_gate.gen_cmd}}`)**
 
 {{#each quality_gate_contract.gen}}- {{this}}
 {{/each}}
 
-**build script (`bin/quality-gate build` → backend: `{{project.quality_gate.build_cmd}}`)**
+**build backend (`bin/quality-gate build` → backend: `{{project.quality_gate.build_cmd}}`)**
 
 {{#each quality_gate_contract.build}}- {{this}}
 {{/each}}
 
-**lint script (`bin/quality-gate lint` → backend: `{{project.quality_gate.lint_cmd}}`)**
+**lint backend (`bin/quality-gate lint` → backend: `{{project.quality_gate.lint_cmd}}`)**
 
 {{#each quality_gate_contract.lint}}- {{this}}
 {{/each}}
 
-**test script (`bin/quality-gate test` → backend: `{{project.quality_gate.test_cmd}}`)**
+**test backend (`bin/quality-gate test` → backend: `{{project.quality_gate.test_cmd}}`)**
 
 {{#each quality_gate_contract.test}}- {{this}}
 {{/each}}

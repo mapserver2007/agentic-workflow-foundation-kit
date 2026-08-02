@@ -72,7 +72,7 @@ WEB_TSCONFIG = (
 
 def fixture_command_action(*writes: str) -> dict:
     command_writes = list(writes) if writes else [".provision-marker"]
-    marker = ".cursor/.runtime/provision-state.json"
+    marker = ".state/provision-state.json"
     all_writes = list(command_writes)
     if marker not in all_writes:
         all_writes.append(marker)

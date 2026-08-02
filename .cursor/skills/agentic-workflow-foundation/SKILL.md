@@ -96,7 +96,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.5: init.yaml 適用（apply_kit_init.py。開発型固定 / name・slug 導出 / context_budget 適用）
 - [ ] Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 - [ ] Phase 1.6: techstack 取り込み（ingest_tech_stack.py）
-- [ ] Phase 1.65: G-* / script contract 投影（resolve_quality_gate.py — `tech_contract.quality_gate` のみ）
+- [ ] Phase 1.65: G-* / quality gate backend contract 投影（resolve_quality_gate.py — `tech_contract.quality_gate` のみ）
 - [ ] Phase 1.66: CodeRabbit 投影（resolve_coderabbit.py — `tech_contract.review.coderabbit` のみ）
 - [ ] Phase 1.67: Domain docs 投影（resolve_domain_docs.py — `tech_contract.domain_docs.resolved` のみ）
 - [ ] Phase 1.68: runtime renderability 検査（materialize_runtime.py --check）→ Provisioning（provision_runtime.py --plan/--apply/--preflight）
@@ -279,7 +279,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 - seed manifest には具体スタックを焼き込まない。プロジェクトへ設置される具体値は、この Phase の入力（techstack 設計書）から決まる。
 - `tech_contract.source_fingerprint` の stale 検査は **pin 済み（非空 fingerprint）のときのみ**発火する。bootstrap 直後の未 pin placeholder（空 fingerprint）では §9 取り込みを継続する。設計書更新で pin 済み fingerprint と不一致のときだけ exit 1（再起案）。契約 consumer（Phase 1.65 以降）は引き続き承認済み `tech_contract` を要求する。
 
-### Phase 1.65: G-* / script contract 投影（contract-only）
+### Phase 1.65: G-* / quality gate backend contract 投影（contract-only）
 
 承認済み `tech_contract.quality_gate` を root `manifest.yaml > project.quality_gate` と `session.verification.gate_command` へ投影する。
 
@@ -419,7 +419,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 以下を報告する。
 
 - Phase 1.6 / 1.7 の結果（techstack 取り込み・整合ゲート）
-- Phase 1.65 の結果（G-GEN を含む G-* / script contract 自動決定）
+- Phase 1.65 の結果（G-GEN を含む G-* / quality gate backend contract 自動決定）
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
 - Phase 1.5 で確定した `project.*` 値一覧と `framework.accd_axes` の採用/非採用一覧
