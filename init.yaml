@@ -35,13 +35,46 @@ tech_contract:
 provisioning:
   auto_approve: true
 
-# AI が GitHub API と HTTPS Git に使用する credential provider。
-# token / PAT / JWT 本体は保存せず、provider と Keychain locator だけを宣言する。
+# AI の GitHub 認証 provider（Phase 1.5 で root manifest.yaml > github_access へ投影）。
+#
+# 対象（kit が統制する経路）:
+#   - GitHub API: bin/github-pr-*-safe / bin/github-issue-*-safe 等
+#   - AI の HTTPS Git: fetch / pull / push / clone（bin/github-git-fetch-safe 等）
+# 対象外:
+#   - ユーザーが端末で直接行う SSH git（kit は変更しない）
+#   - gh CLI 直実行（Hook で deny。wrapper 経由のみ）
+#
+# 設計原則:
+#   - api_credential_provider は GitHub API と HTTPS Git の単一 SoT。併用不可。
+#   - token / PAT / JWT 本体は本ファイルにも manifest にも保存しない。
+#   - 実体は GitHub App（~/.config/github-apps/）または macOS Keychain（PAT）側。
+#   - 詳細セットアップ手順は setup.md §4 を参照。
+#
+# api_credential_provider — 使用する backend（省略時 github_app）:
+#   github_app:
+#     対象 owner/repo の GitHub App installation を動的解決し、
+#     installation token を API / Git に使う。Installation ID の固定設定は不要。
+#     App ID / private key はリポジトリ外（例: ~/.config/github-apps/config.env）に置く。
+#     この選択中、下記 keychain.* は認証取得では参照されない（空 account 可）。
+#   keychain:
+#     macOS Keychain の generic password から PAT を service/account 完全一致で取得。
+#     macOS 専用。非 macOS では wrapper が exit 2。
+#     この選択時のみ keychain.account は非空必須。
+#
+# keychain — provider=keychain のときだけ認証に使う locator（PAT 本体は Keychain の Password 欄）:
+#   service:
+#     Keychain 属性 svce（サービス名）と完全一致させる。省略時 agentic-workflow-github-api。
+#     一覧の「名前」列（表示ラベル）とは別物。属性画面で svce を確認すること。
+#   account:
+#     Keychain 属性 acct（アカウント名）と完全一致させる PO 定義の識別子。
+#     GitHub ログイン名である必要はない。Keychain 登録時に付けた名前をそのまま書く。
+#     provider=github_app では未使用のため空文字可。
+#     provider=keychain では非空必須（制御文字・shell 展開文字 " \ $ ` は不可）。
 github_access:
   api_credential_provider: github_app
   keychain:
     service: agentic-workflow-github-api
-    account: ""
+    account: agent-github-access
 
 context_budget:
   # 使用する全モデルのうち、最小のコンテキストウィンドウを token 単位で指定する。
