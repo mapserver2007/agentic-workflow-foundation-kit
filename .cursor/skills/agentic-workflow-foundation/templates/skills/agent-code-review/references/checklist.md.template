@@ -24,7 +24,7 @@
 ## 0. 前提条件チェック（スキル起動直後）
 
 ```bash
-test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || echo "GitHub wrapper not found"
+test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 - [ ] `bin/github-pr-reviews-safe` がスキル実行（Phase 2）で生成済み

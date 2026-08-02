@@ -193,7 +193,8 @@ def _validate_init(init: dict) -> list[str]:
                 errors.append(
                     f"github_access.keychain はマッピング必須（実際: {type(keychain).__name__}）"
                 )
-            elif isinstance(keychain, dict):
+            else:
+                keychain = keychain or {}
                 for key in keychain:
                     if key not in ALLOWED_GITHUB_KEYCHAIN_KEYS:
                         errors.append(f"未知キー github_access.keychain.{key}")

@@ -238,6 +238,13 @@ github_access:
     account: ""
 """
 
+INIT_GITHUB_KEYCHAIN_OMITTED = """version: 1
+tech_stack_design:
+  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+github_access:
+  api_credential_provider: keychain
+"""
+
 INIT_GITHUB_BAD_SERVICE = """version: 1
 tech_stack_design:
   filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
@@ -550,7 +557,14 @@ def main() -> int:
         if rc != 2:
             errors.append(f"github_access {label}: expected exit 2, got {rc}\n{log}")
 
-    # 33. github_app は空 account を許容
+    # 33. provider=keychain で keychain block 省略 → 書き込み前に exit 2
+    rc, out, log = _run(MANIFEST_FIXTURE, INIT_GITHUB_KEYCHAIN_OMITTED)
+    if rc != 2:
+        errors.append(f"github_access omitted keychain: expected exit 2, got {rc}\n{log}")
+    if out != MANIFEST_FIXTURE:
+        errors.append("github_access omitted keychain: manifest changed before validation failed")
+
+    # 34. github_app は空 account を許容
     rc, _, log = _run(MANIFEST_FIXTURE, INIT_GITHUB_APP)
     if rc != 0:
         errors.append(f"github_access github_app: expected exit 0, got {rc}\n{log}")

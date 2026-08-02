@@ -218,8 +218,13 @@ if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
        "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。"
 fi
 
-# gh catch-all（上記パターンに該当しないすべての gh コマンド）
-if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]] ]]; then
+# gh catch-all（command 経由・パス指定を含む、上記に該当しないすべての gh コマンド）
+GH_DIRECT_RE='(^|[;|&][[:space:]]*)gh([[:space:]]|$)'
+GH_COMMAND_RE='(^|[;|&][[:space:]]*)command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+gh([[:space:]]|$)'
+GH_PATH_RE='(^|[;|&][[:space:]]*)/[^[:space:];|&]*/gh([[:space:]]|$)'
+if [[ "$CMD_N" =~ $GH_DIRECT_RE ]] \
+   || [[ "$CMD_N" =~ $GH_COMMAND_RE ]] \
+   || [[ "$CMD_N" =~ $GH_PATH_RE ]]; then
   deny "gh CLI は provider に依存せず直接実行禁止。GitHub 操作は wrapper を使用する" \
        "GitHub 操作は bin/github-*-safe / bin/cross-repo-sync-safe を使用してください。対応する wrapper がない操作は現在実行できません。"
 fi

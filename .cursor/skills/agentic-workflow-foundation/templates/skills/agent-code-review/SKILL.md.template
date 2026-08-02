@@ -20,7 +20,7 @@ GitHub PR 上のレビューコメント（自動レビューツール / 人間�
 スキル起動直後に以下を自動チェックし、すべて揃わない場合は実行を中断する。
 
 ```bash
-test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || echo "GitHub wrapper not found"
+test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test -x bin/github-pr-comment-safe && test -x bin/github-pr-reply-safe || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 - `bin/github-pr-reviews-safe` がスキル実行（Phase 2）で生成済み

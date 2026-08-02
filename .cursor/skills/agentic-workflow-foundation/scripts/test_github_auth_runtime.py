@@ -2,6 +2,7 @@
 """GitHub provider / HTTPS Git wrapper の fixture テスト。"""
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -124,6 +125,28 @@ printf 'PASS\\n'
         _assert("SENTINEL_REFLECTION" not in combined, "API error body leaked", errors)
         _assert("SENTINEL_401" not in combined, "401 body leaked", errors)
         _assert("SENTINEL_403" not in combined, "403 body leaked", errors)
+
+
+def _test_app_jwt_failure(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory(prefix="github-app-jwt-failure-") as tmp:
+        root = Path(tmp)
+        bin_dir = _fixture_bin(root, "github_app")
+        config_dir = root / "home" / ".config" / "github-apps"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.env").write_text("GITHUB_APP_ID=123\n", encoding="utf-8")
+        http_called = root / "http-called"
+        script = f"""
+source {bin_dir / "_github-auth.sh"}
+_github_http_request_secret() {{ touch {http_called}; return 0; }}
+if _get_github_token org repo api-read; then exit 89; fi
+rc=$?
+[[ "$rc" -eq 2 ]]
+[[ ! -e {http_called} ]]
+printf 'PASS\\n'
+"""
+        result = _bash(script, root, {"HOME": str(root / "home")})
+        _assert(result.returncode == 0, f"JWT failure fixture failed: {result.stderr}", errors)
+        _assert(result.stdout == "PASS\n", "JWT failure fixture output mismatch", errors)
 
 
 def _test_dispatcher_and_askpass(errors: list[str]) -> None:
@@ -511,6 +534,11 @@ def _test_static_contract(errors: list[str]) -> None:
     _assert('--data-binary "$payload"' not in common, "API body remains in curl argv", errors)
     _assert('data-binary = "@%s"' in common, "API body file config missing", errors)
     _assert("/repos/${owner}/${repo}/installation" in app, "repo installation lookup missing", errors)
+    _assert(
+        app.count("jwt=$(_generate_jwt) || return $?") == 2,
+        "JWT generation failures are not propagated at both call sites",
+        errors,
+    )
     _assert("GITHUB_APP_INSTALLATION_ID" not in app, "fixed installation ID remains", errors)
     _assert("/usr/bin/security" in keychain and "-s \"$GITHUB_KEYCHAIN_SERVICE\"" in keychain,
             "Keychain exact service lookup missing", errors)
@@ -543,6 +571,41 @@ def _test_static_contract(errors: list[str]) -> None:
     ).read_text(encoding="utf-8")
     _assert("git_protocol:" not in seed, "seed git_protocol remains", errors)
     _assert('"git_protocol"' not in config_template, "generated config git_protocol remains", errors)
+
+
+def _test_guard_gh_invocations(errors: list[str]) -> None:
+    guard = TEMPLATES / "hooks" / "guard-git-write.sh.template"
+    for command in (
+        "gh pr list",
+        "command gh repo view",
+        "/usr/local/bin/gh release list",
+    ):
+        result = subprocess.run(
+            ["bash", str(guard)],
+            input=json.dumps({"command": command}),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            errors.append(f"guard returned invalid JSON for {command!r}: {result.stdout!r}")
+            continue
+        _assert(
+            response.get("permission") == "deny",
+            f"guard did not deny gh invocation: {command}",
+            errors,
+        )
+
+    result = subprocess.run(
+        ["bash", str(guard)],
+        input=json.dumps({"command": "git status --short"}),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    _assert(result.stdout.strip() == "{}", "guard blocked a local git read", errors)
 
 
 def _test_feature_matrix(errors: list[str]) -> None:
@@ -709,6 +772,7 @@ def _test_generated_legacy_audit(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     _test_app_installation_scope(errors)
+    _test_app_jwt_failure(errors)
     _test_dispatcher_and_askpass(errors)
     _test_keychain_backend(errors)
     _test_api_secret_transport(errors)
@@ -718,6 +782,7 @@ def main() -> int:
     _test_cross_repo_https_transport(errors)
     _test_cross_repo_wrapper_exit_codes(errors)
     _test_static_contract(errors)
+    _test_guard_gh_invocations(errors)
     _test_feature_matrix(errors)
     _test_root_overlay_to_wrapper_constants(errors)
     _test_generated_legacy_audit(errors)

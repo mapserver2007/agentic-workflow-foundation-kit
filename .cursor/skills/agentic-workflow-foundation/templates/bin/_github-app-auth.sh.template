@@ -45,7 +45,7 @@ _github_app_get_token() {
     echo "ERROR: GITHUB_APP_ID が設定されていません" >&2
     return 2
   fi
-  jwt=$(_generate_jwt)
+  jwt=$(_generate_jwt) || return $?
 
   _github_http_request_secret "$jwt" GET \
     "https://api.github.com/repos/${owner}/${repo}/installation" || {
@@ -76,7 +76,7 @@ print(identifier if isinstance(identifier, int) else "")
 
   payload=$(printf '{"repositories":[%s]}' \
     "$(printf '%s' "$repo" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
-  jwt=$(_generate_jwt)
+  jwt=$(_generate_jwt) || return $?
   _github_http_request_secret "$jwt" POST \
     "https://api.github.com/app/installations/${installation_id}/access_tokens" \
     "$payload" || {
