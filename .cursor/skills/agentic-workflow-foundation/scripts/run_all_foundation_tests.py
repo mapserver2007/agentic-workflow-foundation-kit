@@ -32,6 +32,7 @@ TESTS_IN_ORDER = [
     "test_contract_loop10.py",
     "test_contract_domain_sections.py",
     "test_resolved_contract_projection.py",
+    "test_project_ignore_dirs.py",
     "test_full_lifecycle_e2e.py",
     "test_profile_selector_static.py",
     "test_contract_consumers.py",
