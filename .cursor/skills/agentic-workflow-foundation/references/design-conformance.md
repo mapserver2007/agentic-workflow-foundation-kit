@@ -134,6 +134,7 @@ Phase 1.68 で `provision_runtime --apply` が materialize する `package.json`
 - **検知限界**: 宣言外 path への変更を OS レベルで完全検知することは不可能。契約境界として **宣言漏れは schema で拒否**し、宣言済み path の変更のみ機械追跡する。
 - **host_write-only**: `host_write` / `network` のみの action は project `writes` 不要。
 - **read-only preflight**: preflight は subprocess を起動せず、宣言的 check（`installed-marker` / `absent-marker` / `json-value-pattern` / `state-digests` / lockfile-present 等）のみ。`installed-marker` は `validation` 成功時のみ package coverage として扱い、schema が `covers_packages` exact cover を検証する。
+- **writes → ignore 投影（ADR-0001）**: `contract_projection.project_ignore_dirs` が `writes` / postcondition `marker` の先頭ドットディレクトリだけを `project.ignore_dirs` へ投影し、`.gitignore` managed ブロックが消費する。ルート直下ファイルと技術名推論は対象外。`.cursorignore` には投影しない。
 
 ## 設計判断: quality_gate_contract の非永続化（D-SOT / D-QUALITY）
 

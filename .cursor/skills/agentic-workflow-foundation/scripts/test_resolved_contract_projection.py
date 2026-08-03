@@ -105,6 +105,10 @@ def main() -> int:
         if resolved["session"]["verification"]["gate_command"] != "bin/quality-gate verify":
             print("FAIL: gate_command not derived from profile")
             return 1
+        ignore_dirs = (resolved.get("project") or {}).get("ignore_dirs")
+        if ignore_dirs != cp.project_ignore_dirs(contract):
+            print(f"FAIL: ignore_dirs not projected from contract: {ignore_dirs!r}")
+            return 1
         if resolved.get("github_access") != {
             "api_credential_provider": "keychain",
             "keychain": {

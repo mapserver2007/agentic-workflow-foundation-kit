@@ -73,6 +73,60 @@ def quality_gate_contract_from_contract(contract: dict) -> dict:
     }
 
 
+def _dot_dir_from_rel(rel: str) -> str | None:
+    """writes/marker 相対 path から ignore 対象ドットディレクトリを導出する。
+
+    ルート直下ファイル（スラッシュ無し）は除外する。先頭セグメントが `.` で
+    始まるときだけ `{name}/` を返す。技術名推論は行わない。
+    """
+    if not isinstance(rel, str) or not rel.strip():
+        return None
+    normalized = rel.replace("\\", "/").strip()
+    if normalized.startswith("/") or ".." in Path(normalized).parts:
+        return None
+    parts = [p for p in normalized.split("/") if p]
+    if not parts:
+        return None
+    # ルート直下ファイル（例: pnpm-lock.yaml / .env）は除外
+    if len(parts) == 1 and not normalized.endswith("/"):
+        return None
+    first = parts[0]
+    if first.startswith(".") and first not in {".", ".."}:
+        return f"{first}/"
+    return None
+
+
+def project_ignore_dirs(contract: dict) -> list[str]:
+    """tech_contract.provisioning writes + postcondition marker から ignore_dirs を導出。"""
+    collected: list[str] = []
+    provisioning = contract.get("provisioning") or {}
+    actions = provisioning.get("command_actions") or []
+    if not isinstance(actions, list):
+        return []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        writes = action.get("writes") or []
+        if isinstance(writes, list):
+            for item in writes:
+                if isinstance(item, str):
+                    collected.append(item)
+        posts = action.get("postconditions") or []
+        if isinstance(posts, list):
+            for post in posts:
+                if not isinstance(post, dict):
+                    continue
+                marker = post.get("marker")
+                if isinstance(marker, str):
+                    collected.append(marker)
+    dirs: set[str] = set()
+    for rel in collected:
+        derived = _dot_dir_from_rel(rel)
+        if derived is not None:
+            dirs.add(derived)
+    return sorted(dirs)
+
+
 def apply_contract_projection(manifest: dict, root_manifest_path: str) -> dict:
     """overlay 後の manifest に contract 投影を上書き適用する。"""
     path = Path(root_manifest_path)
@@ -81,6 +135,7 @@ def apply_contract_projection(manifest: dict, root_manifest_path: str) -> dict:
     merged = dict(manifest)
     project = dict(merged.get("project") or {})
     project["quality_gate"] = project_quality_gate(contract)
+    project["ignore_dirs"] = project_ignore_dirs(contract)
     merged["project"] = project
     merged["coderabbit"] = coderabbit_from_contract(contract)
     merged["domain_docs"] = domain_docs_from_contract(contract)

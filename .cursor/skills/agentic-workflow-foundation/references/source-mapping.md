@@ -50,7 +50,8 @@
 | `tech_contract.runtime_materialization.reality.required_packages` | `installed-marker.covers_packages` union による exact cover（schema 検証 + runtime `validation` 意味検証。Python 推論なし） |
 | `tech_contract.runtime_materialization.reality.forbidden_packages` | `absent-marker.covers_packages` union による exact cover（schema 検証のみ。target 存在時 fail） |
 | `tech_contract.runtime_materialization.actions` | `package.json` / `tsconfig.json` / `pnpm-workspace.yaml`（`provision_runtime --plan/--apply` の唯一 write path。`materialize_runtime --check` は renderability のみ） |
-| `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む） |
+| `marker_id` | `.gitignore` / `.cursorignore`（認証情報・秘密鍵の除外パターン含む）。Meta 常時行（`.cursor/.session/` 等）はテンプレ固定。スタック依存 ignore は `project.ignore_dirs`（`tech_contract.provisioning` の `writes` / postcondition `marker` から決定論投影。`.gitignore` managed のみ。技術名推論禁止） |
+
 
 ## 変更時の運用
 
