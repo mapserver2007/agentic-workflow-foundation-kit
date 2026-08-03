@@ -79,6 +79,13 @@ def test_marker_only_projects() -> None:
     assert cp.project_ignore_dirs(contract) == [".state/"]
 
 
+def test_unsafe_paths_not_projected() -> None:
+    contract = _contract_with_writes(
+        ["/tmp/.state/value", "../.state/value", ".state/../value"]
+    )
+    assert cp.project_ignore_dirs(contract) == []
+
+
 def test_dedupe_and_sort() -> None:
     contract = _contract_with_writes(
         [".z-cache/a", ".state/a"],
@@ -96,6 +103,7 @@ def main() -> int:
         test_trailing_slash_dir_projects,
         test_root_dotfile_not_projected,
         test_marker_only_projects,
+        test_unsafe_paths_not_projected,
         test_dedupe_and_sort,
     ]
     for fn in tests:
