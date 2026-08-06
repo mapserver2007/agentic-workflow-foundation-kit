@@ -21,10 +21,12 @@ emit() { # $1=permission $2=reason $3=agent_message
 # 入力を正常解析できない場合（jq 不在 / JSON 破損 / command 抽出失敗）に生入力へ適用し、
 # deny クラスにマッチしたら allow（素通り）ではなく ask を返す（二段階フェイル戦略の deny 側）。
 deny_class_failclose() {
-  local n
+  local n empty_source_re
   n="$(printf '%s' "$1" | tr -s '[:space:]' ' ')"
+  empty_source_re='git[[:space:]]+push[[:space:]].*[[:space:]][+]?:[^[:space:];|&]+'
   if [[ "$n" =~ (--force|--force-with-lease) ]] \
      || [[ "$n" =~ git[[:space:]]+push[[:space:]].*--delete ]] \
+     || [[ "$n" =~ $empty_source_re ]] \
      || [[ "$n" =~ git[[:space:]]+push[[:space:]].*(main|master|develop|release/) ]] \
      || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
      || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
@@ -56,6 +58,7 @@ if [[ -z "$CMD" ]]; then
 fi
 
 CMD_N="$(echo "$CMD" | tr -s '[:space:]' ' ')"
+EMPTY_SOURCE_RE='git[[:space:]]+push[[:space:]]+([^[:space:]]+[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?:[^[:space:];|&]+'
 
 deny() {
   jq -n --arg reason "$1" --arg msg "$2" \
@@ -83,6 +86,11 @@ if [[ "$CMD_N" =~ git[[:space:]]+push.*--delete([[:space:]]|$) ]]; then
        "リモートブランチ/タグ削除はユーザーが直接実行してください。"
 fi
 
+if [[ "$CMD_N" =~ $EMPTY_SOURCE_RE ]]; then
+  deny "git push の空 source refspec はリモート参照削除のためブロック" \
+       "リモートブランチ/タグ削除はユーザーが直接実行してください。"
+fi
+
 if [[ "$CMD_N" =~ git[[:space:]]+push[[:space:]]+((-[a-zA-Z]+|--[a-zA-Z0-9-]+)[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?(main|master|develop|release/[A-Za-z0-9._/-]+)([[:space:]]|$) ]] \
    || [[ "$CMD_N" =~ git[[:space:]]+push[[:space:]]+((-[a-zA-Z]+|--[a-zA-Z0-9-]+)[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?[A-Za-z0-9._/-]+:(refs/heads/)?(main|master|develop|release/[A-Za-z0-9._/-]+)([[:space:]]|$) ]]; then
   deny "保護ブランチ (main/master/develop/release/*) への直接 push はブロック (refspec HEAD:main 形式含む)" \
@@ -100,12 +108,12 @@ if [[ "$CMD_N" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upst
        "リモート同期前に git fetch + git diff で内容確認後、ユーザーに依頼してください。"
 fi
 
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
   deny "PR マージは AGENTS.md > Boundaries > Never の対象 (明示指示なし禁止)" \
        "PR マージはユーザーが GitHub UI または手動で実行してください。"
 fi
 
-if [[ "$CMD_N" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive)([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+repo[[:space:]]+(delete|archive)([[:space:]]|$) ]]; then
   deny "gh repo delete/archive は不可逆操作のためブロック" \
        "リポジトリ操作はユーザーが直接実行してください。"
 fi
@@ -116,17 +124,17 @@ fi
 # ============================================================
 
 # gh auth による token 取得・表示
-if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+token([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+auth[[:space:]]+token([[:space:]]|$) ]]; then
   deny "gh auth token は認証トークン漏洩のためブロック" \
        "認証トークンの表示は許可されていません。"
 fi
 
-if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+status.*(--show-token|-t)([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+auth[[:space:]]+status.*(--show-token|-t)([[:space:]]|$) ]]; then
   deny "gh auth status --show-token は認証トークン漏洩のためブロック" \
        "認証トークンの表示は許可されていません。"
 fi
 
-if [[ "$CMD_N" =~ gh[[:space:]]+auth[[:space:]]+login.*--with-token ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+auth[[:space:]]+login.*--with-token ]]; then
   deny "gh auth login --with-token はトークン操作のためブロック" \
        "認証設定の変更はユーザーが直接実行してください。"
 fi
@@ -200,25 +208,25 @@ fi
 # ============================================================
 
 # gh pr create → 対応 wrapper: bin/github-pr-create-safe
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
   deny "gh pr create は選択 provider の境界を迂回するため禁止。wrapper 経由で PR を作成する" \
        "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。"
 fi
 
 # gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
-if [[ "$CMD_N" =~ gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]; then
   deny "gh pr コメント・レビューは選択 provider の境界を迂回するため禁止" \
        "コメント投稿は bin/github-pr-comment-safe <pr-number> <body-file>、スレッド返信は bin/github-pr-reply-safe <pr-number> <comment-id> <body-file> を使用してください。"
 fi
 
 # gh issue comment → 対応 wrapper は未実装
-if [[ "$CMD_N" =~ gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+issue[[:space:]]+comment([[:space:]]|$) ]]; then
   deny "gh issue comment は選択 provider の境界を迂回するため禁止" \
        "Issue コメント投稿 wrapper は現在未対応です。対応する wrapper が追加されるまで実行できません。"
 fi
 
 # gh api → 対応 wrapper: bin/github-pr-reviews-safe (読み取り) / bin/github-pr-comment-safe (書き込み)
-if [[ "$CMD_N" =~ gh[[:space:]]+api([[:space:]]|$) ]]; then
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+api([[:space:]]|$) ]]; then
   deny "gh api は選択 provider の境界を迂回するため禁止" \
        "PR レビュー取得は bin/github-pr-reviews-safe <owner> <repo> <pr-number>、コメント投稿は bin/github-pr-comment-safe / bin/github-pr-reply-safe を使用してください。"
 fi
@@ -227,9 +235,17 @@ fi
 GH_DIRECT_RE='(^|[;|&][[:space:]]*)gh([[:space:]]|$)'
 GH_COMMAND_RE='(^|[;|&][[:space:]]*)command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+gh([[:space:]]|$)'
 GH_PATH_RE='(^|[;|&][[:space:]]*)/[^[:space:];|&]*/gh([[:space:]]|$)'
+GH_ENV_RE='(^|[;|&][[:space:]]*)env([[:space:]]+-[A-Za-z0-9_-]+(=[^[:space:];|&]+)?)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:];|&]+)*[[:space:]]+gh([[:space:]]|$)'
+GH_ASSIGNMENT_RE='(^|[;|&][[:space:]]*)([A-Za-z_][A-Za-z0-9_]*=[^[:space:];|&]+[[:space:]]+)+gh([[:space:]]|$)'
+GH_SUDO_RE='(^|[;|&][[:space:]]*)sudo([[:space:]]+-[A-Za-z0-9_-]+)*[[:space:]]+gh([[:space:]]|$)'
+GH_SHELL_C_RE="(^|[;|&][[:space:]]*)(bash|sh|zsh)[[:space:]]+-c[[:space:]]+['\"][[:space:]]*(env[[:space:]]+|sudo([[:space:]]+-[A-Za-z0-9_-]+)*[[:space:]]+|command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+|([A-Za-z_][A-Za-z0-9_]*=[^[:space:];|&]+[[:space:]]+)*)?gh([[:space:]]|$)"
 if [[ "$CMD_N" =~ $GH_DIRECT_RE ]] \
    || [[ "$CMD_N" =~ $GH_COMMAND_RE ]] \
-   || [[ "$CMD_N" =~ $GH_PATH_RE ]]; then
+   || [[ "$CMD_N" =~ $GH_PATH_RE ]] \
+   || [[ "$CMD_N" =~ $GH_ENV_RE ]] \
+   || [[ "$CMD_N" =~ $GH_ASSIGNMENT_RE ]] \
+   || [[ "$CMD_N" =~ $GH_SUDO_RE ]] \
+   || [[ "$CMD_N" =~ $GH_SHELL_C_RE ]]; then
   deny "gh CLI は provider に依存せず直接実行禁止。GitHub 操作は wrapper を使用する" \
        "GitHub 操作は bin/github-*-safe / bin/cross-repo-sync-safe を使用してください。対応する wrapper がない操作は現在実行できません。"
 fi

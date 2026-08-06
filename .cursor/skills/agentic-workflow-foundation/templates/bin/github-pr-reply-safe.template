@@ -18,6 +18,9 @@ PR_NUMBER="$1"
 COMMENT_ID="$2"
 BODY_FILE="$3"
 
+_github_validate_positive_id "PR number" "$PR_NUMBER" || exit $?
+COMMENT_ID=$(_github_normalize_comment_id "$COMMENT_ID") || exit $?
+
 if [[ ! -f "$BODY_FILE" ]]; then
   echo "ERROR: body file が見つかりません: $BODY_FILE" >&2
   exit 1

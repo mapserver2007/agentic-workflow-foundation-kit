@@ -17,6 +17,8 @@ fi
 PR_NUMBER="$1"
 BODY_FILE="$2"
 
+_github_validate_positive_id "PR number" "$PR_NUMBER" || exit $?
+
 if [[ ! -f "$BODY_FILE" ]]; then
   echo "ERROR: body file が見つかりません: $BODY_FILE" >&2
   exit 1

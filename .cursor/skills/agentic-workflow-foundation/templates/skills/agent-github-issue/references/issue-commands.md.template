@@ -20,7 +20,7 @@
 ### 起動チェック
 
 ```bash
-test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || echo "GitHub wrapper not found"
+test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `github_issue.enabled: true` で再実行する。

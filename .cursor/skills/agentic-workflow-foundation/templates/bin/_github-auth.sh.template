@@ -9,6 +9,8 @@ readonly GITHUB_CREDENTIAL_PROVIDER="{{github_access.api_credential_provider}}"
 readonly GITHUB_KEYCHAIN_SERVICE="{{github_access.keychain.service}}"
 readonly GITHUB_KEYCHAIN_ACCOUNT="{{github_access.keychain.account}}"
 readonly GITHUB_API_ACCEPT="application/vnd.github+json"
+readonly GITHUB_CURL_CONNECT_TIMEOUT=10
+readonly GITHUB_CURL_MAX_TIME=60
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_github-app-auth.sh
@@ -28,6 +30,33 @@ _github_validate_name() {
     echo "ERROR: invalid GitHub ${label}" >&2
     return 2
   fi
+}
+
+_github_validate_positive_id() {
+  local label="$1" value="$2"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: ${label} must be a positive integer without leading zeros" >&2
+    return 2
+  fi
+}
+
+_github_normalize_comment_id() {
+  local value="$1"
+  if [[ "$value" =~ ^r([1-9][0-9]*)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  _github_validate_positive_id "comment ID" "$value" || return $?
+  printf '%s\n' "$value"
+}
+
+_github_curl() {
+  curl \
+    --connect-timeout "$GITHUB_CURL_CONNECT_TIMEOUT" \
+    --max-time "$GITHUB_CURL_MAX_TIME" \
+    --proto '=https' \
+    --proto-redir '=https' \
+    "$@"
 }
 
 _github_parse_remote_url() {
@@ -131,7 +160,7 @@ _github_http_request_secret() {
         printf 'data-binary = "@%s"\n' "$payload_file"
       fi
     } |
-      curl --config - "${args[@]}" "$url"
+      _github_curl --config - "${args[@]}" "$url"
   ); then
     trap - RETURN
     [[ -z "$payload_file" ]] || rm -f -- "$payload_file"
@@ -189,7 +218,7 @@ _github_download_text() {
   escaped_token=$(_github_curl_config_escape "$GITHUB_AUTH_TOKEN")
   if ! content=$(
     printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" |
-      curl --config - -sSL --max-filesize "$max_size" "$url"
+      _github_curl --config - -sSL --max-filesize "$max_size" "$url"
   ); then
     GITHUB_AUTH_TOKEN=""
     GITHUB_HTTP_BODY=""

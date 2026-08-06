@@ -180,61 +180,10 @@ Yellow/Red が checkpoint と同時に発火する場合は Yellow/Red が優先
 
 ## ローカルテスト手順
 
-`jq` 前提（macOS: `brew install jq`）。
+Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は、手作業の期待値コメントではなく機械テストで確認する。
 
 ```bash
-# DENY
-echo '{"command":"git push --force"}' | .cursor/hooks/guard-git-write.sh   # {"permission":"deny",...}
-echo '{"command":"gh pr comment 1 --body hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
-echo '{"command":"gh api repos/o/r/issues/1/comments -f body=hi"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...}
-echo '{"command":"gh pr list"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"deny",...} (provider 境界)
-# ASK
-echo '{"command":"git commit --amend -m fix"}' | .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
-# ALLOW
-echo '{"command":"git push -u origin HEAD"}' | .cursor/hooks/guard-git-write.sh    # {}
-# fail_open（deny クラスでない解析不能入力は素通り）
-echo 'invalid-json' | .cursor/hooks/guard-git-write.sh                            # {}
-# fail_close（jq 不在を模擬: PATH から jq だけ隠したダミー dir 経由で実行し deny クラスを ask に倒す）
-d=$(mktemp -d); for b in bash cat tr printf env; do ln -sf "$(command -v $b)" "$d/$b"; done
-echo '{"command":"git push --force"}' | PATH="$d" bash .cursor/hooks/guard-git-write.sh  # {"permission":"ask",...}
-rm -rf "$d"
-
-# bootstrap
-echo '{"session_id":"test-sess-001"}' | .cursor/hooks/session-bootstrap.sh
-# tracker（環境変数はパイプ右側に付与）
-echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-tracker.sh
-# evaluator: checkpoint 発火
-printf '{{framework.budget_thresholds.checkpoint_interval_prompts}}\n' > .cursor/.session/test-sess-001.checkpoint
-echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh  # {"followup_message":"[CONTEXT_CHECKPOINT]..."}
-# evaluator: Red 強制発火（checkpoint marker があっても Yellow/Red が優先）
-jq '.prompt_count = 100' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json
-echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
-
-# compact-observer: preCompact イベントのテスト
-jq '.prompt_count = 0 | .last_warning_level = "none"' .cursor/.session/test-sess-001.json > /tmp/s && mv /tmp/s .cursor/.session/test-sess-001.json
-echo '{"trigger":"auto","context_usage_percent":75,"context_tokens":150000,"context_window_size":200000,"message_count":40,"messages_to_compact":30,"is_first_compaction":true,"conversation_id":"test-conv","transcript_path":"/tmp/test"}' \
-  | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-compact-observer.sh
-# → {"user_message":"..."} + state に last_compact_usage_percent=75 + pending-handoff マーカー作成
-
-# evaluator: pending-handoff 検出 → compact 連動 handoff（Yellow: 75% >= 60%）
-echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
-# → {"followup_message":"[CONTEXT_BUDGET=YELLOW] コンパクション検出..."}
-
-# compact-observer: Red 級の token% でテスト
-echo '{"trigger":"auto","context_usage_percent":85,"context_tokens":170000,"context_window_size":200000,"message_count":50,"is_first_compaction":false}' \
-  | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-compact-observer.sh
-echo '{}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-budget-evaluator.sh
-# → {"followup_message":"[CONTEXT_BUDGET=RED] コンパクション検出..."}
-
-# response-tracker: afterAgentResponse テスト
-echo '{"text":"これはAI応答のテストです。"}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-response-tracker.sh
-cat .cursor/.session/test-sess-001.turns.jsonl  # → {"turn_type":"response",...}
-
-# response-tracker: afterAgentThought テスト（duration_ms で区別）
-echo '{"text":"thinking テスト","duration_ms":1500}' | CTX_BUDGET_SESSION_ID=test-sess-001 .cursor/hooks/session-response-tracker.sh
-cat .cursor/.session/test-sess-001.turns.jsonl  # → 2行目に {"turn_type":"thought",...}
-
-rm -f .cursor/.session/test-sess-001.json .cursor/.session/test-sess-001.checkpoint .cursor/.session/test-sess-001.pending-handoff .cursor/.session/test-sess-001.turns.jsonl .cursor/.session/handoff-consumed-*.md .cursor/.session/compact-events.jsonl
+python3 .cursor/skills/agentic-workflow-foundation/scripts/test_github_auth_runtime.py
 ```
 
 ## ロールバック

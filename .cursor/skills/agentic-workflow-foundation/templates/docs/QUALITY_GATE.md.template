@@ -290,6 +290,7 @@ workflow-gate.sh step6 TICKET-1234
 |---|---|---|
 | `git push --force` / `-f` / `--force-with-lease` | deny | 履歴破壊リスク（AGENTS.md > Never） |
 | `git push --delete` | deny | リモート参照削除（不可逆） |
+| `git push <remote> :<ref>` / `+:<ref>` | deny | 空 source refspec によるリモート参照削除（不可逆） |
 | `git push origin <main\|master\|develop\|release/*>` | deny | PR 経由原則（保護ブランチ直 push 禁止） |
 | `git reset --hard origin/*` / `upstream/*` | deny | ローカル変更の不可逆消失 |
 | `gh pr merge` | deny | 明示指示なきマージ禁止（AGENTS.md > Never） |
@@ -298,7 +299,7 @@ workflow-gate.sh step6 TICKET-1234
 | `gh pr comment` / `gh pr review` | deny | 選択 provider の境界を迂回するため、`bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` を案内 |
 | `gh issue comment` | deny | 選択 provider の境界を迂回するため禁止。Issue コメント投稿 wrapper は現在未対応 |
 | `gh api` | deny | 選択 provider の境界を迂回するため、`bin/github-*-safe` を案内 |
-| `gh`（上記以外の全サブコマンド） | deny | provider に依存せず直接実行禁止。wrapper 一覧を案内 |
+| `gh`（`env gh` / `VAR=value gh` / `sudo gh` / `*sh -c 'gh …'` を含む上記以外の全サブコマンド） | deny | provider に依存せず直接実行禁止。wrapper 一覧を案内 |
 | `git commit --amend` | ask | 履歴改ざんのためユーザー承認 |
 | `git rebase`（`--abort`/`--continue`/`--skip`/`--quit` 除く） | ask | 履歴書き換えのためユーザー承認 |
 
