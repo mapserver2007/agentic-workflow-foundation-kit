@@ -28,7 +28,7 @@ GitHub Issue の作成と読み取りを行うワークフロー。2つの内部
 スキル起動直後に以下を自動チェックし、揃わない場合は実行を中断する。
 
 ```bash
-test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || echo "GitHub wrapper not found"
+test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 - `bin/github-issue-create-safe` がスキル実行（Phase 2）で生成済み

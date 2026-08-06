@@ -17,10 +17,7 @@ fi
 
 ISSUE_NUMBER="$1"
 
-if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: Issue 番号は数値で指定してください: $ISSUE_NUMBER" >&2
-  exit 1
-fi
+_github_validate_positive_id "Issue number" "$ISSUE_NUMBER" || exit $?
 
 _detect_owner_repo
 
@@ -127,8 +124,8 @@ if [[ -n "$ATTACHMENT_URLS" ]]; then
     ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
 
     if echo "$ext_lower" | grep -qE "^($TEXT_EXTS)$"; then
-      # public repo: curl -sL で直接取得
-      att_content=$(curl -sL --max-filesize "$MAX_SIZE" "$att_url" 2>/dev/null || true)
+      # public repo: 共通 HTTPS curl helper で直接取得
+      att_content=$(_github_curl -sSL --max-filesize "$MAX_SIZE" "$att_url" 2>/dev/null || true)
       if [[ -z "$att_content" ]]; then
         # private repo fallback: provider credential は argv に載せず共通 helper で渡す
         if _github_download_text "$OWNER" "$REPO" "$att_url" "$MAX_SIZE"; then

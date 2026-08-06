@@ -19,10 +19,7 @@ REPO="$2"
 PR_NUMBER="$3"
 _github_validate_name owner "$OWNER" || exit 2
 _github_validate_name repo "$REPO" || exit 2
-if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: PR number must be numeric" >&2
-  exit 1
-fi
+_github_validate_positive_id "PR number" "$PR_NUMBER" || exit $?
 
 QUERY='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved isOutdated isCollapsed comments(first:50){nodes{body path line url author{login __typename}}}}}}}}'
 

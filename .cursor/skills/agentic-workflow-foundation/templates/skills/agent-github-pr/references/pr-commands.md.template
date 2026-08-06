@@ -19,7 +19,7 @@
 ### 起動チェック
 
 ```bash
-test -x bin/github-pr-create-safe || echo "GitHub wrapper not found"
+test -x bin/github-pr-create-safe || { echo "GitHub wrapper not found" >&2; exit 1; }
 ```
 
 wrapper が見つからない場合は `agentic-workflow-foundation` スキルを `code_review.enabled: true` / `github_pr.enabled: true` で再実行する。

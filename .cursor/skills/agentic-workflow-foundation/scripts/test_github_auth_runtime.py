@@ -590,58 +590,279 @@ def _test_static_contract(errors: list[str]) -> None:
     _assert('"git_protocol"' not in config_template, "generated config git_protocol remains", errors)
 
 
-def _test_guard_gh_invocations(errors: list[str]) -> None:
+def _run_guard_hook(guard: Path, command: str) -> tuple[int, str, dict[str, str] | None]:
+    result = subprocess.run(
+        ["bash", str(guard)],
+        input=json.dumps({"command": command}),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    stdout = result.stdout.strip()
+    if stdout == "{}":
+        return result.returncode, stdout, None
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        return result.returncode, stdout, None
+    if not isinstance(parsed, dict):
+        return result.returncode, stdout, None
+    return result.returncode, stdout, parsed
+
+
+def _assert_guard_permission(
+    errors: list[str],
+    guard: Path,
+    command: str,
+    expected: str,
+    *,
+    reason_fragment: str | None = None,
+) -> None:
+    returncode, stdout, response = _run_guard_hook(guard, command)
+    _assert(
+        returncode == 0,
+        f"guard exited {returncode} for {command!r}: {stdout!r}",
+        errors,
+    )
+    if expected == "allow":
+        _assert(stdout == "{}", f"guard blocked allow command: {command!r} -> {stdout!r}", errors)
+        return
+    if response is None:
+        errors.append(f"guard returned invalid JSON for {command!r}: {stdout!r}")
+        return
+    _assert(
+        response.get("permission") == expected,
+        f"guard expected {expected} for {command!r}, got {response!r}",
+        errors,
+    )
+    if reason_fragment:
+        combined = f"{response.get('reason', '')} {response.get('agent_message', '')}"
+        _assert(reason_fragment in combined, f"guard message missing {reason_fragment!r}: {command!r}", errors)
+
+
+def _test_guard_deny_patterns(errors: list[str]) -> None:
     guard = TEMPLATES / "hooks" / "guard-git-write.sh.template"
-    for command in (
+    deny_commands = (
+        "git push --force origin feature",
+        "git push origin --delete old-branch",
+        "git push origin :branch",
+        "git push origin +:branch",
+        "git push upstream :feature",
+        "git push upstream +:release/v1",
+        "git reset --hard origin/main",
+        "gh pr merge 1",
+        "gh repo delete org/repo",
         "gh pr list",
         "command gh repo view",
         "/usr/local/bin/gh release list",
+        "env gh pr list",
+        "env FOO=bar gh pr list",
+        "FOO=bar gh pr list",
+        "sudo gh pr list",
+        "bash -c 'gh pr list'",
+        "sh -c 'gh issue view 1'",
+        "zsh -c 'gh api repos/org/repo'",
+        "gh issue comment 1 --body test",
+        "gh pr create --title t --body b",
+        "gh auth token",
+    )
+    for command in deny_commands:
+        _assert_guard_permission(errors, guard, command, "deny")
+
+    _assert_guard_permission(
+        errors,
+        guard,
+        "gh issue comment 1 --body test",
+        "deny",
+        reason_fragment="現在未対応",
+    )
+
+
+def _test_guard_allow_and_ask_regression(errors: list[str]) -> None:
+    guard = TEMPLATES / "hooks" / "guard-git-write.sh.template"
+    allow_commands = (
+        "git status --short",
+        "git diff --stat",
+        "bin/github-pr-create-safe main /tmp/title /tmp/body",
+        "./bin/github-issue-read-safe 42",
+        "printf 'gh pr list\\n'",
+        "echo 'use gh pr create via wrapper'",
+        "grep -R 'gh pr merge' docs/",
+    )
+    for command in allow_commands:
+        _assert_guard_permission(errors, guard, command, "allow")
+
+    ask_commands = (
+        "git commit --amend --no-edit",
+        "git rebase main",
+        "env",
+        "printenv",
+        "git config --global --list",
+    )
+    for command in ask_commands:
+        _assert_guard_permission(errors, guard, command, "ask")
+
+
+def _test_curl_transport_constraints(errors: list[str]) -> None:
+    auth_template = (BIN_TEMPLATES / "_github-auth.sh.template").read_text(encoding="utf-8")
+    for needle in (
+        "readonly GITHUB_CURL_CONNECT_TIMEOUT=10",
+        "readonly GITHUB_CURL_MAX_TIME=60",
+        "--proto '=https'",
+        "--proto-redir '=https'",
+        "_github_curl()",
     ):
-        result = subprocess.run(
-            ["bash", str(guard)],
-            input=json.dumps({"command": command}),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        try:
-            response = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            errors.append(f"guard returned invalid JSON for {command!r}: {result.stdout!r}")
-            continue
+        _assert(needle in auth_template, f"_github-auth missing curl constraint: {needle}", errors)
+
+    issue_read = (BIN_TEMPLATES / "github-issue-read-safe.template").read_text(encoding="utf-8")
+    _assert("_github_curl -sSL" in issue_read, "public attachment path bypasses _github_curl", errors)
+    _assert(
+        "_github_download_text" in issue_read,
+        "private attachment path missing authenticated download helper",
+        errors,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="github-curl-fixture-") as tmp:
+        root = Path(tmp)
+        bin_dir = _fixture_bin(root, "keychain")
+        curl_log = root / "curl-log.txt"
+        script = f"""
+source {bin_dir / "_github-auth.sh"}
+curl() {{
+  local arg
+  for arg in "$@"; do
+    printf '%s\\n' "$arg" >> {curl_log}
+  done
+  if [[ "$*" == *"/success"* ]]; then
+    printf '%s\\n200' '{{"ok":true}}'
+  elif [[ "$*" == *user-attachments/files/* ]]; then
+    printf 'attachment-body'
+    return 0
+  else
+    printf '%s\\n403' '{{"message":"fail"}}'
+  fi
+}}
+_github_keychain_get_token() {{ GITHUB_AUTH_TOKEN='SENTINEL_CURL'; }}
+_github_api_request org repo api-read GET https://api.github.com/success 200
+[[ -z "$GITHUB_AUTH_TOKEN" ]]
+if _github_download_text org repo https://github.com/user-attachments/files/1/download 1024; then
+  [[ "$GITHUB_HTTP_BODY" == attachment-body ]] || exit 81
+else
+  exit 81
+fi
+[[ -z "$GITHUB_AUTH_TOKEN" ]]
+att_content=$(_github_curl -sSL --max-filesize 4096 https://github.com/user-attachments/files/1/public.txt)
+[[ "$att_content" == attachment-body ]] || exit 82
+printf 'PASS\\n'
+"""
+        result = _bash(script, root)
+        _assert(result.returncode == 0, f"curl transport fixture failed: {result.stderr}", errors)
+        log_text = curl_log.read_text(encoding="utf-8") if curl_log.is_file() else ""
+        _assert(log_text.count("--connect-timeout") >= 3, "curl --connect-timeout missing on paths", errors)
+        _assert(log_text.count("--max-time") >= 3, "curl --max-time missing on paths", errors)
+        _assert(log_text.count("--proto") >= 3, "curl --proto missing on paths", errors)
+        _assert(log_text.count("--proto-redir") >= 3, "curl --proto-redir missing on paths", errors)
+        _assert(log_text.count("=https") >= 6, "curl HTTPS proto flags missing on paths", errors)
+
+
+def _test_positive_id_contract(errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory(prefix="github-id-fixture-") as tmp:
+        root = Path(tmp)
+        bin_dir = _fixture_bin(root, "keychain")
+        script = f"""
+source {bin_dir / "_github-auth.sh"}
+_github_validate_positive_id "PR number" "123" || exit 71
+for bad in 0 001; do
+  if _github_validate_positive_id "PR number" "$bad"; then exit 72; fi
+  rc=$?
+  [[ "$rc" -eq 2 ]]
+done
+[[ "$(_github_normalize_comment_id r123)" == "123" ]]
+[[ "$(_github_normalize_comment_id 456)" == "456" ]]
+for bad in r0 r001 0 001; do
+  if _github_normalize_comment_id "$bad"; then exit 73; fi
+  rc=$?
+  [[ "$rc" -eq 2 ]]
+done
+printf 'PASS\\n'
+"""
+        result = _bash(script, root)
+        _assert(result.returncode == 0, f"positive ID fixture failed: {result.stderr}", errors)
+
+    wrappers: list[tuple[str, list[str], int]] = [
+        ("github-pr-comment-safe.template", ["0", "/dev/null"], 2),
+        ("github-pr-reviews-safe.template", ["org", "repo", "001"], 2),
+        ("github-issue-read-safe.template", ["0"], 2),
+        ("github-pr-reply-safe.template", ["1", "r0", "/dev/null"], 2),
+        ("github-pr-reply-safe.template", ["1", "001", "/dev/null"], 2),
+    ]
+    for template_name, args, expected_rc in wrappers:
+        with tempfile.TemporaryDirectory(prefix=f"github-wrapper-id-{template_name}-") as tmp:
+            root = Path(tmp)
+            bin_dir = _fixture_bin(root, "keychain")
+            wrapper_src = (BIN_TEMPLATES / template_name).read_text(encoding="utf-8")
+            wrapper_path = bin_dir / template_name.replace(".template", "")
+            wrapper_path.write_text(wrapper_src, encoding="utf-8")
+            wrapper_path.chmod(0o700)
+            body_file = root / "body.md"
+            body_file.write_text("test", encoding="utf-8")
+            rendered_args = [str(arg).replace("/dev/null", str(body_file)) for arg in args]
+            result = _bash(
+                f"{wrapper_path} {' '.join(rendered_args)} 2>&1",
+                root,
+            )
+            _assert(
+                result.returncode == expected_rc,
+                f"{template_name} args {args!r} expected rc {expected_rc}, got {result.returncode}",
+                errors,
+            )
+
+
+def _test_skill_prerequisite_fail_closed(errors: list[str]) -> None:
+    skill_paths = (
+        TEMPLATES / "skills" / "agent-github-pr" / "SKILL.md.template",
+        TEMPLATES / "skills" / "agent-github-pr" / "references" / "pr-commands.md.template",
+        TEMPLATES / "skills" / "agent-github-issue" / "SKILL.md.template",
+        TEMPLATES / "skills" / "agent-github-issue" / "references" / "issue-commands.md.template",
+    )
+    prerequisite_re = re.compile(
+        r"test -x bin/github-(?:pr-create-safe|issue-create-safe|issue-read-safe)"
+        r"(?:\s*&&\s*test -x bin/github-(?:issue-create-safe|issue-read-safe))?"
+        r"\s*\|\|\s*\{\s*echo \"GitHub wrapper not found\" >&2;\s*exit 1;\s*\}"
+    )
+    fail_open_re = re.compile(
+        r"test -x bin/github-(?:pr-create-safe|issue-create-safe|issue-read-safe)"
+        r"(?:\s*&&\s*test -x bin/github-(?:issue-create-safe|issue-read-safe))?"
+        r"\s*\|\|\s*echo"
+    )
+    for path in skill_paths:
+        text = path.read_text(encoding="utf-8")
         _assert(
-            response.get("permission") == "deny",
-            f"guard did not deny gh invocation: {command}",
+            prerequisite_re.search(text) is not None,
+            f"fail-closed wrapper prerequisite missing: {path}",
+            errors,
+        )
+        _assert(
+            fail_open_re.search(text) is None,
+            f"fail-open wrapper prerequisite remains: {path}",
             errors,
         )
 
-    result = subprocess.run(
-        ["bash", str(guard)],
-        input=json.dumps({"command": "git status --short"}),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    _assert(result.stdout.strip() == "{}", "guard blocked a local git read", errors)
-
-    result = subprocess.run(
-        ["bash", str(guard)],
-        input=json.dumps({"command": "gh issue comment 1 --body test"}),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    try:
-        response = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        errors.append(f"guard returned invalid JSON for issue comment: {result.stdout!r}")
-    else:
-        _assert(
-            response.get("permission") == "deny"
-            and "現在未対応" in response.get("agent_message", ""),
-            "guard did not mark issue comment posting as unsupported",
-            errors,
+    with tempfile.TemporaryDirectory(prefix="github-skill-prereq-") as tmp:
+        root = Path(tmp)
+        (root / "bin").mkdir()
+        checks = (
+            "test -x bin/github-pr-create-safe || { echo \"GitHub wrapper not found\" >&2; exit 1; }",
+            "test -x bin/github-issue-create-safe && test -x bin/github-issue-read-safe || { echo \"GitHub wrapper not found\" >&2; exit 1; }",
         )
+        for check in checks:
+            result = _bash(check, root)
+            _assert(result.returncode == 1, f"missing wrapper should exit 1: {check}", errors)
+            _assert(
+                "GitHub wrapper not found" in result.stderr,
+                f"missing wrapper should print stderr message: {check}",
+                errors,
+            )
 
 
 def _test_feature_matrix(errors: list[str]) -> None:
@@ -821,7 +1042,11 @@ def main() -> int:
     _test_cross_repo_https_transport(errors)
     _test_cross_repo_wrapper_exit_codes(errors)
     _test_static_contract(errors)
-    _test_guard_gh_invocations(errors)
+    _test_guard_deny_patterns(errors)
+    _test_guard_allow_and_ask_regression(errors)
+    _test_curl_transport_constraints(errors)
+    _test_positive_id_contract(errors)
+    _test_skill_prerequisite_fail_closed(errors)
     _test_feature_matrix(errors)
     _test_root_overlay_to_wrapper_constants(errors)
     _test_generated_legacy_audit(errors)
