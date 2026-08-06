@@ -590,7 +590,7 @@ def _test_static_contract(errors: list[str]) -> None:
     _assert('"git_protocol"' not in config_template, "generated config git_protocol remains", errors)
 
 
-def _run_guard_hook(guard: Path, command: str) -> tuple[str, dict[str, str] | None]:
+def _run_guard_hook(guard: Path, command: str) -> tuple[int, str, dict[str, str] | None]:
     result = subprocess.run(
         ["bash", str(guard)],
         input=json.dumps({"command": command}),
@@ -600,14 +600,14 @@ def _run_guard_hook(guard: Path, command: str) -> tuple[str, dict[str, str] | No
     )
     stdout = result.stdout.strip()
     if stdout == "{}":
-        return stdout, None
+        return result.returncode, stdout, None
     try:
         parsed = json.loads(stdout)
     except json.JSONDecodeError:
-        return stdout, None
+        return result.returncode, stdout, None
     if not isinstance(parsed, dict):
-        return stdout, None
-    return stdout, parsed
+        return result.returncode, stdout, None
+    return result.returncode, stdout, parsed
 
 
 def _assert_guard_permission(
@@ -618,7 +618,12 @@ def _assert_guard_permission(
     *,
     reason_fragment: str | None = None,
 ) -> None:
-    stdout, response = _run_guard_hook(guard, command)
+    returncode, stdout, response = _run_guard_hook(guard, command)
+    _assert(
+        returncode == 0,
+        f"guard exited {returncode} for {command!r}: {stdout!r}",
+        errors,
+    )
     if expected == "allow":
         _assert(stdout == "{}", f"guard blocked allow command: {command!r} -> {stdout!r}", errors)
         return
