@@ -51,6 +51,8 @@ framework:
     - preCompact
     - afterAgentResponse
     - afterAgentThought
+    - subagentStart
+    - subagentStop
   exit_codes:
     - code: 0
       meaning: 全検査PASS。次フェーズへ進む
@@ -168,6 +170,9 @@ framework:
       - path: ".cursor/.session/{session_id}.turns.jsonl"
         role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
         lifecycle: "session-response-tracker.sh / session-budget-tracker.sh が追記。preCompact でスナップショットに含まれる"
+      - path: ".cursor/.session/{session_id}.progress.jsonl"
+        role: "構造化されたセッション観測イベントの追記ログ"
+        lifecycle: "session-progress-emitter.sh が対応する Hook イベントごとに追記する"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -759,6 +764,14 @@ outputs:
     required_sections:
       - "afterAgentResponse"
       - "turns.jsonl"
+  - path: .cursor/hooks/session-progress-emitter.sh
+    template: hooks/session-progress-emitter.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "progress.jsonl"
+      - "subagent_start"
+      - "subagent_stop"
   - path: .cursor/hooks/session-compact-observer.sh
     template: hooks/session-compact-observer.sh.template
     mode: render

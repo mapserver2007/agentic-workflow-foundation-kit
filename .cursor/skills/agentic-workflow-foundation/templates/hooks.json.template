@@ -11,11 +11,19 @@
       {
         "command": ".cursor/hooks/session-budget-tracker.sh",
         "timeout": 5
+      },
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
+        "timeout": 5
       }
     ],
     "afterShellExecution": [
       {
         "command": ".cursor/hooks/session-shell-tracker.sh",
+        "timeout": 5
+      },
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
         "timeout": 5
       }
     ],
@@ -35,11 +43,31 @@
       {
         "command": ".cursor/hooks/session-response-tracker.sh",
         "timeout": 5
+      },
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
+        "timeout": 5
       }
     ],
     "afterAgentThought": [
       {
         "command": ".cursor/hooks/session-response-tracker.sh",
+        "timeout": 5
+      },
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
+        "timeout": 5
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
+        "timeout": 5
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": ".cursor/hooks/session-progress-emitter.sh",
         "timeout": 5
       }
     ],
