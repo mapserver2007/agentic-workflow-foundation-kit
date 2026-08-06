@@ -15,6 +15,7 @@ TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-emitter.sh.temp
 HOOKS_TEMPLATE = SKILL_DIR / "templates" / "hooks.json.template"
 README_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "README.md.template"
 MANIFEST = SKILL_DIR / "manifest.yaml"
+BASH_EXECUTABLE = "/bin/bash"
 
 
 def run_hook(script: Path, root: Path, payload: str, *, session_id: str = "test-emit-001") -> subprocess.CompletedProcess[str]:
@@ -23,8 +24,8 @@ def run_hook(script: Path, root: Path, payload: str, *, session_id: str = "test-
         "CURSOR_PROJECT_DIR": str(root),
         "CTX_BUDGET_SESSION_ID": session_id,
     })
-    return subprocess.run(
-        ["bash", str(script)],
+    return subprocess.run(  # noqa: S603 - Runs a controlled temporary test fixture.
+        [BASH_EXECUTABLE, str(script)],
         input=payload,
         text=True,
         capture_output=True,
@@ -102,7 +103,14 @@ def test_payload_session_fallback_and_fail_open() -> None:
         env["CURSOR_PROJECT_DIR"] = str(root)
         env.pop("CTX_BUDGET_SESSION_ID", None)
         payload = json.dumps({"prompt": "fallback", "conversation_id": "fallback-001"})
-        result = subprocess.run(["bash", str(script)], input=payload, text=True, capture_output=True, env=env, check=False)
+        result = subprocess.run(  # noqa: S603 - Runs a controlled temporary test fixture.
+            [BASH_EXECUTABLE, str(script)],
+            input=payload,
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
         assert_equal(result.returncode, 0, "fallback hook exit code")
         assert_equal(result.stdout, "{}\n", "fallback hook stdout")
         assert (session_dir / "fallback-001.progress.jsonl").is_file(), "conversation_id fallback did not write"
@@ -127,8 +135,8 @@ def test_payload_session_fallback_and_fail_open() -> None:
             "CTX_BUDGET_SESSION_ID": "no-jq-001",
             "PATH": str(command_dir),
         })
-        no_jq = subprocess.run(
-            ["/bin/bash", str(script)],
+        no_jq = subprocess.run(  # noqa: S603 - Runs a controlled temporary test fixture.
+            [BASH_EXECUTABLE, str(script)],
             input=json.dumps({"prompt": "no jq"}),
             text=True,
             capture_output=True,
