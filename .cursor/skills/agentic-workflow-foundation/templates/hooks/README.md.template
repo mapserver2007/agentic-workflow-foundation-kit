@@ -13,6 +13,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く。prompt テキスト先頭 1000 bytes を `turns.jsonl` に追記 | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
 | [session-response-tracker.sh](session-response-tracker.sh) | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000 bytes を `{session_id}.turns.jsonl` に追記するゼロコスト会話ログ | Observation | fail_open |
+| [session-progress-emitter.sh](session-progress-emitter.sh) | `beforeSubmitPrompt` / `afterAgentThought` / `afterAgentResponse` / `afterShellExecution` / `subagentStart` / `subagentStop` | 構造化されたセッション観測イベントを `{session_id}.progress.jsonl` に追記する | Observation | fail_open |
 | [session-compact-observer.sh](session-compact-observer.sh) | `preCompact` | compact 直前の token% を state に記録し、`compact-events.jsonl` に校正データを追記し、`pending-handoff` マーカーを書き、包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state）を自動退避する | Observation | fail_open |
 | [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | token%（あれば優先）または proxy 指標で Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。`pending-handoff` マーカー検出時は即座に compact 連動 handoff を発火する。Yellow/Red 発火時に handoff manifest の骨格を機械生成する。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
 
@@ -30,6 +31,10 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
     → AI 応答テキスト先頭 1000B を turns.jsonl に追記
   → afterAgentThought Hook → session-response-tracker.sh
     → thinking テキスト先頭 1000B を turns.jsonl に追記
+[セッション観測イベント]
+  → prompt / thought / response / shell / subagent start / subagent stop
+  → session-progress-emitter.sh
+    → {session_id}.progress.jsonl に構造化イベントを 1 行ずつ追記
 [AI 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
 [Cursor: コンパクション直前]
@@ -116,6 +121,18 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 | `.cursor/.session/compact-events.jsonl` | compact-observer | （分析用） | compact イベントの校正データログ。proxy 閾値チューニングと Phase 2 設計の根拠データ |
 | `.cursor/.session/pre-compact-{session_id}.md` | compact-observer | session-bootstrap | preCompact 発火時に生成する包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state、最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。bootstrap が次セッションで突合・注入に使用 |
 | `.cursor/.session/{session_id}.turns.jsonl` | budget-tracker / response-tracker | compact-observer / session-bootstrap | 全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ。preCompact で snapshot に含まれる |
+| `.cursor/.session/{session_id}.progress.jsonl` | progress-emitter | 後続の観測者 | prompt / thought / response / shell / subagent lifecycle の構造化イベントログ。セッション中に追記される |
+
+### progress.jsonl の成果物契約
+
+1 行は 1 JSON オブジェクトであり、共通フィールドは `at`、`session_id`、`kind`、`bytes`、`summary`、`extra` である。
+
+- `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop`
+- `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
+- `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
+- `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
+
+セッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す。
 
 ## しきい値設定（Context Budget Protocol）
 
@@ -184,6 +201,7 @@ Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は、手�
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/test_github_auth_runtime.py
+python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress_emitter.py
 ```
 
 ## ロールバック
