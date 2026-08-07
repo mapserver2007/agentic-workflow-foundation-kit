@@ -77,15 +77,26 @@ EXTRA="$(jq -c --arg kind "$KIND" '
     end
 ' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }
 
-jq -c -n \
+EVENT="$(jq -c -n \
   --arg at "$NOW_ISO" \
   --arg session_id "$SESSION_ID" \
   --arg kind "$KIND" \
   --argjson bytes "$BYTES" \
   --arg summary "$SUMMARY" \
   --argjson extra "$EXTRA" \
-  '{at: $at, session_id: $session_id, kind: $kind, bytes: $bytes, summary: $summary, extra: $extra}' \
-  >> "$PROGRESS_LOG" 2>/dev/null || true
+  '{at: $at, session_id: $session_id, kind: $kind, bytes: $bytes, summary: $summary, extra: $extra}' 2>/dev/null)" || EVENT=""
+
+if [[ -n "$EVENT" ]]; then
+  LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x -w 1 9 || exit 0
+      printf '%s\n' "$EVENT" >> "$PROGRESS_LOG" 2>/dev/null || true
+    ) 9>"$LOCK_FILE" 2>/dev/null || true
+  else
+    printf '%s\n' "$EVENT" >> "$PROGRESS_LOG" 2>/dev/null || true
+  fi
+fi
 
 echo '{}'
 exit 0
