@@ -19,7 +19,7 @@
 | ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 
-> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。Step①系 artifact は `implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認後まで保持する。
+> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。Step①系 artifact の保持は下記「例外（Step①系）」特則に従う。
 
 {{else}}
 | Step | モード | config キー | subagent_type | 書込み責務境界 |
@@ -72,6 +72,8 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
 
+例外（Step①系）: 一般保持則より特則が優先する。Step①系 artifact の保持上限は `implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認まで。その後は削除してよいが、dispatch 前の強制削除義務はない。
+
 ## Step②→③ 承認境界
 
 Step② phase complete 後にだけ、完成レポートのレビューと実装開始を PO へ一回で求める。機械 SoT は step2 envelope の `implementation_approval` であり、report の転記は人間可読の同期コピーに留める。
@@ -80,7 +82,7 @@ Step② phase complete 後にだけ、完成レポートのレビューと実装
 - R2（実装方針 / 変更ファイル / テスト計画）: Step②を更新して両機械ゲートを再実行。承認を `pending` に戻す。
 - R3（完了チェック / payload外 non-blocking 文言）: 記録のみ。digest と承認を維持する。
 
-親は Step③ dispatch 直前に `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path}` を実行する。非0なら fail-closed で dispatch しない。Step② envelope は Step③ envelope と正式成果物の検証完了まで保持する。
+親は Step③ dispatch 直前に `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path}` を実行する（必須の親 pre-dispatch fail-closed 検査）。checker は状態を書き換えず、exit 非0で停止する。親は exit 0 のときのみ③を dispatch し、非0時は承認を `pending` に戻して R1/R2 に分類する。Step② envelope は Step③ envelope と正式成果物の検証完了まで保持する。
 
 ### approved plan digest 契約
 

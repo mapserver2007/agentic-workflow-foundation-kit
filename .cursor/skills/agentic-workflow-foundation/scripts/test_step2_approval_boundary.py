@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -17,6 +18,7 @@ GENERATED_PATHS = [
     ROOT / ".cursor/skills/requirement-analysis/SKILL.md",
     ROOT / ".cursor/skills/requirement-analysis/references/requirement-contract.md",
     ROOT / "docs/agent-tasks/agent-workflow/02-report-creation.md",
+    ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md",
     ROOT / "docs/QUALITY_GATE.md",
 ]
 
@@ -51,6 +53,21 @@ REPORT = """\
 """
 
 
+def _approved_envelope(digest: str, report_path: Path, **overrides) -> dict:
+    envelope = {
+        "step": "step2",
+        "status": "complete",
+        "report_path": str(report_path),
+        "implementation_approval": {
+            "status": "approved",
+            "approved_plan_digest": digest,
+            "decider": "PO",
+        },
+    }
+    envelope.update(overrides)
+    return envelope
+
+
 def test_payload_changes_invalidate_digest() -> None:
     gate = _gate()
     payload = gate.extract_approved_plan_payload(REPORT)
@@ -82,25 +99,72 @@ def test_r3_text_preserves_digest() -> None:
 def test_pre_dispatch_fails_closed() -> None:
     gate = _gate()
     digest = gate.compute_approved_plan_digest(REPORT)
-    approved = {"implementation_approval": {
-        "status": "approved", "approved_plan_digest": digest, "decider": "PO",
-    }}
-    assert gate.validate_implementation_approval(approved, REPORT)[0]
-    for approval in (
-        {"implementation_approval": {"status": "pending", "approved_plan_digest": digest, "decider": "PO"}},
-        {"implementation_approval": {"status": "approved", "approved_plan_digest": "bad", "decider": "PO"}},
-        {"implementation_approval": {"status": "approved", "approved_plan_digest": digest, "decider": "agent"}},
-        {},
-    ):
-        assert not gate.validate_implementation_approval(approval, REPORT)[0]
-    for malformed in (
-        REPORT.replace("- **対象外**: UI\n", ""),
-        REPORT.replace("既存の API 契約を維持して検証を追加する。", ""),
-        REPORT.replace("| src/api.py | handler | 入力検証を追加 |\n", ""),
-        REPORT.replace("- [ ] 正常系を検証する\n- [x] 不正入力を検証する\n", ""),
-        REPORT.replace("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "bad", 1),
-    ):
-        assert not gate.validate_implementation_approval(approved, malformed)[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        report_path = Path(tmp) / "report.md"
+        report_path.write_text(REPORT, encoding="utf-8")
+        approved = _approved_envelope(digest, report_path)
+        assert gate.validate_implementation_approval(approved, REPORT, report_path)[0]
+        for approval in (
+            _approved_envelope(
+                digest,
+                report_path,
+                implementation_approval={
+                    "status": "pending",
+                    "approved_plan_digest": digest,
+                    "decider": "PO",
+                },
+            ),
+            _approved_envelope(
+                digest,
+                report_path,
+                implementation_approval={
+                    "status": "approved",
+                    "approved_plan_digest": "bad",
+                    "decider": "PO",
+                },
+            ),
+            _approved_envelope(
+                digest,
+                report_path,
+                implementation_approval={
+                    "status": "approved",
+                    "approved_plan_digest": digest,
+                    "decider": "agent",
+                },
+            ),
+            {"step": "step2", "status": "complete", "report_path": str(report_path)},
+        ):
+            assert not gate.validate_implementation_approval(approval, REPORT, report_path)[0]
+        for malformed in (
+            REPORT.replace("- **対象外**: UI\n", ""),
+            REPORT.replace("既存の API 契約を維持して検証を追加する。", ""),
+            REPORT.replace("| src/api.py | handler | 入力検証を追加 |\n", ""),
+            REPORT.replace("- [ ] 正常系を検証する\n- [x] 不正入力を検証する\n", ""),
+            REPORT.replace("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "bad", 1),
+        ):
+            assert not gate.validate_implementation_approval(approved, malformed, report_path)[0]
+
+
+def test_step_status_report_path_binding() -> None:
+    """#1: 誤 step / 非 complete / report_path 不一致は FAIL。"""
+    gate = _gate()
+    digest = gate.compute_approved_plan_digest(REPORT)
+    with tempfile.TemporaryDirectory() as tmp:
+        report_path = Path(tmp) / "report.md"
+        other_path = Path(tmp) / "other.md"
+        report_path.write_text(REPORT, encoding="utf-8")
+        other_path.write_text(REPORT, encoding="utf-8")
+        ok = _approved_envelope(digest, report_path)
+        assert gate.validate_implementation_approval(ok, REPORT, report_path)[0]
+
+        wrong_step = _approved_envelope(digest, report_path, step="step1")
+        assert not gate.validate_implementation_approval(wrong_step, REPORT, report_path)[0]
+
+        wrong_status = _approved_envelope(digest, report_path, status="incomplete")
+        assert not gate.validate_implementation_approval(wrong_status, REPORT, report_path)[0]
+
+        mismatched = _approved_envelope(digest, other_path)
+        assert not gate.validate_implementation_approval(mismatched, REPORT, report_path)[0]
 
 
 def test_pre_dispatch_subcommand_rejects_wrong_position() -> None:
@@ -127,6 +191,7 @@ def test_template_and_generated_boundary_contract() -> None:
         TEMPLATE_ROOT / "skills/requirement-analysis/SKILL.md.template",
         TEMPLATE_ROOT / "skills/requirement-analysis/references/requirement-contract.md.template",
         TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/02-report-creation.md.template",
+        TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md.template",
         TEMPLATE_ROOT / "docs/QUALITY_GATE.md.template",
     ]
     legacy = (
@@ -136,14 +201,36 @@ def test_template_and_generated_boundary_contract() -> None:
         "全て `[ ]` | Step ③",
         "step2-report PASS 後に削除",
         "step2-report PASS 後に step1 envelope と同時に削除",
+        "Advisory fail-closed",
+    )
+    required = (
+        "必須の親 pre-dispatch fail-closed 検査",
+        "例外（Step①系）",
+        "dispatch 前の強制削除義務はない",
+        "状態を書き換えず",
+        "R1/R2",
+        "pending",
+        "approved_plan_digest",
+        "POレビュー待ち",
+        "implementation_approval.status: approved",
     )
     for paths in (template_paths, GENERATED_PATHS):
         text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
-        assert "implementation_approval.status: approved" in text
-        assert "pending" in text and "approved_plan_digest" in text
-        assert "POレビュー待ち" in text
+        for phrase in required:
+            assert phrase in text, f"契約文言が欠落: {phrase}"
         for phrase in legacy:
             assert phrase not in text, f"旧契約が残存: {phrase}"
+
+    impl_template = (
+        TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md.template"
+    ).read_text(encoding="utf-8")
+    impl_generated = (
+        ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md"
+    ).read_text(encoding="utf-8")
+    for content in (impl_template, impl_generated):
+        assert "| `approved_plan` |" not in content
+        assert "| `approved_plan_digest` |" in content
+        assert "実装方針の唯一入力は本レポート本文" in content
 
 
 def test_approval_copy_remains_within_ten_required_sections() -> None:
@@ -165,6 +252,7 @@ def main() -> int:
         test_payload_changes_invalidate_digest,
         test_r3_text_preserves_digest,
         test_pre_dispatch_fails_closed,
+        test_step_status_report_path_binding,
         test_pre_dispatch_subcommand_rejects_wrong_position,
         test_template_and_generated_boundary_contract,
         test_approval_copy_remains_within_ten_required_sections,
