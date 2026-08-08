@@ -1047,6 +1047,32 @@ outputs:
       - "## 前提条件"
       - "## ワークフロー"
       - "Step Gate Matrix"
+  - path: .cursor/skills/agent-code-review/references/judgment-contract.md
+    template: skills/agent-code-review/references/judgment-contract.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "Hard Stop"
+      - "J1"
+      - "J2"
+      - "J3"
+      - "J4"
+      - "J5"
+      - "J6"
+      - "J7"
+      - "J8"
+      - "J9"
+      - "J10"
+      - "J11"
+      - "J12"
+      - "J13"
+      - "[REPO]"
+      - "Blind"
+      - "自己反論"
+      - "Phase 3.5"
+      - "ask_first"
+      - "追加 Read"
+      - "judgment-contract.md 読込済み"
   - path: .cursor/skills/agent-code-review/references/judgment-protocol.md
     template: skills/agent-code-review/references/judgment-protocol.md.template
     mode: render
@@ -1059,6 +1085,31 @@ outputs:
       - "[REPO]"
       - "Blind first read"
       - "Phase 3.5"
+  - path: .cursor/skills/agent-code-review/references/approval-contract.md
+    template: skills/agent-code-review/references/approval-contract.md.template
+    mode: render
+    feature: code_review
+    required_sections:
+      - "Hard Stop"
+      - "A1"
+      - "A2"
+      - "A3"
+      - "A4"
+      - "A5"
+      - "A6"
+      - "A7"
+      - "A8"
+      - "A9"
+      - "A10"
+      - "A11"
+      - "A12"
+      - "A13"
+      - "アクション語彙"
+      - "入力モード"
+      - "pending"
+      - "保留"
+      - "追加 Read"
+      - "approval-contract.md 読込済み"
   - path: .cursor/skills/agent-code-review/references/self-rebuttal.md
     template: skills/agent-code-review/references/self-rebuttal.md.template
     mode: render
@@ -1075,8 +1126,8 @@ outputs:
       - "Hard Stop"
       - "不変条件"
       - "Mode B 突入時のフロー"
-      - "judgment-protocol.md"
-      - "approval-loop.md"
+      - "judgment-contract.md"
+      - "approval-contract.md"
       - "review-completion.md"
       - "Post Quality Gate"
       - "Step 3 へ直接進む"

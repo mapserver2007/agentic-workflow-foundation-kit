@@ -4,7 +4,7 @@
 
 > `agent-code-review` SKILL.md Step 5-6（判定グループ承認ループ + 横断アクション指定子）のアクション別挙動・入力モード処理・グループ別追加確認の詳細手順を集約する L3 参照。
 >
-> SKILL.md 本体には **不変条件（アクション語彙 5 種類の定義表 / 入力モード判定表 / 「言及なし = `pending`」核心ルール / ループ骨格の擬似コード / Post の QUALITY_GATE + 保留残数チェック）** が残っている。本リファレンスは「**各アクションを実際に実行するときに参照する手順書**」として位置づける。
+> Hard Stop の正は [approval-contract.md](approval-contract.md)。SKILL.md 本体には同じ不変条件の要約が残る。本リファレンスは、アクション実行時に参照する **条件付き詳細 SoT** として位置づける。
 >
 > 提示文面のテンプレは [group-presentation-templates.md](group-presentation-templates.md)、GitHub 返信文面は [reply-templates.md](reply-templates.md) を参照。
 
@@ -15,11 +15,11 @@
 | 項目 | 内容 |
 | --- | --- |
 | **入口条件** | Step 4.3 の検証結果記録が完了し、各指摘の `judgment_final` が確定して判定グループ（修正必須 / 修正推奨 / 修正不要）が組まれている |
-| **Read 必須** | Step 5-6 突入ごとに本ファイルを Read ツールで全文読込（「必要時のみ参照」ではなく突入ごとの必須ゲート） |
+| **Read 必須** | Step 5-6 突入前に [approval-contract.md](approval-contract.md) を Read ツールで全文読込。`apply` / `reply_only` / `pending` / `discuss` / `override` の実行時だけ本ファイルの該当アクション節を Read |
 | **未読時の禁止** | ① Pre 判定サマリ提示の開始 / ② ユーザー入力の `apply`/`reply_only`/`pending`/`discuss`/`override` 分類 / ③ コード修正 / ④ GitHub reply 投稿 / ⑤ `pending`/`discuss` 記録 |
 | **退出条件** | 全指摘が `apply` / `reply_only` / `pending` / 着地済み `discuss` のいずれかに分類され実行済み + **保留（`pending` / 未着地 `discuss`）件数を集計済み**（→ Post の保留残数チェックへ） |
 | **戻り先** | 承認前・処理中に新規コメントを検出した場合は Step 3 へ戻る |
-| **記録義務** | 読込後、処理予定またはレビューレポートのメモに `approval-loop.md 読込済み` を記録してから Pre 判定サマリへ進む |
+| **記録義務** | contract 読込後、処理予定またはレビューレポートのメモに `approval-contract.md 読込済み` を記録してから Pre 判定サマリへ進む |
 
 > **投稿可否の不変条件**: GitHub reply を投稿してよいのは `apply` / `reply_only` 集合のみ。`pending` と未着地 `discuss` には reply もコード修正もしない。
 
@@ -49,7 +49,8 @@
 ## 全体構造（グループループ + 横断アクション指定）
 
 ```
-[Hard Stop] Step 5-6 突入前に本ファイル（approval-loop.md）を Read で全文読込
+[Hard Stop] Step 5-6 突入前に approval-contract.md を Read で全文読込し、
+            `approval-contract.md 読込済み` を記録
             未読なら Pre 判定サマリ提示・アクション分類・reply 投稿を禁止
 
 [Pre] 全指摘の判定サマリ（件数のみ）をユーザーに提示

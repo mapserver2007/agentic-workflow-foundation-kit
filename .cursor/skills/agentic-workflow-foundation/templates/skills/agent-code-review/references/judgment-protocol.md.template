@@ -4,7 +4,7 @@
 
 > `agent-code-review` SKILL.md Step 4（妥当性検証）の完全手順を集約する L3 参照。
 >
-> SKILL.md 本体には **不変条件**（`[REPO]` 出典制約 / Blind first read 必須 / 自己反論必須 / 3 段階判定 / 証跡ベース中立判定 / 自動レビューツールのラベル非依存 / Phase 3.5 再評価ロック / `discuss` と Phase 3.5 の経路分離 / Step 4 突入時の本ファイル Read 指示）が残っている。本リファレンスは「**Step 4 に到達したときに参照する完全手順**」として位置づける。
+> Hard Stop の正は [judgment-contract.md](judgment-contract.md)。SKILL.md 本体には同じ不変条件が要約として残る。本リファレンスは、トリガー該当時に参照する **条件付き詳細 SoT**（完全手順・例・記録詳細）として位置づける。
 
 ---
 
@@ -13,10 +13,10 @@
 | 項目 | 内容 |
 | --- | --- |
 | **入口条件** | Step 3 の指摘取得が完了し、各指摘の ID / ファイルパス / 行番号 / 指摘本文 / レビュアー種別 / 「Prompt for AI Agents」が記録済み |
-| **Read 必須** | Step 4 突入時に本ファイルを Read ツールで全文読込（+ challenge / catalog 詳細時 [self-rebuttal.md](self-rebuttal.md)） |
+| **Read 必須** | Step 4 突入時に [judgment-contract.md](judgment-contract.md) を Read ツールで全文読込。手順・照合・記録詳細が必要なときだけ本ファイルの該当節（+ challenge / catalog 詳細時 [self-rebuttal.md](self-rebuttal.md)）を Read |
 | **未読時の禁止** | `[REPO]` 出典外で判定 / Blind 省略 / 自己反論省略 / challenge を反転要請と解釈 |
 | **退出条件** | 全指摘で `judgment_final` 確定 + §4.3 記録完了 |
-| **記録義務** | 読込後、処理予定またはレビューレポートのメモに `judgment-protocol.md 読込済み` を記録してから判定へ進む |
+| **記録義務** | contract 読込後、処理予定またはレビューレポートのメモに `judgment-contract.md 読込済み` を記録してから判定へ進む |
 
 ---
 

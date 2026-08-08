@@ -1,0 +1,42 @@
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Step 4 判定契約（Hard Stop）
+
+> Hard Stop の正は本契約。詳細手順・例・catalog は [judgment-protocol.md](judgment-protocol.md) の条件付き詳細 SoT を参照する。
+
+## Hard Stop
+
+Step 4 へ入る前に本ファイルを Read ツールで全文読込し、処理予定またはレビューレポートのメモへ `judgment-contract.md 読込済み` を記録する。未読のまま判定を開始してはならない。
+
+| 入口 | 未読時の禁止 | 退出 |
+| --- | --- | --- |
+| Step 3 の指摘取得・記録済み | 判定、Blind 省略、自己反論省略、challenge の反転要請解釈 | 全指摘 `judgment_final` + J10 の記録完了 |
+
+## 常駐不変条件
+
+- **J1 `[REPO]` のみ**: 判定根拠は実コード、`AGENTS.md`、rules、コーディング規約、`DECISIONS.md`、`QUALITY_GATE.md`、`GOTCHAS.md`、類似実装のみ。`[CR]` / `[USER]` は根拠にしない。
+- **J2 Blind first read**: 指摘本文・Prompt 前に対象ファイルを全体読込し、`[REPO blind]` の1行所感を記録する。
+- **J3 自己反論**: `judgment_initial` 後、`judgment_final` 前に `[REPO]` 証跡付き最強反論を最大3件試み、Phase 3 で評価する。3件未満は「強い反論なし」と記録し、`[CR]` / `[USER]` で水増ししない。
+- **J4 判定語彙**: `judgment_final` は修正必須 / 修正推奨 / 修正不要の3段階と `ask_first` 属性を併存させる。
+- **J5 証跡ベース中立**: デフォルトカテゴリを置かず `[REPO]` 証跡で決める。F0〜F4 は短絡フィルタでなく評価観点であり、F0 が `[REPO]` で偽と確定した場合だけ例外的に即時修正不要にできる。
+- **J6 ラベル非依存**: 自動レビューツールのラベルは取得・記録・引用しない。
+- **J7 Phase 3.5 ロック**: challenge を反転要請と解釈しない。新規 `[REPO]` 証跡または既存証跡への基準適用誤りがある場合だけ変更し、再評価結果を記録する。
+- **J8 challenge 優先**: challenge は Phase 3.5 で扱い、`discuss` に入らない。
+- **J9 退出**: 全指摘の `judgment_final` と J10 の記録が完了するまで Step 5-6 へ進まない。
+- **J10 必須記録**: reviewer type、Blind 所感、`judgment_initial`、自己反論、最強反論、Phase 3 評価、`judgment_final`、`ask_first`、判定別根拠、返信案を記録する。
+
+## `ask_first` と追加 Read
+
+- **J11 `ask_first: true`**: 新実装パターン、外部依存、レイヤー責務、DB スキーマ、Phase 3 引き分け、F4 候補あり + 修正推奨確定では強制する。一括承認に含めず個別承認まで進めない。
+- **J12 catalog / 反論例**: challenge phrase を検出した場合は [self-rebuttal.md](self-rebuttal.md) の Phase 3.5 を必ず全文 Read する。P1〜P9 または反論記述例を使う場合も同ファイルの該当節を Read する。
+- **J13 Blind 後の照合 / 編集境界**: Blind 所感と指摘が不一致、必須ルールとの照合が必要、または自動生成物・SoT 境界の可能性がある場合は、続行前に [judgment-protocol.md §4.1.2](judgment-protocol.md) を Read する。
+
+## 追加 Read トリガー
+
+| トリガー | 続行前に Read |
+| --- | --- |
+| Step 4 で指摘を1件でも判定する | 本契約のみ。手順・記録の詳細に迷う場合は `judgment-protocol.md` の該当節 |
+| challenge phrase を検出 | `self-rebuttal.md` の Phase 3.5 全文 |
+| P1〜P9 または反論記述例を使用 | `self-rebuttal.md` の該当節 |
+| Blind 所感と指摘が不一致 / 必須ルール照合 / 自動生成物・SoT 境界の可能性あり | `judgment-protocol.md` §4.1.2 |
+| §4.3 の記録例またはレポート更新詳細が必要 | `judgment-protocol.md` Phase 4 / §4.3 |

@@ -12,8 +12,8 @@
 
 - [ ] **Step 2（A のみ）**: 入口=Mode A / Read=— / 禁止=タイムアウト時に Step 3 以降・Step 7 直行 / 退出=レビュー検出（タイムアウトは中断・ターン終了）
 - [ ] **Step 3**: 入口=Mode 確定 / Read=— / 禁止=`author.login` フィルタ・自動レビューツールラベル取得 / 退出=未解決・非 outdated・author 非依存で全件取得 + ID/種別記録
-- [ ] **Step 4**: 入口=Step 3 取得済み / Read=**judgment-protocol.md 全文（突入時必須）**（+ challenge/catalog 詳細時 self-rebuttal.md）/ 禁止=`[REPO]` 出典外判定・Blind 省略・自己反論省略・challenge を反転要請と解釈 / 退出=全指摘 `judgment_final` + §4.3 記録
-- [ ] **Step 5-6**: 入口=Step 4.3 記録済み / **Read=approval-loop.md 全文（突入ごと必須）** / 禁止=未読でグループ提示・分類・修正・reply 投稿・`pending`/`discuss` 記録 / 退出=全指摘分類実行 + 保留件数集計
+- [ ] **Step 4**: 入口=Step 3 取得済み / Read=**judgment-contract.md 全文（突入時必須）**（詳細トリガー時のみ protocol / self-rebuttal）/ 禁止=`[REPO]` 出典外判定・Blind 省略・自己反論省略・challenge を反転要請と解釈 / 退出=全指摘 `judgment_final` + 必須記録
+- [ ] **Step 5-6**: 入口=Step 4.3 記録済み / **Read=approval-contract.md 全文（突入時必須）**（アクション時のみ loop / 補助 refs）/ 禁止=未読でグループ提示・分類・修正・reply 投稿・`pending`/`discuss` 記録 / 退出=全指摘分類実行 + 保留件数集計
 - [ ] **Post**: 入口=Step 5-6 完了 / Read=— / 禁止=保留 1 件以上・ゲート未 PASS で Step 6.7 へ / 退出=`apply` 有時 build/lint/test PASS + 保留 0 件
 - [ ] **Step 6.7**: 入口=保留 0 件 / **Read=review-completion.md 全文（着手前必須）** / 禁止=未読で AskQuestion・Step 7 / 退出=6.7-A は AskQuestion 提示後ターン終了
 - [ ] **Step 7**: 入口=**6.7-B 承認回答受領済み** / Read=— / 禁止=承認なし実行・Step 7 完了前の final response / 退出=承認記録更新→ヘッダ統計確定→完全性検証→レポート最終確定完了
@@ -103,12 +103,12 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 
 ## 4. Step 4（妥当性検証）チェック
 
-> 完全手順は [judgment-protocol.md](judgment-protocol.md) を SoT とする。本チェックリストは各項目の **実施有無を検証する早見**。
+> Hard Stop の正は [judgment-contract.md](judgment-contract.md)、完全手順は [judgment-protocol.md](judgment-protocol.md) の条件付き詳細 SoT。本チェックリストは各項目の **実施有無を検証する早見**。
 
 ### Hard Stop
 
-- [ ] Step 4 突入時に [judgment-protocol.md](judgment-protocol.md) を Read ツールで全文読込した
-- [ ] `judgment-protocol.md 読込済み` を処理予定またはレビューレポートのメモに記録した
+- [ ] Step 4 突入時に [judgment-contract.md](judgment-contract.md) を Read ツールで全文読込した
+- [ ] `judgment-contract.md 読込済み` を処理予定またはレビューレポートのメモに記録した
 
 ### §4.1 コード検証
 
@@ -151,13 +151,13 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 
 ## 5-6. Step 5-6（判定グループ承認ループ）チェック
 
-> 完全手順は [approval-loop.md](approval-loop.md) を SoT とする。本チェックリストは各項目の **実施有無を検証する早見**。
+> Hard Stop の正は [approval-contract.md](approval-contract.md)、完全手順は [approval-loop.md](approval-loop.md) の条件付き詳細 SoT。本チェックリストは各項目の **実施有無を検証する早見**。
 > **テンプレ**: [group-presentation-templates.md](group-presentation-templates.md)
 
 ### Hard Stop
 
-- [ ] Pre 判定サマリ提示前に [approval-loop.md](approval-loop.md) を Read ツールで全文読込した
-- [ ] `approval-loop.md 読込済み` を処理予定またはレビューレポートのメモに記録した
+- [ ] Pre 判定サマリ提示前に [approval-contract.md](approval-contract.md) を Read ツールで全文読込した
+- [ ] `approval-contract.md 読込済み` を処理予定またはレビューレポートのメモに記録した
 
 ### 不変条件の遵守
 
@@ -243,7 +243,7 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 
 - [ ] ローカルで CI が失敗した場合はユーザー対応（環境依存の可能性あり）
 - [ ] Mode B 突入時は [mode-b-reminder.md](mode-b-reminder.md) を再注入し、SKILL.md 全体の再読込はしない（コンテキストコスト管理）
-- [ ] Step 5-6 突入時は Mode A / Mode B に関わらず [approval-loop.md](approval-loop.md) を必ず全文読込した
+- [ ] Step 5-6 突入時は Mode A / Mode B に関わらず [approval-contract.md](approval-contract.md) を必ず全文読込した
 - [ ] Step 6.7 着手前（§5-6 Post 完了直後）に [review-completion.md](review-completion.md) を必ず全文読込した
 - [ ] Step 6.7 承認回答受領後は、Step 7 または Step 3 への分岐を最初に実行した
 
@@ -252,7 +252,9 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 ## 関連ドキュメント
 
 - [SKILL.md](../SKILL.md) — スキル本体
+- [judgment-contract.md](judgment-contract.md) — Step 4 Hard Stop 契約（J1〜J13 / 追加 Read）
 - [judgment-protocol.md](judgment-protocol.md) — Step 4 判定プロトコル詳細（§4.1〜§4.3 の SoT）
+- [approval-contract.md](approval-contract.md) — Step 5-6 Hard Stop 契約（A1〜A13 / 追加 Read）
 - [approval-loop.md](approval-loop.md) — Step 5-6 承認ループ詳細（アクション語彙 / 入力モード / グループ処理の SoT）
 - [review-report-format.md](review-report-format.md) — レビューレポートのフォーマット
 - [review-completion.md](review-completion.md) — Step 6.7 レビュー完了承認 / Step 7 レポート作成詳細

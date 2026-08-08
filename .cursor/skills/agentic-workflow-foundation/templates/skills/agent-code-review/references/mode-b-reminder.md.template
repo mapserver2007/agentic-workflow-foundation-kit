@@ -2,32 +2,27 @@
 
 # Mode B リマインダ要約（再注入専用）
 
-> Lost in the middle 対策: Mode B 選択直後に本ファイルを Read で再注入し、判定ルール・Step 順序・Hard Stop をコンテキスト末尾に再配置する。Mode B 選択直後は本ファイル以外の再読込は不要。ただし各 Step の Hard Stop 到達時は、下表の references を必ず全文読込する。
+> Lost in the middle 対策: Mode B 選択直後に本ファイルを Read で再注入し、判定ルール・Step 順序・Hard Stop をコンテキスト末尾に再配置する。Mode B 選択直後は本ファイル以外の再読込は不要。ただし各 Step の Hard Stop 到達時は、下表の contract を必ず全文読込する。
 
 ## Step 順序（Mode B でも不変）
 
-Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ループ）→ Post（Quality Gate・保留確認）→ Step 6.7（完了承認）→ Step 7（レポート最終確定）
+Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ループ）→ Post Quality Gate（保留確認）→ Step 6.7（完了承認）→ Step 7（レポート最終確定）
 
 ## Hard Stop（Read 必須の再確認）
 
 | Step | Read 必須 | 未読時の禁止 |
 |---|---|---|
-| **4** | [judgment-protocol.md](judgment-protocol.md) 全文 | 判定開始 |
-| **5-6** | [approval-loop.md](approval-loop.md) 全文 | Pre 判定サマリ提示・アクション分類・reply 投稿 |
+| **4** | [judgment-contract.md](judgment-contract.md) 全文 | 判定開始 |
+| **5-6** | [approval-contract.md](approval-contract.md) 全文 | Pre 判定サマリ提示・アクション分類・reply 投稿 |
 | **6.7** | [review-completion.md](review-completion.md) 全文 | AskQuestion 提示・Step 7 実行 |
 
 ## 不変条件（暗記必須）
 
-- **`[REPO]` 出典制約**: 判定根拠は `[REPO]` のみ。`[CR]` / `[USER]` は判定根拠に使用禁止
-- **Blind first read**: 指摘本文を読む前に該当ファイルを白紙で読み `[REPO blind]` 所感を記録
-- **自己反論**: `judgment_initial` 確定後、最強反論 3 件（`[REPO]` 出典必須）→ Phase 3 評価 → `judgment_final`
-- **証跡ベース中立判定**: デフォルトカテゴリを置かず `[REPO]` 証跡から 3 段階を決定。F0〜F4 は判定観点であり短絡フィルタではない
-- **ラベル非依存**: 自動レビューツールのラベルは取得・記録・引用すべて禁止
-- **Phase 3.5 再評価ロック**: challenge phrase を反転要請と解釈禁止。(a) `[REPO]` 新証跡 or (b) 既存証跡への基準適用誤り訂正なしに判定を変えない
-- **アクション語彙 5 種**: `apply` / `reply_only` / `pending` / `discuss` / `override:{修正必須|修正推奨|修正不要}`
-- **`pending` / `discuss` への返信禁止**: reply 投稿は `apply` / `reply_only` のみ
-- **個別指定時の未言及 = `pending`**: 言及なし項目は全て `pending`（reply 投稿なし）
-- **Post Quality Gate**: `apply` 1 件以上で `{{session.verification.gate_command}}` 実行 + 保留残数チェック常時必須
+- **J1** `[REPO]` のみを判定根拠にし、`[CR]` / `[USER]` を使わない。**J2** 指摘前に全体 Blind read と `[REPO blind]` 所感。**J3** `judgment_initial` 後に `[REPO]` 付き最強反論を最大3件試し、不足時は「強い反論なし」。**J4** `judgment_final` は3段階 + `ask_first`。
+- **J5** デフォルトなしの証跡ベース中立（F0〜F4 は評価観点、F0 偽確定のみ例外）。**J6** ラベルは取得・記録・引用禁止。**J7** challenge は新 `[REPO]` 証跡または適用誤りだけで変更し再評価を記録。**J8** challenge は Phase 3.5 優先で `discuss` 禁止。**J9** 全件 `judgment_final` + 記録完了で退出。**J10** reviewer type / Blind / initial / 反論 / Phase 3 / final / ask_first / 根拠 / 返信案を記録。
+- **J11** 新実装パターン / 外部依存 / レイヤー責務 / DB スキーマ / Phase 3 引き分け / F4候補+修正推奨確定は強制 `ask_first` とし、一括に含めず個別承認。**J12** challenge 検出時は `self-rebuttal.md` Phase 3.5 を必読し、catalog・反論例も該当節を Read。**J13** Blind不一致・必須ルール照合・自動生成物/SoT境界の可能性がある場合は protocol §4.1.2 を Read。
+- **A1** `apply` / `reply_only` / `pending` / `discuss` / `override` を正しく使う。**A2** reply は `apply` / `reply_only` のみ、コード修正は `apply` のみ。**A3** 包括=一括、具体的 No 指定あり=個別。**A4** 個別の未言及は全て `pending`。**A5** 個別は処理予定提示→再承認後に実行。
+- **A6** `ask_first` は個別確認。**A7** `override` 後はアクション再指定まで自動実行しない。**A8** challenge は Phase 3.5 優先で `discuss` 禁止。**A9** 承認前reply禁止、apply時 Gate（applyなしは省略可）、保留常時確認、保留0まで Step 6.7 禁止。**A10** 全件分類・実行 + 保留集計で退出。**A11** 提示文は group-presentation templates を Read。**A12** 実行前に approval-loop の該当節を Read。**A13** reply前に reply-templates を Read。
 
 ## Mode B 突入時のフロー
 
@@ -44,8 +39,8 @@ Step 3（指摘取得）→ Step 4（妥当性検証）→ Step 5-6（承認ル�
 3. **Step 3 へ直接進む**（Step 2 スキップ）
 4. `bin/github-pr-reviews-safe` で `isResolved=false isOutdated=false` 取得（**author フィルタなし**）
 5. 取得した新規指摘を既存レポートの `## 未分類（判定待ち）` に `StrReplace` で追記（コメント ID アンカーにより既存指摘との重複を防止）
-6. **Step 4 突入前に [judgment-protocol.md](judgment-protocol.md) を Read**
+6. **Step 4 突入前に [judgment-contract.md](judgment-contract.md) を Read**し、`judgment-contract.md 読込済み` を記録
 7. Blind first read → 判定 → 自己反論 → `judgment_final` 確定（確定ごとにレポートを `StrReplace` で更新）
-8. **Step 5-6 突入前に [approval-loop.md](approval-loop.md) を Read**
+8. **Step 5-6 突入前に [approval-contract.md](approval-contract.md) を Read**し、`approval-contract.md 読込済み` を記録
 9. グループ承認ループ実行（アクション実行ごとにレポートを `StrReplace` で更新）→ Post → 保留 0 件なら Step 6.7 へ
 10. **Step 6.7 着手前に [review-completion.md](review-completion.md) を Read** → 完了承認 → Step 7（レポート最終確定）
