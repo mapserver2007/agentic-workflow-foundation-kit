@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -184,6 +185,50 @@ def test_pre_dispatch_subcommand_rejects_wrong_position() -> None:
     assert "--check-implementation-approval" in result.stdout
 
 
+def test_validated_report_snapshot_binds_worker_input() -> None:
+    """検証後に report が変わっても worker 入力 snapshot は変化しない。"""
+    gate = _gate()
+    digest = gate.compute_approved_plan_digest(REPORT)
+    with tempfile.TemporaryDirectory() as tmp:
+        report_path = Path(tmp) / "report.md"
+        envelope_path = Path(tmp) / "step2.md"
+        report_path.write_text(REPORT, encoding="utf-8")
+        envelope_path.write_text(
+            "---\n"
+            + json.dumps(
+                _approved_envelope(digest, report_path),
+                ensure_ascii=False,
+            )
+            + "\n---\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(GATE),
+                "--check-implementation-approval",
+                str(envelope_path),
+                str(report_path),
+                "--emit-validated-report-json",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["valid"] is True
+        assert payload["approved_plan_digest"] == digest
+        assert payload["validated_report_snapshot"] == REPORT
+
+        report_path.write_text(
+            REPORT.replace("既存の API 契約", "未承認の API 契約"),
+            encoding="utf-8",
+        )
+        assert payload["validated_report_snapshot"] != report_path.read_text(encoding="utf-8")
+        assert gate.compute_approved_plan_digest(payload["validated_report_snapshot"]) == digest
+
+
 def test_template_and_generated_boundary_contract() -> None:
     template_paths = [
         TEMPLATE_ROOT / "skills/workflow-orchestrator/SKILL.md.template",
@@ -211,6 +256,7 @@ def test_template_and_generated_boundary_contract() -> None:
         "R1/R2",
         "pending",
         "approved_plan_digest",
+        "validated_report_snapshot",
         "POレビュー待ち",
         "implementation_approval.status: approved",
     )
@@ -230,7 +276,9 @@ def test_template_and_generated_boundary_contract() -> None:
     for content in (impl_template, impl_generated):
         assert "| `approved_plan` |" not in content
         assert "| `approved_plan_digest` |" in content
-        assert "実装方針の唯一入力は本レポート本文" in content
+        assert "| `validated_report_snapshot` |" in content
+        assert "実装方針の唯一入力" in content
+        assert "実装方針の入力として再読込しない" in content
 
 
 def test_approval_copy_remains_within_ten_required_sections() -> None:
@@ -254,6 +302,7 @@ def main() -> int:
         test_pre_dispatch_fails_closed,
         test_step_status_report_path_binding,
         test_pre_dispatch_subcommand_rejects_wrong_position,
+        test_validated_report_snapshot_binds_worker_input,
         test_template_and_generated_boundary_contract,
         test_approval_copy_remains_within_ten_required_sections,
     ]
