@@ -27,6 +27,10 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
  ↓
 ② タスクレポートの作成（docs/agent-tasks/reports/ 直下のファイル存在 = 進行中キャンペーンの SoT。archives/ は除く）
  ↓
+②の機械退出: step2-report → step2 PASS
+ ↓
+POレビュー + 実装開始承認（唯一の実装開始 STOP）
+ ↓
 ③ 実装の実行
  ↓
 ④ テスト実装（＋コードゲート通過）
@@ -49,8 +53,8 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 | ステップ | 詳細ファイル | 主要成果物 | 対応フェーズ境界 |
 | --- | --- | --- | --- |
 | ① 調査・分析 | [agent-workflow/01-investigation.md](agent-workflow/01-investigation.md) | 調査結果の整理 | — |
-| ② タスクレポートの作成 | [agent-workflow/02-report-creation.md](agent-workflow/02-report-creation.md) | `docs/agent-tasks/reports/{report}.md` | タスクレポート → 実装 |
-| ③ 実装の実行 | [agent-workflow/03-implementation.md](agent-workflow/03-implementation.md) | コード変更 + reports 完了チェック更新 | — |
+| ② タスクレポートの作成 | [agent-workflow/02-report-creation.md](agent-workflow/02-report-creation.md) | report + step2 envelope + 機械ゲートPASS | `step2-report` → `step2` → PO待ち |
+| ③ 実装の実行 | [agent-workflow/03-implementation.md](agent-workflow/03-implementation.md) | コード変更 + reports 完了チェック更新 | 親 pre-dispatch: PO承認 SoT + digest一致 |
 | ④ テスト実装 | [agent-workflow/04-testing.md](agent-workflow/04-testing.md) | テストコード + コードゲート PASS | 実装 → PR レビュー |
 | ⑤ PR レビュー検証 | [agent-workflow/05-pr-review.md](agent-workflow/05-pr-review.md) | レビュー対応完了 | PR レビュー → 完了報告 |
 | ⑥ 完了報告 + archives 移動 | [agent-workflow/06-completion.md](agent-workflow/06-completion.md) | `docs/agent-tasks/reports/archives/` への移動 + maintenance-docs 起票確認 | 完了報告 → アーカイブ |

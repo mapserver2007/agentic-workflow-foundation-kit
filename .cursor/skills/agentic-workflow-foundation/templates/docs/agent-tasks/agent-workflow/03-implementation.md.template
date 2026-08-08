@@ -22,7 +22,7 @@
 
 > `AGENTS.md > Boundaries > Ask First` により、git commit / push はユーザー承認が必要。以下はガイダンス（Advisory）であり、ユーザーの指示が優先する。
 
-- **ブランチ作成**: Step ② 承認後、実装開始前にフィーチャーブランチを作成する。命名例: `fix/{slug}` / `feat/{slug}` / `refactor/{slug}`（slug はタスクレポートのファイル名から日付を除いた部分）
+- **ブランチ作成**: ②→③境界の PO承認と digest 一致確認後、実装開始前にフィーチャーブランチを作成する。命名例: `fix/{slug}` / `feat/{slug}` / `refactor/{slug}`（slug はタスクレポートのファイル名から日付を除いた部分）
 - **コミット粒度**: 論理的に独立した変更単位でコミットする（1 コミット = 1 つの意味のある変更）。ファイル単位ではなく変更の意味単位で区切る
 - **コミットメッセージ**: Conventional Commits 形式を推奨する（`fix:` / `feat:` / `refactor:` / `test:` / `docs:`）。本文にタスクレポートへの参照を含める
 
@@ -121,6 +121,7 @@ change_type: feature | behavior | api | config | architecture | deprecation
 | --- | --- | --- | --- |
 | `report_path` | string | yes | 承認済みタスクレポートのパス |
 | `approved_plan` | string | yes | ユーザー承認済みの実装方針（レポートの「実装方針」セクション） |
+| `approved_plan_digest` | string | yes | step2 envelope の PO承認済み digest。親が現在のレポートから再計算して一致確認した値 |
 | `base_commit_sha` | string | yes | 実装開始時点の commit SHA（re-dispatch 時の差分基準） |
 | `revised_plan_ref` | string | no | 再 dispatch 時: 修正方針への参照 |
 | `prev_envelope_ref` | string | no | 再 dispatch 時: 前回の step envelope パス |

@@ -48,8 +48,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | Step | 詳細ドキュメント | 入口条件 | 退出条件 | 対応ゲート |
 | --- | --- | --- | --- | --- |
 | **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
-| **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | `reports/{report}.md` 作成 + ユーザー承認 | レポート → 実装{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step2`{{/if}} |
-| **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | Step ② 承認済み | コード変更完了 + レポート更新 | — |
+| **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | report + step2 envelope complete + `step2-report` PASS + `step2` PASS（機械退出） | `step2-report` → `step2` → PO待ち |
+| **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | 親 pre-dispatch: PO承認 SoT + digest 再計算一致 | コード変更完了 + レポート更新 | — |
 | **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → 検証{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
 | **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | 検証 → PR（入口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} + PR → 完了（出口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}{{/if}} |
 | **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ で `workflow-gate.sh step6` PASS 済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
@@ -100,13 +100,15 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. `docs/agent-tasks/reports/{{agent_workflow.report_slug_format}}.md` を作成する（必須 10 セクション）
 2. プレースホルダ `{XXX}` を残さない
-3. ユーザーに内容を提示して承認を得る
-{{#if agent_workflow.gate_scripts}}4. `workflow-gate.sh step2` で Step ② 完了条件を検証する
-5. `workflow-gate.sh step2-report` でレポート構造を検証する{{/if}}
+3. `workflow-gate.sh step2-report {report_path}` を PASS まで実行する（Step②レポート構造・envelope検査）
+4. `workflow-gate.sh step2` を PASS まで実行する（Step②機械退出）
+5. Step② phase complete として完成レポートと実装方針を PO に提示し、実装開始を一回の判断で待つ。同じ応答で③を dispatch しない
 
 ### Step ③: 実装の実行
 
 [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step3_implementation`）。Step doc: [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md)。
+
+**親 pre-dispatch（Advisory fail-closed）**: 機械ゲートとは別に、step2 envelope の `implementation_approval.status: approved`、`decider: PO`、64桁 digest と固定payloadの必須抽出結果を確認し、現在の report 本文から payload を再抽出して digest 一致を検査する。`python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path}` が非0なら③を開始しない。不一致は `pending` に戻し R1/R2 に分類する。
 
 - 既存実装パターンを踏襲する
 - `AGENTS.md > Boundaries` を遵守する（Always / Ask First / Never）
@@ -196,7 +198,11 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | Step① envelope が `status: incomplete`（deferred 以外） | Step① を Gate 不合格の問題解消ループから再開。Ledger + answer log（RA-ID 付き回答履歴）を必須入力として読む |
 | Step① envelope が `status: blocked` | reason に応じてエスカレーション。`blocked_external` の場合は外部回答待ち状態から再開 |
 | Step① envelope なし + handoff に Step① 途中記録あり | Step① を最初から再実行 |
-{{/if}}| 全て `[ ]` | Step ③（実装）から |
+{{/if}}| report / step2 envelope なし | Step② worker から |
+| worker complete だが `step2-report` / `step2` 未PASS | 未完の機械ゲートから |
+| 両ゲートPASS + `implementation_approval.status: pending` | POレビュー待ちを再提示 |
+| `approved` だが digest 不一致 | 承認を失効し R1/R2 判定 |
+| `approved` + digest一致 + Step③ envelopeなし | Step③ を dispatch |
 | 実装完了 `[x]` のみ | Step ④（テスト）から |
 | テスト + コードゲート `[x]` | Step ⑤（PR レビュー）から |
 | PR レビュー `[x]` まで | Step ⑥（完了報告）から |
