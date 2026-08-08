@@ -135,7 +135,7 @@ implementation_approval:
   decider: PO
 ```
 
-PO が完成レポートのレビューと実装開始を承認したとき、親オーケストレータが envelope とこの転記を同時に `status: approved` へ更新する。Step③ dispatch 前に現在のレポートから digest を再計算し、envelope 保存値と一致しなければ承認を `pending` に戻す。
+PO が完成レポートのレビューと実装開始を承認したとき、親オーケストレータが envelope とこの転記を同時に `status: approved` へ更新する。Step③ dispatch 前の `--check-implementation-approval`（checker）は状態を書き換えず exit 非0で停止する。親は非0時に承認を `pending` に戻し R1/R2 に分類する。
 ````
 
 ### プレースホルダ禁止
@@ -223,7 +223,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### 終端状態と遷移
 
-- `complete`: オーケストレータは `step2-report` → `step2` を PASS まで実行し、Step② phase complete として PO待ちにする。承認判定とStep③ dispatchは親 pre-dispatchの責務
+- `complete`: オーケストレータは `step2-report` → `step2` を PASS まで実行し、Step② phase complete として PO待ちにする。承認判定とStep③ dispatchは親 pre-dispatchの責務。`--check-implementation-approval` は書き換えず停止するだけで、pending 復帰と R1/R2 分類は親が行う
 - `incomplete`: 必須セクションが不足。オーケストレータは `missing` を確認し追加情報付与で再 dispatch する
 - `blocked`: 命名衝突やゲート検査失敗。オーケストレータが状況を判断しユーザーに報告する
 - `fatal`: オーケストレータがユーザーに報告して停止する

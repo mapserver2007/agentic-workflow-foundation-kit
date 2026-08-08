@@ -8,7 +8,9 @@ from __future__ import annotations
 # blocked/fatal 時の reason 必須を検証する。
 # 仕様: docs/QUALITY_GATE.md §1.7 / step docs の Worker Contract / worker-dispatch.md
 # 用法: gate-artifact.py <artifact-file> [--expect-step <stepN>] [--expect-status <status>] [--format=json]
-#       gate-artifact.py --check-implementation-approval <step2-envelope> <report-path>（親 pre-dispatch 用。shell gateではない）
+#       gate-artifact.py --check-implementation-approval <step2-envelope> <report-path> [--emit-validated-report-json]
+#         （親 pre-dispatch 用。shell gateではない）
+#       --check-implementation-approval の相対パスは repo root cwd 基準で Path.resolve() する
 # exit: 0 = PASS / 1 = FAIL（envelope 不正）/ 2 = 致命的エラー（依存不在・引数不備）
 
 import hashlib
@@ -182,8 +184,30 @@ def compute_approved_plan_digest(report_text: str,
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def validate_implementation_approval(envelope: dict, report_text: str) -> tuple[bool, str]:
-    """親 pre-dispatch 用 fail-closed 検査（shell gate ではない）。"""
+def validate_implementation_approval(
+    envelope: dict,
+    report_text: str,
+    report_path: str | Path,
+) -> tuple[bool, str]:
+    """親 pre-dispatch 用 fail-closed 検査（shell gate ではない）。
+
+    step/status/report_path 束縛と digest 再計算を行う。状態は書き換えない。
+    相対パスは呼び出し時 cwd（repo root 想定）基準で Path.resolve() する。
+    """
+    if envelope.get("step") != "step2":
+        return False, "envelope.step が step2 ではありません"
+    if envelope.get("status") != "complete":
+        return False, "envelope.status が complete ではありません"
+    env_report = envelope.get("report_path")
+    if not isinstance(env_report, str) or not env_report.strip():
+        return False, "envelope.report_path が欠落または空です"
+    cli_resolved = Path(report_path).resolve()
+    env_resolved = Path(env_report).resolve()
+    if cli_resolved != env_resolved:
+        return False, (
+            "CLI report_path と envelope.report_path が不一致です"
+            f"（cli={cli_resolved}, envelope={env_resolved}）"
+        )
     approval = envelope.get("implementation_approval")
     if not isinstance(approval, dict):
         return False, "implementation_approval がマッピングではありません"
@@ -691,7 +715,18 @@ def _print_results(filepath, results, json_mode):
 def main():
     raw = sys.argv[1:]
     if "--check-implementation-approval" in raw:
-        if raw[0] != "--check-implementation-approval" or len(raw) != 3:
+        emit_snapshot = "--emit-validated-report-json" in raw
+        valid_shape = (
+            raw[0] == "--check-implementation-approval"
+            and (
+                len(raw) == 3
+                or (
+                    len(raw) == 4
+                    and raw[3] == "--emit-validated-report-json"
+                )
+            )
+        )
+        if not valid_shape:
             print("FATAL: --check-implementation-approval には step2 envelope と report path が必要です。")
             sys.exit(2)
         envelope_path, report_path = Path(raw[1]), Path(raw[2])
@@ -702,10 +737,23 @@ def main():
         if error:
             print(f"FAIL: {error}")
             sys.exit(1)
+        report_text = report_path.read_text(encoding="utf-8")
         valid, detail = validate_implementation_approval(
-            envelope, report_path.read_text(encoding="utf-8")
+            envelope,
+            report_text,
+            report_path,
         )
-        print(("PASS" if valid else "FAIL") + f": {detail}")
+        if emit_snapshot:
+            result = {"valid": valid, "detail": detail}
+            if valid:
+                result.update({
+                    "approved_plan_digest": detail,
+                    "report_path": str(report_path.resolve()),
+                    "validated_report_snapshot": report_text,
+                })
+            print(json.dumps(result, ensure_ascii=False))
+        else:
+            print(("PASS" if valid else "FAIL") + f": {detail}")
         sys.exit(0 if valid else 1)
     json_mode = "--format=json" in raw
     expect_step: str | None = None

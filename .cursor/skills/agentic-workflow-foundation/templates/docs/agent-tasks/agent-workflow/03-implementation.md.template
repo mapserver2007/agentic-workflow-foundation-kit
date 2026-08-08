@@ -119,8 +119,8 @@ change_type: feature | behavior | api | config | architecture | deprecation
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `report_path` | string | yes | 承認済みタスクレポートのパス |
-| `approved_plan` | string | yes | ユーザー承認済みの実装方針（レポートの「実装方針」セクション） |
+| `report_path` | string | yes | タスクレポートの成果記録書戻し先。検証後に変化し得るため、worker は実装方針の入力として再読込しない |
+| `validated_report_snapshot` | string | yes | 親 checker が report を一度だけ読み、同じ本文の digest 一致を検証して返した全文 snapshot。実装方針の唯一入力（「実装方針」セクションを含む） |
 | `approved_plan_digest` | string | yes | step2 envelope の PO承認済み digest。親が現在のレポートから再計算して一致確認した値 |
 | `base_commit_sha` | string | yes | 実装開始時点の commit SHA（re-dispatch 時の差分基準） |
 | `revised_plan_ref` | string | no | 再 dispatch 時: 修正方針への参照 |
