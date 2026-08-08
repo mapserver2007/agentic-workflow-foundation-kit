@@ -215,7 +215,12 @@ def test_step2_report_envelope_missing_step1():
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
         step2_env = tmp / ".cursor" / ".artifacts" / f"{slug}--step2.md"
         step2_env.write_text(
-            f"---\nstatus: complete\nstep: step2\nreport_path: {report_path}\n---\n\n# Step 2\n",
+            f"---\nstatus: complete\nstep: step2\nreport_path: {report_path}\n"
+            "implementation_approval:\n"
+            "  status: pending\n"
+            "  approved_plan_digest: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\n"
+            "  decider: PO\n"
+            "---\n\n# Step 2\n",
             encoding="utf-8",
         )
 

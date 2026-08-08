@@ -162,15 +162,15 @@ Issue Ledger 更新時、Memo body に `## requirement_delta` として差分箇
 
 ---
 
-## 証跡寿命（artifact 削除後の R1）
+## 証跡寿命と②→③承認境界
 
-現行契約（step2-report PASS 後に step1 envelope / 中間 artifact 削除）は維持する。削除後も根拠を失わないため:
+Step① envelope / 中間 artifact は `step2-report` PASS 後にも削除しない。R1 の再ゲートに必要なため、`implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認後まで保持する。Step② envelope は Step③ envelope と正式成果物の検証完了まで保持する。
 
 1. Memo→レポート変換表に**必須転記対象**を明記:
    - 既存レポート節に canonical requirements / AC を反映し、`requirements_digest` を付与
    - resolved / waived Issue の簡潔な判断根拠
-2. step1 / 中間 artifact 削除の前提条件: 上記がレポートに転記済みであること
-3. Class R1 発生時（Step② 以降）: レポート上の転記済み証跡を SoT とし、Step① 再ゲート + requirements digest 再生成 + 再 ack + Step② 再承認
+2. Step①系 artifact 削除の前提条件: 上記の転記済み、PO承認済み、およびStep③ dispatch直前の digest 一致
+3. R1 発生時: Step① 再ゲート + requirements digest 再生成 + 再 ack + Step②更新 + PO境界承認を再取得
 
 handoff schema は変更しない。既存契約どおり tracker を SoT とし、handoff は tracker / envelope / report へのポインタだけを保持する。
 
@@ -180,11 +180,11 @@ handoff schema は変更しない。既存契約どおり tracker を SoT とし
 
 | クラス | トリガー | 影響 | 対処 |
 | --- | --- | --- | --- |
-| **R1** | AC / 対象 / 対象外の変更 → `requirements_digest` が変化 | 旧 `requirements_ack.digest` が不一致 → step2-report PASS 不可 | Step① 再ゲート + requirements digest 再生成 + 再 ack + Step② レポート再承認 |
-| **R2** | 実装方針・ファイルのみの変更 | `requirements_digest` 不変 | Step② 再承認のみ |
-| **R3** | non-blocking 文言等 | 影響なし | 記録のみ、再承認不要 |
+| **R1** | AC / 対象 / 対象外の変更 | Step① ack と PO承認を失効 | Step① 再ゲート + requirements digest 再生成 + 再 ack + Step②更新 + PO境界承認 |
+| **R2** | 実装方針・変更ファイル・テスト計画の変更 | approved plan digest が変化し PO承認を失効 | Step②更新 + 両機械ゲート再実行 + PO境界承認 |
+| **R3** | 完了チェック / payload外 non-blocking 文言 | digest・承認は維持 | 記録のみ、再承認不要 |
 
-機械化は R1 の digest 不一致だけ。R2/R3 は意味判断のため Advisory 契約とシナリオ確認に留める。
+digest 再計算は R1/R2 の payload 変更を機械的に検知する。変更が R1 か R2 かの意味分類だけは Advisory 契約とし、R3 は payload 外のため digest と承認状態を維持する。
 
 ---
 
@@ -204,7 +204,7 @@ Step ① `status: complete` は次を **AND** で満たす場合のみ。
 
 ### 対話条件（Advisory + 記録必須）
 
-8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを提示し、ユーザーが Step② 進行を明示承認
+8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを提示し、ユーザーが Step② 進行を明示承認（この ack は実装開始承認ではない）
 9. open blocking = 0。`blocked_external` blocking が残る場合は `complete` 不可（既存どおり `blocked`）
 
 ### 完了にしないもの

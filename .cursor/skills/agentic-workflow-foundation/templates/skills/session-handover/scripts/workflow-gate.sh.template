@@ -4,8 +4,8 @@
 # 仕様: docs/QUALITY_GATE.md §1.7（ワークフローゲートディスパッチャー）/ §3（フェーズ境界）
 # 用法: workflow-gate.sh <step1|step2|step2-report|step4|step5|step6|adr|artifact|redispatch|maintenance-docs|archive> [args...]
 #   step1        = ①→② 調査→レポート境界（gate-artifact.py 拡張済み Step① schema）
-#   step2        = ②→③ 計画→実装境界（plan-gate.sh report）
-#   step2-report = ② レポート構造検査（必須10セクション充足）
+#   step2        = ② 機械退出（追跡必須セクション充足。実装開始承認は扱わない）
+#   step2-report = ② レポート構造・envelope検査（必須10セクション充足）
 #   step4        = ④ 実装→検証（profile selector: foundation=self / application=G-*）
 #   step5        = ④→⑤ 検証→PR（verification-gate.sh）
 #   step6        = ⑤→⑥ PR→完了（plan-gate.sh review）
@@ -44,7 +44,7 @@ case "$STEP" in
     exec python3 "$SCRIPT_DIR/gate-artifact.py" "$@"
     ;;
   step2)
-    # ②→③ 計画→実装境界: 追跡ドキュメントの必須セクション充足を検査
+    # ② 機械退出: 追跡ドキュメントの必須セクション充足を検査。PO承認は親 pre-dispatch の責務
     exec "$SCRIPT_DIR/plan-gate.sh" report
     ;;
   step2-report)

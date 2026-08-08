@@ -20,6 +20,7 @@ ROOT = HERE.parent.parent.parent.parent
 
 TEMPLATE_DIR = HERE.parent / "templates"
 SKILL_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKILL.md.template"
+SKILL_GENERATED = ROOT / ".cursor" / "skills" / "workflow-orchestrator" / "SKILL.md"
 PR_REVIEW_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md.template"
 PR_REVIEW_GENERATED = ROOT / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md"
 
@@ -55,6 +56,47 @@ def test_step5_matrix_entry_exit():
     assert step5_lines, (
         "Step ⑤ Matrix 行に step5 と step6 の両方への参照が見つからない"
     )
+
+
+def test_step2_matrix_excludes_po_approval_from_exit():
+    """Step②退出は機械ゲートであり、PO承認を含めない。"""
+    content = _read(SKILL_TEMPLATE)
+    line = next(
+        (line for line in content.splitlines() if "**② レポート作成**" in line),
+        "",
+    )
+    assert "step2-report" in line and "`step2` PASS" in line
+    assert "PO承認" not in line and "ユーザー承認" not in line
+
+
+def test_step3_entry_requires_parent_pre_dispatch():
+    """Step③入口が親 pre-dispatch・approved・digest一致を要求する。"""
+    content = _read(SKILL_TEMPLATE)
+    line = next((line for line in content.splitlines() if "**③ 実装**" in line), "")
+    assert "親 pre-dispatch" in line and "digest" in line
+    assert "implementation_approval.status: approved" in content
+
+
+def test_resume_table_contains_pending_and_approved_branches():
+    """再開表がPO待ち・承認済み未着手・digest不一致を分岐する。"""
+    content = _read(SKILL_TEMPLATE)
+    for phrase in (
+        "implementation_approval.status: pending",
+        "`approved` だが digest 不一致",
+        "`approved` + digest一致 + Step③ envelopeなし",
+    ):
+        assert phrase in content, f"再開分岐が不足: {phrase}"
+
+
+def test_generated_step2_step3_contract_after_generate():
+    """再生成後のSKILLもStep②/③境界契約を持つこと。"""
+    content = _read(SKILL_GENERATED)
+    assert content, f"生成物が存在しない: {SKILL_GENERATED}"
+    step2 = next((line for line in content.splitlines() if "**② レポート作成**" in line), "")
+    assert "step2-report" in step2 and "PO承認" not in step2
+    assert "親 pre-dispatch" in content
+    assert "implementation_approval.status: approved" in content
+    assert "implementation_approval.status: pending" in content
 
 
 def test_step5_procedure_rerun_after_change():
@@ -180,6 +222,10 @@ def main() -> int:
     tests = [
         test_step4_matrix_implementation_to_verification,
         test_step5_matrix_entry_exit,
+        test_step2_matrix_excludes_po_approval_from_exit,
+        test_step3_entry_requires_parent_pre_dispatch,
+        test_resume_table_contains_pending_and_approved_branches,
+        test_generated_step2_step3_contract_after_generate,
         test_step5_procedure_rerun_after_change,
         test_05_pr_review_template_step5_before_pr,
         test_05_pr_review_template_step5_rerun,

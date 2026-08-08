@@ -54,7 +54,7 @@ STEP_DOC_OUTPUT_FIELDS = {
     },
     "step2": {
         "status", "step", "report_path", "report_digest",
-        "gate_result", "missing", "reason",
+        "gate_result", "missing", "reason", "implementation_approval",
     },
     "step3": {
         "status", "step", "changed_files", "untracked_files",

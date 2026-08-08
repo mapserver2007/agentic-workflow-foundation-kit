@@ -19,7 +19,7 @@
 | ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 
-> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。中間 artifact は `step2-report` PASS 後に step1 envelope と同時に削除する。
+> **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。Step①系 artifact は `implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認後まで保持する。
 
 {{else}}
 | Step | モード | config キー | subagent_type | 書込み責務境界 |
@@ -66,11 +66,31 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 |------|------------------|
 {{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` + `normalize_artifact_path` / `depth_triage_artifact_path`（中間 artifact 存在・schema・整合を `gate-artifact.py` が検査） |
 {{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
-{{/if}}| ② | `report_path` の存在 + 親による `workflow-gate.sh step2-report` PASS |
+{{/if}}| ② | `report_path` の存在 + 親による `step2-report` → `step2` PASS。step2 envelope の `implementation_approval` は `pending` + 候補 digest + `decider: PO` を必須とし、PO承認は機械退出条件に含めない |
 | ③ | `changed_files` / `untracked_files` と working tree の照合 |
 | ④ | `gate_results` + 親による `workflow-gate.sh step4` PASS |
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
+
+## Step②→③ 承認境界
+
+Step② phase complete 後にだけ、完成レポートのレビューと実装開始を PO へ一回で求める。機械 SoT は step2 envelope の `implementation_approval` であり、report の転記は人間可読の同期コピーに留める。
+
+- R1（AC / 対象 / 対象外）: Step①再ゲート + requirements ack 再取得 + Step②再作成。承認を `pending` に戻す。
+- R2（実装方針 / 変更ファイル / テスト計画）: Step②を更新して両機械ゲートを再実行。承認を `pending` に戻す。
+- R3（完了チェック / payload外 non-blocking 文言）: 記録のみ。digest と承認を維持する。
+
+親は Step③ dispatch 直前に `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path}` を実行する。非0なら fail-closed で dispatch しない。Step② envelope は Step③ envelope と正式成果物の検証完了まで保持する。
+
+### approved plan digest 契約
+
+`gate-artifact.py` の `compute_approved_plan_digest()` は、UTF-8・object key 辞書順・配列は記載順・各文字列を trim/連続空白と改行を単一空白へ畳む・compact JSON（`separators=(",", ":")`）で次を SHA-256 小文字hex化する。
+
+```json
+{"requirements_digest":"...","scope_in":["..."],"scope_out":["..."],"implementation_plan":"...","change_files":[{"path":"...","change":"..."}],"test_plan":["..."]}
+```
+
+抽出元は report の「問題・要件の詳細」（`requirements_digest`、対象・対象外）、 「実装方針」本文、「コード変更の詳細」表の変更対象ファイル・変更内容列、「テスト計画」のチェック項目である。完了チェック、承認状態、実装後の結果、payload外の non-blocking 文言は含めない。Step③ dispatch前と再開時は保存値を信用せず、現在reportから再抽出・再計算する。
 
 ## Step ① の分析深度優先ルール
 

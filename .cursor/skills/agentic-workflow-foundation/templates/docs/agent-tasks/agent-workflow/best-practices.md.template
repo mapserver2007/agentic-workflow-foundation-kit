@@ -21,6 +21,9 @@
 - **チェックリストを活用**: [①退出ゲート（タスク確定の判定）](01-investigation.md#1{{#if deep_thinking.enabled}}7{{else}}6{{/if}}-退出ゲートタスク確定の判定) を全て満たしているか確認
 - **プレースホルダを残さない**: `{XXX}` のまま残すのは禁止
 - **AGENTS.md は更新しない**: 進行中キャンペーンの SoT は `docs/agent-tasks/reports/` 直下のファイル存在そのもの
+- **Step②を自動完走**: `step2-report` → `step2` を PASS まで実行してから、完成版だけを PO に提示する
+- **承認境界を守る**: Step① ack は実装開始承認ではない。Step③前に親が envelope の PO承認記録と現在reportの digest を再照合する
+- **R1/R2/R3を分類**: AC・対象変更はStep①から、実装方針等はStep②から再承認、payload外の完了チェック・non-blocking文言は承認を維持する
 
 ## 実装段階
 

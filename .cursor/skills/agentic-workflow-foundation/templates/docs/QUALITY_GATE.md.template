@@ -334,7 +334,8 @@ workflow-gate.sh step6 TICKET-1234
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
-| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `workflow-gate.sh step2`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001）+ `workflow-gate.sh step2-report`（G-ARTIFACT step1/step2 complete envelope 必須 + `gate-report.py`） |
+| **Step② 機械退出** | report + step2 envelope complete + `step2-report` PASS + `step2` PASS | 完成レポートを PO に提示して待機 | `workflow-gate.sh step2-report` → `workflow-gate.sh step2`。PO承認はこの機械ゲートに含めない |
+| **Step③ 親 pre-dispatch** | step2 envelope の `implementation_approval.status: approved` + `decider: PO` + 必須payload抽出成功 + 現在reportからの digest 再計算一致 + 実装開始指示 | Step③ worker dispatch 可 | Advisory fail-closed: `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path}`。新規 shell gate / Hook ではない |
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → profile selector: foundation=`bin/foundation-gate self` / application=`gen_artifact_paths` 非空時の `bin/quality-gate gen` + 対象パス限定 porcelain 確認 → `bin/quality-gate verify`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `workflow-gate.sh step5`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |

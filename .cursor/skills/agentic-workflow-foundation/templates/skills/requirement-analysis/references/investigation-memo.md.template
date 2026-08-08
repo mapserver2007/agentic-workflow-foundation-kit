@@ -52,9 +52,9 @@ Step ② Worker はこの Memo のみから必須 10 セクションのタスク
 | Issue Ledger | 原因・背景 + 追加調査が必要な項目 |
 | non-blocking issues | 追加調査が必要な項目 |
 
-### 必須転記対象（artifact 削除前の前提）
+### 必須転記対象（artifact 保持中の前提）
 
-Step② レポートへの転記が完了するまで、step1 envelope / 中間 artifact は削除しない。以下はレポートに必ず転記する:
+Step② レポートへの転記後も、step1 envelope / 中間 artifact は PO承認済みかつ Step③ dispatch 直前の digest 一致確認まで保持する。以下はレポートに必ず転記する:
 
 - canonical requirements / AC（`問題・要件の詳細 > 受入条件` として AC-ID 付きで転記）
 - `requirements_digest`（レポートの `問題・要件の詳細` 末尾に記録）
