@@ -83,14 +83,6 @@ def _normalize_text(value: str) -> str:
     return " ".join(value.strip().split())
 
 
-def _extract_bullets(section: str) -> list[str]:
-    return [
-        _normalize_text(match.group(1))
-        for match in re.finditer(r"^[ \t]*[-*][ \t]+(.+?)\s*$", section, re.MULTILINE)
-        if _normalize_text(match.group(1))
-    ]
-
-
 def _extract_requirements_digest(section: str) -> str:
     match = re.search(
         r"(?:\*\*)?requirements_digest(?:\*\*)?\s*[:：]\s*[`\"]?([0-9a-f]{64})[`\"]?",
@@ -698,8 +690,8 @@ def _print_results(filepath, results, json_mode):
 
 def main():
     raw = sys.argv[1:]
-    if raw and raw[0] == "--check-implementation-approval":
-        if len(raw) != 3:
+    if "--check-implementation-approval" in raw:
+        if raw[0] != "--check-implementation-approval" or len(raw) != 3:
             print("FATAL: --check-implementation-approval には step2 envelope と report path が必要です。")
             sys.exit(2)
         envelope_path, report_path = Path(raw[1]), Path(raw[2])

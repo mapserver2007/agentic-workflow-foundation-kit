@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -101,6 +103,23 @@ def test_pre_dispatch_fails_closed() -> None:
         assert not gate.validate_implementation_approval(approved, malformed)[0]
 
 
+def test_pre_dispatch_subcommand_rejects_wrong_position() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GATE),
+            str(GATE),
+            "--check-implementation-approval",
+            str(GATE),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "--check-implementation-approval" in result.stdout
+
+
 def test_template_and_generated_boundary_contract() -> None:
     template_paths = [
         TEMPLATE_ROOT / "skills/workflow-orchestrator/SKILL.md.template",
@@ -146,6 +165,7 @@ def main() -> int:
         test_payload_changes_invalidate_digest,
         test_r3_text_preserves_digest,
         test_pre_dispatch_fails_closed,
+        test_pre_dispatch_subcommand_rejects_wrong_position,
         test_template_and_generated_boundary_contract,
         test_approval_copy_remains_within_ten_required_sections,
     ]

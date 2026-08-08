@@ -217,7 +217,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `report_path` | string | — | 作成されたレポートの相対パス |
 | `report_digest` | string | — | レポート内容のサマリ（完成版の PO提示に使用） |
 | `gate_result` | enum | `PASS` / `FAIL` | `workflow-gate.sh step2-report` 相当の自己検査結果 |
-| `implementation_approval` | mapping | `status: pending|approved`, `approved_plan_digest: SHA-256`, `decider: PO` | Step② worker は `pending` と現在レポートから計算した候補 digest を書く。complete 時に `approved` は強制しない |
+| `implementation_approval` | mapping | `status: pending\|approved`, `approved_plan_digest: SHA-256`, `decider: PO` | Step② worker は `pending` と現在レポートから計算した候補 digest を書く。complete 時に `approved` は強制しない |
 | `missing` | string[] | — | `incomplete` 時の未充足セクション名 |
 | `reason` | string | — | `blocked` / `fatal` 時の理由（`naming_conflict` / `gate_fail`） |
 

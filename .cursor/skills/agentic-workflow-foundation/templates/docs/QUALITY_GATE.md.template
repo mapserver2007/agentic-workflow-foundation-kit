@@ -205,6 +205,15 @@ workflow-gate.sh step6 TICKET-1234
 {{#if agent_workflow.artifact}}
 **artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。Step ③ `blocked: adr_required` 時は `base_commit_sha` と `decision_alternatives`（2 件以上）を必須化する（G-ARTIFACT-ADR-SHA-001 / G-ARTIFACT-ADR-ALTS-001）。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。
 
+**Step ② implementation_approval 検査（G-ARTIFACT-STEP2-APPROVAL-*）**: `status=complete` かつ `step=step2` のとき、`implementation_approval` の構造を検査する。PO 承認自体は Step② の機械退出条件に含めない。
+
+| 検査 ID | 検査内容 |
+| --- | --- |
+| G-ARTIFACT-STEP2-APPROVAL-001 | `implementation_approval` がマッピング型である |
+| G-ARTIFACT-STEP2-APPROVAL-002 | `implementation_approval.status` が `pending` / `approved` のいずれか |
+| G-ARTIFACT-STEP2-APPROVAL-003 | `implementation_approval.approved_plan_digest` が64桁の SHA-256 hex 形式である |
+| G-ARTIFACT-STEP2-APPROVAL-004 | `implementation_approval.decider` が `PO` である |
+
 {{#if requirement_analysis.enabled}}
 **Step ① 中間 artifact 検査（G-ARTIFACT-RA-REF/NORM/DEPTH/CONSIST/GATE-SOURCE）**: `status=complete` かつ `step=step1` のとき、中間 artifact の存在・schema・整合を追加検査する。
 

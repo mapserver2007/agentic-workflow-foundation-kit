@@ -87,7 +87,7 @@ Step② phase complete 後にだけ、完成レポートのレビューと実装
 `gate-artifact.py` の `compute_approved_plan_digest()` は、UTF-8・object key 辞書順・配列は記載順・各文字列を trim/連続空白と改行を単一空白へ畳む・compact JSON（`separators=(",", ":")`）で次を SHA-256 小文字hex化する。
 
 ```json
-{"requirements_digest":"...","scope_in":["..."],"scope_out":["..."],"implementation_plan":"...","change_files":[{"path":"...","change":"..."}],"test_plan":["..."]}
+{"change_files":[{"change":"...","path":"..."}],"implementation_plan":"...","requirements_digest":"...","scope_in":["..."],"scope_out":["..."],"test_plan":["..."]}
 ```
 
 抽出元は report の「問題・要件の詳細」（`requirements_digest`、対象・対象外）、 「実装方針」本文、「コード変更の詳細」表の変更対象ファイル・変更内容列、「テスト計画」のチェック項目である。完了チェック、承認状態、実装後の結果、payload外の non-blocking 文言は含めない。Step③ dispatch前と再開時は保存値を信用せず、現在reportから再抽出・再計算する。
