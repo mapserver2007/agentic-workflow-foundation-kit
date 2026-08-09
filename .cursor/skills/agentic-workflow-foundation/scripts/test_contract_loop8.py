@@ -46,6 +46,9 @@ def version_fullmatch() -> bool:
     if not manifest.is_file():
         return True
     contract = tc.load_approved(manifest, design)
+    if contract.get("classification", {}).get("profile") == "foundation":
+        print("SKIP: foundation profile has no pnpm version preflight", file=sys.stderr)
+        return True
     pattern_checks = [
         check
         for check in contract["provisioning"]["preflight_checks"]

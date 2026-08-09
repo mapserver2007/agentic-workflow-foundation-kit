@@ -110,6 +110,9 @@ def production_root_command_postcondition_flow() -> bool:
         print("SKIP: no root manifest", file=sys.stderr)
         return True
     contract = tc.load_approved(manifest, design)
+    if contract.get("classification", {}).get("profile") == "foundation":
+        print("SKIP: foundation profile has no pnpm command flow", file=sys.stderr)
+        return True
     pnpm_action = next(
         (a for a in rp.collect_command_actions(contract) if (a.get("argv") or [])[:2] == ["pnpm", "install"]),
         None,
@@ -174,6 +177,9 @@ def production_root_toolchain_order() -> bool:
         print("SKIP: no root manifest", file=sys.stderr)
         return True
     contract = tc.load_approved(manifest, design)
+    if contract.get("classification", {}).get("profile") == "foundation":
+        print("SKIP: foundation profile has no pnpm toolchain", file=sys.stderr)
+        return True
     actual = [
         action.get("argv")
         for action in rp.collect_command_actions(contract)
@@ -211,6 +217,9 @@ def marker_version_mismatch_fails() -> bool:
     if not manifest.is_file():
         return True
     contract = tc.load_approved(manifest, design)
+    if contract.get("classification", {}).get("profile") == "foundation":
+        print("SKIP: foundation profile has no pnpm version marker", file=sys.stderr)
+        return True
     pattern_checks = [
         check
         for check in contract["provisioning"]["preflight_checks"]

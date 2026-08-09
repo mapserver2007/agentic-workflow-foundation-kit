@@ -100,8 +100,8 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 | **1 Mode 選択** | スキル起動 + wrapper 前提条件 OK | — | PR 未作成のまま後続へ進む | Mode（A/B）+ PR 番号確定 | 前提 NG → 中断 |
 | **2 自動レビュー待機**（A のみ） | Mode A | — | タイムアウト時に Step 3 以降へ進む / **Step 7 直行** | レビュー検出 | タイムアウト → **中断・ターン終了**（再実行待ち） |
 | **3 指摘取得** | Mode 確定（B は Step 2 スキップ） | — | `author.login` フィルタ / 自動レビューツールのラベル取得 | 未解決・非 outdated・author 非依存で全件取得 + ID/種別記録 | 取得 0 件 → 完了経路でなく状況確認 |
-| **4 妥当性検証** | Step 3 取得済み | **[`judgment-protocol.md`](references/judgment-protocol.md) 全文（突入時必須）**（+ challenge / catalog 詳細時 [`self-rebuttal.md`](references/self-rebuttal.md)） | `[REPO]` 出典外で判定 / Blind 省略 / 自己反論省略 / challenge を反転要請と解釈 | 全指摘で `judgment_final` 確定 + §4.3 記録完了 | — |
-| **5-6 グループ承認ループ** | Step 4.3 記録済み | **[`approval-loop.md`](references/approval-loop.md) 全文（突入ごと必須）** | 未読でグループ提示・アクション分類・コード修正・GitHub reply 投稿・`pending`/`discuss` 記録 | 全指摘が `apply`/`reply_only`/`pending`/`discuss着地` に分類され実行済み | 新規コメント検出 → Step 3 |
+| **4 妥当性検証** | Step 3 取得済み | **[`judgment-contract.md`](references/judgment-contract.md) 全文（突入時必須）**。詳細操作のトリガー時だけ protocol / 補助 refs | `[REPO]` 出典外で判定 / Blind 省略 / 自己反論省略 / challenge を反転要請と解釈 | 全指摘で `judgment_final` 確定 + 必須記録完了 | — |
+| **5-6 グループ承認ループ** | Step 4.3 記録済み | **[`approval-contract.md`](references/approval-contract.md) 全文（突入時必須）**。アクション実行時だけ loop / 補助 refs | 未読でグループ提示・アクション分類・コード修正・GitHub reply 投稿・`pending`/`discuss` 記録 | 全指摘が `apply`/`reply_only`/`pending`/`discuss着地` に分類され実行済み | 新規コメント検出 → Step 3 |
 | **Post** | Step 5-6 完了 | — | 保留 1 件以上 / ゲート未 PASS で Step 6.7 へ進む | `apply` 有時 Quality Gate PASS + **保留 0 件** | ゲート失敗 → 該当グループ修正へ |
 | **6.7 完了承認** | Post で保留 0 件 | **[`review-completion.md`](references/review-completion.md) 全文（着手前必須）** | 未読で AskQuestion / Step 7 | 6.7-A: 再取得→AskQuestion 提示後**ターン終了** | 新規コメント → Step 3 |
 | **7 レポート最終確定** | **6.7-B で承認回答受領済み** | — | 承認なしで実行 / Step 7 完了前に final response | レビューレポート最終確定（承認記録更新 + ヘッダ統計確定 + 完全性検証） | 「新規取得」選択 → Step 3 |
@@ -196,20 +196,25 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 ### Step 4: 各指摘の妥当性を検証
 
-> **Hard Stop: `judgment-protocol.md` 読込必須**: Step 4 突入時に [references/judgment-protocol.md](references/judgment-protocol.md) を Read ツールで全文読込する。未読のまま判定を開始することは禁止。読込後、処理予定またはレビューレポートのメモに `judgment-protocol.md 読込済み` を記録してから判定へ進む。
+> **Hard Stop: `judgment-contract.md` 読込必須**: Step 4 突入時に [references/judgment-contract.md](references/judgment-contract.md) を Read ツールで全文読込する。未読のまま判定を開始することは禁止。読込後、処理予定またはレビューレポートのメモに `judgment-contract.md 読込済み` を記録してから判定へ進む。
 
-完全手順（コード検証 §4.1 / 判定フロー §4.2 / 自己反論 §4.2.5 / 検証記録 §4.3）は [references/judgment-protocol.md](references/judgment-protocol.md) が SoT。以下は **常時保持する不変条件**（SoT を Read しなくても守る）:
+Hard Stop の正は [references/judgment-contract.md](references/judgment-contract.md)。完全手順（コード検証 §4.1 / 判定フロー §4.2 / 自己反論 §4.2.5 / 検証記録 §4.3）は [references/judgment-protocol.md](references/judgment-protocol.md) が条件付き詳細 SoT。以下は契約と同内容の **常時保持する不変条件**:
 
 #### 不変条件（常時適用 / 暗記必須）
 
-- **`[REPO]` 出典制約**: 判定根拠として使用できるのは `[REPO]`（実コード / `AGENTS.md` / `.cursor/rules/01-critical-constraints.mdc` / コーディング規約 / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似既存実装）のみ。`[CR]`（指摘本文の言い回し）/ `[USER]`（ユーザー発言の語気）は判定根拠として使用禁止
-- **Blind first read 必須**: 指摘本文・「Prompt for AI Agents」を読む**前**に該当ファイルを白紙状態で読み、`[REPO blind]` プレフィクス付き 1 行所感を記録
-- **自己反論必須**: §4.2 ①〜④ で `judgment_initial` を出した直後、`judgment_final` を出す前に Phase 2 自己反論（最強反論 3 件 + `[REPO]` 出典スタンプ必須）→ Phase 3 評価（反転 / 確定+rebuttal / 引き分け→個別承認）を必ず実施
-- **`judgment_final` は 3 段階**: 修正必須 / 修正推奨 / 修正不要（+ `ask_first` 属性フラグ）
-- **証跡ベース中立判定**: 判定開始時にデフォルトカテゴリを置かず、`[REPO]` 証跡から 3 段階を決める。F0〜F4 は単独で結論を出す短絡フィルタではなく、③ の評価で参照する判定観点
-- **自動レビューツールのラベル非依存**: `Critical` / `Major` 等のラベルは取得・記録・引用すべて禁止。判定は AI が `[REPO]` 証跡のみで単独で行う
-- **Phase 3.5 ユーザー challenge 再評価ロック**: challenge phrase（「本当に？」「誤りでは」等）を「反転要請」と解釈禁止。(a) `[REPO]` 新証跡 or (b) 既存 `[REPO]` 証跡への基準適用誤り訂正なしに判定を変えない
-- **`discuss` と Phase 3.5 の経路分離**: challenge phrase 検出時は Phase 3.5 が優先発動し、`discuss` には入らない
+- **J1 `[REPO]` 出典制約**: 判定根拠は実コード / `AGENTS.md` / rules / コーディング規約 / `DECISIONS.md` / `QUALITY_GATE.md` / `GOTCHAS.md` / 類似実装のみ。`[CR]` / `[USER]` は根拠にしない
+- **J2 Blind first read**: 指摘本文・Prompt 前に対象ファイルを全体読込し、`[REPO blind]` の1行所感を記録
+- **J3 自己反論**: `judgment_initial` 後、`judgment_final` 前に `[REPO]` 証跡付き最強反論を最大3件試み、Phase 3 で評価。3件未満は「強い反論なし」と記録し、`[CR]` / `[USER]` で水増ししない
+- **J4 判定語彙**: `judgment_final` は修正必須 / 修正推奨 / 修正不要の3段階と `ask_first` 属性を併存
+- **J5 証跡ベース中立**: デフォルトカテゴリを置かず `[REPO]` 証跡で決める。F0〜F4 は短絡フィルタでなく評価観点（F0 が偽確定時だけ例外的に即時修正不要）
+- **J6 ラベル非依存**: 自動レビューツールのラベルは取得・記録・引用しない
+- **J7 Phase 3.5 ロック**: challenge は反転要請でない。新規 `[REPO]` 証跡または既存証跡への基準適用誤りだけで変更し、再評価結果を記録
+- **J8 challenge 優先**: challenge は Phase 3.5 で扱い、`discuss` に入らない
+- **J9 退出**: 全指摘の `judgment_final` と J10 の記録が完了するまで Step 5-6 へ進まない
+- **J10 必須記録**: reviewer type、Blind 所感、`judgment_initial`、自己反論、最強反論、Phase 3 評価、`judgment_final`、`ask_first`、判定別根拠、返信案を記録
+- **J11 `ask_first`**: 新実装パターン / 外部依存 / レイヤー責務 / DB スキーマ / Phase 3 引き分け / F4 候補あり+修正推奨確定では強制。一括承認に含めず個別承認まで進めない
+- **J12 catalog / 反論例**: challenge 検出時は `self-rebuttal.md` の Phase 3.5 を必読。P1〜P9・反論例を使う場合も該当節を読む
+- **J13 Blind 後照合 / 編集境界**: Blind 所感との不一致・必須ルール照合・自動生成物/SoT境界の可能性がある場合は protocol §4.1.2 を読む
 
 #### Step 4 各指摘判定完了時: レビューレポート更新（レポート出力設定 `true` 時）
 
@@ -217,19 +222,25 @@ PR 番号を記録して Step 2（Mode A）または Step 3（Mode B）へ。
 
 ### Step 5-6: 判定グループ承認ループ（横断アクション指定子対応）
 
-> **Hard Stop: `approval-loop.md` 読込必須**: Step 5-6 突入前に [references/approval-loop.md](references/approval-loop.md) を Read ツールで全文読込する。未読のまま Pre 判定サマリ提示・アクション分類・コード修正・GitHub reply 投稿を開始することは禁止。読込後、処理予定またはレビューレポートのメモに `approval-loop.md 読込済み` を記録する。
+> **Hard Stop: `approval-contract.md` 読込必須**: Step 5-6 突入前に [references/approval-contract.md](references/approval-contract.md) を Read ツールで全文読込する。未読のまま Pre 判定サマリ提示・アクション分類・コード修正・GitHub reply 投稿を開始することは禁止。読込後、処理予定またはレビューレポートのメモに `approval-contract.md 読込済み` を記録する。
 
-完全手順（アクション語彙 / 入力モード / 全体構造 / Pre / グループ提示 / 共通ルール / Post / Quality Gate + 保留残数チェック / アクション別挙動 / グループ別追加確認）は [references/approval-loop.md](references/approval-loop.md) が SoT。以下は **常時保持する不変条件**（SoT を Read しなくても守る）:
+Hard Stop の正は [references/approval-contract.md](references/approval-contract.md)。完全手順（アクション語彙 / 入力モード / 全体構造 / Pre / グループ提示 / 共通ルール / Post / Quality Gate + 保留残数チェック / アクション別挙動 / グループ別追加確認）は [references/approval-loop.md](references/approval-loop.md) が条件付き詳細 SoT。以下は契約と同内容の **常時保持する不変条件**:
 
 #### 不変条件（常時適用 / 暗記必須）
 
-- **アクション語彙 5 種**: `apply`（修正+返信）/ `reply_only`（返信のみ）/ `pending`（保留）/ `discuss`（追加情報提供+Q&A）/ `override:{修正必須|修正推奨|修正不要}`（判定変更+アクション再指定必要）
-- **`pending` / `discuss` への返信禁止**: `pending`（保留）と未着地 `discuss` には **GitHub reply を投稿しない**（コード修正もしない）。GitHub reply を投稿できるのは `apply` / `reply_only` のみ
-- **個別指定時の未言及 = `pending`**: 具体的 No 指定を 1 つでも含む個別指定モードでは、言及なし項目は全て `pending`（reply 投稿なし）。「勝手に対応不要返答」を構造的に防ぐ核心ルール
-- **Hard Stop**: 承認未取得で GitHub reply 投稿禁止。全ゲート PASS かつ保留 0 件まで Step 6.7 に進まない
-- **`discuss` と Phase 3.5 の経路分離**: challenge phrase 検出時は Phase 3.5 が優先発動し `discuss` には入らない
-- **`override` はアクション再指定が必要**: 判定変更後に自動で `apply` 等にしない
-- **Post Quality Gate**: `apply` を 1 件以上実行した場合 `{{session.verification.gate_command}}` を実行。**保留残数チェックは常時必須**
+- **A1 アクション語彙**: `apply`（修正+返信）/ `reply_only`（返信のみ）/ `pending`（保留）/ `discuss`（追加情報+Q&A）/ `override:{修正必須|修正推奨|修正不要}`（再指定必要）
+- **A2 投稿・修正可否**: reply は `apply` / `reply_only` のみ、コード修正は `apply` のみ。`pending` と未着地 `discuss` は両方禁止
+- **A3 入力モード**: 包括語・包括アクション指定は一括、具体的 No 指定を1つでも含めば個別。`ask_first` は一括に含めない
+- **A4 未言及 = `pending`**: 個別指定では未言及の全項目を `pending` とし、reply を自動投稿しない
+- **A5 個別再承認**: 個別指定では処理予定を提示し、ユーザー再承認後に実行
+- **A6 `ask_first`**: 一括に含めず個別確認
+- **A7 `override`**: 判定変更後はアクションを再指定するまで自動適用しない
+- **A8 challenge 優先**: challenge は Phase 3.5 の再評価に戻し、`discuss` に入らない
+- **A9 Post**: 承認前 reply 禁止。`apply` 有時は Quality Gate、なしなら gate 省略可。保留残数は常時確認し、全ゲート PASS かつ保留0件まで Step 6.7 へ進まない
+- **A10 退出**: 全指摘の分類・実行と保留件数集計が完了するまで終了しない
+- **A11 グループ提示**: Pre / グループ提示 / 個別確認文の作成前に group-presentation templates の該当節を読む
+- **A12 アクション実行**: 実行前に approval-loop の該当アクション節を読む
+- **A13 reply 本文**: GitHub reply 作成前に reply-templates を読む
 
 ### Step 6.7: レビュー完了承認（必須・人間承認ゲート）
 
@@ -269,13 +280,15 @@ Mode B 選択直後に [references/mode-b-reminder.md](references/mode-b-reminde
 
 | ファイル | 内容 |
 | --- | --- |
-| [references/judgment-protocol.md](references/judgment-protocol.md) | Step 4 判定プロトコル詳細（コード検証 §4.1 / 判定フロー §4.2 / 自己反論 §4.2.5 / 検証記録 §4.3） |
+| [references/judgment-contract.md](references/judgment-contract.md) | Step 4 Hard Stop の正（J1〜J13 / 追加 Read トリガー） |
+| [references/judgment-protocol.md](references/judgment-protocol.md) | Step 4 の条件付き詳細 SoT（コード検証 §4.1 / 判定フロー §4.2 / 自己反論 §4.2.5 / 検証記録 §4.3） |
 | [references/checklist.md](references/checklist.md) | 前提条件 + 各 Step の完了チェック項目 |
 | [references/review-report-format.md](references/review-report-format.md) | レビューレポートの完全フォーマット + Gotchas / ADR 候補ブロック |
 | [references/gh-commands.md](references/gh-commands.md) | wrapper コマンドリファレンス（`bin/github-pr-reviews-safe` / `bin/github-pr-comment-safe` / `bin/github-pr-reply-safe`） |
 | [references/reply-templates.md](references/reply-templates.md) | GitHub 返信テンプレート（**文体原則** + 修正必須 / 修正推奨 / 修正不要 + Ask First マーク付き項目用の追加文言） |
 | [references/self-rebuttal.md](references/self-rebuttal.md) | §4.2.5 自己反論ステップ詳細（Phase 2 反論記述例 / catalog P1〜P9 詳細表 / Phase 3.5 強制手順 + 失敗パターン例） |
-| [references/approval-loop.md](references/approval-loop.md) | Step 5-6 承認ループ詳細（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認） |
+| [references/approval-contract.md](references/approval-contract.md) | Step 5-6 Hard Stop の正（A1〜A13 / 追加 Read トリガー） |
+| [references/approval-loop.md](references/approval-loop.md) | Step 5-6 の条件付き詳細 SoT（アクション別挙動 / 個別指定モード処理予定確認 / グループ別追加確認） |
 | [references/group-presentation-templates.md](references/group-presentation-templates.md) | グループ提示・AI 処理予定確認テンプレ集（Pre 判定サマリ / Step 5-6.1 / 5-6.2 / 5-6.3 / 個別指定モード処理予定確認） |
 | [references/review-completion.md](references/review-completion.md) | Step 6.7 レビュー完了承認 / Step 7 レポート最終確定詳細（6.7-A 再取得 / 6.7-B 強制再開 / Step 7 の最終確定手順 + サマリテンプレ） |
 | [references/mode-b-reminder.md](references/mode-b-reminder.md) | Mode B 再注入専用リマインダ（Lost in the middle 対策 / 判定ルール・Step 順序・Hard Stop の要約） |

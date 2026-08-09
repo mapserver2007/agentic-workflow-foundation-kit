@@ -1,0 +1,49 @@
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml を更新して再生成する。 -->
+
+# Step 5-6 承認契約（Hard Stop）
+
+> Hard Stop の正は本契約。アクション別手順・グループ別確認は [approval-loop.md](approval-loop.md) の条件付き詳細 SoT を参照する。
+
+## Hard Stop
+
+Step 5-6 へ入る前に本ファイルを Read ツールで全文読込し、処理予定またはレビューレポートのメモへ `approval-contract.md 読込済み` を記録する。未読のまま Pre 提示、分類、修正、reply 投稿、保留記録をしてはならない。
+
+| 入口 | 未読時の禁止 | 退出 |
+| --- | --- | --- |
+| Step 4.3 記録済み | Pre、アクション分類、修正、GitHub reply、`pending` / `discuss` 記録 | 全指摘の分類・実行 + 保留件数集計 |
+
+## 常駐不変条件
+
+- **A1 アクション語彙**:
+
+  | 語彙 | 意味 | reply | 修正 |
+  | --- | --- | --- | --- |
+  | `apply` | 修正+返信 | 可 | 可 |
+  | `reply_only` | 返信のみ | 可 | 不可 |
+  | `pending` | 保留 | 不可 | 不可 |
+  | `discuss` | 追加説明・Q&A（着地まで） | 不可 | 不可 |
+  | `override:{修正必須\|修正推奨\|修正不要}` | 判定変更。後でアクション再指定 | 再指定後 | 再指定後 |
+
+- **A2 投稿・修正可否**: GitHub reply は `apply` / `reply_only` のみ、コード修正は `apply` のみ。`pending` と未着地 `discuss` は reply・修正とも禁止。
+- **A3 入力モード**: 包括語または包括アクション指定は一括承認、具体的 No 指定を1つでも含めば個別指定。`ask_first: true` は一括の既定処理に含めない。
+- **A4 未言及 = `pending`**: 個別指定では未言及の全項目を `pending` とし、reply を自動投稿しない。
+- **A5 個別再承認**: 個別指定では apply / reply_only / pending / discuss の内訳と対象を処理予定として提示し、ユーザー再承認後に実行する。
+- **A6 `ask_first`**: `ask_first: true` は一括承認に含めず、個別確認する。
+- **A7 `override`**: 判定変更後はアクションを再指定するまで自動 `apply` しない。
+- **A8 challenge 優先**: challenge は Phase 3.5 の再評価に戻し、`discuss` に入らない。
+- **A9 Post**: 承認前の reply を禁止する。`apply` が1件以上なら `{{session.verification.gate_command}}` を実行し、ない場合は省略可。保留残数は常に確認し、全ゲート PASS かつ保留0件まで Step 6.7 へ進まない。
+- **A10 退出**: 全指摘が `apply` / `reply_only` / `pending` / 着地済み `discuss` として分類・実行され、保留件数を集計する。
+
+## 追加 Read トリガー
+
+- **A11 グループ提示**: Pre サマリ、グループ提示、個別指定の処理予定確認文を作る前に [group-presentation-templates.md](group-presentation-templates.md) の該当節を Read する。
+- **A12 アクション実行**: `apply` / `reply_only` / `pending` / `discuss` / `override` の手順に入る前に [approval-loop.md](approval-loop.md) の該当アクション節を Read する（全文を強制しない）。
+- **A13 reply 本文**: GitHub reply を書く前に [reply-templates.md](reply-templates.md) を Read する。
+
+| トリガー | 続行前に Read |
+| --- | --- |
+| Pre サマリ / グループ提示文を作る | `group-presentation-templates.md` |
+| 個別指定の処理予定確認文を作る | `group-presentation-templates.md` の個別指定節 |
+| アクションの実行手順に入る | `approval-loop.md` の該当アクション節 |
+| GitHub reply 本文を書く | `reply-templates.md` |
+| Post 後に Step 6.7 へ進む | `review-completion.md` 全文（既存 Hard Stop） |

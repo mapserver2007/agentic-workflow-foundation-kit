@@ -57,6 +57,9 @@ def root_multiline_exact_bytes() -> bool:
         print("SKIP root_multiline_exact_bytes: no root manifest", file=sys.stderr)
         return True
     contract = tc.load_approved(manifest, design)
+    if contract.get("classification", {}).get("profile") == "foundation":
+        print("SKIP root_multiline_exact_bytes: foundation profile", file=sys.stderr)
+        return True
     package_action = next(
         (action for action in rp.collect_file_actions(contract) if action["target"] == "package.json"),
         None,
