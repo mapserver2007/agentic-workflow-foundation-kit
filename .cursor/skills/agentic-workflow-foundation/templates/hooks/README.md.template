@@ -129,6 +129,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 - `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop`
 - `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
+- `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大約 6KiB。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
 - `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
 - `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
 
