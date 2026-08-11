@@ -86,10 +86,85 @@ def test_event_contract() -> None:
             assert set(("at", "session_id", "kind", "bytes", "summary", "extra")).issubset(row), "common fields missing"
             assert_equal(row["session_id"], "test-emit-001", "session ID")
         assert_equal(rows[0]["extra"]["model"], "main-model", "prompt model")
+        assert_equal(rows[3]["extra"]["output_tail"], "ok", "shell output_tail")
         assert_equal(rows[4]["extra"]["subagent_model"], "sub-model", "start model")
         if "subagent_model" in rows[5]["extra"]:
             raise AssertionError("stop event must not contain subagent_model")
         assert_equal(rows[5]["extra"]["subagent_id"], "s1", "stop ID")
+
+
+def test_shell_exit_code_and_output_tail() -> None:
+    cases = (
+        (
+            {
+                "hook_event_name": "afterShellExecution",
+                "command": "gate",
+                "output": "",
+                "stdout": "=== session-start gate: PASS ===\n",
+                "exit_code": "",
+                "exitCode": 0,
+            },
+            {"exit_code": 0, "output_tail": "=== session-start gate: PASS ==="},
+        ),
+        (
+            {
+                "hook_event_name": "afterShellExecution",
+                "command": "gate",
+                "output": "primary",
+                "stdout": "fallback",
+                "status_code": 2,
+            },
+            {"exit_code": 2, "output_tail": "primary"},
+        ),
+        (
+            {
+                "hook_event_name": "afterShellExecution",
+                "command": "gate",
+                "result": {"msg": "obj"},
+            },
+            {"output_tail": '{"msg":"obj"}'},
+        ),
+    )
+    with tempfile.TemporaryDirectory(prefix="progress-emitter-shell-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        script = root / "session-progress-emitter.sh"
+        script.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        script.chmod(0o700)
+
+        for index, (payload, expected_extra) in enumerate(cases):
+            session_id = f"shell-extra-{index}"
+            result = run_hook(script, root, json.dumps(payload), session_id=session_id)
+            assert_equal(result.returncode, 0, f"shell case {index} exit code")
+            assert_equal(result.stdout, "{}\n", f"shell case {index} stdout")
+            rows = [
+                json.loads(line)
+                for line in (session_dir / f"{session_id}.progress.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            assert_equal(len(rows), 1, f"shell case {index} row count")
+            assert_equal(rows[0]["kind"], "shell", f"shell case {index} kind")
+            for key, value in expected_extra.items():
+                assert_equal(rows[0]["extra"].get(key), value, f"shell case {index} extra.{key}")
+
+        # Long output keeps only the last ~6KiB.
+        long_body = ("A" * 7000) + "TAIL_MARKER"
+        long_result = run_hook(
+            script,
+            root,
+            json.dumps({
+                "hook_event_name": "afterShellExecution",
+                "command": "long",
+                "output": long_body,
+                "exit_code": 1,
+            }),
+            session_id="shell-extra-long",
+        )
+        assert_equal(long_result.returncode, 0, "long shell exit code")
+        long_row = json.loads((session_dir / "shell-extra-long.progress.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        assert_equal(long_row["extra"]["exit_code"], 1, "long shell exit_code")
+        assert long_row["extra"]["output_tail"].endswith("TAIL_MARKER"), "long shell output_tail must keep end"
+        assert len(long_row["extra"]["output_tail"].encode("utf-8")) <= 6144, "long shell output_tail must be truncated"
 
 
 def test_payload_session_fallback_and_fail_open() -> None:
@@ -248,11 +323,13 @@ def test_static_registration_contract() -> None:
         assert needle in manifest, f"manifest missing {needle}"
     readme = README_TEMPLATE.read_text(encoding="utf-8")
     assert "subagent_stop" in readme and "subagent_model` は含めない" in readme, "README contract missing"
+    assert "`shell` の `extra`" in readme and "output_tail" in readme, "README shell extra contract missing"
 
 
 def main() -> int:
     tests = (
         test_event_contract,
+        test_shell_exit_code_and_output_tail,
         test_payload_session_fallback_and_fail_open,
         test_concurrent_writes_preserve_jsonl,
         test_lock_wait_is_bounded_and_fail_open,

@@ -64,7 +64,24 @@ BYTES="$(LC_ALL=C printf '%s' "$SUMMARY" | wc -c | tr -d '[:space:]')" || BYTES=
 [[ "$BYTES" =~ ^[0-9]+$ ]] || BYTES=0
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
-EXTRA="$(jq -c --arg kind "$KIND" '
+# shell: capture exit_code (when present) + output_tail for gate PASS/FAIL banners.
+# Cursor afterShellExecution does not guarantee exit_code; output is the primary banner source.
+OUTPUT_TAIL=""
+if [[ "$KIND" == "shell" ]]; then
+  OUTPUT_TAIL="$(jq -r '
+    [.output, .stdout, .result]
+    | map(select(. != null and (type != "string" or length > 0)))
+    | .[0]
+    | if . == null then "" elif type == "string" then . else tostring end
+  ' <<<"$INPUT" 2>/dev/null)" || OUTPUT_TAIL=""
+  # Keep the last ~6KiB (banner / Finding Code lines live near the end).
+  BYTES_OUT="$(LC_ALL=C printf '%s' "$OUTPUT_TAIL" | wc -c | tr -d '[:space:]')" || BYTES_OUT=0
+  if [[ "$BYTES_OUT" =~ ^[0-9]+$ ]] && (( BYTES_OUT > 6144 )); then
+    OUTPUT_TAIL="$(printf '%s' "$OUTPUT_TAIL" | tail -c 6144)"
+  fi
+fi
+
+EXTRA="$(jq -c --arg kind "$KIND" --arg output_tail "$OUTPUT_TAIL" '
   def present($key): if .[$key] == null then {} else {($key): .[$key]} end;
   (present("model") + present("model_id") + present("model_params") + present("hook_event_name"))
   + if $kind == "subagent_start" then
@@ -73,6 +90,12 @@ EXTRA="$(jq -c --arg kind "$KIND" '
     elif $kind == "subagent_stop" then
       present("subagent_id") + present("subagent_type") + present("status")
       + present("duration_ms") + present("task") + present("description")
+    elif $kind == "shell" then
+      (if (.exit_code != null and .exit_code != "") then {exit_code: .exit_code}
+       elif (.exitCode != null and .exitCode != "") then {exit_code: .exitCode}
+       elif (.status_code != null and .status_code != "") then {exit_code: .status_code}
+       else {} end)
+      + (if ($output_tail | length) > 0 then {output_tail: $output_tail} else {} end)
     else {}
     end
 ' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }
@@ -84,7 +107,8 @@ EVENT="$(jq -c -n \
   --argjson bytes "$BYTES" \
   --arg summary "$SUMMARY" \
   --argjson extra "$EXTRA" \
-  '{at: $at, session_id: $session_id, kind: $kind, bytes: $bytes, summary: $summary, extra: $extra}' 2>/dev/null)" || EVENT=""
+  '{at: $at, session_id: $session_id, kind: $kind, bytes: $bytes, summary: $summary, extra: $extra}' \
+  2>/dev/null)" || EVENT=""
 
 if [[ -n "$EVENT" ]]; then
   LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
