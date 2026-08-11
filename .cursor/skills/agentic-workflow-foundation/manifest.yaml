@@ -487,8 +487,8 @@ agent_workflow:
       desc: "レポート構造検査（必須10セクション充足）"
       cmd: "gate-report.py"
     - id: step4
-      desc: "実装→検証（コードゲート）"
-      cmd: "code-gate"
+      desc: "実装→検証（コードゲート + 完了チェック3項目）"
+      cmd: "code-gate → gate-test.py"
     - id: step5
       desc: "検証→PR（検証ゲート）"
       cmd: "verification-gate.sh"
@@ -995,6 +995,15 @@ outputs:
     required_sections:
       - "G-REPORT-SECTION-001"
       - "=== report gate ==="
+  - path: .cursor/skills/session-handover/scripts/gate-test.py
+    template: skills/session-handover/scripts/gate-test.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-TEST-COMP-001"
+      - "G-TEST-COMP-002"
+      - "G-TEST-COMP-003"
   - path: .cursor/skills/session-handover/scripts/gate-adr.py
     template: skills/session-handover/scripts/gate-adr.py.template
     mode: render

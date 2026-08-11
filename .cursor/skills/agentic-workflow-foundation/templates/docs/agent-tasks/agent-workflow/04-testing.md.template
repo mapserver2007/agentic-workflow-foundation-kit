@@ -2,7 +2,7 @@
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
-実装したコードのテストを作成し、コードゲートを通過させるフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の「G-BUILD / G-LINT / G-TEST / G-GEN」がこのフェーズのゲート。
+実装したコードのテストを作成し、コードゲートとタスクレポートの完了チェックを通過させるフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の「G-BUILD / G-LINT / G-TEST / G-GEN」および G-TEST-COMP-001/002/003 がこのフェーズのゲート。
 
 ---
 
@@ -31,7 +31,9 @@
 
 ### 合格条件
 
-[`docs/QUALITY_GATE.md §1.1`](../../QUALITY_GATE.md) の G-GEN / G-BUILD / G-LINT / G-TEST が全て exit 0 であること。
+[`docs/QUALITY_GATE.md §1.1`](../../QUALITY_GATE.md) の G-GEN / G-BUILD / G-LINT / G-TEST と、`gate-test.py` の G-TEST-COMP-001（実装完了）/ G-TEST-COMP-002（テスト完了）/ G-TEST-COMP-003（コードゲート通過）が全て exit 0 であること。`workflow-gate.sh step4` はコードゲート成功後にのみ `gate-test.py` を実行する。
+
+完了チェック節は `## 完了チェック` または `## 10. 完了チェック` を対象とし、重複見出し・重複項目は fail-closed で exit 2 になる。未完了・欠落項目は exit 1 として修正する。
 
 **禁止事項**（AGENTS.md > Boundaries と整合）:
 - テストの一部失敗を黙って無視する
@@ -47,7 +49,7 @@
 - [x] {テストケース2}
 ```
 
-完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新する。
+完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新し、コードゲート成功後に「実装完了」「テスト完了」「コードゲート通過」の3項目が全て `[x]` であることを確認する。
 
 {{#if agent_workflow.artifact}}
 ---

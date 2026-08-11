@@ -46,7 +46,7 @@ def _stage_gate_tree(tmp: Path, profile: str) -> Path:
     gate_dir.mkdir(parents=True)
     bin_dir = tmp / "bin"
     bin_dir.mkdir(parents=True)
-    for name in ("workflow-gate.sh", "gate-artifact.py"):
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py"):
         src = REAL_GATE_DIR / name
         if not src.exists():
             raise FileNotFoundError(f"missing generated gate asset: {src}")
@@ -93,7 +93,13 @@ def _setup_envelopes(tmp: Path, slug: str) -> Path:
     reports = tmp / "docs" / "agent-tasks" / "reports"
     reports.mkdir(parents=True)
     report = reports / f"{slug}.md"
-    report.write_text("# report\n", encoding="utf-8")
+    report.write_text(
+        "## 10. 完了チェック\n"
+        "- [x] 実装完了\n"
+        "- [x] テスト完了\n"
+        "- [x] コードゲート通過\n",
+        encoding="utf-8",
+    )
     art = tmp / ".cursor" / ".artifacts"
     art.mkdir(parents=True)
     for step, fixture in (("step3", "step3-complete.md"), ("step4", "step4-complete.md")):

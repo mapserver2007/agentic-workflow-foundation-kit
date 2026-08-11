@@ -20,20 +20,50 @@ STEP="${1:-}"
 shift || true
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# --format=json が残余引数に含まれる場合はヘッダを stderr へ出力
-if printf '%s\n' "$@" | grep -q -- '--format=json' 2>/dev/null; then
+JSON_MODE=0
+EXPECT_FORMAT_VALUE=0
+for arg in "$@"; do
+  if [[ "$arg" == "--format=json" ]]; then
+    JSON_MODE=1
+  elif [[ "$EXPECT_FORMAT_VALUE" -eq 1 && "$arg" == "json" ]]; then
+    JSON_MODE=1
+    EXPECT_FORMAT_VALUE=0
+  elif [[ "$arg" == "--format" ]]; then
+    EXPECT_FORMAT_VALUE=1
+  else
+    EXPECT_FORMAT_VALUE=0
+  fi
+done
+
+if [[ "$JSON_MODE" -eq 1 ]]; then
   echo "=== workflow gate === (step=$STEP)" >&2
 else
   echo "=== workflow gate === (step=$STEP)"
 fi
 
+log() {
+  if [[ "$JSON_MODE" -eq 1 ]]; then
+    echo "$@" >&2
+  else
+    echo "$@"
+  fi
+}
+
+run_logged() {
+  if [[ "$JSON_MODE" -eq 1 ]]; then
+    "$@" >&2
+  else
+    "$@"
+  fi
+}
+
 if [[ -z "$STEP" ]]; then
-  echo "FATAL: ステップ引数が必要です。"
-  echo "用法: workflow-gate.sh <step1|step2|step2-report|step4|step5|step6|adr|artifact|redispatch|maintenance-docs|archive> [args...]"
-  echo ""
-  echo "利用可能なステップ:"
+  log "FATAL: ステップ引数が必要です。"
+  log "用法: workflow-gate.sh <step1|step2|step2-report|step4|step5|step6|adr|artifact|redispatch|maintenance-docs|archive> [args...]"
+  log ""
+  log "利用可能なステップ:"
 {{#each agent_workflow.step_gates}}
-  echo "  {{this.id}}  — {{this.desc}}"
+  log "  {{this.id}}  — {{this.desc}}"
 {{/each}}
   exit 2
 fi
@@ -149,16 +179,63 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     exec python3 "$SCRIPT_DIR/gate-report.py" --artifact-dir "$ARTIFACT_DIR" "$@"
     ;;
   step4)
-    # ④ コードゲート — profile selector が唯一の分岐入力（ADR-0002 Decision 7）
+    # ④ コードゲート + 完了チェック3項目 — profile selector が唯一の分岐入力
     # foundation: bin/foundation-gate self（kit 自己検証）
     # application: G-GEN パス限定 porcelain + bin/quality-gate verify
     ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
     ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
     REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
 
-    # --- report-slug の解決 ---
-    if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
-      REPORT_SLUG="$(basename "$1" .md)"
+    # --- report-file と gate-test の出力形式を解決 ---
+    REPORT_ARG=""
+    FORMAT_ARGS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --format=json)
+          JSON_MODE=1
+          FORMAT_ARGS+=("$1")
+          shift
+          ;;
+        --format)
+          FORMAT_ARGS+=("$1")
+          shift
+          if [[ $# -eq 0 ]]; then
+            log "FATAL: --format に値が必要です。"
+            exit 2
+          fi
+          FORMAT_ARGS+=("$1")
+          [[ "$1" == "json" ]] && JSON_MODE=1
+          shift
+          ;;
+        --*)
+          log "FATAL: step4 の未対応オプションです: $1"
+          exit 2
+          ;;
+        *)
+          if [[ -n "$REPORT_ARG" ]]; then
+            log "FATAL: report-file は1件だけ指定できます。"
+            exit 2
+          fi
+          REPORT_ARG="$1"
+          shift
+          ;;
+      esac
+    done
+
+    # --- report-file の解決と Path.resolve 相当の正規化 ---
+    if [[ -n "$REPORT_ARG" ]]; then
+      REPORT_FILE="$(python3 -c '
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1]).resolve()
+if not path.is_file():
+    raise SystemExit(1)
+print(path)
+' "$REPORT_ARG" 2>/dev/null)" || {
+        log "FATAL: 実在するレポートファイルを指定してください: $REPORT_ARG"
+        exit 2
+      }
     else
       # reports 直下の進行中レポートから自動解決
       REPORT_FILES=()
@@ -168,17 +245,21 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
         done
       fi
       if [[ ${#REPORT_FILES[@]} -eq 0 ]]; then
-        echo "FATAL: 進行中レポートが 0 件です。report-file を明示的に指定してください。"
-        echo "用法: workflow-gate.sh step4 [report-file]"
+        log "FATAL: 進行中レポートが 0 件です。report-file を明示的に指定してください。"
+        log "用法: workflow-gate.sh step4 [report-file]"
         exit 2
       elif [[ ${#REPORT_FILES[@]} -gt 1 ]]; then
-        echo "FATAL: 進行中レポートが ${#REPORT_FILES[@]} 件あります。report-file を明示的に指定してください。"
-        echo "用法: workflow-gate.sh step4 [report-file]"
-        for f in "${REPORT_FILES[@]}"; do echo "  - $f"; done
+        log "FATAL: 進行中レポートが ${#REPORT_FILES[@]} 件あります。report-file を明示的に指定してください。"
+        log "用法: workflow-gate.sh step4 [report-file]"
+        for f in "${REPORT_FILES[@]}"; do log "  - $f"; done
         exit 2
       fi
-      REPORT_SLUG="$(basename "${REPORT_FILES[0]}" .md)"
+      REPORT_FILE="$(python3 -c '
+from pathlib import Path
+print(Path(__import__("sys").argv[1]).resolve())
+' "${REPORT_FILES[0]}")"
     fi
+    REPORT_SLUG="$(basename "$REPORT_FILE" .md)"
 
     # --- step3/step4 envelope 必須検査 ---
     step3_env="$ARTIFACT_DIR/${REPORT_SLUG}--step3.md"
@@ -187,78 +268,78 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     ENVELOPE_FAIL=0
 
     if [[ ! -f "$step3_env" ]]; then
-      echo "FAIL: step3 envelope が見つかりません: $step3_env"
+      log "FAIL: step3 envelope が見つかりません: $step3_env"
       ENVELOPE_FAIL=1
     else
-      python3 "$SCRIPT_DIR/gate-artifact.py" "$step3_env" --expect-step step3 --expect-status complete
+      run_logged python3 "$SCRIPT_DIR/gate-artifact.py" "$step3_env" --expect-step step3 --expect-status complete
       rc=$?
       if [[ $rc -ne 0 ]]; then
-        echo "FAIL: step3 envelope 検査失敗 (exit $rc): $step3_env"
+        log "FAIL: step3 envelope 検査失敗 (exit $rc): $step3_env"
         ENVELOPE_FAIL=1
       fi
     fi
 
     if [[ ! -f "$step4_env" ]]; then
-      echo "FAIL: step4 envelope が見つかりません: $step4_env"
+      log "FAIL: step4 envelope が見つかりません: $step4_env"
       ENVELOPE_FAIL=1
     else
-      python3 "$SCRIPT_DIR/gate-artifact.py" "$step4_env" --expect-step step4 --expect-status complete
+      run_logged python3 "$SCRIPT_DIR/gate-artifact.py" "$step4_env" --expect-step step4 --expect-status complete
       rc=$?
       if [[ $rc -ne 0 ]]; then
-        echo "FAIL: step4 envelope 検査失敗 (exit $rc): $step4_env"
+        log "FAIL: step4 envelope 検査失敗 (exit $rc): $step4_env"
         ENVELOPE_FAIL=1
       fi
     fi
 
     if [[ $ENVELOPE_FAIL -ne 0 ]]; then
-      echo "=== workflow gate step4: FAIL (envelope 検査失敗 — code gate 未実行) ==="
+      log "=== workflow gate step4: FAIL (envelope 検査失敗 — code gate 未実行) ==="
       exit 1
     fi
 
-    echo "PASS: step3/step4 envelope 検査通過"
+    log "PASS: step3/step4 envelope 検査通過"
 
     PROFILE="{{project.quality_gate.profile}}"
-    echo "quality gate profile: $PROFILE"
+    log "quality gate profile: $PROFILE"
 
     case "$PROFILE" in
       foundation)
-        echo "--- code gate (foundation profile: bin/foundation-gate self) ---"
-        "$ROOT_DIR/bin/foundation-gate" self
+        log "--- code gate (foundation profile: bin/foundation-gate self) ---"
+        run_logged "$ROOT_DIR/bin/foundation-gate" self
         rc=$?
         if [[ $rc -ne 0 ]]; then
-          echo "FAIL: bin/foundation-gate self が exit $rc で失敗"
+          log "FAIL: bin/foundation-gate self が exit $rc で失敗"
           exit "$rc"
         fi
         ;;
       application)
-        echo "--- code gate (application profile: G-GEN + build/lint/test) ---"
+        log "--- code gate (application profile: G-GEN + build/lint/test) ---"
         {{#if project.quality_gate.gen_artifact_paths}}
         GEN_PATHS=({{#each project.quality_gate.gen_artifact_paths}} "{{this}}"{{/each}} )
 
-        echo "--- G-GEN: gen_artifact_paths 非空 → gen 必須実行 ---"
-        "$ROOT_DIR/bin/quality-gate" gen
+        log "--- G-GEN: gen_artifact_paths 非空 → gen 必須実行 ---"
+        run_logged "$ROOT_DIR/bin/quality-gate" gen
         GEN_EXIT=$?
         if [[ $GEN_EXIT -ne 0 ]]; then
-          echo "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
+          log "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
           exit "$GEN_EXIT"
         fi
         GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
         if [[ -n "$GEN_STATUS" ]]; then
-          echo "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
-          echo "$GEN_STATUS"
-          echo "生成物をコミットしてから再実行してください。"
+          log "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
+          log "$GEN_STATUS"
+          log "生成物をコミットしてから再実行してください。"
           exit 1
         fi
-        echo "PASS: G-GEN — 生成物は最新（差分なし）"
+        log "PASS: G-GEN — 生成物は最新（差分なし）"
         {{else}}
-        echo "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
+        log "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
         {{/if}}
 
-        echo "--- verify ---"
-        "$ROOT_DIR/bin/quality-gate" verify
+        log "--- verify ---"
+        run_logged "$ROOT_DIR/bin/quality-gate" verify
         rc=$?
         if [[ $rc -ne 0 ]]; then
-          echo "FAIL: bin/quality-gate verify が exit $rc で失敗"
+          log "FAIL: bin/quality-gate verify が exit $rc で失敗"
           exit "$rc"
         fi
         ;;
@@ -267,6 +348,14 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
         exit 2
         ;;
     esac
+
+    # コードゲートが成功した場合だけ完了チェックゲートを実行する。
+    if [[ ${#FORMAT_ARGS[@]} -gt 0 ]]; then
+      python3 "$SCRIPT_DIR/gate-test.py" "$REPORT_FILE" "${FORMAT_ARGS[@]}"
+    else
+      python3 "$SCRIPT_DIR/gate-test.py" "$REPORT_FILE"
+    fi
+    exit $?
     ;;
   step5)
     # ④→⑤ 検証→PR: verification-gate.sh（session.verification.gate_command）

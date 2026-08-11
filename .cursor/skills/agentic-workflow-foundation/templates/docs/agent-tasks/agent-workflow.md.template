@@ -33,7 +33,7 @@ POレビュー + 実装開始承認（唯一の実装開始 STOP）
  ↓
 ③ 実装の実行
  ↓
-④ テスト実装（＋コードゲート通過）
+④ テスト実装（＋コードゲート通過＋完了チェック3項目）
  ↓
 ⑤ PR レビュー検証
  ↓
@@ -55,7 +55,7 @@ POレビュー + 実装開始承認（唯一の実装開始 STOP）
 | ① 調査・分析 | [agent-workflow/01-investigation.md](agent-workflow/01-investigation.md) | 調査結果の整理 | — |
 | ② タスクレポートの作成 | [agent-workflow/02-report-creation.md](agent-workflow/02-report-creation.md) | report + step2 envelope + 機械ゲートPASS | `step2-report` → `step2` → PO待ち |
 | ③ 実装の実行 | [agent-workflow/03-implementation.md](agent-workflow/03-implementation.md) | コード変更 + reports 完了チェック更新 | 親 pre-dispatch: PO承認 SoT + digest一致 |
-| ④ テスト実装 | [agent-workflow/04-testing.md](agent-workflow/04-testing.md) | テストコード + コードゲート PASS | 実装 → PR レビュー |
+| ④ テスト実装 | [agent-workflow/04-testing.md](agent-workflow/04-testing.md) | テストコード + コードゲート + G-TEST-COMP-001/002/003 PASS | 実装 → PR レビュー |
 | ⑤ PR レビュー検証 | [agent-workflow/05-pr-review.md](agent-workflow/05-pr-review.md) | レビュー対応完了 | PR レビュー → 完了報告 |
 | ⑥ 完了報告 + archives 移動 | [agent-workflow/06-completion.md](agent-workflow/06-completion.md) | `docs/agent-tasks/reports/archives/` への移動 + maintenance-docs 起票確認 | 完了報告 → アーカイブ |
 
@@ -80,7 +80,7 @@ POレビュー + 実装開始承認（唯一の実装開始 STOP）
 7. テスト計画
 8. 関連する既存コード
 9. 追加調査が必要な項目
-10. 完了チェック（6 項目: 実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）
+10. 完了チェック（6 項目: 実装 / テスト / コードゲート / PR レビュー / docs 反映 / ADR 起票判定）。Step④では最初の3項目（実装完了 / テスト完了 / コードゲート通過）を `gate-test.py` が検査する。
 
 ---
 
