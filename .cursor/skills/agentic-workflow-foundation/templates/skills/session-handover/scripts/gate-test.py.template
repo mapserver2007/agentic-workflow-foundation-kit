@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+"""タスクレポートの完了チェックを検査するゲート。"""
+
+import argparse
+import json
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+
+COMPLETION_HEADING_RE = re.compile(
+    r"^##[ \t]+(?:\d+\.[ \t]+)?完了チェック[ \t]*$",
+    re.MULTILINE,
+)
+H2_RE = re.compile(r"^##[ \t]+.*$", re.MULTILINE)
+COMPLETION_ITEMS: Tuple[Tuple[str, str], ...] = (
+    ("G-TEST-COMP-001", "実装完了"),
+    ("G-TEST-COMP-002", "テスト完了"),
+    ("G-TEST-COMP-003", "コードゲート通過"),
+)
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    """個別検査結果。"""
+
+    check_id: str
+    status: str
+    message: str
+    details: List[str] = field(default_factory=list)
+
+    def as_dict(self) -> Dict[str, object]:
+        result: Dict[str, object] = {
+            "id": self.check_id,
+            "status": self.status,
+            "message": self.message,
+        }
+        if self.details:
+            result["details"] = list(self.details)
+        return result
+
+
+@dataclass
+class GateResult:
+    """ゲート全体の結果。"""
+
+    report_path: str
+    checks: List[CheckResult]
+
+    @property
+    def fatal(self) -> bool:
+        return any(check.status == "FATAL" for check in self.checks)
+
+    @property
+    def exit_code(self) -> int:
+        if self.fatal:
+            return 2
+        if any(check.status == "FAIL" for check in self.checks):
+            return 1
+        return 0
+
+    def as_dict(self) -> Dict[str, object]:
+        return {
+            "gate": "gate-test",
+            "report_path": self.report_path,
+            "exit_code": self.exit_code,
+            "fatal": self.fatal,
+            "checks": [check.as_dict() for check in self.checks],
+        }
+
+
+def _fatal(report_path: str, message: str) -> GateResult:
+    return GateResult(
+        report_path=report_path,
+        checks=[
+            CheckResult(
+                check_id="G-TEST-COMP-000",
+                status="FATAL",
+                message=message,
+            ),
+        ],
+    )
+
+
+def _completion_section(content: str) -> Tuple[Optional[str], Optional[str]]:
+    """完了チェック節を一意に抽出する。"""
+    headings = list(COMPLETION_HEADING_RE.finditer(content))
+    if not headings:
+        return None, "完了チェックセクション（## 完了チェック）がレポートに存在しません。"
+    if len(headings) > 1:
+        return None, "完了チェック見出しが複数あります。対象を一意に指定してください。"
+
+    start = headings[0].end()
+    next_h2 = H2_RE.search(content, start)
+    end = next_h2.start() if next_h2 else len(content)
+    return content[start:end], None
+
+
+def _item_pattern(item_name: str) -> re.Pattern:
+    # 項目名の後ろは、末尾または括弧注記だけを許容する。
+    suffix = r"(?:[ \t]*(?:（[^\r\n]*）|\([^\r\n]*\)))?[ \t]*$"
+    return re.compile(
+        r"^[ \t]*[-*+][ \t]*\[([ xX])\][ \t]+"
+        + re.escape(item_name)
+        + suffix
+    )
+
+
+def _check_completion_items(section: str) -> List[CheckResult]:
+    lines = section.splitlines()
+    checks: List[CheckResult] = []
+    for check_id, item_name in COMPLETION_ITEMS:
+        pattern = _item_pattern(item_name)
+        matches = []
+        for line_number, line in enumerate(lines, 1):
+            match = pattern.match(line)
+            if match:
+                matches.append((line_number, match.group(1)))
+
+        if len(matches) > 1:
+            checks.append(
+                CheckResult(
+                    check_id=check_id,
+                    status="FATAL",
+                    message=f"完了チェック項目「{item_name}」が節内に重複しています。",
+                    details=[f"L{line_number}" for line_number, _ in matches],
+                )
+            )
+        elif not matches:
+            checks.append(
+                CheckResult(
+                    check_id=check_id,
+                    status="FAIL",
+                    message=f"完了チェック項目「{item_name}」が見つかりません。",
+                )
+            )
+        elif matches[0][1].lower() == "x":
+            checks.append(
+                CheckResult(
+                    check_id=check_id,
+                    status="PASS",
+                    message=f"完了チェック項目「{item_name}」が完了しています。",
+                )
+            )
+        else:
+            checks.append(
+                CheckResult(
+                    check_id=check_id,
+                    status="FAIL",
+                    message=f"完了チェック項目「{item_name}」が未完了です。",
+                )
+            )
+    return checks
+
+
+def check_report(report_file: str) -> GateResult:
+    """単一レポートを読み込み、完了チェック3項目を検査する。"""
+    try:
+        report_path = Path(report_file).resolve()
+    except OSError as exc:
+        return _fatal(str(report_file), f"レポートパスを正規化できません: {exc}")
+
+    normalized_path = str(report_path)
+    if not report_path.exists():
+        return _fatal(normalized_path, f"レポートファイルが存在しません: {normalized_path}")
+    if not report_path.is_file():
+        return _fatal(normalized_path, f"レポートパスが通常ファイルではありません: {normalized_path}")
+
+    try:
+        content = report_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        return _fatal(normalized_path, f"レポートをUTF-8として読めません: {exc}")
+    except OSError as exc:
+        return _fatal(normalized_path, f"レポートを読み込めません: {exc}")
+
+    section, error = _completion_section(content)
+    if error is not None:
+        return _fatal(normalized_path, error)
+    assert section is not None
+    return GateResult(
+        report_path=normalized_path,
+        checks=_check_completion_items(section),
+    )
+
+
+def _print_human(result: GateResult) -> None:
+    status = "PASS" if result.exit_code == 0 else ("FATAL" if result.fatal else "FAIL")
+    print("=== gate-test ===")
+    print(f"--- {result.report_path} ---")
+    for check in result.checks:
+        print(f"[{check.status}] {check.message} ({check.check_id})")
+        for detail in check.details:
+            print(f"  - {detail}")
+    print(f"=== gate-test: {status} (exit {result.exit_code}) ===")
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="タスクレポートの完了チェック3項目を検査します。"
+    )
+    parser.add_argument("report_file", help="単一のタスクレポートファイル")
+    parser.add_argument(
+        "--format",
+        choices=("human", "json"),
+        default="human",
+        help="出力形式（既定値: human）",
+    )
+    args = parser.parse_args(argv)
+
+    result = check_report(args.report_file)
+    if args.format == "json":
+        print(json.dumps(result.as_dict(), ensure_ascii=False))
+    else:
+        _print_human(result)
+    return result.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

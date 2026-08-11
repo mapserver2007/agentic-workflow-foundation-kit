@@ -50,7 +50,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 | **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
 | **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | report + step2 envelope complete + `step2-report` PASS + `step2` PASS（機械退出） | `step2-report` → `step2` → PO待ち |
 | **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | 親 pre-dispatch: step2+complete+report_path束縛 + PO承認 SoT + digest 再計算一致（exit 0 のみ） | コード変更完了 + レポート更新 | — |
-| **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS | 実装 → 検証{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
+| **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS + 完了チェック3項目（G-TEST-COMP-001/002/003）PASS | 実装 → 検証{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
 | **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | 検証 → PR（入口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} + PR → 完了（出口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}{{/if}} |
 | **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ で `workflow-gate.sh step6` PASS 済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
 
@@ -122,9 +122,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step4_testing`）。Step doc: [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md)。
 
-コードゲート（[`docs/QUALITY_GATE.md §1.1`](../../../docs/QUALITY_GATE.md) 参照）:
+コードゲート + 完了チェック3項目（[`docs/QUALITY_GATE.md §1.1`](../../../docs/QUALITY_GATE.md) 参照）:
 
-{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` で一括検証する。{{/if}}
+{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` で一括検証する。envelope 検査と profile 別コードゲートが exit 0 の場合だけ、同じ正規化済みレポートへ `gate-test.py` を実行する。{{/if}}
 
 **禁止事項**: テスト失敗の無視・lint 一括抑制・テスト skip（原因仮説の文章化が前提）。
 
