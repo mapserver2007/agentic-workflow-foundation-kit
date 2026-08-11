@@ -31,7 +31,7 @@
 
 ### 合格条件
 
-[`docs/QUALITY_GATE.md §1.1`](../../QUALITY_GATE.md) の G-GEN / G-BUILD / G-LINT / G-TEST と、`gate-test.py` の G-TEST-COMP-001（実装完了）/ G-TEST-COMP-002（テスト完了）/ G-TEST-COMP-003（コードゲート通過）が全て exit 0 であること。`workflow-gate.sh step4` はコードゲート成功後にのみ `gate-test.py` を実行する。
+profile selector が選択したコードゲートと、`gate-test.py` の G-TEST-COMP-001（実装完了）/ G-TEST-COMP-002（テスト完了）/ G-TEST-COMP-003（コードゲート通過）が全て exit 0 であること。`workflow-gate.sh step4` はコードゲート成功後にのみ `gate-test.py` を実行する。
 
 完了チェック節は `## 完了チェック` または `## 10. 完了チェック` を対象とし、重複見出し・重複項目は fail-closed で exit 2 になる。未完了・欠落項目は exit 1 として修正する。
 

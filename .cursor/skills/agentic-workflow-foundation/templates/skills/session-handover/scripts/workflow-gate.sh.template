@@ -197,14 +197,24 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
           shift
           ;;
         --format)
-          FORMAT_ARGS+=("$1")
           shift
           if [[ $# -eq 0 ]]; then
             log "FATAL: --format に値が必要です。"
             exit 2
           fi
-          FORMAT_ARGS+=("$1")
-          [[ "$1" == "json" ]] && JSON_MODE=1
+          case "$1" in
+            human)
+              FORMAT_ARGS+=("$1")
+              ;;
+            json)
+              FORMAT_ARGS+=("$1")
+              JSON_MODE=1
+              ;;
+            *)
+              log "FATAL: --format は human または json を指定してください: $1"
+              exit 2
+              ;;
+          esac
           shift
           ;;
         --*)

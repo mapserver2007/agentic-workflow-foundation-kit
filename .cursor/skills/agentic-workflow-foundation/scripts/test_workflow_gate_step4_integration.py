@@ -193,6 +193,20 @@ def test_unknown_profile_is_fatal_without_completion_gate() -> None:
         assert "unknown project.quality_gate.profile" in result.stderr
 
 
+def test_invalid_format_is_rejected_before_code_gate() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, gate_test_log = _stage_gate(tmp)
+        foundation_log, quality_log = _write_stubs(tmp)
+        report = _setup_report(tmp, "invalid-format")
+        result = _run(gate, (str(report), "--format", "yaml"))
+        assert result.returncode == 2
+        assert not foundation_log.exists()
+        assert not quality_log.exists()
+        assert not gate_test_log.exists()
+        assert "human または json" in result.stdout
+
+
 def test_explicit_and_single_auto_report_resolution() -> None:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -248,6 +262,7 @@ def main() -> int:
         test_code_gate_failure_propagates_and_skips_completion_gate,
         test_completion_failure_propagates,
         test_unknown_profile_is_fatal_without_completion_gate,
+        test_invalid_format_is_rejected_before_code_gate,
         test_explicit_and_single_auto_report_resolution,
         test_multiple_auto_reports_are_fatal,
         test_json_mode_keeps_gate_result_on_stdout,
