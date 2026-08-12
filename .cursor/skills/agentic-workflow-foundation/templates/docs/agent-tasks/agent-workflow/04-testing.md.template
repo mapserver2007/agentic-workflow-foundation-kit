@@ -15,9 +15,50 @@
 - 既存テストのスタイル・命名規則を踏襲する
 - テスト間の独立性を保つ（共有状態を排除する）
 
-## 4.2 テストの実行（コードゲート）
+## 4.2 テストと個別コードゲートの実行（worker）
 
-[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §1.1 の全ゲートを通す。
+worker はタスクレポートのテスト計画に従ってテストを実行し、profile selector に対応する個別コードゲートを実測する。各ゲートの exit code を `gate_results` に記録し、全て `0` になるまで Advisory ループ（最大3回）で修正と再実行を行う。
+
+{{#if foundation.enabled}}
+```bash
+# foundation profile の worker 実測（profile selector から解決された自己検証）
+{{session.verification.gate_command}}
+```
+{{else}}
+```bash
+# application profile の worker 実測
+{{project.quality_gate.gen_cmd}}
+{{project.quality_gate.build_cmd}}
+{{project.quality_gate.lint_cmd}}
+{{project.quality_gate.test_cmd}}
+```
+{{/if}}
+
+### worker の合格条件
+
+テスト計画の全ケースと `gate_results` の全項目が exit 0 であること。実測前にテスト計画や完了チェックを `[x]` にしてはならない。worker の完了判定は参考値であり、フェーズ境界の最終判定は親オーケストレータが行う。
+
+## 4.3 worker の成果記録
+
+worker は個別テストとコードゲートの実測後に、タスクレポートを次の順序で更新する。
+
+1. 実測結果を `gate_results` とテスト計画へ記録する
+2. 全ゲートが exit 0 であることを確認する
+3. 「実装完了」「テスト完了」「コードゲート通過」を `[x]` に更新する
+4. `status: complete` の step4 envelope を作成する
+
+テスト計画セクションのチェックボックスは、実測後に更新する。
+
+```markdown
+- [x] {テストケース1}
+- [x] {テストケース2}
+```
+
+完了チェック節は `## 完了チェック` または `## 10. 完了チェック` を対象とし、重複見出し・重複項目は fail-closed で exit 2 になる。未完了・欠落項目は exit 1 として修正する。
+
+## 4.4 親オーケストレータによる再検証
+
+worker が成果記録と step4 envelope を作成した後、親オーケストレータが `workflow-gate.sh step4` を実行する。親ゲートは step3 / step4 envelope、profile 別コードゲート、完了チェック3項目をこの順序で再検証し、exit 0 の場合だけ Step ⑤へ進める。
 
 {{#if agent_workflow.gate_scripts}}
 ```bash
@@ -29,34 +70,19 @@
 ```
 {{/if}}
 
-### 合格条件
-
-profile selector が選択したコードゲートと、`gate-test.py` の G-TEST-COMP-001（実装完了）/ G-TEST-COMP-002（テスト完了）/ G-TEST-COMP-003（コードゲート通過）が全て exit 0 であること。`workflow-gate.sh step4` はコードゲート成功後にのみ `gate-test.py` を実行する。
-
-完了チェック節は `## 完了チェック` または `## 10. 完了チェック` を対象とし、重複見出し・重複項目は fail-closed で exit 2 になる。未完了・欠落項目は exit 1 として修正する。
+親ゲートが失敗した場合、worker の自己申告だけで完了扱いにせず、失敗原因を修正して worker の実測から再実行する。
 
 **禁止事項**（AGENTS.md > Boundaries と整合）:
 - テストの一部失敗を黙って無視する
 - lint 指摘を一括抑制する
 - 失敗しているテストをスキップする
 
-## 4.3 タスクレポートの更新
-
-テスト実装完了後、`reports/{report}.md` のテスト計画セクションのチェックボックスを更新する。
-
-```markdown
-- [x] {テストケース1}
-- [x] {テストケース2}
-```
-
-完了チェックの「テスト完了」「コードゲート通過」も `[x]` に更新し、コードゲート成功後に「実装完了」「テスト完了」「コードゲート通過」の3項目が全て `[x]` であることを確認する。
-
 {{#if agent_workflow.artifact}}
 ---
 
 ## Worker Contract
 
-本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（4.1〜4.3）。
+本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクション（4.1〜4.4）。
 
 **許可書込み範囲**: test / report + step envelope。commit / push 禁止。
 
@@ -85,13 +111,13 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### Advisory ループ（worker 責務）
 
-worker は個別ゲート（build / lint / test）の Advisory ループを**上限 3 回**まで自律実行する:
+worker はテストと個別コードゲートの Advisory ループを**上限 3 回**まで自律実行する:
 
-1. ゲート実行 → exit 1 → 修正 → 再実行（最大 3 回）
-2. 3 回以内に exit 0: `status: complete`
+1. テスト / コードゲート実行 → exit 1 → 原因修正 → 再実行（最大 3 回）
+2. 3 回以内に全て exit 0: 実測結果を記録して `status: complete`
 3. 3 回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
 
-**重要**: worker の自己申告 `complete` は参考値。オーケストレータが `workflow-gate.sh step4` を実行し、フェーズ境界通過を決定論的に判定する（SoT）。
+**重要**: worker が実測後に完了チェックと `status: complete` を記録しても、それだけではフェーズ完了にならない。オーケストレータが `workflow-gate.sh step4` を実行し、envelope・コードゲート・完了チェックを再検証してフェーズ境界通過を決定する（SoT）。
 
 ### 終端状態と遷移
 

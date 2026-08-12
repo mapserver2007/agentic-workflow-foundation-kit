@@ -33,6 +33,7 @@ def _stage_gate(tmp: Path, profile: str = "foundation") -> Tuple[Path, Path]:
     real_gate_test = gate_dir / "gate-test-real.py"
     shutil.copy2(gate_dir / "gate-test.py", real_gate_test)
     gate_test_log = tmp / "gate-test.log"
+    gate_test_args_log = tmp / "gate-test-args.log"
     gate_test = gate_dir / "gate-test.py"
     gate_test.write_text(
         "#!/usr/bin/env python3\n"
@@ -40,6 +41,7 @@ def _stage_gate(tmp: Path, profile: str = "foundation") -> Tuple[Path, Path]:
         "import sys\n"
         "from pathlib import Path\n"
         f'Path({str(gate_test_log)!r}).open("a", encoding="utf-8").write("invoked\\n")\n'
+        f'Path({str(gate_test_args_log)!r}).write_text("\\n".join(sys.argv[1:]), encoding="utf-8")\n'
         'raise SystemExit(subprocess.call([sys.executable, str(Path(__file__).with_name("gate-test-real.py")), *sys.argv[1:]]))\n',
         encoding="utf-8",
     )
@@ -181,6 +183,36 @@ def test_completion_failure_propagates() -> None:
             assert gate_test_log.read_text(encoding="utf-8").splitlines() == ["invoked"]
 
 
+def test_equal_human_format_is_accepted_and_forwarded() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, _ = _stage_gate(tmp)
+        _write_stubs(tmp)
+        report = _setup_report(tmp, "equal-human")
+        result = _run(gate, (str(report), "--format=human"))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (tmp / "gate-test-args.log").read_text(encoding="utf-8").splitlines() == [
+            str(report.resolve()),
+            "--format",
+            "human",
+        ]
+
+
+def test_space_human_format_is_accepted_and_forwarded() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, _ = _stage_gate(tmp)
+        _write_stubs(tmp)
+        report = _setup_report(tmp, "space-human")
+        result = _run(gate, (str(report), "--format", "human"))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (tmp / "gate-test-args.log").read_text(encoding="utf-8").splitlines() == [
+            str(report.resolve()),
+            "--format",
+            "human",
+        ]
+
+
 def test_unknown_profile_is_fatal_without_completion_gate() -> None:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -247,7 +279,45 @@ def test_json_mode_keeps_gate_result_on_stdout() -> None:
         assert payload["gate"] == "gate-test"
         assert payload["report_path"] == str(report.resolve())
         assert payload["exit_code"] == 0
+        assert (tmp / "gate-test-args.log").read_text(encoding="utf-8").splitlines() == [
+            str(report.resolve()),
+            "--format",
+            "json",
+        ]
         assert "workflow gate" in result.stderr
+
+
+def test_space_json_format_is_accepted_and_forwarded() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, _ = _stage_gate(tmp)
+        _write_stubs(tmp)
+        report = _setup_report(tmp, "space-json")
+        result = _run(gate, (str(report), "--format", "json"))
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["report_path"] == str(report.resolve())
+        assert (tmp / "gate-test-args.log").read_text(encoding="utf-8").splitlines() == [
+            str(report.resolve()),
+            "--format",
+            "json",
+        ]
+        assert "workflow gate" in result.stderr
+
+
+def test_json_argument_failure_keeps_stdout_empty() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, gate_test_log = _stage_gate(tmp)
+        foundation_log, quality_log = _write_stubs(tmp)
+        report = _setup_report(tmp, "json-argument-failure")
+        result = _run(gate, (str(report), "--format=json", "--format=yaml"))
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert "FATAL:" in result.stderr
+        assert not foundation_log.exists()
+        assert not quality_log.exists()
+        assert not gate_test_log.exists()
 
 
 def main() -> int:
@@ -261,11 +331,15 @@ def main() -> int:
         test_envelope_failure_skips_code_and_completion_gates,
         test_code_gate_failure_propagates_and_skips_completion_gate,
         test_completion_failure_propagates,
+        test_equal_human_format_is_accepted_and_forwarded,
+        test_space_human_format_is_accepted_and_forwarded,
         test_unknown_profile_is_fatal_without_completion_gate,
         test_invalid_format_is_rejected_before_code_gate,
         test_explicit_and_single_auto_report_resolution,
         test_multiple_auto_reports_are_fatal,
         test_json_mode_keeps_gate_result_on_stdout,
+        test_space_json_format_is_accepted_and_forwarded,
+        test_json_argument_failure_keeps_stdout_empty,
     ]
     passed = failed = 0
     for test in tests:
