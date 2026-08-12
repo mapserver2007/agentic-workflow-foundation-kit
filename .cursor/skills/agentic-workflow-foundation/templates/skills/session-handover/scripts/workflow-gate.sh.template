@@ -23,16 +23,29 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JSON_MODE=0
 EXPECT_FORMAT_VALUE=0
 for arg in "$@"; do
-  if [[ "$arg" == "--format=json" ]]; then
-    JSON_MODE=1
-  elif [[ "$EXPECT_FORMAT_VALUE" -eq 1 && "$arg" == "json" ]]; then
-    JSON_MODE=1
+  if [[ "$EXPECT_FORMAT_VALUE" -eq 1 ]]; then
+    case "$arg" in
+      json)
+        JSON_MODE=1
+        ;;
+      human)
+        ;;
+    esac
     EXPECT_FORMAT_VALUE=0
-  elif [[ "$arg" == "--format" ]]; then
-    EXPECT_FORMAT_VALUE=1
-  else
-    EXPECT_FORMAT_VALUE=0
+    continue
   fi
+  case "$arg" in
+    --format=json)
+      JSON_MODE=1
+      ;;
+    --format=human)
+      ;;
+    --format=*)
+      ;;
+    --format)
+    EXPECT_FORMAT_VALUE=1
+      ;;
+  esac
 done
 
 if [[ "$JSON_MODE" -eq 1 ]]; then
@@ -191,9 +204,21 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
     FORMAT_ARGS=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --format=json)
-          JSON_MODE=1
-          FORMAT_ARGS+=("$1")
+        --format=*)
+          FORMAT_VALUE="${1#--format=}"
+          case "$FORMAT_VALUE" in
+            human)
+              FORMAT_ARGS+=("--format" "$FORMAT_VALUE")
+              ;;
+            json)
+              FORMAT_ARGS+=("--format" "$FORMAT_VALUE")
+              JSON_MODE=1
+              ;;
+            *)
+              log "FATAL: --format は human または json を指定してください: $FORMAT_VALUE"
+              exit 2
+              ;;
+          esac
           shift
           ;;
         --format)
@@ -204,10 +229,10 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
           fi
           case "$1" in
             human)
-              FORMAT_ARGS+=("$1")
+              FORMAT_ARGS+=("--format" "$1")
               ;;
             json)
-              FORMAT_ARGS+=("$1")
+              FORMAT_ARGS+=("--format" "$1")
               JSON_MODE=1
               ;;
             *)

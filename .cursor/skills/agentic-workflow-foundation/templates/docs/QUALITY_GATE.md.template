@@ -50,7 +50,11 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 完了チェック見出しは `## 完了チェック` と番号付きの `## 10. 完了チェック` を認識し、見出しが重複する場合は fail-closed で exit 2 とする。3項目の未完了・欠落は exit 1、レポートパス不正・読込不能は exit 2 とする。
 
-CLI 契約は `gate-test.py <report-file> [--format human|json]` であり、`--format=json` の JSON には正規化済み `report_path` と `exit_code` を含める。`workflow-gate.sh step4 --format=json` のゲートヘッダとコードゲート出力は stderr、完了チェック結果は stdout に出力する。
+CLI 契約は `gate-test.py <report-file> [--format=<human|json>]` または `gate-test.py <report-file> [--format <human|json>]` であり、`workflow-gate.sh step4` も同じ2形式を受理する。`--format=json` / `--format json` の JSON には正規化済み `report_path` と `exit_code` を含める。
+
+JSON モードのストリーム契約:
+- `workflow-gate.sh` のゲートヘッダ、envelope / コードゲートの出力、引数エラーの `FATAL` は stderr に出力する
+- 引数エラー時は stdout を空にし、`gate-test.py` が生成する完了チェックの JSON 結果だけを stdout に出力する
 
 #### quality gate backend contract
 
