@@ -40,6 +40,7 @@ LLM には一度に参照できるコンテキスト量の上限があり、長�
 {{framework.handoff.purpose}}。
 
 > Hook の全体フロー・判定優先順位・閾値の具体値・状態ファイル仕様は [`.cursor/hooks/README.md`](../.cursor/hooks/README.md) を参照。
+> progress.jsonl の `kind=review_start` は workflow Step ⑤ のレビュー検証フェーズ開始を表す（書き込みは親境界。詳細は hooks/README.md）。
 > 閾値の決定根拠・校正サイクル・将来拡張は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 
 ## ユーザーが実際にやること

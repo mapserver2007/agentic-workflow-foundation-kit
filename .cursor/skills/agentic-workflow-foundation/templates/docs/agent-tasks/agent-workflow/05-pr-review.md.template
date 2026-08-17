@@ -41,6 +41,24 @@ PR 作成方法を選択してください：
 ```
 {{/if}}
 
+## 5.1.1 レビュー検証フェーズ開始の観測（境界契約）
+
+PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が `.cursor/hooks/session-progress-append.sh` で `kind=review_start` を 1 回追記する。
+
+- 観測対象は **workflow Step ⑤ 経由のレビュー検証のみ**
+- 単独起動の `agent-code-review`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外
+- Mode A の自動レビュー待機は委譲先が担当する。待機後にタイムアウトしても `review_start` は既に記録済み（このイベントは「指摘取得成功」ではなく「Step ⑤レビュー検証フェーズ開始」）
+- セッション ID（`CTX_BUDGET_SESSION_ID`）が取れない場合はスキップしてレビュー本体を続行する（fail_open）
+- Step ⑤を再び開始するたびに 1 回追記してよい
+
+```bash
+CTX_BUDGET_SESSION_ID=... \
+  .cursor/hooks/session-progress-append.sh \
+  --kind review_start \
+  --summary 'PRレビュー検証開始' \
+  --extra '{"gate_id":"review"}'
+```
+
 ## 5.2 レビュー指摘の取得
 
 PR 作成後、レビューコメント（自動レビューツール / 人間レビュアー）を取得する。

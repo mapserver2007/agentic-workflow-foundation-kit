@@ -170,9 +170,12 @@ framework:
       - path: ".cursor/.session/{session_id}.turns.jsonl"
         role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
         lifecycle: "session-response-tracker.sh / session-budget-tracker.sh が追記。preCompact でスナップショットに含まれる"
+      # review_start: workflow Step ⑤ のレビュー検証フェーズ開始を、委譲スキル非依存の
+      # 境界契約として progress.jsonl に残す（表示/ゲート側の PROGRESS 判定用）。
+      # スキル名はイベントに載せない。DONE 証跡は既存の reports / tracker 承認のまま。
       - path: ".cursor/.session/{session_id}.progress.jsonl"
         role: "構造化されたセッション観測イベントの追記ログ"
-        lifecycle: "session-progress-emitter.sh が対応する Hook イベントごとに追記する"
+        lifecycle: "session-progress-emitter.sh が Hook イベントごとに追記する。Step ⑤ 境界では session-progress-append.sh が kind=review_start を追記する"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -772,6 +775,15 @@ outputs:
       - "progress.jsonl"
       - "subagent_start"
       - "subagent_stop"
+  - path: .cursor/hooks/session-progress-append.sh
+    template: hooks/session-progress-append.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "progress.jsonl"
+      - "review_start"
+      - "CTX_BUDGET_SESSION_ID"
+      - "gate_id"
   - path: .cursor/hooks/session-compact-observer.sh
     template: hooks/session-compact-observer.sh.template
     mode: render
@@ -795,6 +807,7 @@ outputs:
       - "fail_open"
       - "判定優先順位"
       - "仕組みの全体像"
+      - "review_start"
   - path: .cursor/hooks.json
     template: hooks.json.template
     mode: render
@@ -857,6 +870,7 @@ outputs:
       - "## チェックリスト"
       - "## 参考リンク"
       - "並行セッション対応"
+      - "review_start"
       - "context-budget-internals.md"
   - path: docs/references/context-budget-internals.md
     template: docs/references/context-budget-internals.md.template
@@ -1401,6 +1415,8 @@ outputs:
       - "PR 作成"
       - "指摘の検証"
       - "レビュー完了承認"
+      - "review_start"
+      - "session-progress-append.sh"
   - path: docs/agent-tasks/agent-workflow/06-completion.md
     template: docs/agent-tasks/agent-workflow/06-completion.md.template
     mode: render
@@ -1431,6 +1447,8 @@ outputs:
       - "## Context Budget 到達時の対応"
       - "## 進行中タスクレポートからの再開"
       - "## ベストプラクティス"
+      - "review_start"
+      - "session-progress-append.sh"
   # workflow-orchestrator config.yaml（ステップ別モデル設定 / mode: seed で PO 直接編集可）。
   - path: .cursor/skills/workflow-orchestrator/config.yaml
     template: skills/workflow-orchestrator/config.yaml.template
