@@ -42,6 +42,7 @@ TESTS_IN_ORDER = [
     "test_check_tech_stack_conformance.py",
     "test_resolve_budget_thresholds.py",
     "test_session_progress_emitter.py",
+    "test_session_progress_append.py",
     "test_validate_deep_thinking.py",
     "test_validate_agent_kaizen.py",
     "test_python39_annotation_compat.py",

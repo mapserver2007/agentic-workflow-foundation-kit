@@ -134,21 +134,25 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
 
+PR URL 受領後、委譲レビュースキルを呼び出してレビュー検証フェーズへ入る直前に、親が `session-progress-append.sh` で `kind=review_start` を 1 回追記する（詳細は 05-pr-review.md）。セッション ID が取れない場合はスキップして続行する。
+
 {{#if agent_workflow.gate_scripts}}1. `workflow-gate.sh step5` を実行する（Step ⑤ 入口: 検証 → PR）
 {{#if github_pr.enabled}}2. `agent-github-pr` スキルで PR を作成する
 {{else}}2. [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) の手順に従い PR を作成する
-{{/if}}{{#if code_review.enabled}}3. `agent-code-review` スキルでレビュー指摘を取得・検証する
-{{else}}3. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
-{{/if}}4. ユーザーに検証結果を提示し承認後に返信・修正する
-5. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
-6. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
-7. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
+{{/if}}3. PR URL 受領後、レビュー検証委譲直前に `session-progress-append.sh` で `kind=review_start` を 1 回追記する
+{{#if code_review.enabled}}4. `agent-code-review` スキルでレビュー指摘を取得・検証する
+{{else}}4. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
+{{/if}}5. ユーザーに検証結果を提示し承認後に返信・修正する
+6. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
+7. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+8. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
 {{else}}{{#if github_pr.enabled}}1. `agent-github-pr` スキルで PR を作成する
 {{else}}1. [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) の手順に従い PR を作成する
-{{/if}}{{#if code_review.enabled}}2. `agent-code-review` スキルでレビュー指摘を取得・検証する
-{{else}}2. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
-{{/if}}3. ユーザーに検証結果を提示し承認後に返信・修正する
-4. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+{{/if}}2. PR URL 受領後、レビュー検証委譲直前に `session-progress-append.sh` で `kind=review_start` を 1 回追記する
+{{#if code_review.enabled}}3. `agent-code-review` スキルでレビュー指摘を取得・検証する
+{{else}}3. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
+{{/if}}4. ユーザーに検証結果を提示し承認後に返信・修正する
+5. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
 {{/if}}
 
 ### Step ⑥: 完了報告

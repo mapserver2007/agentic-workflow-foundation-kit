@@ -17,6 +17,14 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | [session-compact-observer.sh](session-compact-observer.sh) | `preCompact` | compact 直前の token% を state に記録し、`compact-events.jsonl` に校正データを追記し、`pending-handoff` マーカーを書き、包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state）を自動退避する | Observation | fail_open |
 | [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | token%（あれば優先）または proxy 指標で Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。`pending-handoff` マーカー検出時は即座に compact 連動 handoff を発火する。Yellow/Red 発火時に handoff manifest の骨格を機械生成する。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
 
+## 明示実行 helper（Hook ではない）
+
+`hooks.json` には登録しない。境界契約の履行者が明示実行する。
+
+| ファイル | 呼び出し元 | 役割 | フェイル戦略 |
+|---|---|---|---|
+| [session-progress-append.sh](session-progress-append.sh) | workflow-orchestrator Step ⑤（PR URL 受領後、レビュー検証委譲直前） | `kind=review_start` を `{session_id}.progress.jsonl` に 1 行追記する | fail_open |
+
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
 ## 仕組みの全体像
@@ -35,6 +43,10 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
   → prompt / thought / response / shell / subagent start / subagent stop
   → session-progress-emitter.sh
     → {session_id}.progress.jsonl に構造化イベントを 1 行ずつ追記
+[workflow Step ⑤: PR URL 受領]
+  → session-progress-append.sh（明示実行 helper。Hook ではない。書き込み契機は Step ⑤ の親境界）
+    → kind=review_start を progress.jsonl に 1 行追記
+  → 委譲レビュースキルでレビュー検証
 [AI 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
 [Cursor: コンパクション直前]
@@ -121,19 +133,22 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 | `.cursor/.session/compact-events.jsonl` | compact-observer | （分析用） | compact イベントの校正データログ。proxy 閾値チューニングと Phase 2 設計の根拠データ |
 | `.cursor/.session/pre-compact-{session_id}.md` | compact-observer | session-bootstrap | preCompact 発火時に生成する包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state、最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes）。bootstrap が次セッションで突合・注入に使用 |
 | `.cursor/.session/{session_id}.turns.jsonl` | budget-tracker / response-tracker | compact-observer / session-bootstrap | 全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ。preCompact で snapshot に含まれる |
-| `.cursor/.session/{session_id}.progress.jsonl` | progress-emitter | 後続の観測者 | prompt / thought / response / shell / subagent lifecycle の構造化イベントログ。セッション中に追記される |
+| `.cursor/.session/{session_id}.progress.jsonl` | progress-emitter / session-progress-append.sh | 後続の観測者 | prompt / thought / response / shell / subagent lifecycle / `review_start` の構造化イベントログ。セッション中に追記される |
 
 ### progress.jsonl の成果物契約
 
 1 行は 1 JSON オブジェクトであり、共通フィールドは `at`、`session_id`、`kind`、`bytes`、`summary`、`extra` である。
 
-- `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop`
+- `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop` / `review_start`
 - `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
 - `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大約 6KiB。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
 - `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
 - `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
+- `review_start` の `extra`: `gate_id` は `review` 固定。任意で `campaign` / `pr`。`mode` / `skill` は使わない。書き込み契機は **workflow Step ⑤ の親境界**（PR URL 受領後、レビュー検証委譲直前）。`session-progress-append.sh` が追記する（Hook ではない）。
 
 セッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す。
+
+明示実行 helper（`session-progress-append.sh`）は Hook ではない。`kind=review_start` のみを受け付け、`CTX_BUDGET_SESSION_ID` 以外の session ID 入力は使わない。不正 schema / ID 欠落時は書き込まず `{}` を返す（fail_open）。
 
 ## しきい値設定（Context Budget Protocol）
 
@@ -203,6 +218,17 @@ Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は、手�
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/test_github_auth_runtime.py
 python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress_emitter.py
+python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress_append.py
+```
+
+helper スモーク（`session-progress-append.sh`）:
+
+```bash
+# 無効 session → 無書き込み exit 0
+.cursor/hooks/session-progress-append.sh --kind review_start --extra '{"gate_id":"review"}'
+# 有効 session → kind=review_start 1 行
+CTX_BUDGET_SESSION_ID=<session_id> .cursor/hooks/session-progress-append.sh \
+  --kind review_start --summary 'PRレビュー検証開始' --extra '{"gate_id":"review"}'
 ```
 
 ## ロールバック
@@ -226,6 +252,17 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress
 {{else}}
 7. [ ] `python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` で再生成し、生成結果に差分がないことを確認した
 {{/if}}
+
+## helper 検証チェックリスト
+
+Hook ではない明示実行 helper を追加する際は以下を確認する（Hook 登録チェックリストとは別）。
+
+1. [ ] `hooks.json` に登録していない
+2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
+3. [ ] fail_open（失敗しても `{}` + exit 0、本体ワークフローを止めない）
+4. [ ] `manifest.yaml > outputs[]` に path / template / executable / required_sections を追加した
+5. [ ] 書き込み契機を workflow 境界契約（Step ⑤ の親）に明記した
+6. [ ] `test_session_progress_append.py` が PASS する
 
 ## Cursor 統合確認
 
