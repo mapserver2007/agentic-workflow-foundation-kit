@@ -21,24 +21,27 @@ EXTRA_RAW=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --kind)
-      KIND="${2:-}"
-      shift 2 || true
+      (( $# >= 2 )) || emit_ok
+      KIND="$2"
+      shift 2
       ;;
     --kind=*)
       KIND="${1#--kind=}"
       shift
       ;;
     --summary)
-      SUMMARY="${2:-}"
-      shift 2 || true
+      (( $# >= 2 )) || emit_ok
+      SUMMARY="$2"
+      shift 2
       ;;
     --summary=*)
       SUMMARY="${1#--summary=}"
       shift
       ;;
     --extra)
-      EXTRA_RAW="${2:-}"
-      shift 2 || true
+      (( $# >= 2 )) || emit_ok
+      EXTRA_RAW="$2"
+      shift 2
       ;;
     --extra=*)
       EXTRA_RAW="${1#--extra=}"

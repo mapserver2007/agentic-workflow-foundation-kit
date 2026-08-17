@@ -53,6 +53,7 @@ def run_helper(
         capture_output=True,
         env=env,
         check=False,
+        timeout=5,
     )
 
 
@@ -156,9 +157,15 @@ def test_invalid_schema_is_noop() -> None:
             ["--kind", "review_start", "--extra", '{"gate_id":"review","skill":"agent-code-review"}'],
             ["--kind", "review_start", "--extra", '{"gate_id":"review","mode":"A"}'],
             ["--kind", "review_start"],
+            ["--kind"],
+            ["--kind", "review_start", "--summary"],
+            ["--kind", "review_start", "--extra"],
         )
         for index, args in enumerate(cases):
-            result = run_helper(script, root, args, session_id=f"schema-{index}")
+            try:
+                result = run_helper(script, root, args, session_id=f"schema-{index}")
+            except subprocess.TimeoutExpired as exc:
+                raise AssertionError(f"schema {index} hung: {args}") from exc
             assert_equal(result.returncode, 0, f"schema {index} exit")
             assert_equal(result.stdout, "{}\n", f"schema {index} stdout")
             assert not _progress_path(root, f"schema-{index}").exists(), f"schema {index} wrote"
