@@ -15,7 +15,7 @@
 | ① | Gate C 検査 | 親直接実行 | — | — | standard: 調査 Subagent 完走後 / deep: deep-thinking 完了後 |
 | ② | — | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
 | ③ | — | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。commit / push 禁止 |
-| ④ | — | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
+| ④ | — | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。`gate_results` は `gen/build/lint/test` の整数 exit code 4キーのみ（文字列ステータス禁止）。application は G-GEN 条件に従って個別実測、foundation は `self` 成功を全4キー `0` へ正規化。commit / push 禁止 |
 | ⑤ | — | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | — | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 
@@ -27,7 +27,7 @@
 | ① | subagent dispatch | step1_investigation | generalPurpose | step envelope のみ。source / report は変更しない |
 | ② | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
 | ③ | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。commit / push 禁止 |
-| ④ | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。commit / push 禁止 |
+| ④ | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。`gate_results` は `gen/build/lint/test` の整数 exit code 4キーのみ（文字列ステータス禁止）。application は G-GEN 条件に従って個別実測、foundation は `self` 成功を全4キー `0` へ正規化。commit / push 禁止 |
 | ⑤ | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
 | ⑥ | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
 {{/if}}
@@ -69,7 +69,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 {{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
 {{/if}}| ② | `report_path` の存在 + 親による `step2-report` → `step2` PASS。step2 envelope の `implementation_approval` は `pending` + 候補 digest + `decider: PO` を必須とし、PO承認は機械退出条件に含めない |
 | ③ | `changed_files` / `untracked_files` と working tree の照合 |
-| ④ | `gate_results` + 親による `workflow-gate.sh step4` PASS |
+| ④ | `gate_results` は `gen` / `build` / `lint` / `test` の4キーだけを持ち、`status: complete` では全値が整数 `0` + 親による `workflow-gate.sh step4` PASS。`PASS` / `SKIP` / `SKIPPED` / 文字列 `"0"` は禁止。application は `gen_artifact_paths` 非空時に変更有無を問わず G-GEN を実測し、空の場合だけ `gen: 0` と未実行理由を記録する。foundation は `bin/foundation-gate self` 成功時に全4キーを `0` へ正規化し、exit 1 のループ超過は blocked、exit 2 は fatal とする |
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
 

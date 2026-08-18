@@ -223,6 +223,12 @@ workflow-gate.sh step6 TICKET-1234
 {{#if agent_workflow.artifact}}
 **artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。Step ③ `blocked: adr_required` 時は `base_commit_sha` と `decision_alternatives`（2 件以上）を必須化する（G-ARTIFACT-ADR-SHA-001 / G-ARTIFACT-ADR-ALTS-001）。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。
 
+**Step ④ gate_results 検査**:
+
+| 検査 ID | 検査内容 |
+| --- | --- |
+| G-ARTIFACT-STEP4-GATES-001 | `status=complete` かつ `step=step4` の `gate_results` がマッピングであり、キー集合が `gen` / `build` / `lint` / `test` と完全一致し、全値が YAML 整数 `0` である。文字列 `"0"` / `PASS` / `SKIP` / `SKIPPED` は拒否する |
+
 **Step ② implementation_approval 検査（G-ARTIFACT-STEP2-APPROVAL-*）**: `status=complete` かつ `step=step2` のとき、`implementation_approval` の構造を検査する。PO 承認自体は Step② の機械退出条件に含めない。
 
 | 検査 ID | 検査内容 |
