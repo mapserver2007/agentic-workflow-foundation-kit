@@ -17,7 +17,7 @@
 
 ## 4.2 テストと個別コードゲートの実行（worker）
 
-worker はタスクレポートのテスト計画に従ってテストを実行し、profile selector に対応する個別コードゲートを実測する。各ゲートの exit code を `gate_results` に記録し、全て `0` になるまで Advisory ループ（最大3回）で修正と再実行を行う。
+worker はタスクレポートのテスト計画に従ってテストを実行し、profile selector に対応するコードゲート入口を実測する。`gate_results` は `gen` / `build` / `lint` / `test` の4キーだけを持つマッピングとし、値にはクオートなしの非負整数 exit code だけを記録する。`PASS` / `SKIP` / `SKIPPED` や文字列 `"0"` は使用しない。全項目が整数 `0` になるまで Advisory ループ（最大3回）で修正と再実行を行う。
 
 {{#if foundation.enabled}}
 ```bash
@@ -36,7 +36,7 @@ worker はタスクレポートのテスト計画に従ってテストを実行�
 
 ### worker の合格条件
 
-テスト計画の全ケースと `gate_results` の全項目が exit 0 であること。実測前にテスト計画や完了チェックを `[x]` にしてはならない。worker の完了判定は参考値であり、フェーズ境界の最終判定は親オーケストレータが行う。
+テスト計画の全ケースと `gate_results` の4項目が整数 `0` であること。実測前にテスト計画や完了チェックを `[x]` にしてはならない。worker の完了判定は参考値であり、フェーズ境界の最終判定は親オーケストレータが行う。
 
 ## 4.3 worker の成果記録
 
@@ -102,20 +102,42 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | --- | --- | --- | --- |
 | `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | テスト結果 |
 | `step` | string | `"step4"` | 固定値 |
-| `gate_results` | object | — | 各ゲートの exit code（`{ gen: 0, build: 0, lint: 0, test: 0 }`） |
+| `gate_results` | object | `gen` / `build` / `lint` / `test` の4キーのみ。値はクオートなしの非負整数 exit code | コードゲートの実測結果。`status: complete` では4値すべて整数 `0` |
 | `test_summary` | string | — | テスト結果のサマリ |
 | `advisory_loop_count` | integer | — | 実行した Advisory ループ回数 |
 | `reason` | string | — | `blocked` / `fatal` 時の理由 |
 | `gate_id` | string | — | `fatal` 時の失敗ゲート ID |
 | `stderr_summary` | string | — | `fatal` 時のエラー出力要約 |
 
+`gate_results` に `PASS` / `SKIP` / `SKIPPED` 等の文字列や文字列 `"0"` を記録してはならない。profile ごとの実測値は次の規則で4キーへ写像する。
+
+- `application`: `project.quality_gate.gen_artifact_paths` が非空なら変更有無にかかわらず G-GEN を実行し、実測 exit code を `gen` に記録する。空の場合だけ G-GEN 未実行を許容し、`gen: 0` と未実行理由を本文に記録する。build / lint / test は各ゲートの実測 exit code を対応キーへ記録する。
+- `foundation`: worker の実測入口は `{{session.verification.gate_command}}`（foundation profile では `bin/foundation-gate self`）の1本とし、個別ゲートへ分解しない。`self` が exit 0 のときだけ、正規化済み完了ベクトルとして4キーをすべて `0` にする。exit 1 のまま Advisory ループ上限に達した場合は `status: blocked` + `reason`、exit 2 は `status: fatal` + `reason` / `gate_id` / `stderr_summary` とし、根拠なく個別キーへ非0値を割り当てない。
+
+最小の complete envelope:
+
+```yaml
+---
+status: complete
+step: step4
+gate_results:
+  gen: 0
+  build: 0
+  lint: 0
+  test: 0
+test_summary: 全テスト通過
+advisory_loop_count: 1
+---
+```
+
 ### Advisory ループ（worker 責務）
 
 worker はテストと個別コードゲートの Advisory ループを**上限 3 回**まで自律実行する:
 
 1. テスト / コードゲート実行 → exit 1 → 原因修正 → 再実行（最大 3 回）
-2. 3 回以内に全て exit 0: 実測結果を記録して `status: complete`
-3. 3 回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
+2. 3 回以内に全て exit 0: profile 別の写像規則で4キーを整数 `0` にして `status: complete`
+3. exit 1 が3回超過: `status: blocked`, `reason: "advisory_loop_exceeded"`
+4. exit 2: `status: fatal` とし、`reason` / `gate_id` / `stderr_summary` を記録する
 
 **重要**: worker が実測後に完了チェックと `status: complete` を記録しても、それだけではフェーズ完了にならない。オーケストレータが `workflow-gate.sh step4` を実行し、envelope・コードゲート・完了チェックを再検証してフェーズ境界通過を決定する（SoT）。
 

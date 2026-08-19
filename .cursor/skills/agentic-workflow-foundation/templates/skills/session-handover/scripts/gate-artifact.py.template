@@ -22,6 +22,7 @@ from pathlib import Path
 
 VALID_STATUSES = {"complete", "incomplete", "blocked", "fatal"}
 VALID_STEPS = {"step1", "step2", "step3", "step4"}
+STEP4_GATE_KEYS = {"gen", "build", "lint", "test"}
 
 COMMON_REQUIRED = ["status", "step"]
 
@@ -297,6 +298,36 @@ def check_artifact(filepath: str, json_mode: bool = False,
                     "msg": f"step={step}/status=complete で必須の '{field}' が欠落しています",
                 })
                 fail = True
+
+    # --- gate_results 値域検証（step4 complete 時）---
+    if step == "step4" and status == "complete":
+        gate_results = fm.get("gate_results")
+        errors = []
+        if not isinstance(gate_results, dict):
+            errors.append("gate_results がマッピングではありません")
+        else:
+            actual_keys = set(gate_results)
+            if actual_keys != STEP4_GATE_KEYS:
+                missing = sorted(STEP4_GATE_KEYS - actual_keys)
+                extra = sorted(actual_keys - STEP4_GATE_KEYS, key=str)
+                errors.append(f"キー集合が不正です（欠落={missing}, 余分={extra}）")
+            invalid_values = {
+                key: value
+                for key, value in gate_results.items()
+                if key in STEP4_GATE_KEYS and (type(value) is not int or value != 0)
+            }
+            if invalid_values:
+                errors.append(
+                    "complete では全値が YAML 整数 0 である必要があります"
+                    f"（不正値={invalid_values!r}）"
+                )
+        if errors:
+            results.append({
+                "id": "G-ARTIFACT-STEP4-GATES-001",
+                "level": "FAIL",
+                "msg": "gate_results 契約違反: " + "; ".join(errors),
+            })
+            fail = True
 
     # --- blocked/fatal 時は reason 必須 ---
     if status in ("blocked", "fatal") and "reason" not in fm:

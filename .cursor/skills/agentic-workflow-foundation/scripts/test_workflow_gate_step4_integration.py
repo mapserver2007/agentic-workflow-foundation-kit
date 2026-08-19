@@ -155,6 +155,25 @@ def test_envelope_failure_skips_code_and_completion_gates() -> None:
         assert not gate_test_log.exists()
 
 
+def test_invalid_gate_results_skips_code_and_completion_gates() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        gate, gate_test_log = _stage_gate(tmp)
+        foundation_log, quality_log = _write_stubs(tmp)
+        report = _setup_report(tmp, "invalid-gate-results")
+        step4 = tmp / ".cursor" / ".artifacts" / "invalid-gate-results--step4.md"
+        step4.write_text(
+            step4.read_text(encoding="utf-8").replace("  gen: 0", "  gen: PASS"),
+            encoding="utf-8",
+        )
+        result = _run(gate, (str(report),))
+        assert result.returncode == 1
+        assert "G-ARTIFACT-STEP4-GATES-001" in result.stdout + result.stderr
+        assert not foundation_log.exists()
+        assert not quality_log.exists()
+        assert not gate_test_log.exists()
+
+
 def test_code_gate_failure_propagates_and_skips_completion_gate() -> None:
     for exit_code in ("1", "2"):
         with tempfile.TemporaryDirectory() as td:
@@ -329,6 +348,7 @@ def main() -> int:
         test_foundation_success_runs_gate_test_once,
         test_application_success_runs_gate_test_once,
         test_envelope_failure_skips_code_and_completion_gates,
+        test_invalid_gate_results_skips_code_and_completion_gates,
         test_code_gate_failure_propagates_and_skips_completion_gate,
         test_completion_failure_propagates,
         test_equal_human_format_is_accepted_and_forwarded,

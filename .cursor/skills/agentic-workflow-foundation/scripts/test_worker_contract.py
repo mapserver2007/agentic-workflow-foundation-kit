@@ -336,6 +336,65 @@ def _check_artifact_json(path: Path) -> tuple[int, set[str]]:
     return rc, {check["id"] for check in payload["checks"]}
 
 
+def _write_step4_artifact(directory: Path, gate_results_yaml: str) -> Path:
+    fm = (
+        "status: complete\n"
+        "step: step4\n"
+        "gate_results:\n"
+        f"{gate_results_yaml}"
+        "test_summary: fixture\n"
+        "advisory_loop_count: 1\n"
+    )
+    return _write_artifact(directory, "T-4--step4.md", fm)
+
+
+def test_step4_gate_results_form_b_passes():
+    """PASS: Form B の4キーがすべて YAML 整数 0。"""
+    with tempfile.TemporaryDirectory() as td:
+        artifact = _write_step4_artifact(
+            Path(td),
+            "  gen: 0\n  build: 0\n  lint: 0\n  test: 0\n",
+        )
+        rc = check_artifact(str(artifact), json_mode=True)
+        assert rc == 0, "Form B gate_results should PASS"
+
+
+def test_step4_gate_results_invalid_values_fail():
+    """FAIL: 文字列、非0、bool の値を拒否し、検査 ID を返す。"""
+    cases = (
+        "  gen: PASS\n  build: 0\n  lint: 0\n  test: 0\n",
+        "  gen: 0\n  build: SKIP\n  lint: 0\n  test: 0\n",
+        "  gen: 0\n  build: 0\n  lint: SKIPPED\n  test: 0\n",
+        '  gen: "0"\n  build: 0\n  lint: 0\n  test: 0\n',
+        "  gen: 0\n  build: 0\n  lint: 0\n  test: 1\n",
+        "  gen: true\n  build: 0\n  lint: 0\n  test: 0\n",
+    )
+    for gate_results_yaml in cases:
+        with tempfile.TemporaryDirectory() as td:
+            artifact = _write_step4_artifact(Path(td), gate_results_yaml)
+            rc, check_ids = _check_artifact_json(artifact)
+            assert rc == 1, f"invalid gate_results should FAIL: {gate_results_yaml!r}"
+            assert "G-ARTIFACT-STEP4-GATES-001" in check_ids, (
+                f"expected Step4 gate finding, got {sorted(check_ids)}"
+            )
+
+
+def test_step4_gate_results_key_set_fails():
+    """FAIL: 4キーの欠落と余分なキーを拒否する。"""
+    cases = (
+        "  build: 0\n  lint: 0\n  test: 0\n",
+        "  gen: 0\n  build: 0\n  lint: 0\n  test: 0\n  deploy: 0\n",
+    )
+    for gate_results_yaml in cases:
+        with tempfile.TemporaryDirectory() as td:
+            artifact = _write_step4_artifact(Path(td), gate_results_yaml)
+            rc, check_ids = _check_artifact_json(artifact)
+            assert rc == 1, f"invalid gate key set should FAIL: {gate_results_yaml!r}"
+            assert "G-ARTIFACT-STEP4-GATES-001" in check_ids, (
+                f"expected Step4 gate finding, got {sorted(check_ids)}"
+            )
+
+
 def test_step1_intermediate_pass():
     """正常系: standard 経路で中間 artifact が整合 → PASS。"""
     with tempfile.TemporaryDirectory() as td:
@@ -844,6 +903,9 @@ def main() -> int:
         test_step3_blocked_adr_valid,
         test_step3_blocked_adr_no_sha_fails,
         test_step3_blocked_adr_few_alts_fails,
+        test_step4_gate_results_form_b_passes,
+        test_step4_gate_results_invalid_values_fail,
+        test_step4_gate_results_key_set_fails,
         test_step1_intermediate_pass,
         test_step1_deep_fallback_pass,
         test_step1_norm_file_missing_fails,
