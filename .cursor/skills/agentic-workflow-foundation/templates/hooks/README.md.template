@@ -23,7 +23,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 呼び出し元 | 役割 | フェイル戦略 |
 |---|---|---|---|
-| [session-progress-append.sh](session-progress-append.sh) | workflow-orchestrator Step ⑤（PR URL 受領後、レビュー検証委譲直前） | `kind=review_start` を `{session_id}.progress.jsonl` に 1 行追記する | fail_open |
+| [session-progress-append.sh](session-progress-append.sh) | `review-start-gate.sh` 内部だけ | 検証済み session へ `kind=review_start` を lock 付きで追記し readback する | fail_closed |
 
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
@@ -42,11 +42,14 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 [セッション観測イベント]
   → prompt / thought / response / shell / subagent start / subagent stop
   → session-progress-emitter.sh
+    → prompt は全文を保存せず canonical PR URL 配列 + prompt SHA-256 を記録
     → {session_id}.progress.jsonl に構造化イベントを 1 行ずつ追記
-[workflow Step ⑤: PR URL 受領]
-  → session-progress-append.sh（明示実行 helper。Hook ではない。書き込み契機は Step ⑤ の親境界）
-    → kind=review_start を progress.jsonl に 1 行追記
-  → 委譲レビュースキルでレビュー検証
+[workflow Step ⑤ Mode A: canonical PR URL 受領]
+  → active report に review-pr-url を記録
+  → workflow-gate.sh review-start
+    → Step③/④ + prompt/session/PR/campaign を fail-closed 検証
+    → session-progress-append.sh（内部 writer）で kind=review_start を追記・readback
+  → exit 0 の場合だけ委譲レビュースキルでレビュー検証
 [AI 内部でシェル実行]
   → afterShellExecution Hook → session-shell-tracker.sh (shell_bytes 加算)
 [Cursor: コンパクション直前]
@@ -141,14 +144,15 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 - `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop` / `review_start`
 - `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
+- `prompt` の `extra`: `pr_urls`（JSON decode 済み prompt 全文から抽出した canonical GitHub PR URL の重複排除済み配列）と `prompt_sha256`（同じ全文を trim・改行追加・Unicode再正規化せずUTF-8化した SHA-256 lowercase hex）。prompt 全文は保存せず、1000文字の `summary` は照合に使わない。
 - `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大約 6KiB。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
 - `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
 - `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
-- `review_start` の `extra`: `gate_id` は `review` 固定。任意で `campaign` / `pr`。`mode` / `skill` は使わない。書き込み契機は **workflow Step ⑤ の親境界**（PR URL 受領後、レビュー検証委譲直前）。`session-progress-append.sh` が追記する（Hook ではない）。
+- `review_start` の `extra`: 文字列フィールド `gate_id: review` / `campaign` / `pr` / `review_go_id` / `source: review-start-gate` に固定する。書き込み契機は **workflow-orchestrator 初回 Step⑤ Mode A の review-start gate**。同一 prompt の完全一致だけを冪等 PASS とする。
 
 セッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す。
 
-明示実行 helper（`session-progress-append.sh`）は Hook ではない。`kind=review_start` のみを受け付け、`CTX_BUDGET_SESSION_ID` 以外の session ID 入力は使わない。不正 schema / ID 欠落時は書き込まず `{}` を返す（fail_open）。
+明示実行 helper（`session-progress-append.sh`）は Hook ではなく、公開手順から直接呼ばない。`kind=review_start` のみを受け付け、`CTX_BUDGET_SESSION_ID` 以外の session ID 入力は使わない。正規経路では `review-start-gate.sh` が検証済み ID を writer の子プロセス環境だけへ注入する。不正 schema / ID 欠落 / lock / 書込み / readback 失敗は非0を返す（fail_closed）。
 
 ## しきい値設定（Context Budget Protocol）
 
@@ -221,14 +225,13 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress
 python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress_append.py
 ```
 
-helper スモーク（`session-progress-append.sh`）:
+review-start 境界のスモーク:
 
 ```bash
-# 無効 session → 無書き込み exit 0
-.cursor/hooks/session-progress-append.sh --kind review_start --extra '{"gate_id":"review"}'
-# 有効 session → kind=review_start 1 行
-CTX_BUDGET_SESSION_ID=<session_id> .cursor/hooks/session-progress-append.sh \
-  --kind review_start --summary 'PRレビュー検証開始' --extra '{"gate_id":"review"}'
+.cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
+  --report docs/agent-tasks/reports/TICKET-123-example.md \
+  --pr https://github.com/owner/repo/pull/123
+# PASS 時だけ kind=review_start が1行存在し、同一 prompt の再実行は追記しない
 ```
 
 ## ロールバック
@@ -241,6 +244,7 @@ CTX_BUDGET_SESSION_ID=<session_id> .cursor/hooks/session-progress-append.sh \
 
 新しい Hook を追加する際は以下を確認する。
 
+0. [ ] `jq` と `python3` が実行時依存として利用可能であることを確認した（prompt metadata を扱う Hook は `python3` を使用）
 1. [ ] `.cursor/hooks.json` にイベント・パス・timeout を登録した
 2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
 3. [ ] フェイル戦略（fail_open / fail_closed）を決定し、README の一覧表に追記した
@@ -259,9 +263,9 @@ Hook ではない明示実行 helper を追加する際は以下を確認する�
 
 1. [ ] `hooks.json` に登録していない
 2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
-3. [ ] fail_open（失敗しても `{}` + exit 0、本体ワークフローを止めない）
+3. [ ] 境界の重要度に応じて fail_open / fail_closed を明記した（review_start writer は fail_closed）
 4. [ ] `manifest.yaml > outputs[]` に path / template / executable / required_sections を追加した
-5. [ ] 書き込み契機を workflow 境界契約（Step ⑤ の親）に明記した
+5. [ ] 書き込み契機を workflow 境界契約（初回 Step⑤ Mode A の review-start gate）に明記した
 6. [ ] `test_session_progress_append.py` が PASS する
 
 ## Cursor 統合確認

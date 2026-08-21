@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import shutil
@@ -43,7 +44,7 @@ def assert_equal(actual, expected, message: str) -> None:
 
 def test_event_contract() -> None:
     payloads = (
-        ({"prompt": "hi", "model": "main-model"}, "prompt"),
+        ({"hook_event_name": "beforeSubmitPrompt", "prompt": "hi", "model": "main-model"}, "prompt"),
         ({"hook_event_name": "afterAgentThought", "text": "thinking"}, "thought"),
         ({"hook_event_name": "afterAgentResponse", "text": "hello"}, "response"),
         ({"hook_event_name": "afterShellExecution", "command": "true", "output": "ok"}, "shell"),
@@ -86,6 +87,8 @@ def test_event_contract() -> None:
             assert set(("at", "session_id", "kind", "bytes", "summary", "extra")).issubset(row), "common fields missing"
             assert_equal(row["session_id"], "test-emit-001", "session ID")
         assert_equal(rows[0]["extra"]["model"], "main-model", "prompt model")
+        assert_equal(rows[0]["extra"]["pr_urls"], [], "prompt PR URLs")
+        assert_equal(rows[0]["extra"]["prompt_sha256"], hashlib.sha256(b"hi").hexdigest(), "prompt SHA")
         assert_equal(rows[3]["extra"]["output_tail"], "ok", "shell output_tail")
         assert_equal(rows[4]["extra"]["subagent_model"], "sub-model", "start model")
         if "subagent_model" in rows[5]["extra"]:
@@ -167,6 +170,45 @@ def test_shell_exit_code_and_output_tail() -> None:
         assert len(long_row["extra"]["output_tail"].encode("utf-8")) <= 6144, "long shell output_tail must be truncated"
 
 
+def test_prompt_structured_pr_metadata() -> None:
+    prompt = (
+        ("x" * 1200)
+        + "\nhttps://GitHub.com/Owner/Repo/pull/00042/?ignored=yes#fragment"
+        + "\nhttps://github.com/owner/repo/pull/42"
+        + "\nhttps://github.com/Other/Repo/pull/7"
+    )
+    with tempfile.TemporaryDirectory(prefix="progress-emitter-pr-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        script = root / "session-progress-emitter.sh"
+        script.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        script.chmod(0o700)
+        result = run_hook(
+            script,
+            root,
+            json.dumps({"hook_event_name": "beforeSubmitPrompt", "prompt": prompt}),
+            session_id="prompt-pr-001",
+        )
+        assert_equal(result.returncode, 0, "structured prompt exit")
+        row = json.loads((session_dir / "prompt-pr-001.progress.jsonl").read_text(encoding="utf-8"))
+        assert_equal(
+            row["extra"]["pr_urls"],
+            [
+                "https://github.com/owner/repo/pull/42",
+                "https://github.com/other/repo/pull/7",
+            ],
+            "canonical PR URL array",
+        )
+        assert_equal(
+            row["extra"]["prompt_sha256"],
+            hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "full prompt SHA",
+        )
+        assert len(row["summary"]) == 1000, "summary must remain truncated"
+        assert prompt not in json.dumps(row, ensure_ascii=False), "full prompt must not be stored"
+
+
 def test_payload_session_fallback_and_fail_open() -> None:
     with tempfile.TemporaryDirectory(prefix="progress-emitter-fallback-") as tmp:
         root = Path(tmp)
@@ -223,6 +265,42 @@ def test_payload_session_fallback_and_fail_open() -> None:
         assert_equal(no_jq.returncode, 0, "jq unavailable exit code")
         assert_equal(no_jq.stdout, "{}\n", "jq unavailable stdout")
         assert not (session_dir / "no-jq-001.progress.jsonl").exists(), "jq unavailable must not write"
+
+        without_python = root / "without-python3"
+        without_python.mkdir()
+        for command in ("cat", "jq", "wc", "tr", "date", "pwd"):
+            executable = shutil.which(command)
+            if executable is None:
+                raise AssertionError(f"test prerequisite missing: {command}")
+            (without_python / command).symlink_to(executable)
+        no_python_env = dict(os.environ)
+        no_python_env.update({
+            "CURSOR_PROJECT_DIR": str(root),
+            "CTX_BUDGET_SESSION_ID": "no-python3-001",
+            "PATH": str(without_python),
+        })
+        no_python = subprocess.run(  # noqa: S603 - Runs a controlled temporary test fixture.
+            [BASH_EXECUTABLE, str(script)],
+            input=json.dumps({
+                "hook_event_name": "beforeSubmitPrompt",
+                "prompt": "https://github.com/owner/repo/pull/1",
+            }),
+            text=True,
+            capture_output=True,
+            env=no_python_env,
+            check=False,
+        )
+        assert_equal(no_python.returncode, 0, "python3 unavailable exit code")
+        assert_equal(no_python.stdout, "{}\n", "python3 unavailable stdout")
+        fallback_path = session_dir / "no-python3-001.progress.jsonl"
+        assert fallback_path.is_file(), "python3 failure must preserve prompt event"
+        fallback_row = json.loads(fallback_path.read_text(encoding="utf-8"))
+        assert_equal(fallback_row["kind"], "prompt", "python3 fallback kind")
+        assert_equal(
+            fallback_row["extra"],
+            {"hook_event_name": "beforeSubmitPrompt"},
+            "python3 fallback metadata",
+        )
 
 
 def test_concurrent_writes_preserve_jsonl() -> None:
@@ -330,6 +408,7 @@ def main() -> int:
     tests = (
         test_event_contract,
         test_shell_exit_code_and_output_tail,
+        test_prompt_structured_pr_metadata,
         test_payload_session_fallback_and_fail_open,
         test_concurrent_writes_preserve_jsonl,
         test_lock_wait_is_bounded_and_fail_open,

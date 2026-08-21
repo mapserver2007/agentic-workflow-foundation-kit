@@ -111,6 +111,7 @@
 - [ ] テスト完了（G-TEST / `bin/quality-gate test` PASS）
 - [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN）
 - [ ] PRレビュー検証完了
+- review-pr-url:
 {{#if agent_workflow.maintenance_docs.enabled}}- [ ] maintenance-docs/ 起票判定（G-DOC-SPEC）
 {{else}}- [ ] docs への仕様反映（G-DOC-SPEC）
 {{/if}}- [ ] ADR 起票判定（設計次元 D-* 該当なら ADR worker dispatch → 承認後 docs/DECISIONS.md へ確定追記、該当なしなら「該当なし」と記載）

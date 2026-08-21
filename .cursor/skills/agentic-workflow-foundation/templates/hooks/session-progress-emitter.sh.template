@@ -64,6 +64,63 @@ BYTES="$(LC_ALL=C printf '%s' "$SUMMARY" | wc -c | tr -d '[:space:]')" || BYTES=
 [[ "$BYTES" =~ ^[0-9]+$ ]] || BYTES=0
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
+# beforeSubmitPrompt の全文は保存せず、JSON decode 済み文字列から canonical PR URL と
+# SHA-256 だけを構造化する。summary の1000文字切詰めより前の全文を証跡に使う。
+PROMPT_META='{}'
+if [[ "$KIND" == "prompt" ]]; then
+  PROMPT_META="$(python3 -c '
+from __future__ import annotations
+import hashlib
+import json
+import re
+import sys
+from urllib.parse import urlsplit
+
+try:
+    payload = json.load(sys.stdin)
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt is not a string")
+    candidates = re.findall(
+        r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+/?(?:[?#][^\s]*)?",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    urls = []
+    for candidate in candidates:
+        if "%" in candidate:
+            continue
+        parsed = urlsplit(candidate)
+        if parsed.scheme.lower() != "https" or parsed.hostname is None:
+            continue
+        try:
+            port = parsed.port
+        except ValueError:
+            continue
+        if parsed.username is not None or parsed.password is not None or port is not None:
+            continue
+        if parsed.hostname.lower() != "github.com":
+            continue
+        match = re.fullmatch(
+            r"/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([0-9]+)/?",
+            parsed.path,
+        )
+        if match is None or int(match.group(3)) <= 0:
+            continue
+        owner, repo, number = match.groups()
+        canonical = f"https://github.com/{owner.lower()}/{repo.lower()}/pull/{int(number)}"
+        if canonical not in urls:
+            urls.append(canonical)
+    print(json.dumps({
+        "pr_urls": urls,
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+    }, separators=(",", ":")))
+except Exception:
+    raise SystemExit(1)
+' <<<"$INPUT" 2>/dev/null)" || PROMPT_META='{}'
+  [[ -n "$PROMPT_META" ]] || PROMPT_META='{}'
+fi
+
 # shell: capture exit_code (when present) + output_tail for gate PASS/FAIL banners.
 # Cursor afterShellExecution does not guarantee exit_code; output is the primary banner source.
 OUTPUT_TAIL=""
@@ -81,7 +138,7 @@ if [[ "$KIND" == "shell" ]]; then
   fi
 fi
 
-EXTRA="$(jq -c --arg kind "$KIND" --arg output_tail "$OUTPUT_TAIL" '
+EXTRA="$(jq -c --arg kind "$KIND" --arg output_tail "$OUTPUT_TAIL" --argjson prompt_meta "$PROMPT_META" '
   def present($key): if .[$key] == null then {} else {($key): .[$key]} end;
   (present("model") + present("model_id") + present("model_params") + present("hook_event_name"))
   + if $kind == "subagent_start" then
@@ -96,6 +153,8 @@ EXTRA="$(jq -c --arg kind "$KIND" --arg output_tail "$OUTPUT_TAIL" '
        elif (.status_code != null and .status_code != "") then {exit_code: .status_code}
        else {} end)
       + (if ($output_tail | length) > 0 then {output_tail: $output_tail} else {} end)
+    elif $kind == "prompt" then
+      $prompt_meta
     else {}
     end
 ' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }

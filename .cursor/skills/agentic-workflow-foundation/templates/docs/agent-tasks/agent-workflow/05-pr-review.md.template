@@ -41,23 +41,27 @@ PR 作成方法を選択してください：
 ```
 {{/if}}
 
-## 5.1.1 レビュー検証フェーズ開始の観測（境界契約）
+## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界
 
-PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が `.cursor/hooks/session-progress-append.sh` で `kind=review_start` を 1 回追記する。
+PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が次を実行する。
 
-- 観測対象は **workflow Step ⑤ 経由のレビュー検証のみ**
-- 単独起動の `agent-code-review`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外
-- Mode A の自動レビュー待機は委譲先が担当する。待機後にタイムアウトしても `review_start` は既に記録済み（このイベントは「指摘取得成功」ではなく「Step ⑤レビュー検証フェーズ開始」）
-- セッション ID（`CTX_BUDGET_SESSION_ID`）が取れない場合はスキップしてレビュー本体を続行する（fail_open）
-- Step ⑤を再び開始するたびに 1 回追記してよい
+1. ユーザーから canonical PR URL を受領する。beforeSubmitPrompt Hook は prompt 全文を保存せず、全文から抽出した canonical URL 配列と prompt SHA-256 を progress event に記録する。
+2. active report の完了チェック節に `review-pr-url: <canonical-pr-url>` を正確に1行記録する。
+3. `workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。
+4. exit 0 の場合だけ `agent-code-review` Mode A へ委譲する。
 
 ```bash
-CTX_BUDGET_SESSION_ID=... \
-  .cursor/hooks/session-progress-append.sh \
-  --kind review_start \
-  --summary 'PRレビュー検証開始' \
-  --extra '{"gate_id":"review"}'
+.cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
+  --report docs/agent-tasks/reports/TICKET-123-example.md \
+  --pr https://github.com/owner/repo/pull/123
 ```
+
+- `review-start` は complete な Step③/④ envelope、現時点のコードゲート、完了チェック、report / PR / campaign、期限内の一意な Hook session、writer readback を再検証する。
+- エージェント Shell の `CTX_BUDGET_SESSION_ID`、mtime、単純な最新 session は選択根拠にしない。検証済み session ID は gate が writer の子プロセス環境だけへ注入する。
+- session 特定不能、対象 PR prompt 未記録、Step③/④再検証失敗、書込みまたは readback 失敗は exit 1/2 とし、レビュー委譲を停止する。自動例外や偽の `review_start` は作らない。
+- handoff / 新規チャット後は旧 session を handoff 証跡で退役させ、新 session で canonical PR URL を再送する。
+- 成功時だけ `kind=review_start`、`extra.gate_id=review`、campaign、PR、決定論的 `review_go_id` を記録する。同じ prompt の再実行は追記なしで冪等 PASS となる。
+- 対象は **workflow-orchestrator 経由の初回 Step⑤（Mode A）のみ**。standalone `agent-code-review`、Mode B、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外で、新しいレビューGO証跡へ昇格しない。
 
 ## 5.2 レビュー指摘の取得
 
@@ -99,6 +103,7 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 - **レビュー完了承認をユーザーから取得済みであること**
 - タスクレポートの「PRレビュー検証完了」が `[x]` に更新されていること
 {{#if agent_workflow.gate_scripts}}- PR 作成前に `workflow-gate.sh step5` が通過していること
+- 初回 Mode A 委譲前に `workflow-gate.sh review-start` が exit 0 であること
 - コード変更後は `workflow-gate.sh step5` が再度通過していること
 - レビュー完了承認後に `workflow-gate.sh step6` が通過していること{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲートが失敗した場合は汎用ゲートへ進まず、完了報告には進めない）{{/if}}
 {{else}}- `{{session.verification.gate_command}}` が通過していること
