@@ -335,6 +335,8 @@ _STANDALONE_RE = re.compile(
     r"|\{\{#if\s+[^\}]+?\}\}|\{\{else\}\}|\{\{/if\}\}"
     r")[ \t]*\r?\n"
 )
+_LITERAL_OPEN_SENTINEL = "\x1eGENLIB_LITERAL_OPEN\x1e"
+_LITERAL_CLOSE_SENTINEL = "\x1eGENLIB_LITERAL_CLOSE\x1e"
 
 
 def _scalar_str(value) -> str:
@@ -343,6 +345,21 @@ def _scalar_str(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def _shield_template_literals(value: str) -> str:
+    """manifest 由来の括弧を後続の描画 pass に再解釈させない。"""
+    return (
+        value.replace("{{", _LITERAL_OPEN_SENTINEL)
+        .replace("}}", _LITERAL_CLOSE_SENTINEL)
+    )
+
+
+def _unshield_template_literals(value: str) -> str:
+    return (
+        value.replace(_LITERAL_OPEN_SENTINEL, "{{")
+        .replace(_LITERAL_CLOSE_SENTINEL, "}}")
+    )
 
 
 def _resolve_path(root: dict, path: str):
@@ -425,19 +442,19 @@ def _render_scalars(text: str, root: dict, item=None, index=None) -> str:
         if expr.startswith("#") or expr.startswith("/"):
             return m.group(0)
         if expr == "this":
-            return _scalar_str(item)
+            return _shield_template_literals(_scalar_str(item))
         if expr.startswith("this."):
             cur = item
             for part in expr[5:].split("."):
                 if not isinstance(cur, dict) or part not in cur:
                     raise RenderError(f"未解決の参照: {expr}")
                 cur = cur[part]
-            return _scalar_str(cur)
+            return _shield_template_literals(_scalar_str(cur))
         if expr == "@index":
             if index is None:
                 raise RenderError("@index は #each ブロック外では使用できない")
-            return str(index)
-        return _scalar_str(_resolve_path(root, expr))
+            return _shield_template_literals(str(index))
+        return _shield_template_literals(_scalar_str(_resolve_path(root, expr)))
 
     return _VAR_RE.sub(sub, text)
 
@@ -461,4 +478,5 @@ def render(text: str, root: dict) -> str:
     normalized = _STANDALONE_RE.sub(lambda m: m.group(1), text)
     conditionals_resolved = _process_ifs(normalized, root)
     expanded = _EACH_RE.sub(each_sub, conditionals_resolved)
-    return _render_scalars(expanded, root, item=None, index=None)
+    rendered = _render_scalars(expanded, root, item=None, index=None)
+    return _unshield_template_literals(rendered)

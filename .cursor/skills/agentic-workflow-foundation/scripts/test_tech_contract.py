@@ -81,12 +81,15 @@ def main() -> int:
         doc = root / "TECH.md"
         doc.write_text("# 技術\nGo\n", encoding="utf-8")
         c = base_contract(tc.source_fingerprint(doc))
+        c["review"]["coderabbit"]["path_instructions"][0]["instructions"] = (
+            "Use {{variable}} and {{#each items}}...{{/each}} literally."
+        )
         digest1 = tc.contract_digest(c)
         reordered = dict(reversed(list(c.items())))
         if digest1 != tc.contract_digest(reordered):
             print("FAIL: canonical digest changed by key order", file=sys.stderr)
             return 1
-        tc.validate(c, doc, require_approval=False)
+        tc.validate(c, doc, require_approval=False, check=True)
         manifest = root / "manifest.yaml"
         manifest.write_text("# preserved\nproject:\n  name: test\n", encoding="utf-8")
         manifest.chmod(0o640)
