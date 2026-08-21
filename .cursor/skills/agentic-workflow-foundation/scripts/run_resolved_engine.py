@@ -21,6 +21,8 @@ import genlib  # noqa: E402
 
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+from yaml_emitter import dump_yaml_text  # noqa: E402
+
 ROOT_OVERLAY_KEYS = (
     "project",
     "tech_stack",
@@ -52,85 +54,9 @@ UPSTREAM_DESIGN_INPUTS = (
 )
 
 
-def _yaml_quote(value) -> str:
-    s = "" if value is None else str(value)
-    if '"' in s:
-        return "'" + s.replace("'", "''") + "'"
-    return '"' + s + '"'
-
-
-def _dump_scalar_key(key: str, value, indent: int) -> list[str]:
-    pad = " " * indent
-    if value is None:
-        return [f"{pad}{key}:"]
-    if isinstance(value, bool):
-        return [f"{pad}{key}: {'true' if value else 'false'}"]
-    if isinstance(value, int):
-        return [f"{pad}{key}: {value}"]
-    s = str(value)
-    if "\n" in s:
-        lines = [f"{pad}{key}: |"]
-        block_pad = " " * (indent + 2)
-        for line in s.split("\n"):
-            lines.append(f"{block_pad}{line}")
-        return lines
-    return [f"{pad}{key}: {_yaml_quote(s)}"]
-
-
-def _yaml_scalar(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    return _yaml_quote(value)
-
-
-def _dump_yaml_node(value, indent: int = 0):
-    pad = " " * indent
-    lines = []
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if isinstance(item, (dict, list)):
-                lines.append(f"{pad}{key}:")
-                lines.extend(_dump_yaml_node(item, indent + 2))
-            else:
-                lines.extend(_dump_scalar_key(key, item, indent))
-        return lines
-    if isinstance(value, list):
-        for item in value:
-            if isinstance(item, dict):
-                if not item:
-                    lines.append(f"{pad}-")
-                    continue
-                first = True
-                for key, child in item.items():
-                    prefix = f"{pad}- " if first else " " * (indent + 2)
-                    first = False
-                    if isinstance(child, (dict, list)):
-                        lines.append(f"{prefix}{key}:")
-                        lines.extend(_dump_yaml_node(child, indent + 4))
-                    elif isinstance(child, str) and "\n" in child:
-                        lines.append(f"{prefix}{key}: |")
-                        block_pad = " " * (len(prefix) + 2)
-                        for line in child.split("\n"):
-                            lines.append(f"{block_pad}{line}")
-                    else:
-                        lines.append(f"{prefix}{key}: {_yaml_scalar(child)}")
-            elif isinstance(item, list):
-                lines.append(f"{pad}-")
-                lines.extend(_dump_yaml_node(item, indent + 2))
-            else:
-                lines.append(f"{pad}- {_yaml_scalar(item)}")
-        return lines
-    lines.append(f"{pad}{_yaml_scalar(value)}")
-    return lines
-
-
 def dump_manifest(manifest: dict) -> str:
     """engine の最小 YAML ローダが読める block style YAML を返す。"""
-    return "\n".join(_dump_yaml_node(manifest)) + "\n"
+    return dump_yaml_text(manifest)
 
 
 def _normalize_accd_axis(axis: dict, base: dict | None = None) -> dict:

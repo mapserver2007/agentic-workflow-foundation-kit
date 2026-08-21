@@ -18,6 +18,7 @@ sys.path.insert(0, str(ENGINE_DIR))
 sys.path.insert(0, str(HERE))
 import genlib  # noqa: E402
 import runtime_plan as rp  # noqa: E402
+from yaml_emitter import dump_yaml as _dump_yaml  # noqa: E402
 
 SCHEMA_VERSION = 1
 REQUIRED_SECTIONS = (
@@ -928,93 +929,6 @@ def _find_top_level_block_span(raw: bytes, key: bytes) -> tuple[int, int] | None
         if _is_top_level_key_line(line):
             return start, line_start
     return start, len(raw)
-
-
-def _dump_scalar(value: object) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        if "\n" not in value and not value.startswith(("@", "|", ">", "*", "&", "!", "%", "`")):
-            if re.fullmatch(r"[^\"'\\]*", value):
-                return json.dumps(value, ensure_ascii=False)
-        return json.dumps(value, ensure_ascii=False)
-    return json.dumps(value, ensure_ascii=False)
-
-
-def _dump_key(key: str) -> str:
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
-        return key
-    return _dump_scalar(key)
-
-
-def _append_scalar_lines(lines: list[str], pad: str, key_text: str, child: object) -> None:
-    if isinstance(child, str) and "\n" in child:
-        lines.append(f"{pad}{key_text}: |")
-        body = child[:-1] if child.endswith("\n") else child
-        for part in body.split("\n"):
-            lines.append(f"{pad}  {part}")
-    else:
-        lines.append(f"{pad}{key_text}: {_dump_scalar(child)}")
-
-
-def _dump_yaml(value: object, indent: int = 0) -> list[str]:
-    pad = " " * indent
-    if isinstance(value, dict):
-        lines: list[str] = []
-        for key, child in value.items():
-            key_text = _dump_key(str(key))
-            if isinstance(child, list) and not child:
-                lines.append(f"{pad}{key_text}: []")
-            elif isinstance(child, (dict, list)):
-                lines.append(f"{pad}{key_text}:")
-                lines.extend(_dump_yaml(child, indent + 2))
-            else:
-                _append_scalar_lines(lines, pad, key_text, child)
-        return lines
-    if isinstance(value, list):
-        if not value:
-            return [f"{pad}[]"]
-        lines = []
-        for child in value:
-            if isinstance(child, dict):
-                keys = list(child)
-                if not keys:
-                    lines.append(f"{pad}- {{}}")
-                    continue
-                first, *rest = keys
-                val = child[first]
-                first_key = _dump_key(str(first))
-                if isinstance(val, (dict, list)):
-                    lines.append(f"{pad}- {first_key}:")
-                    lines.extend(_dump_yaml(val, indent + 4))
-                elif isinstance(val, str) and "\n" in val:
-                    lines.append(f"{pad}- {first_key}: |")
-                    body = val[:-1] if val.endswith("\n") else val
-                    for part in body.split("\n"):
-                        lines.append(f"{pad}    {part}")
-                else:
-                    lines.append(f"{pad}- {first_key}: {_dump_scalar(val)}")
-                for rkey in rest:
-                    val2 = child[rkey]
-                    key_text = _dump_key(str(rkey))
-                    if isinstance(val2, list) and not val2:
-                        lines.append(f"{pad}  {key_text}: []")
-                    elif isinstance(val2, (dict, list)):
-                        lines.append(f"{pad}  {key_text}:")
-                        lines.extend(_dump_yaml(val2, indent + 4))
-                    else:
-                        _append_scalar_lines(lines, pad + "  ", key_text, val2)
-            elif isinstance(child, str) and "\n" in child:
-                lines.append(f"{pad}- |")
-                body = child[:-1] if child.endswith("\n") else child
-                for part in body.split("\n"):
-                    lines.append(f"{pad}  {part}")
-            else:
-                lines.append(f"{pad}- {_dump_scalar(child)}")
-        return lines
-    return [f"{pad}{_dump_scalar(value)}"]
 
 
 def _verify_pin_roundtrip(new_raw: bytes, finalized: dict) -> None:

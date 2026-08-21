@@ -18,7 +18,9 @@ if GENLIB_DIR not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import genlib  # noqa: E402
+import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
+from yaml_emitter import dump_yaml  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 SCALAR_KEYS = ("primary_language", "api_style", "database", "architecture", "framework", "test_framework", "package_manager")
@@ -51,10 +53,6 @@ def _resolve(manifest_path: str) -> dict:
     return resolved
 
 
-def _yaml_quote(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
 def _indent_of(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
 
@@ -72,20 +70,7 @@ def _find_top_block(lines: list[str], key: str) -> tuple[int | None, int | None]
 
 
 def _domain_docs_block(resolved: dict) -> list[str]:
-    lines = ["domain_docs:"]
-    for key in SCALAR_KEYS:
-        lines.append(f"  {key}: {_yaml_quote(resolved[key])}")
-    for key in SECTION_KEYS:
-        lines.append(f"  {key}:")
-        for item in resolved[key]:
-            lines.append(f"    - title: {_yaml_quote(item['title'])}")
-            field = "content" if "content" in item else "guidance"
-            if field == "content":
-                lines.append("      content: |")
-                lines.extend(f"        {line}" for line in item[field].splitlines())
-            else:
-                lines.append(f"      guidance: {_yaml_quote(item[field])}")
-    return lines
+    return dump_yaml({"domain_docs": resolved})
 
 
 def _render_manifest(content: str, resolved: dict) -> str:
@@ -126,12 +111,22 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.manifest, encoding="utf-8") as handle:
         content = handle.read()
     rendered = _render_manifest(content, resolved)
+    try:
+        projected = genlib.parse_yaml(rendered).get("domain_docs")
+        if projected != resolved:
+            raise tc.SchemaError("Domain docs 投影後の YAML round-trip が契約値と一致しません")
+    except (genlib.YamlError, tc.SchemaError, OSError) as exc:
+        _out("ERROR", str(exc))
+        return 2
     if args.check:
         _out("INFO", f"domain_docs 解決結果: 書き換え{'あり' if rendered != content else 'なし'}（--check）")
         return 0
     if rendered != content:
-        with open(args.manifest, "w", encoding="utf-8", newline="") as handle:
-            handle.write(rendered)
+        try:
+            rp._atomic_write_bytes(Path(args.manifest), rendered.encode("utf-8"))
+        except OSError as exc:
+            _out("ERROR", f"manifest 書き込み失敗: {exc}")
+            return 2
     _out("PASS", "contract.domain_docs を root manifest へ投影")
     return 0
 

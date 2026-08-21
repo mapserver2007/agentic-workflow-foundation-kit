@@ -11,12 +11,13 @@
 共有し、同一の解析・描画ロジックで決定論性を担保する。
 
 対応する YAML サブセット（manifest.yaml はこの範囲で記述する）:
-  - block style のみ（flow `{}` / `[]` 不可）
+  - block style（空 collection の flow `{}` / `[]` のみ可）
   - インデントは半角スペース2
   - スカラ: 文字列（裸 / `"..."` / `'...'`）・整数・真偽値（true/false）
   - マッピング（`key: value` / ネスト）/ シーケンス（`- item` / `- key: value`）
   - 行頭・行中（` #`）コメント / 空行
-  - 複数行ブロックスカラ（`|`）をサポート（tech_contract multiline content 用）
+  - 複数行ブロックスカラ（`|-` / `|` / `|+`）をサポート
+    （tech_contract multiline content 用）
 
 テンプレート構文:
   - `{{ dotted.path }}`           : マニフェスト上のスカラを文字列展開
@@ -132,9 +133,19 @@ def _strip_inline_comment(line: str) -> str:
     return "".join(out).rstrip()
 
 
+def _block_header(content: str) -> tuple[str, str] | None:
+    """block scalar header を (引用前の prefix, chomping indicator) に分解する。"""
+    for indicator in ("|+", "|-", "|"):
+        if content == indicator:
+            return "", indicator
+        if content == f"- {indicator}" or content.endswith(f": {indicator}"):
+            return content[: -len(indicator)], indicator
+    return None
+
+
 def _tokenize(text: str):
     """(indent, content) のリストへ。空行・コメントのみの行は捨てる。
-    `|` ブロックリテラルは後続のインデントされた行群を結合してスカラー値に変換する。
+    block literal は後続のインデントされた行群と chomping を解決してスカラー値にする。
     """
     raw_lines = text.split("\n")
     tokens = []
@@ -146,8 +157,9 @@ def _tokenize(text: str):
             continue
         indent = len(line) - len(line.lstrip(" "))
         content = line.strip()
-        # `|` ブロックリテラル検出: "key: |" パターン
-        if content.endswith(": |") or content == "|":
+        block_header = _block_header(content)
+        if block_header is not None:
+            prefix, indicator = block_header
             block_indent = None
             block_lines = []
             j = i + 1
@@ -167,16 +179,14 @@ def _tokenize(text: str):
                     break
                 block_lines.append(bline[block_indent:])
                 j += 1
-            # 末尾の空行を除去
-            while block_lines and block_lines[-1] == "":
-                block_lines.pop()
             block_text = "\n".join(block_lines)
-            if content.endswith(": |"):
-                key_part = content[: -len(": |")].strip()
+            if block_lines and j < len(raw_lines):
                 block_text = block_text + "\n"
-                tokens.append((indent, f"{key_part}: {_block_quote(block_text)}"))
-            else:
-                tokens.append((indent, _block_quote(block_text)))
+            if indicator == "|-":
+                block_text = block_text.rstrip("\n")
+            elif indicator == "|":
+                block_text = block_text.rstrip("\n") + "\n"
+            tokens.append((indent, f"{prefix}{_block_quote(block_text)}"))
             i = j
         else:
             tokens.append((indent, content))
@@ -231,6 +241,8 @@ def _looks_like_mapping(inner: str) -> bool:
 
 def _parse_node(tokens, i, indent):
     content = tokens[i][1]
+    if content in ("{}", "[]"):
+        return _parse_scalar(content), i + 1
     if content == "-" or content.startswith("- "):
         return _parse_seq(tokens, i, indent)
     return _parse_map(tokens, i, indent)
