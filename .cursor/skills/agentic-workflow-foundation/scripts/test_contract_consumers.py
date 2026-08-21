@@ -15,6 +15,7 @@ import genlib  # noqa: E402
 import resolve_coderabbit as rc  # noqa: E402
 import resolve_domain_docs as rd  # noqa: E402
 from test_contract_fixture import consumer_contract, write_consumer_manifest  # noqa: E402
+from yaml_emitter import dump_yaml_text  # noqa: E402
 
 CODERABBIT = HERE / "resolve_coderabbit.py"
 DOMAIN = HERE / "resolve_domain_docs.py"
@@ -123,6 +124,42 @@ def multiline_projection_roundtrip() -> bool:
     return True
 
 
+def yaml_emitter_edge_case_roundtrip() -> bool:
+    cases = (
+        {},
+        {"value": {}},
+        {"items": [{"value": {}}, {}]},
+        {"value": "first\nsecond"},
+        {"value": "first\nsecond\n"},
+        {"value": "first\nsecond\n\n"},
+        {"items": ["first\nsecond", "first\nsecond\n", "first\nsecond\n\n"]},
+        {"items": [{"value": "first\nsecond\n\n", "empty": {}}]},
+    )
+    for value in cases:
+        rendered = dump_yaml_text(value)
+        projected = genlib.parse_yaml(rendered)
+        if projected != value:
+            print(
+                "FAIL: YAML emitter edge-case round-trip mismatch: "
+                f"{value!r} -> {rendered!r} -> {projected!r}"
+            )
+            return False
+
+    if dump_yaml_text({}) != "{}\n":
+        print("FAIL: empty root mapping must be an explicit YAML document")
+        return False
+
+    for value, indicator in (
+        ("first\nsecond", "|-"),
+        ("first\nsecond\n", "|"),
+        ("first\nsecond\n\n", "|+"),
+    ):
+        if f"value: {indicator}\n" not in dump_yaml_text({"value": value}):
+            print(f"FAIL: multiline value missing {indicator} chomping indicator")
+            return False
+    return True
+
+
 def resolver_write_failure_does_not_corrupt() -> bool:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -187,6 +224,8 @@ def main() -> int:
     if not domain_docs_escaped_scalar_roundtrip():
         return 1
     if not multiline_projection_roundtrip():
+        return 1
+    if not yaml_emitter_edge_case_roundtrip():
         return 1
     if not resolver_write_failure_does_not_corrupt():
         return 1

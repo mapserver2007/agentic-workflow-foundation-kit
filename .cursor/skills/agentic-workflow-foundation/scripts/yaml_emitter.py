@@ -19,6 +19,23 @@ def _dump_key(key: str) -> str:
     return _dump_scalar(key)
 
 
+def _block_indicator(value: str) -> str:
+    if not value.endswith("\n"):
+        return "|-"
+    return "|+" if value.endswith("\n\n") else "|"
+
+
+def _append_block_lines(
+    lines: list[str],
+    header: str,
+    body_pad: str,
+    value: str,
+) -> None:
+    lines.append(f"{header}{_block_indicator(value)}")
+    body = value[:-1] if value.endswith("\n") else value
+    lines.extend(f"{body_pad}{part}" for part in body.split("\n"))
+
+
 def _append_scalar_lines(
     lines: list[str],
     pad: str,
@@ -26,9 +43,7 @@ def _append_scalar_lines(
     value: object,
 ) -> None:
     if isinstance(value, str) and "\n" in value:
-        lines.append(f"{pad}{key_text}: |")
-        body = value[:-1] if value.endswith("\n") else value
-        lines.extend(f"{pad}  {part}" for part in body.split("\n"))
+        _append_block_lines(lines, f"{pad}{key_text}: ", f"{pad}  ", value)
     else:
         lines.append(f"{pad}{key_text}: {_dump_scalar(value)}")
 
@@ -37,11 +52,15 @@ def dump_yaml(value: object, indent: int = 0) -> list[str]:
     """値を block style YAML の行配列へ決定論的に変換する。"""
     pad = " " * indent
     if isinstance(value, dict):
+        if not value:
+            return [f"{pad}{{}}"]
         lines: list[str] = []
         for key, child in value.items():
             key_text = _dump_key(str(key))
             if isinstance(child, list) and not child:
                 lines.append(f"{pad}{key_text}: []")
+            elif isinstance(child, dict) and not child:
+                lines.append(f"{pad}{key_text}: {{}}")
             elif isinstance(child, (dict, list)):
                 lines.append(f"{pad}{key_text}:")
                 lines.extend(dump_yaml(child, indent + 2))
@@ -61,13 +80,20 @@ def dump_yaml(value: object, indent: int = 0) -> list[str]:
                 first, *rest = keys
                 first_value = child[first]
                 first_key = _dump_key(str(first))
-                if isinstance(first_value, (dict, list)):
+                if isinstance(first_value, list) and not first_value:
+                    lines.append(f"{pad}- {first_key}: []")
+                elif isinstance(first_value, dict) and not first_value:
+                    lines.append(f"{pad}- {first_key}: {{}}")
+                elif isinstance(first_value, (dict, list)):
                     lines.append(f"{pad}- {first_key}:")
                     lines.extend(dump_yaml(first_value, indent + 4))
                 elif isinstance(first_value, str) and "\n" in first_value:
-                    lines.append(f"{pad}- {first_key}: |")
-                    body = first_value[:-1] if first_value.endswith("\n") else first_value
-                    lines.extend(f"{pad}    {part}" for part in body.split("\n"))
+                    _append_block_lines(
+                        lines,
+                        f"{pad}- {first_key}: ",
+                        f"{pad}    ",
+                        first_value,
+                    )
                 else:
                     lines.append(f"{pad}- {first_key}: {_dump_scalar(first_value)}")
                 for key in rest:
@@ -75,15 +101,15 @@ def dump_yaml(value: object, indent: int = 0) -> list[str]:
                     key_text = _dump_key(str(key))
                     if isinstance(child_value, list) and not child_value:
                         lines.append(f"{pad}  {key_text}: []")
+                    elif isinstance(child_value, dict) and not child_value:
+                        lines.append(f"{pad}  {key_text}: {{}}")
                     elif isinstance(child_value, (dict, list)):
                         lines.append(f"{pad}  {key_text}:")
                         lines.extend(dump_yaml(child_value, indent + 4))
                     else:
                         _append_scalar_lines(lines, pad + "  ", key_text, child_value)
             elif isinstance(child, str) and "\n" in child:
-                lines.append(f"{pad}- |")
-                body = child[:-1] if child.endswith("\n") else child
-                lines.extend(f"{pad}  {part}" for part in body.split("\n"))
+                _append_block_lines(lines, f"{pad}- ", f"{pad}  ", child)
             else:
                 lines.append(f"{pad}- {_dump_scalar(child)}")
         return lines
