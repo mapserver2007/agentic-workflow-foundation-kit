@@ -200,7 +200,7 @@ workflow-orchestrator 経由の初回 Step⑤（Mode A）は、`workflow-gate.sh
 | G-REVIEW-START-URL-001 | canonical GitHub PR URL |
 | G-REVIEW-START-STEP4-001 | `workflow-gate.sh step4` の再検証結果 |
 | G-REVIEW-START-PROMPT-001 | Hook prompt の `pr_urls` / `prompt_sha256` / timestamp schema |
-| G-REVIEW-START-SESSION-001 | 期限内かつ未退役の matching session が正確に1件 |
+| G-REVIEW-START-SESSION-001 | 期限内かつ未退役の matching session が正確に1件。候補選定では対象外 progress log の空行・壊 JSON・session_id 不一致を除外し、一致した1件だけを strict 再検査する |
 | G-REVIEW-START-BIND-001 | `--pr` / report `review-pr-url` / prompt PR の完全一致 |
 | G-REVIEW-START-LOCK-001 | writer lock の取得 |
 | G-REVIEW-START-WRITE-001 | fail-closed writer の追記結果 |

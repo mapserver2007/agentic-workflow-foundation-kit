@@ -37,6 +37,7 @@ PR_REVIEW_TEMPLATE = (
     / "agent-workflow"
     / "05-pr-review.md.template"
 )
+README_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "README.md.template"
 REAL_GATE_DIR = SKILL_DIR.parent / "session-handover" / "scripts"
 FIXTURES = SKILL_DIR / "fixtures" / "artifacts"
 BASH = "/bin/bash"
@@ -260,8 +261,8 @@ def test_prompt_and_session_failures() -> None:
                 for row in _rows(path)
             )
             result = _run(root, report)
-            expected = 2 if label == "filename-mismatch" else 1
-            assert result.returncode == expected, (label, result.stdout, result.stderr)
+            assert result.returncode == 1, (label, result.stdout, result.stderr)
+            assert "G-REVIEW-START-SESSION-001" in result.stderr, label
             after_review_count = sum(
                 row.get("kind") == "review_start"
                 for path in (root / ".cursor" / ".session").glob("*.progress.jsonl")
@@ -292,6 +293,36 @@ def test_unrelated_legacy_prompt_does_not_block_target_session() -> None:
             row for row in _rows(target_progress) if row["kind"] == "review_start"
         ]
         assert len(review_rows) == 1
+
+
+def test_unrelated_corrupt_progress_does_not_block_target_session() -> None:
+    temporary, root, report = _setup()
+    with temporary:
+        bad = root / ".cursor" / ".session" / "legacy-corrupt.progress.jsonl"
+        bad.write_bytes(b"\n{not json}\n")
+        mismatch = root / ".cursor" / ".session" / "legacy-mismatch.progress.jsonl"
+        mismatch.write_text(
+            '{"session_id":"other","kind":"prompt","extra":{}}\n',
+            encoding="utf-8",
+        )
+        target = _write_progress(root, "target-session", [_prompt_event("target-session")])
+        result = _run(root, report)
+        assert result.returncode == 0, result.stderr
+        assert len([row for row in _rows(target) if row["kind"] == "review_start"]) == 1
+
+
+def test_target_corrupt_progress_is_rejected() -> None:
+    temporary, root, report = _setup()
+    with temporary:
+        target = root / ".cursor" / ".session" / "target-session.progress.jsonl"
+        target.write_bytes(b"\n" + json.dumps(
+            _prompt_event("target-session"),
+            separators=(",", ":"),
+        ).encode("utf-8") + b"\n")
+        result = _run(root, report)
+        assert result.returncode == 1, result.stderr
+        assert "G-REVIEW-START-SESSION-001" in result.stderr
+        assert b"review_start" not in target.read_bytes()
 
 
 def test_report_step4_and_writer_fail_closed() -> None:
@@ -578,8 +609,17 @@ def test_static_caller_stop_contract() -> None:
     assert "Mode B" in step5 and "standalone" in step5
     pr_doc = PR_REVIEW_TEMPLATE.read_text(encoding="utf-8")
     assert "review-pr-url" in pr_doc
+    assert "report SHA-256" not in pr_doc
+    assert "report / PR / prompt SHA-256" not in pr_doc
     assert "session-progress-append.sh" not in pr_doc
     assert "review_start" in pr_doc
+    gate = GATE_TEMPLATE.read_text(encoding="utf-8")
+    assert "strict=False" in gate and "strict=True" in gate
+    readme = README_TEMPLATE.read_text(encoding="utf-8")
+    assert any(
+        "`session-progress-emitter.sh`" in paragraph and "fail_open" in paragraph
+        for paragraph in readme.split("\n\n")
+    )
 
 
 def main() -> int:
@@ -587,6 +627,8 @@ def main() -> int:
         test_success_without_agent_shell_session_and_idempotency,
         test_prompt_and_session_failures,
         test_unrelated_legacy_prompt_does_not_block_target_session,
+        test_unrelated_corrupt_progress_does_not_block_target_session,
+        test_target_corrupt_progress_is_rejected,
         test_report_step4_and_writer_fail_closed,
         test_conflicting_id_and_handoff_resend,
         test_workflow_dispatch_with_real_step4_contract,

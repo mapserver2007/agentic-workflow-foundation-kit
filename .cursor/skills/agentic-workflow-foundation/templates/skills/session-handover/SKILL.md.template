@@ -62,7 +62,7 @@ workflow-orchestrator 経由の初回 Step⑤（Mode A）は、レビュー委�
   --pr <canonical-pr-url>
 ```
 
-このゲートは Hook 由来の期限内 PR prompt、session、Step③/④、campaign、PR、writer readback を結合する。handoff / 新規チャット後は新 session で canonical PR URL を再送する。exit 0 以外ではレビューを委譲しない。standalone review と Mode B は対象外である。
+このゲートは Step③/④ 再検証、report の `review-pr-url:` と canonical PR URL の一致、直前 prompt event の SHA-256 と鮮度、fresh な未退役 session、`review_go_id`、writer readback を結合する。report 本文の SHA-256 は計算しない。handoff / 新規チャット後は新 session で canonical PR URL を再送する。exit 0 以外ではレビューを委譲しない。standalone review と Mode B は対象外である。
 
 ## リンク衛生
 
