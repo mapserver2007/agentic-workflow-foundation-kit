@@ -23,19 +23,14 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import genlib  # noqa: E402
+import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
+from yaml_emitter import dump_yaml  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 
 def _out(level: str, msg: str) -> None:
     print(f"[resolve_coderabbit] {level}: {msg}")
-
-
-def _yaml_quote(value: str) -> str:
-    s = "" if value is None else str(value)
-    if '"' in s:
-        return "'" + s.replace("'", "''") + "'"
-    return '"' + s + '"'
 
 
 def resolve(manifest_path: str) -> dict:
@@ -79,28 +74,7 @@ def _find_top_block(lines, key: str):
 
 
 def _build_coderabbit_block(resolved: dict) -> list[str]:
-    lines = ["coderabbit:"]
-    enabled_str = "true" if resolved["enabled"] else "false"
-    lines.append(f"  enabled: {enabled_str}")
-    lines.append(f"  language: {_yaml_quote(resolved['language'])}")
-    lines.append("  tools_enabled:")
-    for tool in resolved["tools_enabled"]:
-        lines.append(f"    - name: {_yaml_quote(tool['name'])}")
-
-    lines.append("  tools_disabled:")
-    for tool in resolved["tools_disabled"]:
-        lines.append(f"    - name: {_yaml_quote(tool['name'])}")
-
-    lines.append("  path_filters:")
-    for f in resolved["path_filters"]:
-        lines.append(f"    - {_yaml_quote(f)}")
-
-    lines.append("  path_instructions:")
-    for pi in resolved["path_instructions"]:
-        lines.append(f"    - path: {_yaml_quote(pi['path'])}")
-        lines.append(f"      instructions: {_yaml_quote(pi['instructions'])}")
-
-    return lines
+    return dump_yaml({"coderabbit": resolved})
 
 
 def _render_manifest(content: str, resolved: dict) -> str:
@@ -160,13 +134,23 @@ def main(argv=None) -> int:
         content = f.read()
     new_content = _render_manifest(content, resolved)
     changed = new_content != content
+    try:
+        projected = genlib.parse_yaml(new_content).get("coderabbit")
+        if projected != resolved:
+            raise tc.SchemaError("CodeRabbit 投影後の YAML round-trip が契約値と一致しません")
+    except (genlib.YamlError, tc.SchemaError, OSError) as exc:
+        _out("ERROR", str(exc))
+        return 2
 
     if args.check:
         _out("INFO", f"CodeRabbit 設定解決結果: 書き換え{'あり' if changed else 'なし'}（--check）")
         return 0
     if changed:
-        with open(args.manifest, "w", encoding="utf-8", newline="") as f:
-            f.write(new_content)
+        try:
+            rp._atomic_write_bytes(Path(args.manifest), new_content.encode("utf-8"))
+        except OSError as exc:
+            _out("ERROR", f"manifest 書き込み失敗: {exc}")
+            return 2
     _out("PASS", f"CodeRabbit 設定を root manifest へ反映（{'更新あり' if changed else '更新なし=冪等'}）")
     return 0
 

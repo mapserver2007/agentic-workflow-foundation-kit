@@ -81,9 +81,11 @@ def main() -> int:
         doc = root / "TECH.md"
         doc.write_text("# 技術\nGo\n", encoding="utf-8")
         c = base_contract(tc.source_fingerprint(doc))
-        c["review"]["coderabbit"]["path_instructions"][0]["instructions"] = (
-            "Use {{variable}} and {{#each items}}...{{/each}} literally."
+        instructions = (
+            "Use {{variable}} literally.\n"
+            "Keep {{#each items}}...{{/each}} unchanged.\n"
         )
+        c["review"]["coderabbit"]["path_instructions"][0]["instructions"] = instructions
         digest1 = tc.contract_digest(c)
         reordered = dict(reversed(list(c.items())))
         if digest1 != tc.contract_digest(reordered):
@@ -95,6 +97,10 @@ def main() -> int:
         manifest.chmod(0o640)
         preimage = hashlib.sha256(manifest.read_bytes()).hexdigest()
         tc.pin_contract(manifest, c, preimage)
+        pinned = tc.load_approved(manifest, doc)
+        if pinned["review"]["coderabbit"]["path_instructions"][0]["instructions"] != instructions:
+            print("FAIL: multiline Mustache instructions changed during pin", file=sys.stderr)
+            return 1
         if stat.S_IMODE(manifest.stat().st_mode) != 0o640:
             print("FAIL: manifest mode was not preserved", file=sys.stderr)
             return 1
