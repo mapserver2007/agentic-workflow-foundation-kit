@@ -137,6 +137,10 @@ framework:
       shell_bytes: 4194304
       shell_bytes_label: "4 MiB"
     checkpoint_interval_prompts: 15
+  # workflow-orchestrator Mode A の初回 Step⑤で使用する review-start 境界。
+  # prompt event の最大鮮度だけを設定値とし、session 選択は時刻順へ fallback しない。
+  review_start:
+    prompt_max_age_seconds: 600
   handoff:
     source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
@@ -175,7 +179,7 @@ framework:
       # スキル名はイベントに載せない。DONE 証跡は既存の reports / tracker 承認のまま。
       - path: ".cursor/.session/{session_id}.progress.jsonl"
         role: "構造化されたセッション観測イベントの追記ログ"
-        lifecycle: "session-progress-emitter.sh が Hook イベントごとに追記する。Step ⑤ 境界では session-progress-append.sh が kind=review_start を追記する"
+        lifecycle: "session-progress-emitter.sh が Hook イベントごとに追記する。初回 Step⑤ Mode A では review-start gate が検証後に session-progress-append.sh を呼び kind=review_start を追記・readbackする"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -495,6 +499,9 @@ agent_workflow:
     - id: step5
       desc: "検証→PR（検証ゲート）"
       cmd: "verification-gate.sh"
+    - id: review-start
+      desc: "初回 Step⑤レビュー開始（prompt/session/PR/readback 境界）"
+      cmd: "review-start-gate.sh"
     - id: step6
       desc: "PR→完了（レビュー完了承認）"
       cmd: "plan-gate.sh review"
@@ -775,6 +782,8 @@ outputs:
       - "progress.jsonl"
       - "subagent_start"
       - "subagent_stop"
+      - "pr_urls"
+      - "prompt_sha256"
   - path: .cursor/hooks/session-progress-append.sh
     template: hooks/session-progress-append.sh.template
     mode: render
@@ -784,6 +793,9 @@ outputs:
       - "review_start"
       - "CTX_BUDGET_SESSION_ID"
       - "gate_id"
+      - "review_go_id"
+      - "source"
+      - "fail_closed"
   - path: .cursor/hooks/session-compact-observer.sh
     template: hooks/session-compact-observer.sh.template
     mode: render
@@ -989,9 +1001,27 @@ outputs:
       - "step2"
       - "step2-report"
       - "step4"
+      - "review-start"
       - "adr"
       - "maintenance-docs"
       - "archive"
+  - path: .cursor/skills/session-handover/scripts/review-start-gate.sh
+    template: skills/session-handover/scripts/review-start-gate.sh.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-REVIEW-START-INPUT-001"
+      - "G-REVIEW-START-REPORT-001"
+      - "G-REVIEW-START-URL-001"
+      - "G-REVIEW-START-STEP4-001"
+      - "G-REVIEW-START-PROMPT-001"
+      - "G-REVIEW-START-SESSION-001"
+      - "G-REVIEW-START-BIND-001"
+      - "G-REVIEW-START-LOCK-001"
+      - "G-REVIEW-START-WRITE-001"
+      - "G-REVIEW-START-READBACK-001"
+      - "G-REVIEW-START-IDEMPOTENCY-001"
   - path: .cursor/skills/session-handover/scripts/archive-gate.sh
     template: skills/session-handover/scripts/archive-gate.sh.template
     mode: render
@@ -1392,6 +1422,7 @@ outputs:
       - "必須セクション"
       - "プレースホルダ禁止"
       - "進行中キャンペーン"
+      - "review-pr-url:"
   - path: docs/agent-tasks/agent-workflow/03-implementation.md
     template: docs/agent-tasks/agent-workflow/03-implementation.md.template
     mode: render
@@ -1416,7 +1447,8 @@ outputs:
       - "指摘の検証"
       - "レビュー完了承認"
       - "review_start"
-      - "session-progress-append.sh"
+      - "workflow-gate.sh review-start"
+      - "review-pr-url"
   - path: docs/agent-tasks/agent-workflow/06-completion.md
     template: docs/agent-tasks/agent-workflow/06-completion.md.template
     mode: render
@@ -1448,7 +1480,8 @@ outputs:
       - "## 進行中タスクレポートからの再開"
       - "## ベストプラクティス"
       - "review_start"
-      - "session-progress-append.sh"
+      - "workflow-gate.sh review-start"
+      - "review-pr-url"
   # workflow-orchestrator config.yaml（ステップ別モデル設定 / mode: seed で PO 直接編集可）。
   - path: .cursor/skills/workflow-orchestrator/config.yaml
     template: skills/workflow-orchestrator/config.yaml.template

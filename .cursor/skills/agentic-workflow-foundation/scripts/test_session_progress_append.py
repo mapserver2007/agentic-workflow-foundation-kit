@@ -2,11 +2,13 @@
 """session-progress-append helper の契約・flock・生成カタログを検査する。"""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -24,6 +26,13 @@ MAINT_DOCS_TEMPLATE = SKILL_DIR / "templates" / "skills" / "maintenance-docs-wor
 MAINT_GOTCHAS_TEMPLATE = SKILL_DIR / "templates" / "skills" / "maintenance-gotchas-workflow" / "SKILL.md.template"
 BASH_EXECUTABLE = "/bin/bash"
 DEFAULT_SUMMARY = "PRレビュー検証開始"
+VALID_EXTRA = json.dumps({
+    "gate_id": "review",
+    "campaign": "TICKET-1-example",
+    "pr": "https://github.com/owner/repo/pull/1",
+    "review_go_id": "a" * 64,
+    "source": "review-start-gate",
+}, separators=(",", ":"))
 
 
 def assert_equal(actual, expected, message: str) -> None:
@@ -73,11 +82,11 @@ def test_invalid_session_is_noop() -> None:
         root = Path(tmp)
         (root / ".cursor" / ".session").mkdir(parents=True)
         script = _install_script(root, "session-progress-append.sh", TEMPLATE)
-        args = ["--kind", "review_start", "--extra", '{"gate_id":"review"}']
+        args = ["--kind", "review_start", "--extra", VALID_EXTRA]
 
         missing = run_helper(script, root, args, session_id=None)
-        assert_equal(missing.returncode, 0, "missing session exit")
-        assert_equal(missing.stdout, "{}\n", "missing session stdout")
+        assert_equal(missing.returncode, 2, "missing session exit")
+        assert_equal(missing.stdout, "", "missing session stdout")
         assert not any(_progress_path(root, ".").parent.glob("*.progress.jsonl")), "missing session wrote"
 
         fallback = run_helper(
@@ -86,14 +95,23 @@ def test_invalid_session_is_noop() -> None:
             [*args, "--session-id", "cli-fallback-001"],
             session_id=None,
         )
-        assert_equal(fallback.returncode, 0, "CLI fallback exit")
-        assert_equal(fallback.stdout, "{}\n", "CLI fallback stdout")
+        assert_equal(fallback.returncode, 2, "CLI fallback exit")
+        assert_equal(fallback.stdout, "", "CLI fallback stdout")
         assert not (_progress_path(root, "cli-fallback-001")).exists(), "CLI session ID must not write"
 
         unsafe = run_helper(script, root, args, session_id="../unsafe")
-        assert_equal(unsafe.returncode, 0, "unsafe session exit")
-        assert_equal(unsafe.stdout, "{}\n", "unsafe session stdout")
+        assert_equal(unsafe.returncode, 2, "unsafe session exit")
+        assert_equal(unsafe.stdout, "", "unsafe session stdout")
         assert not any((root / ".cursor" / ".session").rglob("*.progress.jsonl")), "unsafe session wrote"
+
+        mismatch_path = _progress_path(root, "mismatch-001")
+        mismatch_path.write_text(
+            '{"at":"2026-01-01T00:00:00Z","session_id":"other","kind":"prompt","extra":{}}\n',
+            encoding="utf-8",
+        )
+        mismatch = run_helper(script, root, args, session_id="mismatch-001")
+        assert_equal(mismatch.returncode, 2, "progress filename/session mismatch exit")
+        assert_equal(len(mismatch_path.read_text(encoding="utf-8").splitlines()), 1, "mismatch appended")
 
 
 def test_valid_append_contract() -> None:
@@ -104,7 +122,7 @@ def test_valid_append_contract() -> None:
         result = run_helper(
             script,
             root,
-            ["--kind", "review_start", "--extra", '{"gate_id":"review"}'],
+            ["--kind", "review_start", "--extra", VALID_EXTRA],
         )
         assert_equal(result.returncode, 0, "valid exit")
         assert_equal(result.stdout, "{}\n", "valid stdout")
@@ -119,7 +137,7 @@ def test_valid_append_contract() -> None:
         assert_equal(row["session_id"], "test-append-001", "session_id")
         assert_equal(row["summary"], DEFAULT_SUMMARY, "default summary")
         assert_equal(row["bytes"], len(DEFAULT_SUMMARY.encode("utf-8")), "bytes")
-        assert_equal(row["extra"], {"gate_id": "review"}, "extra")
+        assert_equal(row["extra"], json.loads(VALID_EXTRA), "extra")
         assert "skill" not in row["extra"]
         assert "mode" not in row["extra"]
 
@@ -132,7 +150,13 @@ def test_valid_append_contract() -> None:
                 "--summary",
                 "開始",
                 "--extra",
-                '{"gate_id":"review","campaign":"c1","pr":"https://example.invalid/pr/1"}',
+                json.dumps({
+                    "gate_id": "review",
+                    "campaign": "c1",
+                    "pr": "https://github.com/owner/repo/pull/2",
+                    "review_go_id": "b" * 64,
+                    "source": "review-start-gate",
+                }, separators=(",", ":")),
             ],
             session_id="test-append-002",
         )
@@ -142,7 +166,9 @@ def test_valid_append_contract() -> None:
         assert_equal(custom_row["bytes"], len("開始".encode("utf-8")), "custom bytes")
         assert_equal(custom_row["extra"]["gate_id"], "review", "custom gate_id")
         assert_equal(custom_row["extra"]["campaign"], "c1", "campaign")
-        assert_equal(custom_row["extra"]["pr"], "https://example.invalid/pr/1", "pr")
+        assert_equal(custom_row["extra"]["pr"], "https://github.com/owner/repo/pull/2", "pr")
+        assert_equal(custom_row["extra"]["review_go_id"], "b" * 64, "review_go_id")
+        assert_equal(custom_row["extra"]["source"], "review-start-gate", "source")
 
 
 def test_invalid_schema_is_noop() -> None:
@@ -166,8 +192,8 @@ def test_invalid_schema_is_noop() -> None:
                 result = run_helper(script, root, args, session_id=f"schema-{index}")
             except subprocess.TimeoutExpired as exc:
                 raise AssertionError(f"schema {index} hung: {args}") from exc
-            assert_equal(result.returncode, 0, f"schema {index} exit")
-            assert_equal(result.stdout, "{}\n", f"schema {index} stdout")
+            assert_equal(result.returncode, 2, f"schema {index} exit")
+            assert_equal(result.stdout, "", f"schema {index} stdout")
             assert not _progress_path(root, f"schema-{index}").exists(), f"schema {index} wrote"
 
 
@@ -188,7 +214,14 @@ def test_shared_flock_with_emitter() -> None:
         processes: list[subprocess.Popen[str]] = []
         for index in range(16):
             processes.append(subprocess.Popen(  # noqa: S603
-                [BASH_EXECUTABLE, str(helper), "--kind", "review_start", "--extra", '{"gate_id":"review"}',
+                [BASH_EXECUTABLE, str(helper), "--kind", "review_start", "--extra",
+                 json.dumps({
+                     "gate_id": "review",
+                     "campaign": "shared",
+                     "pr": "https://github.com/owner/repo/pull/1",
+                     "review_go_id": f"{index:064x}",
+                     "source": "review-start-gate",
+                 }, separators=(",", ":")),
                  "--summary", f"helper-{index}"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -223,6 +256,30 @@ def test_shared_flock_with_emitter() -> None:
         assert kinds == {"review_start", "prompt"}, f"unexpected kinds: {kinds}"
 
 
+def test_lock_failure_is_nonzero() -> None:
+    if shutil.which("flock") is None:
+        return
+    with tempfile.TemporaryDirectory(prefix="progress-append-lock-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        script = _install_script(root, "session-progress-append.sh", TEMPLATE)
+        lock_path = session_dir / "locked-001.lock"
+        with lock_path.open("w", encoding="utf-8") as lock_handle:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            started = time.monotonic()
+            result = run_helper(
+                script,
+                root,
+                ["--kind", "review_start", "--extra", VALID_EXTRA],
+                session_id="locked-001",
+            )
+            elapsed = time.monotonic() - started
+        assert_equal(result.returncode, 1, "lock timeout exit")
+        assert elapsed < 2, f"lock wait exceeded bound: {elapsed:.2f}s"
+        assert not _progress_path(root, "locked-001").exists(), "lock failure wrote progress"
+
+
 def test_generation_catalog_and_hooks_json() -> None:
     manifest = MANIFEST.read_text(encoding="utf-8")
     for needle in (
@@ -247,32 +304,33 @@ def test_generation_catalog_and_hooks_json() -> None:
     readme = README_TEMPLATE.read_text(encoding="utf-8")
     assert "review_start" in readme, "README missing review_start"
     assert "helper 検証チェックリスト" in readme, "README missing helper checklist"
-    assert "Step ⑤" in readme and "親境界" in readme, "README missing Step ⑤ parent boundary"
+    assert "Step⑤ Mode A" in readme and "review-start gate" in readme, "README missing review-start boundary"
 
 
 def test_workflow_boundary_contract() -> None:
     pr_review = PR_REVIEW_TEMPLATE.read_text(encoding="utf-8")
     for needle in (
-        "session-progress-append.sh",
+        "workflow-gate.sh review-start",
         "kind=review_start",
         "PR URL 受領後",
         "workflow-orchestrator",
-        "単独起動の `agent-code-review`",
+        "standalone `agent-code-review`",
         "maintenance-docs-workflow",
         "maintenance-gotchas-workflow",
     ):
         assert needle in pr_review, f"05-pr-review template missing {needle}"
 
     orchestrator = ORCHESTRATOR_TEMPLATE.read_text(encoding="utf-8")
-    assert "session-progress-append.sh" in orchestrator, "orchestrator missing helper"
-    assert "kind=review_start" in orchestrator, "orchestrator missing kind"
-    assert "PR URL 受領後" in orchestrator, "orchestrator missing PR URL order"
+    assert "workflow-gate.sh review-start" in orchestrator, "orchestrator missing review-start gate"
+    assert "review-pr-url" in orchestrator, "orchestrator missing report PR binding"
+    assert "canonical PR URL" in orchestrator, "orchestrator missing PR URL order"
     step5 = orchestrator.split("### Step ⑤: PR レビュー検証", 1)[1].split("### Step ⑥", 1)[0]
-    helper_at = step5.find("session-progress-append.sh")
+    helper_at = step5.find("workflow-gate.sh review-start")
     review_at = step5.find("レビュー指摘を取得")
     assert helper_at != -1 and review_at != -1 and helper_at < review_at, (
-        "orchestrator Step ⑤ must emit before review delegation"
+        "orchestrator Step ⑤ must pass review-start before review delegation"
     )
+    assert "親が `session-progress-append.sh` を直接実行してはならない" in step5
 
     for path, label in (
         (CODE_REVIEW_TEMPLATE, "agent-code-review"),
@@ -290,6 +348,7 @@ def main() -> int:
         test_valid_append_contract,
         test_invalid_schema_is_noop,
         test_shared_flock_with_emitter,
+        test_lock_failure_is_nonzero,
         test_generation_catalog_and_hooks_json,
         test_workflow_boundary_contract,
     )

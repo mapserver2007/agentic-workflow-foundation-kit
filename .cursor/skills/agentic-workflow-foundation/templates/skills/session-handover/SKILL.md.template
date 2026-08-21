@@ -54,6 +54,16 @@ disable-model-invocation: true
 .cursor/skills/session-handover/scripts/plan-gate.sh review   # レビュー→完了
 ```
 
+workflow-orchestrator 経由の初回 Step⑤（Mode A）は、レビュー委譲前に fail-closed な review-start 境界を通す。
+
+```bash
+.cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
+  --report <active-report> \
+  --pr <canonical-pr-url>
+```
+
+このゲートは Hook 由来の期限内 PR prompt、session、Step③/④、campaign、PR、writer readback を結合する。handoff / 新規チャット後は新 session で canonical PR URL を再送する。exit 0 以外ではレビューを委譲しない。standalone review と Mode B は対象外である。
+
 ## リンク衛生
 
 handover には、次セッションが参照すべき一次情報へのリンクを残す。

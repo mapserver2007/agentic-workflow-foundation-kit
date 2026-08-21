@@ -134,26 +134,32 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
 
-PR URL 受領後、委譲レビュースキルを呼び出してレビュー検証フェーズへ入る直前に、親が `session-progress-append.sh` で `kind=review_start` を 1 回追記する（詳細は 05-pr-review.md）。セッション ID が取れない場合はスキップして続行する。
+この境界は workflow-orchestrator 経由の初回 Step⑤（`agent-code-review` Mode A）だけを対象とする。PR URL 受領後、親は active report の完了チェック節へ `review-pr-url: <canonical-pr-url>` を正確に1行記録し、`workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。exit 0 を確認できた場合だけレビューを委譲する。
+
+`review-start` は Hook が記録した期限内の構造化 PR prompt から session を一意に解決し、Step③/④・campaign・PR・writer readback を再検証して `kind=review_start` を発行する。session 特定不能、prompt 未記録、Step③/④失敗、または readback 失敗時はレビュー委譲を停止する。handoff / 新規チャット後は canonical PR URL を新 session で再送する。親が `session-progress-append.sh` を直接実行してはならない。
 
 {{#if agent_workflow.gate_scripts}}1. `workflow-gate.sh step5` を実行する（Step ⑤ 入口: 検証 → PR）
 {{#if github_pr.enabled}}2. `agent-github-pr` スキルで PR を作成する
 {{else}}2. [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) の手順に従い PR を作成する
-{{/if}}3. PR URL 受領後、レビュー検証委譲直前に `session-progress-append.sh` で `kind=review_start` を 1 回追記する
-{{#if code_review.enabled}}4. `agent-code-review` スキルでレビュー指摘を取得・検証する
-{{else}}4. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
-{{/if}}5. ユーザーに検証結果を提示し承認後に返信・修正する
-6. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
-7. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
-8. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
+{{/if}}3. ユーザーから canonical PR URL を受領する（handoff 後は新 session で再送必須）
+4. active report の完了チェック節へ `review-pr-url: <canonical-pr-url>` を正確に1行記録する
+5. `workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行し、exit 0 を確認する
+{{#if code_review.enabled}}6. `agent-code-review` Mode A でレビュー指摘を取得・検証する
+{{else}}6. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
+{{/if}}7. ユーザーに検証結果を提示し承認後に返信・修正する
+8. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
+9. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+10. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
 {{else}}{{#if github_pr.enabled}}1. `agent-github-pr` スキルで PR を作成する
 {{else}}1. [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) の手順に従い PR を作成する
-{{/if}}2. PR URL 受領後、レビュー検証委譲直前に `session-progress-append.sh` で `kind=review_start` を 1 回追記する
+{{/if}}2. ユーザーから PR URL を受領する
 {{#if code_review.enabled}}3. `agent-code-review` スキルでレビュー指摘を取得・検証する
 {{else}}3. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
 {{/if}}4. ユーザーに検証結果を提示し承認後に返信・修正する
 5. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
 {{/if}}
+
+Mode B（完了後の追加コメント対応）と standalone `agent-code-review` は `review-start` 対象外であり、新しい `review_start` を要求・発行しない。その活動を初回 Step⑤のレビューGO証跡へ昇格してはならない。
 
 ### Step ⑥: 完了報告
 
