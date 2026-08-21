@@ -150,7 +150,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 - `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
 - `review_start` の `extra`: 文字列フィールド `gate_id: review` / `campaign` / `pr` / `review_go_id` / `source: review-start-gate` に固定する。書き込み契機は **workflow-orchestrator 初回 Step⑤ Mode A の review-start gate**。同一 prompt の完全一致だけを冪等 PASS とする。
 
-セッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す。
+`session-progress-emitter.sh`（観測 Hook）のセッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す（fail_open）。
 
 明示実行 helper（`session-progress-append.sh`）は Hook ではなく、公開手順から直接呼ばない。`kind=review_start` のみを受け付け、`CTX_BUDGET_SESSION_ID` 以外の session ID 入力は使わない。正規経路では `review-start-gate.sh` が検証済み ID を writer の子プロセス環境だけへ注入する。不正 schema / ID 欠落 / lock / 書込み / readback 失敗は非0を返す（fail_closed）。
 
