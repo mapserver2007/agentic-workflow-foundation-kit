@@ -320,7 +320,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 - 入力は承認済み `tech_contract.domain_docs.resolved` のみ。`tech_stack.items` の layer/technology 分析は行わない。
 - テンプレートは `{{#each domain_docs.xxx_sections}}` で展開する。
 - section item は `title` とテンプレート対応の本文フィールドのみを指定する。`coding_standards_sections` は `content` のみ、`api_sections` / `data_model_sections` / `workflow_sections` は `guidance` のみを許可する。逆フィールドおよび `guidance` と `content` の同時指定は許可しない。
-- pin 前に `tech_contract.py validate --check` を実行し、section 契約と全テンプレート参照が解決できることを確認する。
+- pin 前に `tech_contract.py validate --check` を実行し、section 契約と runtime action / `.coderabbit.yaml.template` の描画可能性を確認する。Domain docs 全テンプレートの事前描画・参照検査は対象外である。
 - root `manifest.yaml > domain_docs` へ書き込む。`run_resolved_engine.py` の `ROOT_OVERLAY_KEYS` に `domain_docs` が含まれており、resolved manifest に overlay される。
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
