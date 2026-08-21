@@ -171,6 +171,33 @@ def test_valid_append_contract() -> None:
         assert_equal(custom_row["extra"]["source"], "review-start-gate", "source")
 
 
+def test_existing_log_without_trailing_newline_is_repaired() -> None:
+    with tempfile.TemporaryDirectory(prefix="progress-append-newline-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        script = _install_script(root, "session-progress-append.sh", TEMPLATE)
+        progress = _progress_path(root, "test-append-003")
+        progress.write_text(
+            '{"session_id":"test-append-003","kind":"prompt","extra":{}}',
+            encoding="utf-8",
+        )
+
+        result = run_helper(
+            script,
+            root,
+            ["--kind", "review_start", "--extra", VALID_EXTRA],
+            session_id="test-append-003",
+        )
+
+        assert_equal(result.returncode, 0, "missing trailing newline exit")
+        raw = progress.read_bytes()
+        assert b"\n" in raw, "trailing newline was not repaired"
+        rows = [json.loads(line) for line in raw.splitlines()]
+        assert_equal(len(rows), 2, "repaired row count")
+        assert_equal(rows[-1]["kind"], "review_start", "appended kind")
+
+
 def test_invalid_schema_is_noop() -> None:
     with tempfile.TemporaryDirectory(prefix="progress-append-schema-") as tmp:
         root = Path(tmp)
@@ -346,6 +373,7 @@ def main() -> int:
     tests = (
         test_invalid_session_is_noop,
         test_valid_append_contract,
+        test_existing_log_without_trailing_newline_is_repaired,
         test_invalid_schema_is_noop,
         test_shared_flock_with_emitter,
         test_lock_failure_is_nonzero,

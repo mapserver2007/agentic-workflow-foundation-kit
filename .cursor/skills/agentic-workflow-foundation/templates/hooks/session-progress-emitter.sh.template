@@ -117,7 +117,8 @@ try:
     }, separators=(",", ":")))
 except Exception:
     raise SystemExit(1)
-' <<<"$INPUT" 2>/dev/null)" || { echo '{}'; exit 0; }
+' <<<"$INPUT" 2>/dev/null)" || PROMPT_META='{}'
+  [[ -n "$PROMPT_META" ]] || PROMPT_META='{}'
 fi
 
 # shell: capture exit_code (when present) + output_tail for gate PASS/FAIL banners.

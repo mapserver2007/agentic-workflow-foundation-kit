@@ -244,6 +244,7 @@ review-start 境界のスモーク:
 
 新しい Hook を追加する際は以下を確認する。
 
+0. [ ] `jq` と `python3` が実行時依存として利用可能であることを確認した（prompt metadata を扱う Hook は `python3` を使用）
 1. [ ] `.cursor/hooks.json` にイベント・パス・timeout を登録した
 2. [ ] スクリプトに実行ビット (`chmod +x`) を付与した
 3. [ ] フェイル戦略（fail_open / fail_closed）を決定し、README の一覧表に追記した

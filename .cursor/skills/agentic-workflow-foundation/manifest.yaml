@@ -856,6 +856,7 @@ outputs:
     template: docs/QUALITY_GATE.md.template
     mode: render
     required_sections:
+      - "review-start"
       - "exit code"
       - "G-GEN"
       - "Hook"

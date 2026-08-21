@@ -212,23 +212,23 @@ def resolve_prompt_session(
         event, event_digest = last_prompt
         extra = event.get("extra")
         if event.get("kind") != "prompt" or not isinstance(extra, dict):
-            stop(2, G_PROMPT, f"prompt event schema が不正です: {log_path.name}")
-        if extra.get("hook_event_name") != "beforeSubmitPrompt":
-            stop(2, G_PROMPT, f"prompt event の hook_event_name が不正です: {log_path.name}")
+            continue
         pr_urls = extra.get("pr_urls")
-        prompt_sha = extra.get("prompt_sha256")
         if not isinstance(pr_urls, list) or not all(isinstance(item, str) for item in pr_urls):
-            stop(2, G_PROMPT, f"extra.pr_urls が文字列配列ではありません: {log_path.name}")
-        if not isinstance(prompt_sha, str) or re.fullmatch(r"[0-9a-f]{64}", prompt_sha) is None:
-            stop(2, G_PROMPT, f"extra.prompt_sha256 が不正です: {log_path.name}")
+            continue
         try:
             normalized_urls = [canonical_pr_url(item) for item in pr_urls]
-        except ValueError as exc:
-            stop(2, G_PROMPT, f"extra.pr_urls が canonical ではありません: {log_path.name}: {exc}")
+        except ValueError:
+            continue
         if normalized_urls != pr_urls or len(set(pr_urls)) != len(pr_urls):
-            stop(2, G_PROMPT, f"extra.pr_urls が正規化・重複排除済みではありません: {log_path.name}")
+            continue
         if pr_urls != [canonical_pr]:
             continue
+        if extra.get("hook_event_name") != "beforeSubmitPrompt":
+            stop(2, G_PROMPT, f"prompt event の hook_event_name が不正です: {log_path.name}")
+        prompt_sha = extra.get("prompt_sha256")
+        if not isinstance(prompt_sha, str) or re.fullmatch(r"[0-9a-f]{64}", prompt_sha) is None:
+            stop(2, G_PROMPT, f"extra.prompt_sha256 が不正です: {log_path.name}")
         try:
             event_at = parse_at(event.get("at"))
         except (TypeError, ValueError) as exc:

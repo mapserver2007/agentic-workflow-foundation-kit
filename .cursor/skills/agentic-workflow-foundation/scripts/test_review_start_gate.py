@@ -270,6 +270,30 @@ def test_prompt_and_session_failures() -> None:
             assert after_review_count == before_review_count, label
 
 
+def test_unrelated_legacy_prompt_does_not_block_target_session() -> None:
+    temporary, root, report = _setup()
+    with temporary:
+        _write_progress(
+            root,
+            "legacy-session",
+            [{
+                "at": "2026-01-01T00:00:00Z",
+                "session_id": "legacy-session",
+                "kind": "prompt",
+                "bytes": 0,
+                "summary": "legacy",
+                "extra": {},
+            }],
+        )
+        target_progress = _write_progress(root, "target-session", [_prompt_event("target-session")])
+        result = _run(root, report)
+        assert result.returncode == 0, result.stdout + result.stderr
+        review_rows = [
+            row for row in _rows(target_progress) if row["kind"] == "review_start"
+        ]
+        assert len(review_rows) == 1
+
+
 def test_report_step4_and_writer_fail_closed() -> None:
     temporary, root, report = _setup()
     with temporary:
@@ -562,6 +586,7 @@ def main() -> int:
     tests = (
         test_success_without_agent_shell_session_and_idempotency,
         test_prompt_and_session_failures,
+        test_unrelated_legacy_prompt_does_not_block_target_session,
         test_report_step4_and_writer_fail_closed,
         test_conflicting_id_and_handoff_resend,
         test_workflow_dispatch_with_real_step4_contract,

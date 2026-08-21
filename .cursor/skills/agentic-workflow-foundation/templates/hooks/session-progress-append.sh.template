@@ -127,6 +127,9 @@ append_and_verify() {
   else
     matches=""
   fi
+  if [[ -s "$PROGRESS_LOG" ]] && [[ "$(tail -c 1 "$PROGRESS_LOG" 2>/dev/null)" != "" ]]; then
+    printf '\n' >> "$PROGRESS_LOG" 2>/dev/null || return 2
+  fi
   if [[ -n "$matches" ]]; then
     if [[ "$(printf '%s\n' "$matches" | wc -l | tr -d '[:space:]')" != "1" ]]; then
       return 2
@@ -168,9 +171,11 @@ else
     sleep 0.1
   done
   [[ "$acquired" -eq 1 ]] || fail 1 "lock を取得できません"
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
   append_and_verify
   rc=$?
-  rmdir "$LOCK_DIR" 2>/dev/null || rc=2
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+  trap - EXIT INT TERM
 fi
 
 case "$rc" in
