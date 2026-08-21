@@ -253,6 +253,8 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 
 - auto_approve は **PO が init.yaml に書いた明示 opt-in** であり、CI / 非対話 generate が勝手に true にする経路はない。
 - validate FAIL 時は auto_approve でも apply しない。
+- `review.coderabbit.path_instructions` と `domain_docs.resolved.*_sections` の本文は自由文としてテンプレートへ展開する。manifest 由来の `{{variable}}` / `{{#each}}` は engine がリテラル保護するため、Mustache 構文を説明する本文にもそのまま記述できる。
+- `tech_contract.py validate --check` は runtime action に加えて `.coderabbit.yaml.template` の描画可能性も検査する。Domain docs 全テンプレートの事前描画検査は行わない。
 - **provisioning**（`bin/project-setup --apply`）の計画承認には使わない。契約 pin 専用であり、Provisioning は `project.provisioning_auto_approve` で別に制御する。
 - sealed `tech_contract` スキーマに `auto_approve` を混ぜない（`project.tech_contract_auto_approve` が投影先）。
 

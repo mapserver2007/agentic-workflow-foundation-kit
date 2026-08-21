@@ -805,6 +805,7 @@ def validate(contract: dict, design_doc: Path, require_approval: bool, check: bo
     if check:
         root = design_doc.parent if design_doc.parent.name else Path(".")
         _validate_renderability(contract, root)
+        _validate_coderabbit_template_renderability(contract)
 
 
 def _finalize_contract(bare: dict) -> dict:
@@ -851,6 +852,42 @@ def _validate_renderability(contract: dict, root: Path) -> None:
         except Exception as exc:
             raise SchemaError(f"runtime_materialization.actions[{index}] は render 不可: {exc}") from exc
     _ = projection_digest(contract)
+
+
+def _validate_coderabbit_template_renderability(contract: dict) -> None:
+    """CodeRabbit 契約を実テンプレートで描画できることを pin 前に検査する。"""
+    import contract_projection as projection
+
+    template_path = HERE.parent / "templates" / "coderabbit.yaml.template"
+    coderabbit = projection.coderabbit_from_contract(contract)
+    context = {
+        "coderabbit": coderabbit,
+        "code_review": {
+            "report": {
+                "enabled": False,
+                "output_dir": "docs/agent-tasks/reviews",
+            },
+        },
+    }
+    try:
+        template = template_path.read_text(encoding="utf-8")
+        genlib.render(template, context)
+    except genlib.RenderError as exc:
+        for index, instruction in enumerate(coderabbit["path_instructions"]):
+            item_context = copy.deepcopy(context)
+            item_context["coderabbit"]["path_instructions"] = [instruction]
+            try:
+                genlib.render(template, item_context)
+            except genlib.RenderError as item_exc:
+                raise SchemaError(
+                    "review.coderabbit.path_instructions"
+                    f"[{index}] が .coderabbit.yaml 描画不可: {item_exc}"
+                ) from item_exc
+        raise SchemaError(f".coderabbit.yaml 描画不可: {exc}") from exc
+    except OSError as exc:
+        raise SchemaError(
+            f".coderabbit.yaml.template 読み込み失敗: {exc}"
+        ) from exc
 
 
 def _line_indent(line: str) -> int:
