@@ -65,7 +65,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 5. **仕様との整合性チェック（Gate B）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 6. **分析深度判定**: Subagent（`requirement-analysis/config.yaml > models.depth_triage`）で判定
    - `standard`: 調査 Subagent（`requirement-analysis/config.yaml > models.standard_investigation`）を dispatch
-   - `deep`: 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動。**deep-thinking の `config.yaml` が SoT**
+   - `deep`: 親は [deep-brief.md](../requirement-analysis/references/deep-brief.md) を読み、空でない検査次元インベントリを含むブリーフを渡して [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動する。空の場合は A/B を起動せず、呼出元ブリーフ不備として既存の deep 起動失敗処理へ戻す。**deep-thinking の `config.yaml` が SoT**
    - `deferred`: standard 調査 Subagent を dispatch → 完走後に親がスコア起動条件を事後判定
 7. **実現可能性チェック（Gate C）**: コード調査後に親が直接実施。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 8. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
@@ -75,9 +75,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する（コード検索より先）
 {{#if deep_thinking.enabled}}3. **調査深度トリアージ**: [`references/workflow-triage.md`](../deep-thinking/references/workflow-triage.md) の基準で `triage_result` を決定する
-   - `invoked`: orchestrator が C として [deep-thinking](../deep-thinking/SKILL.md) を直接実行。**deep-thinking の `config.yaml` が SoT**
+   - `invoked`: orchestrator は workflow-triage の空でない検査次元インベントリを含むブリーフを渡し、C として [deep-thinking](../deep-thinking/SKILL.md) を直接実行する。空の場合は A/B を起動せず、既存のブリーフ不備失敗処理へ戻す。**deep-thinking の `config.yaml` が SoT**
    - `skipped`: [`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Step ① worker を dispatch（`step1_investigation` が SoT）
-   - `deferred`: Step ① worker を dispatch → 完走後に orchestrator が事後判定
+   - `deferred`: Step ① worker を dispatch → 完走後に orchestrator が事後判定し、`invoked` へ遷移する場合も同じ workflow-triage の空でない検査次元インベントリを渡す
 4. コードを調査し、根本原因 or 実装方針を特定する
 5. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
 6. **①退出ゲート**: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) の判定チェックリスト 5 項目を全て PASS。不合格時はレポートを作成せずユーザーに状況報告
@@ -89,9 +89,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{/if}}
 
 {{#if requirement_analysis.enabled}}
-**deferred 再判定**: worker 完走後、親がスコア起動条件を事後判定する。詳細は [`references/analysis-depth.md`](../requirement-analysis/references/analysis-depth.md) を参照。
+**deferred 再判定**: worker 完走後、親がスコア起動条件を事後判定する。deep へ遷移する場合は [deep-brief.md](../requirement-analysis/references/deep-brief.md) を読み、空でない検査次元インベントリを含むブリーフを渡す。空の場合は A/B を起動せず、呼出元ブリーフ不備として既存の deep 起動失敗処理へ戻す。詳細は [`references/analysis-depth.md`](../requirement-analysis/references/analysis-depth.md) を参照。
 {{else}}{{#if deep_thinking.enabled}}
-**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。詳細は [`references/workflow-triage.md`](../deep-thinking/references/workflow-triage.md) を参照。
+**deferred 再判定**: worker 完走後、orchestrator がスコア起動条件を事後判定する。deep へ遷移する場合は [`references/workflow-triage.md`](../deep-thinking/references/workflow-triage.md) に従う空でない検査次元インベントリを含むブリーフを渡す。空の場合は A/B を起動せず、既存のブリーフ不備失敗処理へ戻す。deep-brief は参照しない。
 {{/if}}{{/if}}
 
 ### Step ②: タスクレポートの作成

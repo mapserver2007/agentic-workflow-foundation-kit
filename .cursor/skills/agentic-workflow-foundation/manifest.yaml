@@ -1576,6 +1576,7 @@ outputs:
       - "Evidence Ledger"
       - "相補分析の視点指示"
       - "プロジェクトコンテキスト"
+      - "## 検査次元カバレッジ"
   - path: .cursor/skills/deep-thinking/references/verification-flags.md
     template: skills/deep-thinking/references/verification-flags.md.template
     mode: render
@@ -1648,6 +1649,13 @@ outputs:
       - "## 分析深度 enum"
       - "## deep 即時起動条件"
       - "## deferred 判定"
+  - path: .cursor/skills/requirement-analysis/references/deep-brief.md
+    template: skills/requirement-analysis/references/deep-brief.md.template
+    mode: render
+    feature: requirement_analysis
+    required_sections:
+      - "## 必須ブリーフ要素"
+      - "## 検査次元インベントリ"
   - path: .cursor/skills/requirement-analysis/references/user-presentation.md
     template: skills/requirement-analysis/references/user-presentation.md.template
     mode: render

@@ -101,7 +101,7 @@ Worker Contract の変更は不要。worker は `deferred` を意識せず通常
 | `model_unavailable` | skip + ユーザー通知 | skip |
 | A/B 片側 timeout | skip + ユーザー通知 | skip |
 | config 破損・triage 設定欠落 | skip + ユーザー通知 | skip |
-| ブリーフ不備（証跡インベントリ空） | skip + ユーザー通知 | skip |
+| ブリーフ不備（証跡インベントリまたは検査次元インベントリが空） | skip + ユーザー通知 | skip |
 
 ### 高影響カテゴリ該当時のユーザー通知
 
@@ -134,9 +134,21 @@ triage が `invoked` を返した場合、orchestrator が C として以下の�
 - **証跡インベントリ**（参照すべき docs / コードパス）
 - **プロジェクトコンテキスト**（Boundaries / tech stack 制約 / 関連 ADR / domain docs の観測事実）
 - **検討すべき争点**（明示的に限定）
+- **検査次元インベントリ**（空でないこと）
 
 orchestrator は暫定結論を渡さない（deep-thinking 内部フローのコンテキスト収集・ブリーフ作成工程の契約通り）。orchestrator が docs-first で収集済みのプロジェクト固有情報はコンテキスト収集工程で再利用される。
 
+### 検査次元インベントリの定義
+
+requirement-analysis の生成物には依存しない。このトリアージで得た既存の docs-first、コード調査、ADR 観点から、少なくとも次をタスクへの該当性とともに列挙する。
+
+- docs-first: spec / architecture / API / data-models / workflows / ADR / Boundaries との対応関係・不整合候補・該当なし
+- コード調査: 依存、外部サービス、データ移行、テスト可能性、ロールバック、並行性・性能、docs と実装の乖離
+- 設計: 既存パターンとの差、および D-* 該当の有無
+- 実装候補が複数ある場合: 各候補
+
+インベントリが空の場合は A/B を起動せず、§失敗時の graceful skip のブリーフ不備として処理する。
+
 ### A/B 結果の統合
 
-A/B の Evidence Ledger 返却後、orchestrator（C）が統合結果を investigation memo body の標準セクション構造に沿って書き出す。「多角分析結果」等の独立セクションは設けず、通常分析と同一構造に統合する（② への透過性保証）。
+A/B の Evidence Ledger 返却後、orchestrator（C）が統合結果を investigation memo body の既存 5 見出し構造に沿って書き出す。「多角分析結果」等の独立セクションは設けず、通常分析と同一構造に統合する（② への透過性保証）。`## docs-first 参照記録` 内には、検査次元ごとのカバレッジ表（検査次元 / 判定 / 一次証跡 / 判断根拠）を格納する。判定は `所見 / 問題なし / 該当なし` とし、一次証跡が `不明` の次元を `問題なし` と判定してはならない。

@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""validate_requirement_analysis.py — 生成済み config.yaml の静的契約検査。
+"""validate_requirement_analysis.py — 生成済み requirement-analysis 契約の静的検査。
 
 検査 ID:
   G-RA-CONFIG-001 : 必須キー（models.* / execution.*）の存在・型・非空
-  G-RA-DEPTH-001  : analysis_depth 値域が standard | deep
-  G-RA-GATE-001   : Gate A/B/C 定義と Issue Ledger type enum の存在（SKILL.md 参照で確認）
-  G-RA-EXIT-001   : blocking_open_issues ゼロの退出条件定義（SKILL.md 参照で確認）
-  G-RA-DEEP-001     : deep_thinking.enabled: true 時のみ deep 経路利用可
   G-RA-LEGACY-001 : workflow-triage 文字列が requirement-analysis テンプレートに含まれない
   G-RA-HIC-001    : high_impact_categories が定義されている
+  G-RA-DEEP-BRIEF-001 : deep-brief.md の存在と固定見出し
 
-本スクリプトは config.yaml の静的検査のみを担当する。
+本スクリプトは config.yaml と deep-brief.md の静的検査を担当する。
 ランタイム検査（digest 結合 ack / AC 相互参照 / provenance / Memo 構造）は
 gate-artifact.py / gate-report.py が担当する（QUALITY_GATE.md §1.7 参照）。
 
 exit code:
   0 = 全検査 PASS
   1 = 契約違反あり
-  2 = 致命的エラー（ファイル不在 / YAML 破損）
+  2 = 致命的エラー（読み込み不能 / YAML 破損）
 """
 from __future__ import annotations
 
@@ -36,8 +33,15 @@ import genlib  # noqa: E402
 CONFIG_REL = os.path.join(
     ".cursor", "skills", "requirement-analysis", "config.yaml"
 )
+DEEP_BRIEF_REL = os.path.join(
+    ".cursor", "skills", "requirement-analysis", "references", "deep-brief.md"
+)
 
 REQUIRED_MODELS_KEYS = ("normalize", "depth_triage", "standard_investigation")
+REQUIRED_DEEP_BRIEF_HEADINGS = (
+    "## 必須ブリーフ要素",
+    "## 検査次元インベントリ",
+)
 
 PLACEHOLDER_MARKERS = ("[要確認]",)
 
@@ -162,7 +166,22 @@ def validate_deep_thinking_sot_duplication() -> list[tuple[str, str]]:
     return failures
 
 
-def run(config_path: str) -> int:
+def validate_deep_brief(path: str) -> list[tuple[str, str]]:
+    """deep-brief.md の存在と固定見出しを検査する。読み込み不能時は OSError を送出する。"""
+    if not os.path.exists(path):
+        return [("G-RA-DEEP-BRIEF-001", f"deep-brief.md が不在: {path}")]
+
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    return [
+        ("G-RA-DEEP-BRIEF-001", f"deep-brief.md の必須見出しが欠落: {heading}")
+        for heading in REQUIRED_DEEP_BRIEF_HEADINGS
+        if heading not in content
+    ]
+
+
+def run(config_path: str, deep_brief_path: str | None = None) -> int:
     if not os.path.isfile(config_path):
         print(f"FATAL: config 不在: {config_path}", file=sys.stderr)
         return 2
@@ -175,6 +194,15 @@ def run(config_path: str) -> int:
     failures = validate(config)
     failures.extend(validate_legacy_reference())
     failures.extend(validate_deep_thinking_sot_duplication())
+    deep_brief_path = deep_brief_path or os.path.join(ROOT, DEEP_BRIEF_REL)
+    try:
+        failures.extend(validate_deep_brief(deep_brief_path))
+    except OSError as exc:
+        print(
+            f"FATAL: deep-brief 読み込み不能: {deep_brief_path}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
 
     if failures:
         print(f"[validate_requirement_analysis] FAIL: {len(failures)} 件の契約違反")
@@ -196,8 +224,13 @@ def main(argv=None) -> int:
         default=os.path.join(ROOT, CONFIG_REL),
         help="config.yaml のパス",
     )
+    parser.add_argument(
+        "--deep-brief",
+        default=os.path.join(ROOT, DEEP_BRIEF_REL),
+        help="deep-brief.md のパス",
+    )
     args = parser.parse_args(argv)
-    return run(args.config)
+    return run(args.config, args.deep_brief)
 
 
 if __name__ == "__main__":
