@@ -463,13 +463,14 @@ audit 成功後、`agent_kaizen` feature が有効な場合に `validate_agent_k
 {{#if requirement_analysis.enabled}}
 ### 4.3 requirement-analysis 静的契約ゲート
 
-audit 成功後、`requirement_analysis` feature が有効な場合に `validate_requirement_analysis.py` を自動実行する。生成済み `config.yaml` の設定値を検査し、契約違反を audit 失敗へ昇格させる。
+audit 成功後、`requirement_analysis` feature が有効な場合に `validate_requirement_analysis.py` を自動実行する。生成済み `config.yaml` と `deep-brief.md` の契約を検査し、契約違反を audit 失敗へ昇格させる。
 
 | 検査 ID | 対象 | 検査内容 |
 | --- | --- | --- |
 | G-RA-CONFIG-001 | 設定構造 | 必須キー（`models.normalize/depth_triage/standard_investigation`、`execution.*`）の存在・型・非空 |
 | G-RA-HIC-001 | カテゴリ | `high_impact_categories` が非空リスト |
 | G-RA-LEGACY-001 | 旧参照 | `workflow-triage` 文字列が requirement-analysis 配下に残存しない |
+| G-RA-DEEP-BRIEF-001 | deep ブリーフ | `deep-brief.md` が存在し、`## 必須ブリーフ要素` と `## 検査次元インベントリ` の両固定見出しを含む。ファイル不在・見出し欠落は exit 1、読み込み不能は exit 2 |
 
 ランタイム検査（digest 結合 ack / AC 相互参照 / provenance / Memo 構造）は `gate-artifact.py` / `gate-report.py` が担当する（§1.7 参照）。静的検査では保証しない。
 {{/if}}

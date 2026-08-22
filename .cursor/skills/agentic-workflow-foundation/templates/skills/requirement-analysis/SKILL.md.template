@@ -20,6 +20,7 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 > **参照ドキュメント**:
 > - [references/requirement-contract.md](references/requirement-contract.md) — 3 段階ガード・Issue Ledger・退出契約
 > - [references/analysis-depth.md](references/analysis-depth.md) — 分析深度判定基準
+> - [references/deep-brief.md](references/deep-brief.md) — deep-thinking 起動時の入力ブリーフ契約
 > - [references/investigation-memo.md](references/investigation-memo.md) — Step ② 向け共通出力契約
 > - [references/user-presentation.md](references/user-presentation.md) — ユーザー向け提示テンプレ集
 > - [config.yaml](config.yaml) — モデル設定・実行パラメータ
@@ -90,17 +91,18 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 ### deep 経路
 
 1. 分析深度判定 Subagent が `deep` を返す
-2. 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動する
-3. deep-thinking は Investigation Memo 構造で結果を出力する
-4. 親が Gate C を実施
-5. 親が Investigation Memo を確定し envelope を書く
+2. 親は [deep-brief.md](references/deep-brief.md) を読み、空でない検査次元インベントリを含むブリーフを組み立てる。空の場合は A/B を起動せず、呼出元ブリーフ不備として既存の deep 起動失敗処理へ戻す
+3. 親が [deep-thinking](../deep-thinking/SKILL.md) を C 役として起動する
+4. deep-thinking は Investigation Memo 構造で結果を出力する
+5. 親が Gate C を実施
+6. 親が Investigation Memo を確定し envelope を書く
 
 ### deferred 経路
 
 1. 分析深度判定 Subagent が `deferred` を返す
 2. standard 調査 Subagent を dispatch する
 3. Subagent 完走後、親がスコア起動条件を事後判定する
-4. スコア条件合致: deep 経路へ遷移（deep-thinking 起動）
+4. スコア条件合致: [deep-brief.md](references/deep-brief.md) を読み、空でない検査次元インベントリを含むブリーフを渡して deep 経路へ遷移する。空の場合は A/B を起動せず、呼出元ブリーフ不備として既存の deep 起動失敗処理へ戻す
 5. スコア条件不合致: standard として確定
 
 ### deep 起動失敗時
@@ -158,3 +160,4 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 - [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) — Step ① 詳細手順
 - [workflow-orchestrator](../workflow-orchestrator/SKILL.md) — ワークフロー制御
 - [deep-thinking](../deep-thinking/SKILL.md) — deep 経路で起動
+- [deep-brief.md](references/deep-brief.md) — deep-thinking 起動時の入力ブリーフ契約

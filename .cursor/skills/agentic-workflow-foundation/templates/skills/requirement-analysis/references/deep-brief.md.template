@@ -1,0 +1,26 @@
+# Deep 分析ブリーフ契約
+
+> Gate B 通過後に親が deep-thinking を起動する直前の入力契約。検査対象と判定基準の詳細は [requirement-contract.md](requirement-contract.md)、複数の実装候補を列挙する条件は [analysis-depth.md](analysis-depth.md) を参照する。
+
+## 必須ブリーフ要素
+
+親は deep-thinking に次を渡す。
+
+- 要求の核心
+- 証跡インベントリ
+- プロジェクトコンテキスト
+- 空でない検査次元インベントリ
+- 暫定結論を渡さない
+
+ワークフロー起動時、検査次元インベントリが空の場合は A/B を起動してはならない。呼出元ブリーフ不備として既存の deep 起動失敗処理へ戻し、補完または standard 継続の判断を行う。
+
+## 検査次元インベントリ
+
+次元は新たに分類せず、既存契約から導出してブリーフに明示する。
+
+- Gate B: spec / architecture / api / data-models / workflows / ADR / Boundaries
+- Gate C の先読み: 依存、外部サービス、データ移行、テスト可能性、ロールバック、並行性・性能、docs と実装の乖離
+- 設計逸脱: 既存パターンとの差と D-* 該当有無
+- 実装候補: [analysis-depth.md](analysis-depth.md) の deep 即時起動条件に該当し、候補が複数ある場合のみ全候補
+
+各次元には、確認すべき対応関係・不整合候補または該当なしを記載する。Gate B/C の検査内容は [requirement-contract.md](requirement-contract.md) を SoT とし、本ブリーフに詳細を複製しない。
