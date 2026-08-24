@@ -38,9 +38,10 @@ if [[ ! -f "$STATE_FILE" ]]; then
 fi
 
 CAMPAIGN_ID="$(jq -r '.campaign_id // empty' "$STATE_FILE" 2>/dev/null)" || CAMPAIGN_ID=""
+TRACKING_ARTIFACT="{{project.tracking_artifact}}"
 TRACKER_FILE=""
 if [[ "$CAMPAIGN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
-  TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${CAMPAIGN_ID}.md"
+  TRACKER_FILE="$PROJECT_DIR/${TRACKING_ARTIFACT//\{campaign_id\}/$CAMPAIGN_ID}"
 fi
 
 # ---- stdin から preCompact イベントデータを取得 ----

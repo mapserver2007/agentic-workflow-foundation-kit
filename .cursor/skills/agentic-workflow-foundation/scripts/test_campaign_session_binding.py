@@ -38,6 +38,7 @@ RENDER_VALUES = {
     "{{framework.budget_thresholds.compact_red_percent}}": "78",
     "{{framework.budget_thresholds.compact_freshness_sec}}": "300",
     "{{framework.budget_thresholds.compact_thrashing_count}}": "3",
+    "{{project.tracking_artifact}}": ".cursor/.tracking/tracker-{campaign_id}.md",
 }
 
 
@@ -157,6 +158,54 @@ def test_runtime_mint_bind_and_tracker_lookup() -> None:
         assert not (tracking_dir / "tracker-S2.md").exists(), "observer が SESSION_ID tracker を作成した"
 
 
+def test_multi_handoff_select_binds_campaign() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-session-multi-handoff-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
+        session_dir.mkdir(parents=True)
+        tracking_dir.mkdir(parents=True)
+        (session_dir / "handoff-A.md").write_text(
+            "campaign_id: C1\n\n## ポインタ\ntracker-C1.md\n",
+            encoding="utf-8",
+        )
+        (session_dir / "handoff-B.md").write_text(
+            "campaign_id: C2\n\n## ポインタ\ntracker-C2.md\n",
+            encoding="utf-8",
+        )
+        (tracking_dir / "tracker-C1.md").write_text("# campaign C1\n", encoding="utf-8")
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        observer = write_script(OBSERVER_TEMPLATE, root, "session-compact-observer.sh")
+
+        output = run_hook(bootstrap, root, "S5", {"session_id": "S5"})
+        state_before = read_state(root, "S5")
+        assert state_before["campaign_id"] == "S5", "2+ 選択前に自動 bind した"
+        assert state_before["campaign_id_source"] == "session_start"
+        context = output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_HANDOFF_SELECT]" in context
+        assert "campaign_id_source" in context
+        assert ".campaign_id = $cid" in context
+        assert (session_dir / "handoff-A.md").is_file()
+        assert (session_dir / "handoff-B.md").is_file()
+
+        write_state(root, "S5", campaign_id="C1", campaign_id_source="handoff")
+        consumed = session_dir / "handoff-consumed-A-1.md"
+        (session_dir / "handoff-A.md").rename(consumed)
+
+        run_hook(
+            observer,
+            root,
+            "S5",
+            {"context_usage_percent": 80, "trigger": "auto"},
+        )
+        snapshot = (session_dir / "pre-compact-S5.md").read_text(encoding="utf-8")
+        assert "tracker-C1.md" in snapshot, "選択後 bind した campaign tracker を参照しない"
+        assert not (tracking_dir / "tracker-S5.md").exists(), "選択後も創設 session の tracker を誤作成した"
+        assert (tracking_dir / "tracker-C1.md").is_file()
+        assert not (tracking_dir / "tracker-C2.md").exists()
+
+
 def test_no_handoff_mints_and_does_not_guess_existing_tracker() -> None:
     with tempfile.TemporaryDirectory(prefix="campaign-session-no-handoff-") as tmp:
         root = Path(tmp)
@@ -211,6 +260,12 @@ def test_template_contracts() -> None:
     assert "campaign_id" in bootstrap and "campaign_id" in evaluator and "campaign_id" in observer
     for source in (bootstrap, evaluator, observer):
         assert "tracker-${SESSION_ID}" not in source, "SESSION_ID から tracker を作る実装が残っている"
+    for source in (evaluator, observer):
+        assert "{{project.tracking_artifact}}" in source
+        assert 'tracker-${CAMPAIGN_ID}.md' not in source, "tracker パスが manifest を迂回して固定されている"
+    assert "bind_campaign_from_handoff" in bootstrap
+    assert "HANDOFF_COUNT >= 2" in bootstrap
+    assert ".campaign_id = $cid | .campaign_id_source = $source" in bootstrap
     assert "${tracking_base//\\{campaign_id\\}/*}" in start_gate
     assert "${tracking_base//\\{campaign_id\\}/*}" in plan_gate
     assert "campaign_slug" in orchestrator and "campaign_id" in orchestrator
@@ -219,6 +274,7 @@ def test_template_contracts() -> None:
 def main() -> int:
     tests = (
         test_runtime_mint_bind_and_tracker_lookup,
+        test_multi_handoff_select_binds_campaign,
         test_no_handoff_mints_and_does_not_guess_existing_tracker,
         test_template_contracts,
     )

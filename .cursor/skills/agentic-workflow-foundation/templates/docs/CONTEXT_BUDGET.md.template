@@ -77,7 +77,7 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 | handoff 1 件 | auto-inject + consumed リネーム（従来と同じ UX） |
 | handoff 2+ 件 | `[CONTEXT_BUDGET_HANDOFF_SELECT]` マーカーを注入し、AI が AskQuestion でユーザーに選択させる |
 
-2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択分のみ consumed リネームされ、残りは後続セッションで消費可能。
+2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択ファイルの検証済み `campaign_id` を現在セッションの state に bind してから選択分のみ consumed リネームし、残りは後続セッションで消費可能。sessionStart 時点では 2+ を自動 bind しない。
 
 ## tracker と handoff manifest の責務境界
 

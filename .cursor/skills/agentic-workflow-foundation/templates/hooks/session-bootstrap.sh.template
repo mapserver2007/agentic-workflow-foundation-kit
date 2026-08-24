@@ -88,21 +88,33 @@ extract_campaign_id() {
   fi
 }
 
-CAMPAIGN_ID="$SESSION_ID"
-CAMPAIGN_ID_SOURCE="session_start"
-if (( HANDOFF_COUNT == 1 )); then
-  HANDOFF_CAMPAIGN_ID="$(extract_campaign_id "${HANDOFF_FILES[0]}")"
-  if [[ -n "$HANDOFF_CAMPAIGN_ID" ]]; then
-    CAMPAIGN_ID="$HANDOFF_CAMPAIGN_ID"
+write_campaign_state() {
+  jq --arg cid "$CAMPAIGN_ID" --arg source "$CAMPAIGN_ID_SOURCE" \
+    '.campaign_id = $cid | .campaign_id_source = $source' \
+    "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null
+}
+
+bind_campaign_from_handoff() {
+  local HANDOFF_FILE="$1"
+  local BIND_ID
+  BIND_ID="$(extract_campaign_id "$HANDOFF_FILE")"
+  if [[ -n "$BIND_ID" ]]; then
+    CAMPAIGN_ID="$BIND_ID"
     CAMPAIGN_ID_SOURCE="handoff"
   fi
-fi
+  write_campaign_state
+}
 
+CAMPAIGN_ID="$SESSION_ID"
+CAMPAIGN_ID_SOURCE="session_start"
 # state は sessionStart で必ず campaign_id を持つ。2+ handoff はユーザー選択前に
 # 自動 bind せず、現在 session の ID を仮の創設 ID として保持する。
-jq --arg cid "$CAMPAIGN_ID" --arg source "$CAMPAIGN_ID_SOURCE" \
-  '.campaign_id = $cid | .campaign_id_source = $source' \
-  "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null
+# 選択後の bind は AI が AskQuestion 後に state を更新する（下記 2+ 指示）。
+if (( HANDOFF_COUNT == 1 )); then
+  bind_campaign_from_handoff "${HANDOFF_FILES[0]}"
+else
+  write_campaign_state
+fi
 
 # ---- handoff 注入ヘルパー（1 件の handoff を注入 + consumed リネーム） ----
 inject_handoff() {
@@ -179,8 +191,14 @@ ${HANDOFF_LIST}
 AI への指示:
 1. ユーザーに AskQuestion を使ってどの handoff を読み込むか選択させよ（ファイル名と最終更新時刻を選択肢として提示）
 2. 選択された handoff ファイルを Read し、manifest 内「ポインタ」に記載された追跡ドキュメントを Read して復旧手順を実行せよ
-3. 選択された handoff を consumed にリネームせよ: mv .cursor/.session/handoff-{sid}.md .cursor/.session/handoff-consumed-{sid}-\$(date +%s).md
-4. 選択されなかった handoff は後続セッションで消費可能（そのまま残す）"
+3. 選択ファイルの campaign_id を検証せよ（行形式 campaign_id: <ID>、許可文字は [A-Za-z0-9._-]）。検証できた場合のみ、consumed リネームより前に現在セッションの state を更新せよ:
+   jq --arg cid \"<検証済み campaign_id>\" --arg source \"handoff\" \\
+     '.campaign_id = \$cid | .campaign_id_source = \$source' \\
+     .cursor/.session/${SESSION_ID}.json > .cursor/.session/${SESSION_ID}.json.tmp &&
+     mv .cursor/.session/${SESSION_ID}.json.tmp .cursor/.session/${SESSION_ID}.json
+   campaign_id が無い・不正な場合は state の仮の創設 ID を維持し、tracker ファイル名から推測して bind するな。
+4. その後、選択された handoff を consumed にリネームせよ: mv .cursor/.session/handoff-{sid}.md .cursor/.session/handoff-consumed-{sid}-\$(date +%s).md
+5. 選択されなかった handoff は後続セッションで消費可能（そのまま残す）"
 fi
 
 # ---- スナップショット突合（pre-compact snapshot と handoff manifest の整合チェック） ----

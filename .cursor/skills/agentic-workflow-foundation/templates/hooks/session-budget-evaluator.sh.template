@@ -59,8 +59,9 @@ STATE="$(cat "$STATE_FILE" 2>/dev/null)" || { echo '{}'; exit 0; }
 [[ -z "$STATE" ]] && { echo '{}'; exit 0; }
 
 CAMPAIGN_ID="$(jq -r '.campaign_id // empty' <<<"$STATE" 2>/dev/null)" || CAMPAIGN_ID=""
+TRACKING_ARTIFACT="{{project.tracking_artifact}}"
 if [[ "$CAMPAIGN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
-  TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${CAMPAIGN_ID}.md"
+  TRACKER_FILE="$PROJECT_DIR/${TRACKING_ARTIFACT//\{campaign_id\}/$CAMPAIGN_ID}"
 else
   # 旧 state に campaign_id が無い場合、session_id から tracker を推測しない。
   TRACKER_FILE="(state.campaign_id unavailable)"

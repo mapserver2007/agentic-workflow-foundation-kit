@@ -9,7 +9,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
 | [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作を deny、履歴書き換えを ask、**`gh` CLI 全般を deny**（選択 provider の境界を迂回するため wrapper を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
-| [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state に `campaign_id` を必ず設定（handoff 1 件なら bind、なければ創設 `session_id` を mint）し、`handoff-{session_id}.md` をスキャン（0/1/2+ 分岐）して `additional_context` 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）・アーカイブ + pre-compact スナップショットと manifest の突合。2+ 件時は AskQuestion マーカー注入。handoff なし時は pre-compact snapshot から fallback 注入 | Observation / Handoff | fail_open |
+| [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state に `campaign_id` を必ず設定（handoff 1 件なら bind、なければ創設 `session_id` を mint）し、`handoff-{session_id}.md` をスキャン（0/1/2+ 分岐）して `additional_context` 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）・アーカイブ + pre-compact スナップショットと manifest の突合。2+ 件時は AskQuestion マーカー注入（選択後に campaign_id を state へ bind してから consumed）。handoff なし時は pre-compact snapshot から fallback 注入 | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く。prompt テキスト先頭 1000 bytes を `turns.jsonl` に追記 | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
 | [session-response-tracker.sh](session-response-tracker.sh) | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000 bytes を `{session_id}.turns.jsonl` に追記するゼロコスト会話ログ | Observation | fail_open |
@@ -72,7 +72,7 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
   → handoff-{session_id}.md をスキャン（0/1/2+ 分岐）
   → 1 件: campaign_id を state に bind → auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
   → 0 件: campaign_id = 新 session_id として mint（残存 tracker へ自動 bind しない）
-  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させる
+  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させ、選択後に検証済み campaign_id を state へ bind してから consumed リネームする
   → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
   → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
   → AI が manifest / snapshot を読み込み、state.campaign_id の campaign tracker で作業継続
