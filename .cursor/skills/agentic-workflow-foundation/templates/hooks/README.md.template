@@ -9,13 +9,13 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 | ファイル | 適用イベント | 役割 | カテゴリ | フェイル戦略 |
 |---|---|---|---|---|
 | [guard-git-write.sh](guard-git-write.sh) | `beforeShellExecution` | Git の不可逆操作を deny、履歴書き換えを ask、**`gh` CLI 全般を deny**（選択 provider の境界を迂回するため wrapper を案内） | Enforcement | deny対象はfail_closed / それ以外はfail_open |
-| [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state ファイル初期化 + `handoff-{session_id}.md` をスキャン（0/1/2+ 分岐）して `additional_context` 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）・アーカイブ + pre-compact スナップショットと manifest の突合。2+ 件時は AskQuestion マーカー注入。handoff なし時は pre-compact snapshot から fallback 注入 | Observation / Handoff | fail_open |
+| [session-bootstrap.sh](session-bootstrap.sh) | `sessionStart` | state に `campaign_id` を必ず設定（handoff 1 件なら bind、なければ創設 `session_id` を mint）し、`handoff-{session_id}.md` をスキャン（0/1/2+ 分岐）して `additional_context` 注入（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）・アーカイブ + pre-compact スナップショットと manifest の突合。2+ 件時は AskQuestion マーカー注入（選択後に campaign_id を state へ bind してから consumed）。handoff なし時は pre-compact snapshot から fallback 注入 | Observation / Handoff | fail_open |
 | [session-budget-tracker.sh](session-budget-tracker.sh) | `beforeSubmitPrompt` | `prompt_count` をインクリメントし、{{framework.budget_thresholds.checkpoint_interval_prompts}} prompts 間隔で checkpoint marker を書く。prompt テキスト先頭 1000 bytes を `turns.jsonl` に追記 | Observation | fail_open |
 | [session-shell-tracker.sh](session-shell-tracker.sh) | `afterShellExecution` | `shell_bytes` に直近シェル出力長を加算 | Observation | fail_open |
 | [session-response-tracker.sh](session-response-tracker.sh) | `afterAgentResponse` / `afterAgentThought` | AI 応答 / thinking テキストの先頭 1000 bytes を `{session_id}.turns.jsonl` に追記するゼロコスト会話ログ | Observation | fail_open |
 | [session-progress-emitter.sh](session-progress-emitter.sh) | `beforeSubmitPrompt` / `afterAgentThought` / `afterAgentResponse` / `afterShellExecution` / `subagentStart` / `subagentStop` | 構造化されたセッション観測イベントを `{session_id}.progress.jsonl` に追記する | Observation | fail_open |
-| [session-compact-observer.sh](session-compact-observer.sh) | `preCompact` | compact 直前の token% を state に記録し、`compact-events.jsonl` に校正データを追記し、`pending-handoff` マーカーを書き、包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state）を自動退避する | Observation | fail_open |
-| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | token%（あれば優先）または proxy 指標で Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。`pending-handoff` マーカー検出時は即座に compact 連動 handoff を発火する。Yellow/Red 発火時に handoff manifest の骨格を機械生成する。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
+| [session-compact-observer.sh](session-compact-observer.sh) | `preCompact` | compact 直前の token% を state に記録し、state.campaign_id の tracker を参照して `compact-events.jsonl` に校正データを追記し、`pending-handoff` マーカーを書き、包括的構造化スナップショット（campaign tracker + turns.jsonl 末尾 + state）を自動退避する | Observation | fail_open |
+| [session-budget-evaluator.sh](session-budget-evaluator.sh) | `stop` | token%（あれば優先）または proxy 指標で Yellow/Red 判定し、昇格時のみ `followup_message` で AI に Context Budget Protocol を促す。`pending-handoff` マーカー検出時は即座に compact 連動 handoff を発火する。state.campaign_id と tracker_path を含む handoff manifest の骨格を機械生成する。checkpoint marker 検出時は判断構造の外部化を促す | Advisory (followup) | fail_open |
 
 ## 明示実行 helper（Hook ではない）
 
@@ -70,11 +70,12 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 [ユーザー: Cmd+N で新規チャット]
   → sessionStart Hook → session-bootstrap.sh
   → handoff-{session_id}.md をスキャン（0/1/2+ 分岐）
-  → 1 件: auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
-  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させる
+  → 1 件: campaign_id を state に bind → auto-inject + consumed リネーム（サイズ上限 {{framework.budget_thresholds.max_injection_bytes}} bytes）
+  → 0 件: campaign_id = 新 session_id として mint（残存 tracker へ自動 bind しない）
+  → 2+ 件: [CONTEXT_BUDGET_HANDOFF_SELECT] マーカー注入 → AI が AskQuestion でユーザーに選択させ、選択後に検証済み campaign_id を state へ bind してから consumed リネームする
   → handoff manifest なし時: pre-compact snapshot から直近の文脈を fallback 注入
   → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
-  → AI が manifest / snapshot を読み込んで作業継続
+  → AI が manifest / snapshot を読み込み、state.campaign_id の campaign tracker で作業継続
 ```
 
 ## 判定優先順位
@@ -115,6 +116,8 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 | フィールド | 更新元 | 内容 |
 |---|---|---|
 | `session_id` | bootstrap | Cursor から渡される session UUID |
+| `campaign_id` | bootstrap | campaign の不変 ID。handoff にあれば bind、なければ創設 session_id と同値で mint |
+| `campaign_id_source` | bootstrap | `handoff` または `session_start`。campaign_slug とは別 |
 | `started_at_unix` / `started_at_iso` | bootstrap | セッション開始時刻 |
 | `prompt_count` | budget-tracker | ユーザープロンプト送信回数 |
 | `shell_bytes` | shell-tracker | シェル実行出力長の累積バイト数 |
@@ -213,7 +216,7 @@ Yellow/Red が checkpoint と同時に発火する場合は Yellow/Red が優先
 | {{this.metric}} | {{this.update}} | {{this.reset}} |
 {{/each}}
 
-新規チャット起動時に `session-bootstrap.sh` が新しい state ファイルを作成するため、過去セッションの累積は引き継がれない。
+新規チャット起動時に `session-bootstrap.sh` が新しい state ファイルを作成する。累積指標は引き継がれないが、handoff に記録された `campaign_id` があれば同じ campaign tracker に bind する。
 
 ## ローカルテスト手順
 

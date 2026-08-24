@@ -9,7 +9,8 @@
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型専用。主アウトプットは動くアプリケーション、検証は自動テスト + ビルド + 型チェック）。
 
 - 主アウトプットと生成/検証ゲート: `bin/quality-gate gen` / `bin/quality-gate build` / `bin/quality-gate lint` / `bin/quality-gate test`
-- 追跡ドキュメント: `{{project.tracking_artifact}}`（セッションごとの状態管理ファイル。`.gitignore` 対象・完了時は削除）
+- 追跡ドキュメント: `{{project.tracking_artifact}}`（キャンペーン単位の SoT。`.gitignore` 対象・キャンペーン完了時は削除）
+- 識別子の親子関係: **親 = campaign、子 = session**。`campaign_id` は創設 `session_id` と同値で以後不変、`campaign_slug`（report / envelope 用）とは別
 {{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate が行う）{{/if}}
 
 ### コンテキスト保護の原則（統一設計書 原則5）
@@ -76,12 +77,13 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
 2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞を確認（`docs/QUALITY_GATE.md §1.5`）
-3. 追跡ドキュメント（`{{project.tracking_artifact}}`）が存在すれば進行中キャンペーンとして読む。存在しなければ必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格で新規作成する
-{{#if agent_workflow.enabled}}4. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む
-5. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
+3. `session-bootstrap.sh` が state に設定した `campaign_id` を確認し、追跡ドキュメント（`{{project.tracking_artifact}}`）をその ID から解決して読む。tracker の欠落だけで `session_id` を使った別キャンペーン判定をしない
+4. 解決した追跡ドキュメントが無い場合は、`campaign_id` を変えず、必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格をその campaign 用に作成する
+{{#if agent_workflow.enabled}}5. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む
+6. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
+7. ソースコード調査はドキュメント把握後に開始する
+{{else}}5. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
 6. ソースコード調査はドキュメント把握後に開始する
-{{else}}4. タスクに応じて `Documentation Navigation` の参照順序に従い docs を読む
-5. ソースコード調査はドキュメント把握後に開始する
 {{/if}}
 
 ### セッション終了
@@ -90,7 +92,7 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 2. 検証ゲート（`docs/QUALITY_GATE.md`）を実行: profile selector に従う（`foundation` = `bin/foundation-gate self` / `application` = `bin/quality-gate verify`）
 3. 設計次元 D-* を変更する判断が発生した場合は ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記のフローで `docs/DECISIONS.md` に記録する（承認前は直接追記しない）
 4. 失敗・踏み外しの学びが発生した場合は `docs/GOTCHAS.md` の起票トリガーを確認し、未追記なら同ファイルに直接追記（検知時に即追記済みなら確認のみ）
-5. Context Budget の Yellow / Red 到達時はハンドオフ manifest を **`.cursor/.session/handoff-{session_id}.md`** に書き出す（`session-bootstrap.sh` が次セッションで自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
+5. Context Budget の Yellow / Red 到達時は、state の `campaign_id` と tracker パスを handoff manifest に転記し、manifest を **`.cursor/.session/handoff-{session_id}.md`** に書き出す（`session-bootstrap.sh` が次セッションで bind して自動注入）。詳細は [`docs/CONTEXT_BUDGET.md`](docs/CONTEXT_BUDGET.md)。`.cursor/` 直下に独自ファイルを作成しない
 
 ### セッション再開
 
@@ -106,7 +108,7 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 
 - **Checkpoint**: 定期的に `[CONTEXT_CHECKPOINT]` が発火し、追跡ドキュメントへ判断構造の外部化を促す（セッション切り替えではない）
 - **Yellow**: 追跡ドキュメントの最新化と作業の区切り準備。`followup_message` の指示に従う
-- **Red**: handoff manifest を `.cursor/.session/handoff-{session_id}.md` に書き出し、新規チャットへ誘導。新規実装を停止する
+- **Red**: state の `campaign_id` を handoff manifest に残し、`.cursor/.session/handoff-{session_id}.md` に書き出して新規チャットへ誘導。新規実装を停止する。tracker は `tracker-{campaign_id}.md` のまま引き継ぐ
 
 ## Boundaries
 

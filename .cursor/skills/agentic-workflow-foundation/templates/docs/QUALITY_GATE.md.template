@@ -162,9 +162,11 @@ G-{GATE}-{CATEGORY}-{NNN}
 
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
 
+**campaign / session の識別子責務**: **親 = campaign、子 = session** とする。`campaign_id` は創設 `session_id` と同値の不変 IDであり、tracker（`{{project.tracking_artifact}}`）を解決する唯一のキーである。`session_id` は現在チャットの state / handoff / turns / progress に限定し、`campaign_slug` は report / envelope の命名用として別管理する。
+
 ### 1.6 計画ライフサイクルゲート
 
-追跡ドキュメント `{{project.tracking_artifact}}` のフェーズ境界（計画→実装 / レビュー→完了）を機械検査する軽量シェルゲート。これまで Advisory（AI 自主遵守）に留めていた「必須項目充足 / レビュー完了承認 / 未対応0件 / 例外承認証跡」を、`session-start-gate.sh` と同クラスのシェル + 軽量検査ID で機械検査に昇格する。**Finding Code 79 種体系・数値スコアリングは採用しない**（`framework.accd_axes[B].not_adopted` 死守）。
+campaign tracker `{{project.tracking_artifact}}` のフェーズ境界（計画→実装 / レビュー→完了）を機械検査する軽量シェルゲート。これまで Advisory（AI 自主遵守）に留めていた「必須項目充足 / レビュー完了承認 / 未対応0件 / 例外承認証跡」を、`session-start-gate.sh` と同クラスのシェル + 軽量検査ID で機械検査に昇格する。**Finding Code 79 種体系・数値スコアリングは採用しない**（`framework.accd_axes[B].not_adopted` 死守）。
 
 実行コマンド: `.cursor/skills/session-handover/scripts/plan-gate.sh [report|review]`（実体は本基盤の生成物）。`report` が計画→実装境界（既定）、`review` がレビュー→完了境界。必須セクションの SoT は `manifest.yaml > framework.plan_required_sections`。
 
@@ -380,7 +382,7 @@ workflow-gate.sh step6 TICKET-1234
 
 ## 3. フェーズ境界ゲート
 
-追跡ドキュメント `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたげるため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 
 {{#if agent_workflow.gate_scripts}}
 **統一ディスパッチャー**: フェーズ境界ゲートは `workflow-gate.sh <step>` で統一実行できる（§1.7）。個別スクリプトの直接実行も引き続き有効。

@@ -32,7 +32,6 @@ fi
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 STATE_FILE="$SESSION_DIR/${SESSION_ID}.json"
-TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${SESSION_ID}.md"
 
 mkdir -p "$SESSION_DIR" 2>/dev/null || { echo '{}'; exit 0; }
 
@@ -41,10 +40,12 @@ NOW_ISO="$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
 jq -n \
   --arg sid "$SESSION_ID" \
+  --arg cid "$SESSION_ID" \
   --argjson started_at_unix "$NOW_UNIX" \
   --arg started_at_iso "$NOW_ISO" \
   '{
     session_id: $sid,
+    campaign_id: $cid,
     started_at_unix: $started_at_unix,
     started_at_iso: $started_at_iso,
     prompt_count: 0,
@@ -72,6 +73,48 @@ for hf in "$SESSION_DIR"/handoff-*.md; do
 done
 
 HANDOFF_COUNT=${#HANDOFF_FILES[@]}
+
+# ---- campaign_id の mint / bind ----
+# campaign_id は campaign の親 ID（創設 session_id と同値）であり、
+# session_id は現在チャットの runtime ID に限定する。
+extract_campaign_id() {
+  local HANDOFF_FILE="$1"
+  local CANDIDATE
+  CANDIDATE="$(grep -E '^[[:space:]]*(-[[:space:]]*)?campaign_id:[[:space:]]*[A-Za-z0-9._-]+[[:space:]]*$' "$HANDOFF_FILE" 2>/dev/null \
+    | head -n 1 \
+    | sed -E 's/^[[:space:]]*(-[[:space:]]*)?campaign_id:[[:space:]]*//; s/[[:space:]]*$//')" || CANDIDATE=""
+  if [[ "$CANDIDATE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    printf '%s' "$CANDIDATE"
+  fi
+}
+
+write_campaign_state() {
+  jq --arg cid "$CAMPAIGN_ID" --arg source "$CAMPAIGN_ID_SOURCE" \
+    '.campaign_id = $cid | .campaign_id_source = $source' \
+    "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null
+}
+
+bind_campaign_from_handoff() {
+  local HANDOFF_FILE="$1"
+  local BIND_ID
+  BIND_ID="$(extract_campaign_id "$HANDOFF_FILE")"
+  if [[ -n "$BIND_ID" ]]; then
+    CAMPAIGN_ID="$BIND_ID"
+    CAMPAIGN_ID_SOURCE="handoff"
+  fi
+  write_campaign_state
+}
+
+CAMPAIGN_ID="$SESSION_ID"
+CAMPAIGN_ID_SOURCE="session_start"
+# state は sessionStart で必ず campaign_id を持つ。2+ handoff はユーザー選択前に
+# 自動 bind せず、現在 session の ID を仮の創設 ID として保持する。
+# 選択後の bind は AI が AskQuestion 後に state を更新する（下記 2+ 指示）。
+if (( HANDOFF_COUNT == 1 )); then
+  bind_campaign_from_handoff "${HANDOFF_FILES[0]}"
+else
+  write_campaign_state
+fi
 
 # ---- handoff 注入ヘルパー（1 件の handoff を注入 + consumed リネーム） ----
 inject_handoff() {
@@ -148,8 +191,14 @@ ${HANDOFF_LIST}
 AI への指示:
 1. ユーザーに AskQuestion を使ってどの handoff を読み込むか選択させよ（ファイル名と最終更新時刻を選択肢として提示）
 2. 選択された handoff ファイルを Read し、manifest 内「ポインタ」に記載された追跡ドキュメントを Read して復旧手順を実行せよ
-3. 選択された handoff を consumed にリネームせよ: mv .cursor/.session/handoff-{sid}.md .cursor/.session/handoff-consumed-{sid}-\$(date +%s).md
-4. 選択されなかった handoff は後続セッションで消費可能（そのまま残す）"
+3. 選択ファイルの campaign_id を検証せよ（行形式 campaign_id: <ID>、許可文字は [A-Za-z0-9._-]）。検証できた場合のみ、consumed リネームより前に現在セッションの state を更新せよ:
+   jq --arg cid \"<検証済み campaign_id>\" --arg source \"handoff\" \\
+     '.campaign_id = \$cid | .campaign_id_source = \$source' \\
+     .cursor/.session/${SESSION_ID}.json > .cursor/.session/${SESSION_ID}.json.tmp &&
+     mv .cursor/.session/${SESSION_ID}.json.tmp .cursor/.session/${SESSION_ID}.json
+   campaign_id が無い・不正な場合は state の仮の創設 ID を維持し、tracker ファイル名から推測して bind するな。
+4. その後、選択された handoff を consumed にリネームせよ: mv .cursor/.session/handoff-{sid}.md .cursor/.session/handoff-consumed-{sid}-\$(date +%s).md
+5. 選択されなかった handoff は後続セッションで消費可能（そのまま残す）"
 fi
 
 # ---- スナップショット突合（pre-compact snapshot と handoff manifest の整合チェック） ----

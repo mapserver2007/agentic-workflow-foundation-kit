@@ -77,11 +77,17 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 | handoff 1 件 | auto-inject + consumed リネーム（従来と同じ UX） |
 | handoff 2+ 件 | `[CONTEXT_BUDGET_HANDOFF_SELECT]` マーカーを注入し、AI が AskQuestion でユーザーに選択させる |
 
-2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択分のみ consumed リネームされ、残りは後続セッションで消費可能。
+2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択ファイルの検証済み `campaign_id` を現在セッションの state に bind してから選択分のみ consumed リネームし、残りは後続セッションで消費可能。sessionStart 時点では 2+ を自動 bind しない。
 
 ## tracker と handoff manifest の責務境界
 
 {{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
+
+## campaign_id と session_id
+
+親は campaign、子は session とする。`campaign_id` は sessionStart で必ず state に設定されるキャンペーンの安定 IDで、handoff が無い場合は創設 `session_id` と同値で以後変わらない。追跡ドキュメントは `tracker-{campaign_id}.md` とし、state の `campaign_id` からのみ解決する。
+
+`session_id` は現在チャットの state / handoff ファイル名 / turns / progress に限定する。`campaign_slug` は report / envelope の命名専用で `campaign_id` とは別である。handoff に `campaign_id` が無い場合は本文を注入するだけで tracker を推測・自動 bind しない。
 
 > 責務境界の詳細表・プランファイル連携の具体例は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 

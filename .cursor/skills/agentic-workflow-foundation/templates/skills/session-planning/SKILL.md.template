@@ -1,9 +1,8 @@
 ---
 name: session-planning
 description: >-
-  セッション開始時に追跡ドキュメント（{{project.tracking_artifact}}）の存在を保証し、
-  セッション分割計画を作成/更新する。追跡ドキュメントが存在しない場合は新キャンペーンと判断し、
-  パターン選択フローを実行してから新規作成する。
+  セッション開始時に state の campaign_id を読み、追跡ドキュメント（{{project.tracking_artifact}}）の存在を
+  campaign 単位で保証し、セッション分割計画を作成/更新する。campaign_id は sessionStart で mint または handoff bind する。
   すべてのタスクで必須 7 節（manifest.yaml > framework.plan_required_sections）を含む簡潔な骨格を作成する。
   大規模タスク（変更{{session.large_task_threshold.files}}ファイル以上、サブタスク{{session.large_task_threshold.subtasks}}つ以上）は
   セッション分割計画を含む完全な追跡ドキュメントを作成する。
@@ -12,17 +11,18 @@ disable-model-invocation: true
 
 # session-planning
 
-セッション開始時に追跡ドキュメントの存在を保証し、セッション境界・検証方針を明確にするスキル。
+セッション開始時に campaign 単位の追跡ドキュメントの存在を保証し、セッション境界・検証方針を明確にするスキル。
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
 <!-- disable-model-invocation: true — モデル任意発火を抑止し、Hook / gate scripts による自動管理との責務分離を維持する。 -->
 
 ## 追跡ドキュメントの存在保証
 
-セッション開始時に `{{project.tracking_artifact}}` が存在しない場合は新規作成する。
+セッション開始時に state の `campaign_id` を確認し、`{{project.tracking_artifact}}` をその ID から解決する。
 
 - **すべてのタスク**: 必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格を作成する。計画ゲート（`plan-gate.sh`）はこの 7 節を機械検査するため、省略するとゲートが通らない
 - **大規模タスク**: 上記に加え、セッション分割計画を含む完全な追跡ドキュメントを作成
+- tracker の欠落だけで新しい campaign と判定したり、現在の `session_id` から別 tracker を推測したりしない。欠落時は state の `campaign_id` を維持したまま、その campaign 用の骨格を作成する
 
 大規模タスクの判定基準:
 
@@ -38,13 +38,14 @@ disable-model-invocation: true
 
 ## 新キャンペーン開始フロー
 
-追跡ドキュメント（`{{project.tracking_artifact}}`）が存在しない場合は、新キャンペーンと判断して以下を実行する。
+新しい campaign は `session-bootstrap.sh` が、未消費 handoff の `campaign_id` を bind するか、handoff が無い場合に創設 `session_id` を `campaign_id` として mint することで開始する。`campaign_slug` は report / envelope 用であり、campaign_id と同値にしない。
 
-1. 追跡ドキュメントを新規作成し、必須セクション（後述）をすべて設ける
+1. state の `campaign_id` を変更せず、追跡ドキュメントを新規作成する場合は必須セクション（後述）をすべて設ける
+2. handoff に `campaign_id` が無い場合は本文を注入するだけで tracker を自動 bind しない
 
 ## 追跡ドキュメント
 
-既定の追跡ドキュメントは `{{project.tracking_artifact}}`。
+既定の追跡ドキュメントは state の `campaign_id` から解決する `{{project.tracking_artifact}}`。`session_id` は現在チャットの state / handoff / turns / progress に限定する。
 
 追跡ドキュメントには、計画ライフサイクルゲート（`docs/QUALITY_GATE.md §1.6` / `plan-gate.sh`）が機械検査する以下の必須セクションを必ず設ける（SoT は `manifest.yaml > framework.plan_required_sections`）。
 

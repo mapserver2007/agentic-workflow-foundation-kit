@@ -41,6 +41,8 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 各 subagent dispatch ステップで、orchestrator は以下を実行する:
 
 1. Step①の最初の worker dispatch 前に `02-report-creation.md §2.1` の既存命名規約を一度だけ実行して `campaign_slug` を決定・凍結する。要求正規化・深度判定・standard/deep 調査・Step②へ同じ値を渡し、worker は invent / 変更 / rename / copy しない。Step②は `report_slug = campaign_slug` を必須とする
+   - `campaign_slug` は report / envelope の命名専用で、campaign の runtime 親 ID ではない。親 = campaign、子 = session の bind は `state.campaign_id` が担う
+   - `campaign_id` は sessionStart で mint または handoff から bind し、Red 後の新 session でも再採番しない。tracker は `state.campaign_id` から解決する
 2. `config.yaml > models.{config_key}` からモデルスラグを取得する{{#if requirement_analysis.enabled}}（Step ① は `requirement-analysis/config.yaml` が SoT）{{/if}}
 3. Cursor の `Task` ツールを以下のパラメータで起動する:
    - `model`: config.yaml から取得したモデルスラグ

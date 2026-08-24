@@ -31,11 +31,17 @@ fi
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 STATE_FILE="$SESSION_DIR/${SESSION_ID}.json"
-TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${SESSION_ID}.md"
 
 if [[ ! -f "$STATE_FILE" ]]; then
   echo '{}'
   exit 0
+fi
+
+CAMPAIGN_ID="$(jq -r '.campaign_id // empty' "$STATE_FILE" 2>/dev/null)" || CAMPAIGN_ID=""
+TRACKING_ARTIFACT="{{project.tracking_artifact}}"
+TRACKER_FILE=""
+if [[ "$CAMPAIGN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  TRACKER_FILE="$PROJECT_DIR/${TRACKING_ARTIFACT//\{campaign_id\}/$CAMPAIGN_ID}"
 fi
 
 # ---- stdin から preCompact イベントデータを取得 ----
@@ -80,6 +86,7 @@ PROMPT_COUNT="$(jq -r '.prompt_count // 0' "$STATE_FILE" 2>/dev/null)" || PROMPT
 SHELL_BYTES="$(jq -r '.shell_bytes // 0' "$STATE_FILE" 2>/dev/null)" || SHELL_BYTES=0
 jq -c -n \
   --arg sid "$SESSION_ID" \
+  --arg campaign_id "$CAMPAIGN_ID" \
   --arg trig "$TRIGGER" \
   --argjson pct "$USAGE_PCT" \
   --argjson tokens "${CONTEXT_TOKENS:-null}" \
@@ -91,6 +98,7 @@ jq -c -n \
   --arg at "$NOW_ISO" \
   '{
     session_id: $sid,
+    campaign_id: $campaign_id,
     trigger: $trig,
     context_usage_percent: $pct,
     context_tokens: $tokens,
@@ -106,10 +114,10 @@ jq -c -n \
 PENDING_FILE="$SESSION_DIR/${SESSION_ID}.pending-handoff"
 printf '%s\n' "$USAGE_PCT" > "$PENDING_FILE" 2>/dev/null || true
 
-# ---- 3.5. tracker が存在しなければ必須 7 節を含む骨格を生成 ----
+# ---- 3.5. state.campaign_id の tracker が存在しなければ必須 7 節を含む骨格を生成 ----
 # SoT: manifest.yaml > framework.plan_required_sections
 TRACKER="$TRACKER_FILE"
-if [[ ! -f "$TRACKER" ]]; then
+if [[ -n "$TRACKER" ]] && [[ ! -f "$TRACKER" ]]; then
   mkdir -p "$(dirname "$TRACKER")" 2>/dev/null || true
   cat > "$TRACKER" 2>/dev/null <<'TRACKER_SKEL'
 # 追跡ドキュメント（自動生成骨格）
@@ -147,10 +155,12 @@ SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
   echo "- usage: ${USAGE_PCT}%"
   echo "- tokens: ${CONTEXT_TOKENS:-?} / ${CONTEXT_WINDOW:-?}"
   echo "- prompt_count: ${PROMPT_COUNT}"
+  echo "- campaign_id: ${CAMPAIGN_ID:-unbound}"
+  echo "- tracker_path: ${TRACKER_FILE:-unavailable}"
   echo "- at: ${NOW_ISO}"
   echo ""
   echo "## 追跡ドキュメント"
-  if [[ -f "$TRACKER" ]]; then
+  if [[ -n "$TRACKER" ]] && [[ -f "$TRACKER" ]]; then
     head -c 4096 "$TRACKER"
   fi
   echo ""

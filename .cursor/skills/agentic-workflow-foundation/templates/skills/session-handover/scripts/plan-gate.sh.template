@@ -38,7 +38,7 @@ find_tracking_documents() {
   tracking_dir="$(dirname "$PROJECT_DIR/$TRACKING")"
   local tracking_base
   tracking_base="$(basename "$TRACKING")"
-  local tracking_pattern="${tracking_base//\{session_id\}/*}"
+  local tracking_pattern="${tracking_base//\{campaign_id\}/*}"
   if [[ -d "$tracking_dir" ]]; then
     find "$tracking_dir" -maxdepth 1 -type f -name "$tracking_pattern" 2>/dev/null
   fi

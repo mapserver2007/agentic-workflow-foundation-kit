@@ -24,7 +24,7 @@ find_tracking_documents() {
   tracking_dir="$(dirname "$PROJECT_DIR/$TRACKING")"
   local tracking_base
   tracking_base="$(basename "$TRACKING")"
-  local tracking_pattern="${tracking_base//\{session_id\}/*}"
+  local tracking_pattern="${tracking_base//\{campaign_id\}/*}"
   if [[ -d "$tracking_dir" ]]; then
     find "$tracking_dir" -maxdepth 1 -type f -name "$tracking_pattern" 2>/dev/null
   fi
@@ -74,6 +74,8 @@ done < <(find_tracking_documents)
 now="$(date +%s)"
 if (( ${#tracked[@]} > 0 )); then
 for f in "${tracked[@]}"; do
+  tracker_campaign_id="$(basename "$f" .md)"
+  tracker_campaign_id="${tracker_campaign_id#tracker-}"
 # --- G-SESSION-STALE-001: 追跡ドキュメントの停滞 (WARN) ---
   mtime="$(date -r "$f" +%s 2>/dev/null || echo "")"
   if [[ -n "$mtime" ]]; then
@@ -89,8 +91,9 @@ for f in "${tracked[@]}"; do
       [[ -f "$state_f" ]] || continue
       if command -v jq >/dev/null 2>&1; then
         started="$(jq -r '.started_at_unix // empty' "$state_f" 2>/dev/null)" || started=""
+        state_campaign_id="$(jq -r '.campaign_id // empty' "$state_f" 2>/dev/null)" || state_campaign_id=""
         prompts="$(jq -r '.prompt_count // 0' "$state_f" 2>/dev/null)" || prompts=0
-        if [[ -n "$started" ]] && [[ "$prompts" =~ ^[0-9]+$ ]] && (( prompts >= {{framework.budget_thresholds.checkpoint_interval_prompts}} )); then
+        if [[ "$state_campaign_id" == "$tracker_campaign_id" ]] && [[ -n "$started" ]] && [[ "$prompts" =~ ^[0-9]+$ ]] && (( prompts >= {{framework.budget_thresholds.checkpoint_interval_prompts}} )); then
           if (( mtime < started )); then
             echo "[WARN] CHECKPOINT 発火可能だが tracker が session 開始前から未更新 (G-SESSION-TRACKER-001): $f"
             break
