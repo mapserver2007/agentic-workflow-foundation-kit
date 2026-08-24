@@ -76,9 +76,17 @@ if [[ -z "$STEP" ]]; then
   log "用法: workflow-gate.sh <step1|step2|step2-report|step4|step5|review-start|step6|adr|artifact|redispatch|maintenance-docs|archive> [args...]"
   log ""
   log "利用可能なステップ:"
-{{#each agent_workflow.step_gates}}
-  log "  {{this.id}}  — {{this.desc}}"
-{{/each}}
+  log "  step2  — 計画→実装境界（必須セクション充足）"
+  log "  step2-report  — レポート構造検査（必須10セクション充足）"
+  log "  step4  — 実装→検証（コードゲート + 完了チェック3項目）"
+  log "  step5  — 検証→PR（検証ゲート）"
+  log "  review-start  — 初回 Step⑤レビュー開始（prompt/session/PR/readback 境界）"
+  log "  step6  — PR→完了（レビュー完了承認）"
+  log "  adr  — ADR 起票内容の機械検査"
+  log "  artifact  — Worker artifact envelope 検査"
+  log "  redispatch  — re-dispatch 前の復元差分照合"
+  log "  maintenance-docs  — maintenance-docs 起票判定と queue 整合性の機械検査"
+  log "  archive  — 完了チェック6項目 + 残存artifact検査 + maintenance-docs整合性検査 + archives移動検査"
   exit 2
 fi
 
@@ -94,7 +102,7 @@ case "$STEP" in
   step2-report)
     # ② レポート構造検査: envelope 必須検査 → gate-report.py
     ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-    ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
+    ARTIFACT_DIR="$ROOT_DIR/.cursor/.artifacts"
     REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
 
     # 対象レポートの決定
@@ -253,7 +261,7 @@ PY
     # foundation: bin/foundation-gate self（kit 自己検証）
     # application: G-GEN パス限定 porcelain + bin/quality-gate verify
     ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-    ARTIFACT_DIR="$ROOT_DIR/{{agent_workflow.artifact.dir}}"
+    ARTIFACT_DIR="$ROOT_DIR/.cursor/.artifacts"
     REPORTS_DIR="$ROOT_DIR/docs/agent-tasks/reports"
 
     # --- report-file と gate-test の出力形式を解決 ---
@@ -390,7 +398,7 @@ print(Path(__import__("sys").argv[1]).resolve())
 
     log "PASS: step3/step4 envelope 検査通過"
 
-    PROFILE="{{project.quality_gate.profile}}"
+    PROFILE="foundation"
     log "quality gate profile: $PROFILE"
 
     case "$PROFILE" in
@@ -405,27 +413,7 @@ print(Path(__import__("sys").argv[1]).resolve())
         ;;
       application)
         log "--- code gate (application profile: G-GEN + build/lint/test) ---"
-        {{#if project.quality_gate.gen_artifact_paths}}
-        GEN_PATHS=({{#each project.quality_gate.gen_artifact_paths}} "{{this}}"{{/each}} )
-
-        log "--- G-GEN: gen_artifact_paths 非空 → gen 必須実行 ---"
-        run_logged "$ROOT_DIR/bin/quality-gate" gen
-        GEN_EXIT=$?
-        if [[ $GEN_EXIT -ne 0 ]]; then
-          log "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
-          exit "$GEN_EXIT"
-        fi
-        GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
-        if [[ -n "$GEN_STATUS" ]]; then
-          log "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
-          log "$GEN_STATUS"
-          log "生成物をコミットしてから再実行してください。"
-          exit 1
-        fi
-        log "PASS: G-GEN — 生成物は最新（差分なし）"
-        {{else}}
         log "SKIP: gen_artifact_paths が空 — gen 対象なし（verify のみ実行）"
-        {{/if}}
 
         log "--- verify ---"
         run_logged "$ROOT_DIR/bin/quality-gate" verify
@@ -460,20 +448,7 @@ print(Path(__import__("sys").argv[1]).resolve())
     ;;
   step6)
     # ⑤→⑥ PR→完了: レビュー完了承認 + 未対応0件を検査
-    {{#if agent_workflow.step6.project_gate_command}}
-    # プロジェクト固有ゲート → 汎用ゲートの順序で実行
-    PROJECT_GATE_CMD=({{#each agent_workflow.step6.project_gate_command}} "{{this}}"{{/each}} )
-    ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-    (cd "$ROOT_DIR" && "${PROJECT_GATE_CMD[@]}" "$@")
-    pg_exit=$?
-    if [[ $pg_exit -ne 0 ]]; then
-      echo "FAIL: プロジェクトゲートが exit $pg_exit で失敗（汎用ゲートは未実行）"
-      exit $pg_exit
-    fi
     exec "$SCRIPT_DIR/plan-gate.sh" review
-    {{else}}
-    exec "$SCRIPT_DIR/plan-gate.sh" review
-    {{/if}}
     ;;
   adr)
     # ADR 起票内容の機械検査（docs/DECISIONS.md）

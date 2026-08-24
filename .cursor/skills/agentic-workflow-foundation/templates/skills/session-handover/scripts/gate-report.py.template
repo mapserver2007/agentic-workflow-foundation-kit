@@ -60,6 +60,27 @@ def _load_step1_requirements_digest(filepath: str | None) -> str | None:
     return digest_match.group(1) if digest_match else None
 
 
+def _load_step1_campaign_slug(filepath: str | None) -> str | None:
+    """Step1 envelope の campaign_slug と filename prefix を standalone でも照合する。"""
+    if not filepath or not os.path.isfile(filepath):
+        return None
+    path = Path(filepath)
+    match = re.match(r"^(.+?)--step1(?:-[^.]+)?\.md$", path.name)
+    if not match:
+        return None
+    text = path.read_text(encoding="utf-8")
+    fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not fm_match:
+        return None
+    slug_match = re.search(
+        r"""^campaign_slug:[ \t]*["']?(.+?)["']?[ \t]*$""",
+        fm_match.group(1),
+        re.MULTILINE,
+    )
+    slug = slug_match.group(1).strip() if slug_match else ""
+    return slug if slug == match.group(1) else None
+
+
 def check_report(
     filepath: str,
     step1_envelope_path: str | None = None,
@@ -80,6 +101,29 @@ def check_report(
         content = f.read()
 
     lines = content.splitlines()
+
+    # --- G-REPORT-CAMPAIGN-SLUG-001: report stem と Step1 campaign_slug binding ---
+    campaign_slug = _load_step1_campaign_slug(step1_envelope_path)
+    if campaign_slug is None:
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-CAMPAIGN-SLUG-001",
+            "status": "FAIL",
+            "message": "Step1 envelope の campaign_slug または filename prefix を検証できません",
+        })
+    elif Path(filepath).stem != campaign_slug:
+        results["fail"] = True
+        results["checks"].append({
+            "id": "G-REPORT-CAMPAIGN-SLUG-001",
+            "status": "FAIL",
+            "message": "report basename が Step1 campaign_slug と一致しません",
+        })
+    else:
+        results["checks"].append({
+            "id": "G-REPORT-CAMPAIGN-SLUG-001",
+            "status": "PASS",
+            "message": "report basename と Step1 campaign_slug が一致",
+        })
 
     # --- G-REPORT-SECTION-001: 必須 10 セクション見出しの存在チェック (FAIL) ---
     missing = []

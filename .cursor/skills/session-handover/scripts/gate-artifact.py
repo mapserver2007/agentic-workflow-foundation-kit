@@ -57,7 +57,7 @@ def parse_front_matter(text: str):
         import yaml
     except ImportError:
         print("FATAL: PyYAML が未導入です。pip install pyyaml を実行してください。")
-        sys.exit({{agent_workflow.artifact.envelope.parser_missing_exit}})
+        sys.exit(2)
 
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if not match:

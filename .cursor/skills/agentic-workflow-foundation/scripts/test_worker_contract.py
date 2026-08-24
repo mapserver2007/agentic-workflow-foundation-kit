@@ -50,10 +50,10 @@ STEP_DOC_OUTPUT_FIELDS = {
         "acceptance_criteria_status", "resolved_issues", "reason",
         "normalize_artifact_path", "depth_triage_artifact_path",
         "depth_fallback_reason",
-        "requirements_digest", "requirements_ack",
+        "requirements_digest", "campaign_slug",
     },
     "step2": {
-        "status", "step", "report_path", "report_digest",
+        "status", "step", "campaign_slug", "report_slug", "report_path", "report_digest",
         "gate_result", "missing", "reason", "implementation_approval",
     },
     "step3": {
@@ -104,12 +104,12 @@ def test_common_required():
 
 
 def test_step1_complete():
-    rc = check_artifact(str(FIXTURES_DIR / "step1-complete.md"), json_mode=True)
-    assert rc == 0, "step1-complete should PASS"
+    rc = check_artifact(str(FIXTURES_DIR / "sample-report--step1.md"), json_mode=True)
+    assert rc == 0, "sample-report--step1 should PASS"
 
 
 def test_step2_complete():
-    rc = check_artifact(str(FIXTURES_DIR / "step2-complete.md"), json_mode=True)
+    rc = check_artifact(str(FIXTURES_DIR / "step2-complete--step2.md"), json_mode=True)
     assert rc == 0, "step2-complete should PASS"
 
 
@@ -212,6 +212,7 @@ import tempfile
 _BASE_NORM_FM = (
     "status: complete\n"
     "step: step1-normalize\n"
+    "campaign_slug: T-1\n"
     "gate_a: PASS\n"
     "blocking_open_issues: []\n"
     "task_type: bug_fix\n"
@@ -225,6 +226,7 @@ _BASE_NORM_FM = (
 _BASE_DEPTH_FM = (
     "status: complete\n"
     "step: step1-depth-triage\n"
+    "campaign_slug: T-1\n"
     "gate_b: PASS\n"
     "analysis_depth: standard\n"
     "depth_reason: test\n"
@@ -273,6 +275,7 @@ AC-001 で gate が PASS する。
 _BASE_MAIN_FM = (
     "status: complete\n"
     "step: step1\n"
+    "campaign_slug: T-1\n"
     "gate_result: PASS\n"
     "analysis_depth: standard\n"
     "requirement_gate: PASS\n"
@@ -283,9 +286,6 @@ _BASE_MAIN_FM = (
     "acceptance_criteria_status: complete\n"
     "resolved_issues: []\n"
     f"requirements_digest: \"{_DIGEST_FIXTURE}\"\n"
-    "requirements_ack:\n"
-    "  status: acknowledged\n"
-    f"  digest: \"{_DIGEST_FIXTURE}\"\n"
 )
 
 
@@ -409,6 +409,7 @@ def test_step1_deep_fallback_pass():
         depth_fm = (
             "status: complete\n"
             "step: step1-depth-triage\n"
+            "campaign_slug: T-1\n"
             "gate_b: PASS\n"
             "analysis_depth: deep\n"
             "depth_reason: test\n"
@@ -550,6 +551,7 @@ def test_step1_deferred_to_standard_pass():
         depth_fm = (
             "status: complete\n"
             "step: step1-depth-triage\n"
+            "campaign_slug: T-1\n"
             "gate_b: PASS\n"
             "analysis_depth: deferred\n"
             "depth_reason: test\n"
@@ -565,6 +567,7 @@ def test_step1_deferred_to_deep_pass():
         depth_fm = (
             "status: complete\n"
             "step: step1-depth-triage\n"
+            "campaign_slug: T-1\n"
             "gate_b: PASS\n"
             "analysis_depth: deferred\n"
             "depth_reason: test\n"
@@ -578,12 +581,13 @@ def test_step1_deferred_to_deep_pass():
         assert rc == 0, "deferred triage → deep final should PASS"
 
 
-def test_step1_ack_missing_fails():
-    """FAIL: requirements_ack が欠落。"""
+def test_step1_ack_missing_passes():
+    """PASS: requirements_ack なしでも digest があれば新規 artifact を受理する。"""
     with tempfile.TemporaryDirectory() as td:
         fm = (
             "status: complete\n"
             "step: step1\n"
+            "campaign_slug: T-1\n"
             "gate_result: PASS\n"
             "investigation_memo_path: .cursor/.artifacts/T-1--step1.md\n"
             "analysis_depth: standard\n"
@@ -604,39 +608,48 @@ def test_step1_ack_missing_fails():
         _write_artifact(Path(td), "T-1--step1-normalize.md", _BASE_NORM_FM)
         _write_artifact(Path(td), "T-1--step1-depth-triage.md", _BASE_DEPTH_FM)
         rc = check_artifact(str(main), json_mode=True)
-        assert rc == 1, "missing requirements_ack should FAIL"
+        assert rc == 0, "missing requirements_ack should PASS"
+
+
+def test_step1_ack_explicit_null_fails():
+    """FAIL: 明示された requirements_ack: null は旧 artifact 互換の対象外。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(
+            Path(td),
+            main_extra="requirements_ack: null\n",
+        )
+        rc, check_ids = _check_artifact_json(main)
+        assert rc == 1, "explicit null requirements_ack should FAIL"
+        assert "G-ARTIFACT-RA-ACK-002" in check_ids
 
 
 def test_step1_ack_digest_mismatch_fails():
-    """FAIL: requirements_ack.digest と requirements_digest が不一致。"""
+    """FAIL: 旧 requirements_ack が存在して digest と不一致。"""
     with tempfile.TemporaryDirectory() as td:
         wrong_digest = "0000000000000000000000000000000000000000000000000000000000000000"
-        main = _build_step1_suite(Path(td))
-        content = main.read_text(encoding="utf-8")
-        main.write_text(
-            content.replace(
-                f'  digest: "{_DIGEST_FIXTURE}"',
-                f'  digest: "{wrong_digest}"',
-                1,
+        main = _build_step1_suite(
+            Path(td),
+            main_extra=(
+                "requirements_ack:\n"
+                "  status: acknowledged\n"
+                f'  digest: "{wrong_digest}"\n'
             ),
-            encoding="utf-8",
         )
+        content = main.read_text(encoding="utf-8")
         rc = check_artifact(str(main), json_mode=True)
         assert rc == 1, "ack digest mismatch should FAIL (G-ARTIFACT-RA-ACK-004)"
 
 
 def test_step1_ack_digest_case_difference_passes():
-    """PASS: requirements_ack.digest の大文字小文字差は許容する。"""
+    """PASS: 旧 requirements_ack.digest の大文字小文字差は許容する。"""
     with tempfile.TemporaryDirectory() as td:
-        main = _build_step1_suite(Path(td))
-        content = main.read_text(encoding="utf-8")
-        main.write_text(
-            content.replace(
-                f'  digest: "{_DIGEST_FIXTURE}"',
-                f'  digest: "{_DIGEST_FIXTURE.upper()}"',
-                1,
+        main = _build_step1_suite(
+            Path(td),
+            main_extra=(
+                "requirements_ack:\n"
+                "  status: acknowledged\n"
+                f'  digest: "{_DIGEST_FIXTURE.upper()}"\n'
             ),
-            encoding="utf-8",
         )
         rc = check_artifact(str(main), json_mode=True)
         assert rc == 0, "ack digest differing only by case should PASS"
@@ -653,6 +666,61 @@ def test_step1_digest_malformed_fails():
         )
         rc = check_artifact(str(main), json_mode=True)
         assert rc == 1, "malformed digest should FAIL (G-ARTIFACT-RA-ACK-001)"
+
+
+def test_step1_campaign_slug_prefix_mismatch_fails():
+    """FAIL: campaign_slug と --step1 より前の prefix が異なる。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(Path(td), slug="OTHER")
+        rc, check_ids = _check_artifact_json(main)
+        assert rc == 1
+        assert "G-ARTIFACT-CAMPAIGN-SLUG-001" in check_ids
+
+
+def test_step1_campaign_slug_suffix_passes():
+    """PASS: step filename の後続 suffix は prefix 一致なら許容する。"""
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        main = _build_step1_suite(tmp)
+        renamed = tmp / "T-1--step1-retry.md"
+        main.rename(renamed)
+        renamed.write_text(
+            renamed.read_text(encoding="utf-8").replace(
+                "investigation_memo_path: .cursor/.artifacts/T-1--step1.md",
+                "investigation_memo_path: .cursor/.artifacts/T-1--step1-retry.md",
+            ),
+            encoding="utf-8",
+        )
+        rc = check_artifact(str(renamed), json_mode=True)
+        assert rc == 0
+
+
+def test_step2_report_slug_must_match_campaign_slug():
+    """Step② report_slug は campaign_slug と完全一致する。"""
+    with tempfile.TemporaryDirectory() as td:
+        path = _write_artifact(
+            Path(td),
+            "T-2--step2.md",
+            (
+                "status: complete\n"
+                "step: step2\n"
+                "campaign_slug: T-2\n"
+                "report_slug: T-2\n"
+                "report_path: docs/agent-tasks/reports/T-2.md\n"
+                "implementation_approval:\n"
+                "  status: pending\n"
+                f'  approved_plan_digest: "{_DIGEST_FIXTURE}"\n'
+                "  decider: PO\n"
+            ),
+        )
+        assert check_artifact(str(path), json_mode=True) == 0
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("report_slug: T-2", "report_slug: OTHER"),
+            encoding="utf-8",
+        )
+        rc, check_ids = _check_artifact_json(path)
+        assert rc == 1
+        assert "G-ARTIFACT-STEP2-REPORT-SLUG-001" in check_ids
 
 
 def test_step1_memo_unresolvable_fails():
@@ -918,10 +986,14 @@ def main() -> int:
         test_step1_deep_fallback_no_reason_fails,
         test_step1_deferred_to_standard_pass,
         test_step1_deferred_to_deep_pass,
-        test_step1_ack_missing_fails,
+        test_step1_ack_missing_passes,
+        test_step1_ack_explicit_null_fails,
         test_step1_ack_digest_mismatch_fails,
         test_step1_ack_digest_case_difference_passes,
         test_step1_digest_malformed_fails,
+        test_step1_campaign_slug_prefix_mismatch_fails,
+        test_step1_campaign_slug_suffix_passes,
+        test_step2_report_slug_must_match_campaign_slug,
         test_step1_memo_unresolvable_fails,
         test_step1_memo_list_ac_definition_passes,
         test_step1_memo_near_ac_reference_fails,

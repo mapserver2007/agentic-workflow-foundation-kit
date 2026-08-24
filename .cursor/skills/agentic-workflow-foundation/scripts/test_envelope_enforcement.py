@@ -39,6 +39,9 @@ _gate_report_path = (
 
 FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
 REPORT_FIXTURES_DIR = HERE.parent / "fixtures" / "reports"
+WORKFLOW_GATE_TEMPLATE = (
+    HERE.parent / "templates" / "skills" / "session-handover" / "scripts" / "workflow-gate.sh.template"
+)
 
 
 def _load_gate_artifact():
@@ -68,28 +71,28 @@ def _run_gate_artifact_cli(args: list[str]) -> int:
 
 def test_expect_step_match():
     """--expect-step step1 が step1 envelope に対して PASS。"""
-    fixture = str(FIXTURES_DIR / "step1-complete.md")
+    fixture = str(FIXTURES_DIR / "sample-report--step1.md")
     rc = _run_gate_artifact_cli([fixture, "--expect-step", "step1", "--format=json"])
     assert rc == 0, f"step1 envelope + --expect-step step1 should PASS (got {rc})"
 
 
 def test_expect_step_mismatch():
     """--expect-step step2 が step1 envelope に対して FAIL。"""
-    fixture = str(FIXTURES_DIR / "step1-complete.md")
+    fixture = str(FIXTURES_DIR / "sample-report--step1.md")
     rc = _run_gate_artifact_cli([fixture, "--expect-step", "step2", "--format=json"])
     assert rc == 1, f"step1 envelope + --expect-step step2 should FAIL (got {rc})"
 
 
 def test_expect_status_match():
     """--expect-status complete が complete envelope に対して PASS。"""
-    fixture = str(FIXTURES_DIR / "step2-complete.md")
+    fixture = str(FIXTURES_DIR / "step2-complete--step2.md")
     rc = _run_gate_artifact_cli([fixture, "--expect-status", "complete", "--format=json"])
     assert rc == 0, f"complete envelope + --expect-status complete should PASS (got {rc})"
 
 
 def test_expect_status_mismatch():
     """--expect-status incomplete が complete envelope に対して FAIL。"""
-    fixture = str(FIXTURES_DIR / "step2-complete.md")
+    fixture = str(FIXTURES_DIR / "step2-complete--step2.md")
     rc = _run_gate_artifact_cli([fixture, "--expect-status", "incomplete", "--format=json"])
     assert rc == 1, f"complete envelope + --expect-status incomplete should FAIL (got {rc})"
 
@@ -129,7 +132,7 @@ def test_no_expect_options_blocked_with_reason():
 def test_expect_function_api():
     """check_artifact() の関数 API で expect_step/expect_status を渡せること。"""
     mod = _load_gate_artifact()
-    fixture = str(FIXTURES_DIR / "step1-complete.md")
+    fixture = str(FIXTURES_DIR / "sample-report--step1.md")
     rc = mod.check_artifact(fixture, json_mode=True, expect_step="step1", expect_status="complete")
     assert rc == 0, f"function API with matching expect should PASS (got {rc})"
 
@@ -141,6 +144,14 @@ def test_file_not_found_still_exit_2():
     """ファイル不在は引き続き exit 2。"""
     rc = _run_gate_artifact_cli(["/nonexistent/path.md", "--format=json"])
     assert rc == 2, f"file not found should exit 2 (got {rc})"
+
+
+def test_step2_report_slug_binding_template_contract():
+    """step2-report は basename ではなく --stepN 前の prefix を束縛する。"""
+    content = WORKFLOW_GATE_TEMPLATE.read_text(encoding="utf-8")
+    assert "フル basename ではなく --stepN より前の prefix" in content
+    assert '"step2 report_slug": step2["report_slug"]' in content
+    assert '"step2 report_path stem"' in content
 
 
 # === workflow-gate.sh テスト（step2-report / step4）===
@@ -210,7 +221,7 @@ def test_step2_report_envelope_missing_step1():
         staged = _stage_gate(tmp)
         slug = "TEST-001-envelope-test"
         _setup_report(tmp, slug)
-        _setup_envelope_dir(tmp, slug, {"step2": "step2-complete.md"})
+        _setup_envelope_dir(tmp, slug, {"step2": "step2-complete--step2.md"})
 
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
         step2_env = tmp / ".cursor" / ".artifacts" / f"{slug}--step2.md"
@@ -246,7 +257,7 @@ def test_step2_report_envelope_missing_step2():
         staged = _stage_gate(tmp)
         slug = "TEST-002-envelope-test"
         _setup_report(tmp, slug)
-        _setup_envelope_dir(tmp, slug, {"step1": "step1-complete.md"})
+        _setup_envelope_dir(tmp, slug, {"step1": "sample-report--step1.md"})
 
         report_path = tmp / "docs" / "agent-tasks" / "reports" / f"{slug}.md"
 
@@ -371,7 +382,7 @@ def test_report_digest_matches_step1():
     mod = _load_gate_report()
     result = mod.check_report(
         str(REPORT_FIXTURES_DIR / "sample-report.md"),
-        str(FIXTURES_DIR / "step1-complete.md"),
+        str(FIXTURES_DIR / "sample-report--step1.md"),
     )
     assert not result["fail"], f"matching report digest should PASS: {result}"
 
@@ -380,8 +391,8 @@ def test_report_digest_case_difference_passes():
     """PASS: report と Step1 の digest の大文字小文字差は許容する。"""
     mod = _load_gate_report()
     with tempfile.TemporaryDirectory() as td:
-        step1 = Path(td) / "step1.md"
-        content = (FIXTURES_DIR / "step1-complete.md").read_text(encoding="utf-8")
+        step1 = Path(td) / "sample-report--step1.md"
+        content = (FIXTURES_DIR / "sample-report--step1.md").read_text(encoding="utf-8")
         step1.write_text(
             content.replace(
                 "a1b2c3d4e5f67890a1b2c3d4e5f67890"
@@ -417,7 +428,7 @@ def test_report_digest_mismatch_fails():
         )
         result = mod.check_report(
             str(report),
-            str(FIXTURES_DIR / "step1-complete.md"),
+            str(FIXTURES_DIR / "sample-report--step1.md"),
         )
         assert result["fail"], "digest mismatch should FAIL"
         assert any(
@@ -436,7 +447,7 @@ def test_gate_report_artifact_dir_cli():
         report = tmp / "sample-report.md"
         shutil.copy2(REPORT_FIXTURES_DIR / "sample-report.md", report)
         shutil.copy2(
-            FIXTURES_DIR / "step1-complete.md",
+            FIXTURES_DIR / "sample-report--step1.md",
             artifact_dir / "sample-report--step1.md",
         )
         result = subprocess.run(
@@ -469,6 +480,7 @@ def main() -> int:
         test_no_expect_options_blocked_with_reason,
         test_expect_function_api,
         test_file_not_found_still_exit_2,
+        test_step2_report_slug_binding_template_contract,
         # workflow-gate.sh envelope enforcement
         test_step2_report_envelope_missing_step1,
         test_step2_report_envelope_missing_step2,

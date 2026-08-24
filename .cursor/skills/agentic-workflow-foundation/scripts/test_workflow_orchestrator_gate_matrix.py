@@ -77,6 +77,13 @@ def test_step3_entry_requires_parent_pre_dispatch():
     assert "implementation_approval.status: approved" in content
 
 
+def test_step1_immediately_dispatches_step2_without_ack():
+    """Step① PASS は4分類通知後に同一ターンでStep②へ遷移し、旧ackを要求しない。"""
+    content = _read(SKILL_TEMPLATE)
+    assert "同一ターンで凍結済み `campaign_slug` / 同値の `report_slug` を Step② worker へ dispatch" in content
+    assert "requirements ack や進行可否質問を待たず" in content
+
+
 def test_resume_table_contains_pending_and_approved_branches():
     """再開表がPO待ち・承認済み未着手・digest不一致を分岐する。"""
     content = _read(SKILL_TEMPLATE)
@@ -224,6 +231,7 @@ def main() -> int:
         test_step5_matrix_entry_exit,
         test_step2_matrix_excludes_po_approval_from_exit,
         test_step3_entry_requires_parent_pre_dispatch,
+        test_step1_immediately_dispatches_step2_without_ack,
         test_resume_table_contains_pending_and_approved_branches,
         test_generated_step2_step3_contract_after_generate,
         test_step5_procedure_rerun_after_change,

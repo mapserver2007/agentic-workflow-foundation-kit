@@ -18,6 +18,7 @@ GENERATED_PATHS = [
     ROOT / ".cursor/skills/workflow-orchestrator/references/worker-dispatch.md",
     ROOT / ".cursor/skills/requirement-analysis/SKILL.md",
     ROOT / ".cursor/skills/requirement-analysis/references/requirement-contract.md",
+    ROOT / ".cursor/skills/requirement-analysis/references/user-presentation.md",
     ROOT / "docs/agent-tasks/agent-workflow/02-report-creation.md",
     ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md",
     ROOT / "docs/QUALITY_GATE.md",
@@ -235,6 +236,7 @@ def test_template_and_generated_boundary_contract() -> None:
         TEMPLATE_ROOT / "skills/workflow-orchestrator/references/worker-dispatch.md.template",
         TEMPLATE_ROOT / "skills/requirement-analysis/SKILL.md.template",
         TEMPLATE_ROOT / "skills/requirement-analysis/references/requirement-contract.md.template",
+        TEMPLATE_ROOT / "skills/requirement-analysis/references/user-presentation.md.template",
         TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/02-report-creation.md.template",
         TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md.template",
         TEMPLATE_ROOT / "docs/QUALITY_GATE.md.template",
@@ -247,6 +249,8 @@ def test_template_and_generated_boundary_contract() -> None:
         "step2-report PASS 後に削除",
         "step2-report PASS 後に step1 envelope と同時に削除",
         "Advisory fail-closed",
+        "再ack",
+        "Step ② レポート作成に進んでよろしいですか？",
     )
     required = (
         "必須の親 pre-dispatch fail-closed 検査",
@@ -259,6 +263,7 @@ def test_template_and_generated_boundary_contract() -> None:
         "validated_report_snapshot",
         "POレビュー待ち",
         "implementation_approval.status: approved",
+        "同一ターンで Step②",
     )
     for paths in (template_paths, GENERATED_PATHS):
         text = "\n".join(path.read_text(encoding="utf-8") for path in paths)

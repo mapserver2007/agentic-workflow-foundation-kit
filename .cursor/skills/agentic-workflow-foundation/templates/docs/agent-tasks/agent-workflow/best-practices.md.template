@@ -22,8 +22,8 @@
 - **プレースホルダを残さない**: `{XXX}` のまま残すのは禁止
 - **AGENTS.md は更新しない**: 進行中キャンペーンの SoT は `docs/agent-tasks/reports/` 直下のファイル存在そのもの
 - **Step②を自動完走**: `step2-report` → `step2` を PASS まで実行してから、完成版だけを PO に提示する
-- **承認境界を守る**: Step① ack は実装開始承認ではない。Step③前に親が envelope の PO承認記録と現在reportの digest を再照合する
-- **R1/R2/R3を分類**: AC・対象変更はStep①から、実装方針等はStep②から再承認、payload外の完了チェック・non-blocking文言は承認を維持する
+- **承認境界を守る**: Step①は4分類通知と requirements_digest を残して機械退出後すぐStep②へ進む。実装開始の人間 STOP は Step③前の PO承認だけであり、親は現在reportの digest を再照合する
+- **R1/R2/R3を分類**: AC・対象変更はStep①再ゲート→digest再生成→Step②再作成→PO再承認、実装方針等はStep②から再承認、payload外の完了チェック・non-blocking文言は承認を維持する
 
 ## 実装段階
 

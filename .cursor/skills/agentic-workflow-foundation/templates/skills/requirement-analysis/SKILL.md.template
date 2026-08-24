@@ -17,6 +17,8 @@ description: >-
 
 Step ① の要求分析を 3 段階ガード + 分析深度判定で統括する内部スキル。
 
+親オーケストレータは要求正規化 worker の dispatch 前に、`02-report-creation.md §2.1` の既存規約から `campaign_slug` を一度だけ決定して凍結する。要求正規化・深度判定・standard 調査・deep 経路はこの必須入力を透過し、生成・変更・再命名しない。
+
 > **参照ドキュメント**:
 > - [references/requirement-contract.md](references/requirement-contract.md) — 3 段階ガード・Issue Ledger・退出契約
 > - [references/analysis-depth.md](references/analysis-depth.md) — 分析深度判定基準
@@ -143,15 +145,15 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 
 ---
 
-## Step① 退出時の ack プロトコル
+## Step① 退出時の即時遷移プロトコル
 
 退出前に親が以下を実行する（[requirement-contract.md](references/requirement-contract.md) の完了定義 §7-8 に対応）:
 
-1. 4分類サマリ（確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち）を [`user-presentation.md`](references/user-presentation.md) の ack テンプレに従い提示
+1. 4分類サマリ（確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち）と受入条件を進捗通知として提示
 2. canonical requirements + AC から `requirements_digest`（SHA-256）を生成
-3. ユーザー明示承認を受けて `requirements_ack: {status: acknowledged, digest: requirements_digest}` を step1 envelope に記録
-4. Step① ack は要件・受入条件の確定であり、実装開始承認ではない。実装開始は完成Step② report の PO承認だけで判定する
-5. **R1**（AC/対象/対象外）: Step① 再ゲート + 再ack + Step②更新 + PO境界承認を再取得。**R2**（実装方針/変更ファイル/テスト計画）: Step②更新 + PO境界承認を再取得。**R3**（payload外 non-blocking 文言/完了チェック）: digest と承認を維持
+3. `workflow-gate.sh step1` PASS 後、親は同一ターンで Step②を dispatch する。進行可否の質問や要件確定 ack はしない
+4. 実装開始の人間 STOP は完成 Step② report に対する PO の `implementation_approval` だけで判定する
+5. **R1**（AC/対象/対象外）: Step①再ゲート → digest再生成 → Step②再作成 → PO実装承認を再取得する。R1 で要件確認の再取得は禁止。**R2**（実装方針/変更ファイル/テスト計画）: Step②更新 + PO境界承認を再取得。**R3**（payload外 non-blocking 文言/完了チェック）: digest と承認を維持
 
 ---
 
