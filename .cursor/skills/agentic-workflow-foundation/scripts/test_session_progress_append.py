@@ -16,6 +16,7 @@ SKILL_DIR = HERE.parent
 ROOT = SKILL_DIR.parent.parent.parent
 TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-append.sh.template"
 EMITTER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-emitter.sh.template"
+BYTE_HELPER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-byte-count.sh.template"
 HOOKS_TEMPLATE = SKILL_DIR / "templates" / "hooks.json.template"
 README_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "README.md.template"
 MANIFEST = SKILL_DIR / "manifest.yaml"
@@ -70,6 +71,11 @@ def _install_script(root: Path, name: str, source: Path) -> Path:
     script = root / name
     script.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     script.chmod(0o700)
+    if name in ("session-progress-append.sh", "session-progress-emitter.sh"):
+        helper = script.parent / "session-byte-count.sh"
+        if not helper.exists():
+            helper.write_text(BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+            helper.chmod(0o700)
     return script
 
 

@@ -27,7 +27,15 @@ Red (manifest.yaml > framework.budget_thresholds 参照)
 
 ## 重み付きプロンプトスコア（データ収集）
 
-`weighted_prompt_score` は state ファイルに記録されるが、現時点では閾値判定に使用しない（データ収集のみ）。プロンプト文字数に基づく重み付けで、短いプロンプト（< 100 bytes）は 1、長いプロンプトは `bytes / 500 + 1` として加算される。将来、`prompt_count` 単独の OR 判定より精度の高い閾値判定に活用する可能性がある。
+`weighted_prompt_score` は state ファイルに記録されるが、現時点では閾値判定に使用しない（データ収集のみ）。プロンプトの UTF-8 byte-count に基づく重み付けで、短いプロンプト（< 100 bytes）は 1、長いプロンプトは `bytes / 500 + 1` として加算される。将来、`prompt_count` 単独の OR 判定より精度の高い閾値判定に活用する可能性がある。
+
+## UTF-8 byte-count 契約
+
+Context Budget の byte フィールドは、locale や Unicode code point 数ではなく UTF-8 エンコード後の byte 数で測定する。共通 helper `session-byte-count.sh` が byte 長、UTF-8 code point の途中で切断しない先頭 / 末尾切詰めを提供し、budget / shell / response / progress / bootstrap / compact-observer の各 Hook と progress append が同じ API を利用する。
+
+helper は source 専用で、stdin 消費・source 時の出力・shell option 変更・`exit` を行わない。API の成功は return 0、引数不正または不正 UTF-8 は return 2、`python3` など実行時依存の欠落は return 127 とする。通常の観測 Hook は fail-open、fail-closed の progress append は helper の失敗を非0で返す。
+
+summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値であり、閾値や最小コンテキストウィンドウからの算出値ではない。`prompt_count` は送信回数の件数指標として意味を変えない。UTF-8 byte-count の導入により、マルチバイト入力では旧来の文字数計測と比べて shell byte 閾値や handoff 注入切詰めのタイミングが変わり得るが、閾値の数値自体は変更しない。
 
 ## 閾値の変更手順
 
@@ -93,14 +101,14 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 | セクション | 内容 | サイズ制限 |
 |---|---|---|
 | compact 情報 | trigger / usage% / tokens / prompt_count / timestamp | — |
-| 追跡ドキュメント | 追跡ドキュメントの内容 | 先頭 4096 bytes |
-| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 末尾 20 行 |
+| 追跡ドキュメント | 追跡ドキュメントの内容 | UTF-8 byte-count で先頭最大 4096 bytes |
+| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 直近最大 20 行（全件保持は保証しない） |
 | state | prompt_count / shell_bytes / weighted_prompt_score 等の累積指標 | 全体 |
 
 | 項目 | 内容 |
 |---|---|
 | 退避先 | `{{framework.handoff.snapshot_path_pattern}}` |
-| サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（超過時は先頭から切り詰め） |
+| サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（UTF-8安全に先頭から切り詰め） |
 | 失敗時 | fail-open（退避失敗でもセッションをブロックしない） |
 
 スナップショットは次セッションの bootstrap で以下の2パターンで活用される:
@@ -114,7 +122,7 @@ Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.
 
 ## 注入サイズ上限
 
-`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は先頭のみ注入し「追跡ドキュメントを Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
+`session-bootstrap.sh` は handoff manifest を注入する際、{{framework.budget_thresholds.max_injection_bytes}} bytes を上限とする。超過時は UTF-8安全に先頭のみ注入し「追跡ドキュメントを Read して補完せよ」と警告する。大きな manifest の注入 → compact → 再注入の Thrashing を機械的に防止する。
 
 ## スナップショット突合
 

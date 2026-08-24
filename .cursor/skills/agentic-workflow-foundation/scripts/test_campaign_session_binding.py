@@ -15,6 +15,7 @@ TEMPLATE_DIR = SKILL_DIR / "templates"
 BASH_EXECUTABLE = "/bin/bash"
 
 BOOTSTRAP_TEMPLATE = TEMPLATE_DIR / "hooks" / "session-bootstrap.sh.template"
+BYTE_HELPER_TEMPLATE = TEMPLATE_DIR / "hooks" / "session-byte-count.sh.template"
 EVALUATOR_TEMPLATE = TEMPLATE_DIR / "hooks" / "session-budget-evaluator.sh.template"
 OBSERVER_TEMPLATE = TEMPLATE_DIR / "hooks" / "session-compact-observer.sh.template"
 START_GATE_TEMPLATE = (
@@ -58,6 +59,10 @@ def render_template(template: Path) -> str:
 
 
 def write_script(template: Path, root: Path, name: str) -> Path:
+    helper = root / "session-byte-count.sh"
+    if not helper.exists():
+        helper.write_text(render_template(BYTE_HELPER_TEMPLATE), encoding="utf-8")
+        helper.chmod(0o700)
     script = root / name
     script.write_text(render_template(template), encoding="utf-8")
     script.chmod(0o700)

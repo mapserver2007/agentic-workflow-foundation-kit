@@ -7,6 +7,14 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if ! command -v jq >/dev/null 2>&1; then
   echo '{}'
@@ -48,10 +56,20 @@ else
 fi
 
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
-TEXT_BYTES=${#TEXT}
+TEXT_BYTES="$(session_byte_count "$TEXT")" || {
+  echo '{}'
+  exit 0
+}
+if ! [[ "$TEXT_BYTES" =~ ^[0-9]+$ ]]; then
+  echo '{}'
+  exit 0
+fi
 
-# 先頭 1000 bytes に切り詰め
-SUMMARY="$(printf '%.1000s' "$TEXT")"
+# UTF-8 code point を途中で切断せず、先頭 1000 bytes に切り詰め
+SUMMARY="$(session_byte_prefix 1000 "$TEXT")" || {
+  echo '{}'
+  exit 0
+}
 
 jq -c -n \
   --arg type "$TURN_TYPE" \

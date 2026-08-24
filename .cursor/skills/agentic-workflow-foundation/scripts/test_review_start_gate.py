@@ -22,6 +22,7 @@ GATE_TEMPLATE = (
     / "review-start-gate.sh.template"
 )
 WRITER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-append.sh.template"
+BYTE_HELPER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-byte-count.sh.template"
 WORKFLOW_TEMPLATE = (
     SKILL_DIR
     / "templates"
@@ -72,6 +73,10 @@ exit "${STEP4_EXIT:-0}"
     _write_executable(
         root / ".cursor" / "hooks" / "session-progress-append.sh",
         WRITER_TEMPLATE.read_text(encoding="utf-8"),
+    )
+    _write_executable(
+        root / ".cursor" / "hooks" / "session-byte-count.sh",
+        BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"),
     )
     report = root / "docs" / "agent-tasks" / "reports" / f"{CAMPAIGN}.md"
     report.parent.mkdir(parents=True)
@@ -429,6 +434,10 @@ def _setup_dispatch_fixture() -> tuple[tempfile.TemporaryDirectory[str], Path, P
         path.chmod(0o755)
     writer = root / ".cursor" / "hooks" / "session-progress-append.sh"
     _write_executable(writer, WRITER_TEMPLATE.read_text(encoding="utf-8"))
+    _write_executable(
+        root / ".cursor" / "hooks" / "session-byte-count.sh",
+        BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"),
+    )
 
     foundation_log = root / "foundation-gate.calls"
     _write_executable(

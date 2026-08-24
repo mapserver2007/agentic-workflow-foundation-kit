@@ -6,6 +6,14 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if [[ -z "$INPUT" ]]; then
   echo '{}'
@@ -35,14 +43,45 @@ if [[ ! -f "$STATE_FILE" ]]; then
   exit 0
 fi
 
-BYTES="$(jq -r '
-  ((.stdout // "") | length) +
-  ((.output // "") | length) +
-  ((.result // "") | length)
-' <<<"$INPUT" 2>/dev/null)" || BYTES=0
-if [[ -z "$BYTES" || "$BYTES" == "null" ]]; then
-  BYTES=0
-fi
+BYTE_SENTINEL="__SESSION_BYTE_COUNT_END__"
+json_field() {
+  local field="$1"
+  jq -j --arg field "$field" --arg sentinel "$BYTE_SENTINEL" '
+    (if .[$field] == null then ""
+     elif (.[$field] | type) == "string" then .[$field]
+     else (.[$field] | tostring)
+     end), $sentinel
+  ' <<<"$INPUT" 2>/dev/null
+}
+
+STDOUT_VALUE="$(json_field stdout)" || {
+  echo '{}'
+  exit 0
+}
+STDOUT_VALUE="${STDOUT_VALUE%$BYTE_SENTINEL}"
+OUTPUT_VALUE="$(json_field output)" || {
+  echo '{}'
+  exit 0
+}
+OUTPUT_VALUE="${OUTPUT_VALUE%$BYTE_SENTINEL}"
+RESULT_VALUE="$(json_field result)" || {
+  echo '{}'
+  exit 0
+}
+RESULT_VALUE="${RESULT_VALUE%$BYTE_SENTINEL}"
+
+BYTES=0
+for VALUE in "$STDOUT_VALUE" "$OUTPUT_VALUE" "$RESULT_VALUE"; do
+  VALUE_BYTES="$(session_byte_count "$VALUE")" || {
+    echo '{}'
+    exit 0
+  }
+  if ! [[ "$VALUE_BYTES" =~ ^[0-9]+$ ]]; then
+    echo '{}'
+    exit 0
+  fi
+  BYTES=$((BYTES + VALUE_BYTES))
+done
 
 LOCK_FILE="$PROJECT_DIR/.cursor/.session/${SESSION_ID}.lock"
 (
