@@ -25,6 +25,8 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
  ↓
 ① タスクの調査・分析（退出ゲート: 判定チェックリスト 5 項目を内包）
  ↓
+①の機械退出 PASS + 4分類進捗通知（人間 ack なしで同一ターンに②を dispatch）
+ ↓
 ② タスクレポートの作成（docs/agent-tasks/reports/ 直下のファイル存在 = 進行中キャンペーンの SoT。archives/ は除く）
  ↓
 ②の機械退出: step2-report → step2 PASS

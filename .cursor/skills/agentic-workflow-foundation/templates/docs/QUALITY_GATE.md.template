@@ -270,14 +270,14 @@ workflow-gate.sh step6 TICKET-1234
 | G-ARTIFACT-RA-DEPTH-CONSIST-001 | 最終 envelope の `analysis_depth` が depth_triage の結果と整合（standard→standard / deep→deep or standard+fallback_reason / deferred→standard or deep） |
 | G-ARTIFACT-RA-GATE-SOURCE-001 | 最終 `requirement_gate` が normalize の `gate_a` と一致、`spec_consistency_gate` が depth_triage の `gate_b` と一致 |
 
-**Step ① digest 結合 ack 検査（G-ARTIFACT-RA-ACK-*）**: `status=complete` かつ `step=step1` のとき、`requirements_digest` と `requirements_ack` の整合を検査する。
+**Step ① digest 検査（G-ARTIFACT-RA-ACK-*）**: `status=complete` かつ `step=step1` のとき、`requirements_digest` を検査する。`G-ARTIFACT-RA-ACK-001` はログ互換のため残る legacy ID であり digest形式検査だけを意味する。`requirements_ack` は旧 artifact の読み取り互換フィールドで、存在する場合だけ 002〜004 を検査し、新規 Step① complete の必須条件ではない。
 
 | 検査 ID | 検査内容 |
 | --- | --- |
 | G-ARTIFACT-RA-ACK-001 | `requirements_digest` が64桁の SHA-256 hex 文字列として存在する |
-| G-ARTIFACT-RA-ACK-002 | `requirements_ack` がマッピング型である |
-| G-ARTIFACT-RA-ACK-003 | `requirements_ack.status` が `acknowledged` である |
-| G-ARTIFACT-RA-ACK-004 | `requirements_ack.digest` と `requirements_digest` が文字列として存在し、大小文字非依存で一致する（R1 無効化検出） |
+| G-ARTIFACT-RA-ACK-002 | 旧 artifact に `requirements_ack` が存在する場合にマッピング型である |
+| G-ARTIFACT-RA-ACK-003 | 旧 artifact の `requirements_ack.status` が `acknowledged` である |
+| G-ARTIFACT-RA-ACK-004 | 旧 artifact の `requirements_ack.digest` と `requirements_digest` が文字列として存在し、大小文字非依存で一致する |
 
 **Step ① AC・Issue・Memo 検査（G-ARTIFACT-RA-ACS/ISSUE/MEMO-*）**: `status=complete` かつ `step=step1` のとき、AC 状態・Issue 構造・Memo 構造を検査する。
 
@@ -314,7 +314,9 @@ workflow-gate.sh step6 TICKET-1234
 
 **redispatch ゲート（G-REDISPATCH-*）**: re-dispatch 前に partial artifact の `base_commit_sha` / `changed_files` / `untracked_files` を現在の working tree と照合する。差分不一致時は FAIL（exit 1）で re-dispatch を阻止する。
 
-**step2-report envelope 必須検査**: `workflow-gate.sh step2-report` はレポート構造検査（`gate-report.py`）の前に、対応する step1/step2 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。step2 envelope の `report_path` が対象レポートと一致することも検査する。envelope 欠落・不正・不一致は exit 1（`gate-report.py` を実行しない）。
+**campaign slug binding**: normalize / depth-triage / final step1 / step2 envelope は非空の `campaign_slug` を記録し、envelope filename の `--stepN` より前の prefix と一致する。フル basename 一致は要求しない。Step②では `report_slug == campaign_slug` が必須である。
+
+**step2-report envelope 必須検査**: `workflow-gate.sh step2-report` はレポート構造検査（`gate-report.py`）の前に、対応する step1/step2 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。report basename、step1/step2 envelope prefix、両 front matter の `campaign_slug`、step2 の `report_path` stem、`report_slug` を同じ campaign slug に束縛する。envelope 欠落・不正・不一致は exit 1（`gate-report.py` を実行しない）。
 
 **step4 envelope 必須検査**: `workflow-gate.sh step4` はコードゲートの前に、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。envelope 欠落・不正は exit 1（profile に応じた code gate と `gate-test.py` を実行しない）。`foundation` profile では `bin/foundation-gate self`、`application` profile では G-GEN + `bin/quality-gate verify` を実行し、コードゲート成功後に完了チェック3項目を検査する。
 {{/if}}

@@ -41,9 +41,9 @@ STEP_REQUIRED_FIELDS = {
         "normalize_artifact_path",
         "depth_triage_artifact_path",
         "requirements_digest",
-        "requirements_ack",
+        "campaign_slug",
     ],
-    "step2": ["report_path", "implementation_approval"],
+    "step2": ["report_path", "report_slug", "campaign_slug", "implementation_approval"],
     "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
     "step4": ["gate_results", "test_summary", "advisory_loop_count"],
 }
@@ -69,6 +69,15 @@ def parse_front_matter(text: str):
     if not isinstance(data, dict):
         return None, "front matter がマッピングではありません"
     return data, None
+
+
+def _artifact_slug_prefix(path: Path, step: str) -> str | None:
+    """`--stepN` より前の campaign slug を返す（後続 suffix は許容）。"""
+    match = re.match(
+        rf"^(.+?)--{re.escape(step)}(?:-[^.]+)?\.md$",
+        path.name,
+    )
+    return match.group(1) if match else None
 
 
 def _extract_section(text: str, heading: str) -> str:
@@ -299,6 +308,36 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 })
                 fail = True
 
+    # --- campaign slug の artifact prefix binding（step1/step2 complete 時）---
+    if step in ("step1", "step2") and status == "complete":
+        campaign_slug = fm.get("campaign_slug")
+        if not isinstance(campaign_slug, str) or not campaign_slug.strip():
+            results.append({
+                "id": "G-ARTIFACT-CAMPAIGN-SLUG-001",
+                "level": "FAIL",
+                "msg": "campaign_slug が欠落または空です",
+            })
+            fail = True
+        else:
+            prefix = _artifact_slug_prefix(path, step)
+            if prefix is None or prefix != campaign_slug:
+                results.append({
+                    "id": "G-ARTIFACT-CAMPAIGN-SLUG-001",
+                    "level": "FAIL",
+                    "msg": (
+                        "envelope filename の --stepN より前の prefix と campaign_slug が不一致"
+                        f"（prefix={prefix!r}, campaign_slug={campaign_slug!r}）"
+                    ),
+                })
+                fail = True
+        if step == "step2" and fm.get("report_slug") != campaign_slug:
+            results.append({
+                "id": "G-ARTIFACT-STEP2-REPORT-SLUG-001",
+                "level": "FAIL",
+                "msg": "step2.report_slug は campaign_slug と完全一致する必要があります",
+            })
+            fail = True
+
     # --- gate_results 値域検証（step4 complete 時）---
     if step == "step4" and status == "complete":
         gate_results = fm.get("gate_results")
@@ -428,8 +467,7 @@ def check_artifact(filepath: str, json_mode: bool = False,
         norm_ref = fm.get("normalize_artifact_path", "")
         depth_ref = fm.get("depth_triage_artifact_path", "")
 
-        slug_m = re.match(r"^(.+)--step1\.md$", path.name)
-        main_slug = slug_m.group(1) if slug_m else None
+        main_slug = fm.get("campaign_slug")
 
         for label, ref_val, suffix in [
             ("normalize_artifact_path", norm_ref, "step1-normalize.md"),
@@ -446,11 +484,14 @@ def check_artifact(filepath: str, json_mode: bool = False,
                     "msg": f"{label} のサフィックスが不正です（期待: *{suffix}）: {ref_val}"})
                 fail = True
             if main_slug:
-                expected_name = f"{main_slug}--{suffix}"
                 actual_name = Path(ref_val).name
-                if actual_name != expected_name:
+                ref_slug = _artifact_slug_prefix(
+                    Path(actual_name),
+                    "step1-normalize" if suffix.startswith("step1-normalize") else "step1-depth-triage",
+                )
+                if ref_slug != main_slug:
                     results.append({"id": "G-ARTIFACT-RA-REF-001", "level": "FAIL",
-                        "msg": f"{label} の slug が最終 envelope と不一致（期待: {expected_name}, 実値: {actual_name}）"})
+                        "msg": f"{label} の slug prefix が最終 envelope と不一致（期待: {main_slug}, 実値: {actual_name}）"})
                     fail = True
             ref_file = path.parent / Path(ref_val).name
             if not ref_file.is_file():
@@ -484,6 +525,10 @@ def check_artifact(filepath: str, json_mode: bool = False,
                     depth_fm = dfm
 
         if norm_fm is not None:
+            if norm_fm.get("campaign_slug") != main_slug:
+                results.append({"id": "G-ARTIFACT-CAMPAIGN-SLUG-002", "level": "FAIL",
+                    "msg": "normalize artifact の campaign_slug が最終 envelope と不一致"})
+                fail = True
             for key, expected in [("step", "step1-normalize"), ("status", "complete"), ("gate_a", "PASS")]:
                 if norm_fm.get(key) != expected:
                     results.append({"id": "G-ARTIFACT-RA-NORM-SCHEMA-001", "level": "FAIL",
@@ -491,6 +536,10 @@ def check_artifact(filepath: str, json_mode: bool = False,
                     fail = True
 
         if depth_fm is not None:
+            if depth_fm.get("campaign_slug") != main_slug:
+                results.append({"id": "G-ARTIFACT-CAMPAIGN-SLUG-002", "level": "FAIL",
+                    "msg": "depth_triage artifact の campaign_slug が最終 envelope と不一致"})
+                fail = True
             for key, expected in [("step", "step1-depth-triage"), ("status", "complete"), ("gate_b", "PASS")]:
                 if depth_fm.get(key) != expected:
                     results.append({"id": "G-ARTIFACT-RA-DEPTH-SCHEMA-001", "level": "FAIL",
@@ -543,11 +592,13 @@ def check_artifact(filepath: str, json_mode: bool = False,
             results.append({"id": "G-ARTIFACT-RA-ACK-001", "level": "FAIL",
                 "msg": "requirements_digest が欠落、または64桁のSHA-256 hex形式ではありません"})
             fail = True
-        if not isinstance(ra, dict):
-            results.append({"id": "G-ARTIFACT-RA-ACK-002", "level": "FAIL",
-                "msg": "requirements_ack がマッピングではありません"})
-            fail = True
-        else:
+        if ra is not None:
+            if not isinstance(ra, dict):
+                results.append({"id": "G-ARTIFACT-RA-ACK-002", "level": "FAIL",
+                    "msg": "requirements_ack が存在する場合はマッピングである必要があります"})
+                fail = True
+                ra = None
+        if isinstance(ra, dict):
             ack_status = ra.get("status")
             ack_digest = ra.get("digest")
             if ack_status != "acknowledged":

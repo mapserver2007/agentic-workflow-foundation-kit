@@ -1,8 +1,9 @@
 ---
 status: complete
 step: step1
+campaign_slug: sample-report
 gate_result: PASS
-investigation_memo_path: .cursor/.artifacts/step1-complete.md
+investigation_memo_path: .cursor/.artifacts/sample-report--step1.md
 analysis_depth: standard
 requirement_gate: PASS
 spec_consistency_gate: PASS
@@ -11,12 +12,9 @@ blocking_open_issues: []
 non_blocking_issues: []
 acceptance_criteria_status: complete
 resolved_issues: []
-normalize_artifact_path: .cursor/.artifacts/test--step1-normalize.md
-depth_triage_artifact_path: .cursor/.artifacts/test--step1-depth-triage.md
+normalize_artifact_path: .cursor/.artifacts/sample-report--step1-normalize.md
+depth_triage_artifact_path: .cursor/.artifacts/sample-report--step1-depth-triage.md
 requirements_digest: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
-requirements_ack:
-  status: acknowledged
-  digest: "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
 ---
 
 ## 正規化済み要求
@@ -35,7 +33,7 @@ fixture の正常系を検証する。
 テスト fixture のみ。
 
 ## 変更対象ファイル
-AC-001 を step1-complete.md で検証する。
+AC-001 を sample-report--step1.md で検証する。
 
 ## 実装手順
 AC-001 の fixture を検証する。

@@ -59,8 +59,9 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{#if requirement_analysis.enabled}}[`requirement-analysis`](../requirement-analysis/SKILL.md) スキルに従い 3 段階ガード + 分析深度判定で要求分析を実行する。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
-2. **要求正規化**: Subagent（`requirement-analysis/config.yaml > models.normalize`）で要求を構造化する
-3. **要求の完全性チェック（Gate A）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親が [`user-presentation.md`](../requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問
+2. **campaign_slug の凍結**: 親が `02-report-creation.md §2.1` の既存命名規約を一度だけ実行し、最初の worker dispatch 前に `campaign_slug` を決定する。要求正規化・深度判定・standard/deep 調査・Step②へ同値を渡し、以後変更しない
+3. **要求正規化**: Subagent（`requirement-analysis/config.yaml > models.normalize`）で要求を構造化する
+4. **要求の完全性チェック（Gate A）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親が [`user-presentation.md`](../requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問
 4. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する
 5. **仕様との整合性チェック（Gate B）**: 要求と既存仕様の矛盾を検査。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 6. **分析深度判定**: Subagent（`requirement-analysis/config.yaml > models.depth_triage`）で判定
@@ -70,6 +71,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 7. **実現可能性チェック（Gate C）**: コード調査後に親が直接実施。`INCOMPLETE` → 親が `user-presentation.md` のテンプレに従いユーザーに質問
 8. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
 9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + 先に回答が必要な確認事項がない（blocking_open_issues: []）。不合格時は `user-presentation.md` の退出不合格テンプレに従いユーザーに状況報告
+
+`workflow-gate.sh step1` が PASS したら、親は4分類進捗通知のみを行い、人間の requirements ack や進行可否質問を待たず、同一ターンで凍結済み `campaign_slug` / 同値の `report_slug` を Step② worker へ dispatchする。
 {{else}}[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）

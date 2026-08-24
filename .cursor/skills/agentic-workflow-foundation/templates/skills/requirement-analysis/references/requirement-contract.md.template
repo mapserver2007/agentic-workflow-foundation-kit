@@ -124,7 +124,8 @@ issues:
 | provenance（項目単位） | `{slug}--step1-normalize.md` front matter | top-level `task_type` + `fields: [{name, value, provenance, evidence_ref}]`。`applicability` / `required` は Gate A マトリクスから導出し、artifact に複製しない | `G-ARTIFACT-RA-NORM-PROV-*` |
 | answer log（Q↔A keyed by RA-ID） | Memo body「Issue Ledger」節 + envelope `resolved_issues[].resolved_evidence` | 各 issue に `id` / `resolution` / `resolved_evidence`（回答要約）必須 | `G-ARTIFACT-RA-ISSUE-*` |
 | `requirement_delta` | Memo body（Ledger 更新時追記） | 差分箇条書き | Advisory + 転記検査 |
-| `requirements_digest` / `requirements_ack` | step1 envelope front matter | canonical requirements+AC の SHA-256 + `{status: acknowledged, digest: <same>}` | `G-ARTIFACT-RA-ACK-*` |
+| `campaign_slug` | normalize / depth-triage / step1 envelope front matter | 親が dispatch 前に一度決定した凍結値。filename の `--stepN` より前の prefix と一致 | `G-ARTIFACT-CAMPAIGN-SLUG-*` |
+| `requirements_digest` | step1 envelope front matter | canonical requirements+AC の SHA-256。`G-ARTIFACT-RA-ACK-001` は legacy ID として形式検査に利用 | `G-ARTIFACT-RA-ACK-001` |
 | AC 定義・相互参照 | Memo body | AC-ID マッチ規則 | `G-MEMO-AC-*` |
 | 永続証跡（artifact 削除後） | タスクレポート（Step②） | Memo→レポート変換表に従い転記。削除前に転記完了を検査 | `G-REPORT-AC-*` / 転記チェック |
 
@@ -170,7 +171,7 @@ Step① envelope / 中間 artifact は `step2-report` PASS 後にも削除しな
    - 既存レポート節に canonical requirements / AC を反映し、`requirements_digest` を付与
    - resolved / waived Issue の簡潔な判断根拠
 2. Step①系 artifact 削除の前提条件: 上記の転記済み、PO承認済み、およびStep③ dispatch直前の digest 一致
-3. R1 発生時: Step① 再ゲート + requirements digest 再生成 + 再 ack + Step②更新 + PO境界承認を再取得
+3. R1 発生時: Step①再ゲート + requirements digest再生成 + Step②再作成 + PO境界承認を再取得（要件確認の再取得は禁止）
 
 handoff schema は変更しない。既存契約どおり tracker を SoT とし、handoff は tracker / envelope / report へのポインタだけを保持する。
 
@@ -180,7 +181,7 @@ handoff schema は変更しない。既存契約どおり tracker を SoT とし
 
 | クラス | トリガー | 影響 | 対処 |
 | --- | --- | --- | --- |
-| **R1** | AC / 対象 / 対象外の変更 | Step① ack と PO承認を失効 | Step① 再ゲート + requirements digest 再生成 + 再 ack + Step②更新 + PO境界承認 |
+| **R1** | AC / 対象 / 対象外の変更 | PO承認を失効 | Step①再ゲート + requirements digest再生成 + Step②再作成 + PO境界承認 |
 | **R2** | 実装方針・変更ファイル・テスト計画の変更 | approved plan digest が変化し PO承認を失効 | Step②更新 + 両機械ゲート再実行 + PO境界承認 |
 | **R3** | 完了チェック / payload外 non-blocking 文言 | digest・承認は維持 | 記録のみ、再承認不要 |
 
@@ -200,11 +201,11 @@ Step ① `status: complete` は次を **AND** で満たす場合のみ。
 4. 追加: Memo 12必須見出しがすべて存在
 5. 追加: 各 `AC-NNN` が **(a)「テスト観点」に1回以上**、かつ **(b)「実装手順」または「変更対象ファイル」の少なくとも一方に1回以上** 言及（AC-ID マッチ規則に従い見出し境界内・完全一致）
 6. 追加: 正規化要求の各必須項目に `provenance` ∈ `{user_confirmed, docs_derived, undecided, external}`。`undecided` が残る complete は FAIL。必須項目が `external` の間は対応 Issue を `blocked_external` として Step① を `blocked` にし、complete を禁止する。外部回答で解決したら provenance を `user_confirmed` または `docs_derived` に更新して Issue を `resolved` にする
-7. 追加: canonical normalized requirements + AC の `requirements_digest` と、`requirements_ack: {status: acknowledged, digest: <same digest>}` が存在し、digest が一致する。**Class R1 発生時は requirements_digest が変わるため旧 ack は自動的に不一致となり、step2-report PASS 不可**
+7. 追加: canonical normalized requirements + AC の `requirements_digest` が64桁 SHA-256 形式で存在する。旧 artifact の `requirements_ack` は存在する場合だけ整合を検査する読み取り互換フィールドであり、新規 complete の必須条件ではない
 
 ### 対話条件（Advisory + 記録必須）
 
-8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを提示し、ユーザーが Step② 進行を明示承認（この ack は実装開始承認ではない）
+8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを進捗通知として提示し、機械退出 PASS 後は同一ターンで Step②を dispatchする
 9. open blocking = 0。`blocked_external` blocking が残る場合は `complete` 不可（既存どおり `blocked`）
 
 ### 完了にしないもの
@@ -212,7 +213,7 @@ Step ① `status: complete` は次を **AND** で満たす場合のみ。
 - AI が「理解した」と宣言しただけ
 - Gate A PASS だけで受入条件が空または推測混入
 - Step② レポート承認の事後救済（要件確定の代替にしない）
-- `requirements_ack.status: acknowledged` だけで digest がない状態
+- requirements_digest がない状態
 
 ---
 
@@ -236,9 +237,7 @@ depth_triage_artifact_path: .cursor/.artifacts/{slug}--step1-depth-triage.md
 depth_fallback_reason: null  # deep → standard フォールバック時のみ非空
 resolved_issues: [{id, resolution, resolved_evidence}]
 requirements_digest: "<SHA-256 of canonical requirements+AC>"
-requirements_ack:
-  status: acknowledged
-  digest: "<same as requirements_digest>"
+campaign_slug: "<parent-frozen slug>"
 ```
 
 退出時の `analysis_depth` は `standard | deep` のみを許容する。`deferred` は中間状態であり、事後再判定により `standard` または `deep` へ正規化してから退出する。
@@ -259,7 +258,7 @@ canonical 化は `task_type` + 正規化 field 名/value + AC-ID/content を安�
   AND (既存5項目チェックリスト全PASS)
   AND (blocking_open_issues: [])
   AND (acceptance_criteria_status: complete)
-  AND (requirements_digest + requirements_ack.digest 一致)
+  AND (requirements_digest が64桁 SHA-256)
   AND (provenance に undecided なし)
   AND (必須 field が external の場合は blocked)
 ```

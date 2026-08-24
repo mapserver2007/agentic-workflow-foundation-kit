@@ -40,19 +40,20 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 各 subagent dispatch ステップで、orchestrator は以下を実行する:
 
-1. `config.yaml > models.{config_key}` からモデルスラグを取得する{{#if requirement_analysis.enabled}}（Step ① は `requirement-analysis/config.yaml` が SoT）{{/if}}
-2. Cursor の `Task` ツールを以下のパラメータで起動する:
+1. Step①の最初の worker dispatch 前に `02-report-creation.md §2.1` の既存命名規約を一度だけ実行して `campaign_slug` を決定・凍結する。要求正規化・深度判定・standard/deep 調査・Step②へ同じ値を渡し、worker は invent / 変更 / rename / copy しない。Step②は `report_slug = campaign_slug` を必須とする
+2. `config.yaml > models.{config_key}` からモデルスラグを取得する{{#if requirement_analysis.enabled}}（Step ① は `requirement-analysis/config.yaml` が SoT）{{/if}}
+3. Cursor の `Task` ツールを以下のパラメータで起動する:
    - `model`: config.yaml から取得したモデルスラグ
    - `subagent_type`: dispatch モード一覧の値
    - `prompt`: 当該ステップの step doc パス + Worker Contract 入力フィールドの値
    - `description`: "Step {N}: {用途}"
    - Step③では親 checker が返した `validated_report_snapshot` を改変せず `prompt` に埋め込む。`report_path` の再読込結果で snapshot を置換しない
-3. 指定モデル利用不可により起動できない場合: 親の **ABORT** としてユーザーに報告し、`config.yaml` の設定見直しを案内して中止する。フォールバックは行わない
-4. 起動済み worker が致命的失敗を返した場合: Worker Contract の `status: fatal` としてユーザーに報告して停止する
-5. Subagent 完了後、次ステップへの遷移:
+4. 指定モデル利用不可により起動できない場合: 親の **ABORT** としてユーザーに報告し、`config.yaml` の設定見直しを案内して中止する。フォールバックは行わない
+5. 起動済み worker が致命的失敗を返した場合: Worker Contract の `status: fatal` としてユーザーに報告して停止する
+6. Subagent 完了後、次ステップへの遷移:
    - 全終端状態で step envelope（`{{agent_workflow.artifact.dir}}/\{slug\}--step\{N\}.md`）の存在と YAML front matter を `gate-artifact.py` で検査する
    - worker が結果または有効な step envelope を返せない場合は、親の **ABORT**（dispatch failure）としてユーザーに報告する。`incomplete` への読み替えや自動再 dispatch はしない
-   - `complete`: Step 別の正式成果物を確認して次ステップへ進む
+   - `complete`: Step①は4分類通知後、`workflow-gate.sh step1` PASS を確認した同一ターンで Step②を dispatchする。Step②→③だけは PO `implementation_approval` を待つ
    - `incomplete`: 親が step envelope を読み、追加情報付与で再 dispatch
    - `blocked`: 親が reason に応じてエスカレーション
    - `fatal`: 親がユーザーに報告
@@ -79,7 +80,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 Step② phase complete 後にだけ、完成レポートのレビューと実装開始を PO へ一回で求める。機械 SoT は step2 envelope の `implementation_approval` であり、report の転記は人間可読の同期コピーに留める。
 
-- R1（AC / 対象 / 対象外）: Step①再ゲート + requirements ack 再取得 + Step②再作成。承認を `pending` に戻す。
+- R1（AC / 対象 / 対象外）: Step①再ゲート + requirements_digest再生成 + Step②再作成。要件確認の再取得は禁止し、承認を `pending` に戻す。
 - R2（実装方針 / 変更ファイル / テスト計画）: Step②を更新して両機械ゲートを再実行。承認を `pending` に戻す。
 - R3（完了チェック / payload外 non-blocking 文言）: 記録のみ。digest と承認を維持する。
 

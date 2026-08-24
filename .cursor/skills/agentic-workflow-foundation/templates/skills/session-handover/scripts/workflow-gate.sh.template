@@ -182,6 +182,62 @@ print(m.group(1).strip().strip("\"").strip("'"'"'") if m else "")
         echo "FAIL: step2 envelope に report_path フィールドが見つかりません: $step2_env"
         ENVELOPE_FAIL=1
       fi
+
+      # campaign slug は report basename / envelope prefix / front matter / report_path stem に束縛する。
+      # フル basename ではなく --stepN より前の prefix を比較する。
+      binding_result="$(python3 - "$report_file" "$step1_env" "$step2_env" "$ROOT_DIR" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+report_file, step1_file, step2_file, root_dir = map(Path, sys.argv[1:])
+slug = report_file.stem
+
+def front(path):
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        raise ValueError(f"front matter がありません: {path}")
+    values = {}
+    for key in ("campaign_slug", "report_slug", "report_path"):
+        item = re.search(rf"^{key}:\s*(.+?)\s*$", match.group(1), re.MULTILINE)
+        values[key] = item.group(1).strip().strip("\"'") if item else None
+    return values
+
+def prefix(path, step):
+    item = re.match(rf"^(.+?)--{re.escape(step)}(?:-[^.]+)?\.md$", path.name)
+    return item.group(1) if item else None
+
+try:
+    step1 = front(step1_file)
+    step2 = front(step2_file)
+    expected = {
+        "report basename": slug,
+        "step1 prefix": prefix(step1_file, "step1"),
+        "step2 prefix": prefix(step2_file, "step2"),
+        "step1 campaign_slug": step1["campaign_slug"],
+        "step2 campaign_slug": step2["campaign_slug"],
+        "step2 report_slug": step2["report_slug"],
+    }
+    report_path = Path(step2["report_path"] or "")
+    resolved_report_path = (
+        report_path if report_path.is_absolute() else root_dir / report_path
+    ).resolve()
+    expected["step2 report_path stem"] = resolved_report_path.stem
+    mismatches = {name: value for name, value in expected.items() if value != slug}
+    if mismatches:
+        print("FAIL: campaign slug binding 不一致: " + repr(mismatches))
+        raise SystemExit(1)
+except (OSError, ValueError) as exc:
+    print(f"FAIL: campaign slug binding 検査不能: {exc}")
+    raise SystemExit(1)
+PY
+)"
+      binding_rc=$?
+      if [[ $binding_rc -ne 0 ]]; then
+        echo "$binding_result"
+        ENVELOPE_FAIL=1
+      fi
     done
 
     if [[ $ENVELOPE_FAIL -ne 0 ]]; then

@@ -1,6 +1,7 @@
 ---
 status: complete
 step: step1-normalize
+campaign_slug: sample-report
 gate_a: PASS
 blocking_open_issues: []
 task_type: bug_fix
