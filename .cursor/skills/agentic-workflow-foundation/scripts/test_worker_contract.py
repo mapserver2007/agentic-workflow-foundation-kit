@@ -611,6 +611,18 @@ def test_step1_ack_missing_passes():
         assert rc == 0, "missing requirements_ack should PASS"
 
 
+def test_step1_ack_explicit_null_fails():
+    """FAIL: 明示された requirements_ack: null は旧 artifact 互換の対象外。"""
+    with tempfile.TemporaryDirectory() as td:
+        main = _build_step1_suite(
+            Path(td),
+            main_extra="requirements_ack: null\n",
+        )
+        rc, check_ids = _check_artifact_json(main)
+        assert rc == 1, "explicit null requirements_ack should FAIL"
+        assert "G-ARTIFACT-RA-ACK-002" in check_ids
+
+
 def test_step1_ack_digest_mismatch_fails():
     """FAIL: 旧 requirements_ack が存在して digest と不一致。"""
     with tempfile.TemporaryDirectory() as td:
@@ -975,6 +987,7 @@ def main() -> int:
         test_step1_deferred_to_standard_pass,
         test_step1_deferred_to_deep_pass,
         test_step1_ack_missing_passes,
+        test_step1_ack_explicit_null_fails,
         test_step1_ack_digest_mismatch_fails,
         test_step1_ack_digest_case_difference_passes,
         test_step1_digest_malformed_fails,

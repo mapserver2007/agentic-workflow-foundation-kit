@@ -584,6 +584,7 @@ def check_artifact(filepath: str, json_mode: bool = False,
     # --- requirements_digest / requirements_ack 検証（step1 complete 時）---
     if step == "step1" and status == "complete":
         rd = fm.get("requirements_digest")
+        ack_present = "requirements_ack" in fm
         ra = fm.get("requirements_ack")
         if (
             not isinstance(rd, str)
@@ -592,7 +593,7 @@ def check_artifact(filepath: str, json_mode: bool = False,
             results.append({"id": "G-ARTIFACT-RA-ACK-001", "level": "FAIL",
                 "msg": "requirements_digest が欠落、または64桁のSHA-256 hex形式ではありません"})
             fail = True
-        if ra is not None:
+        if ack_present:
             if not isinstance(ra, dict):
                 results.append({"id": "G-ARTIFACT-RA-ACK-002", "level": "FAIL",
                     "msg": "requirements_ack が存在する場合はマッピングである必要があります"})

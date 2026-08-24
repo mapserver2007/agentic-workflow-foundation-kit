@@ -136,6 +136,7 @@ normalize 中間 artifact（`{slug}--step1-normalize.md`）の front matter に�
 ```yaml
 step: step1-normalize
 status: complete
+campaign_slug: "<parent-frozen slug>"
 gate_a: PASS
 task_type: bug_fix | new_feature | refactoring | performance
 fields:
@@ -150,6 +151,21 @@ fields:
 ```
 
 `required` / `applicability` は Gate A タスク種別対応マトリクスから導出する。artifact への複製は禁止。
+
+### depth-triage artifact スキーマ
+
+depth-triage 中間 artifact（`{slug}--step1-depth-triage.md`）の front matter に以下を必須化する:
+
+```yaml
+step: step1-depth-triage
+status: complete
+campaign_slug: "<parent-frozen slug>"
+gate_b: PASS
+analysis_depth: standard | deep | deferred
+depth_reason: "..."
+```
+
+`campaign_slug` は normalize / depth-triage の両中間 artifact で親が凍結した同一値を使用する。worker が独自に生成・変更してはならない。
 
 ### 回答バインディング（answer binding）
 
