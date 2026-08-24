@@ -11,7 +11,8 @@ disable-model-invocation: true
 
 # session-handover
 
-セッション終了時の検証・要約・再開準備を扱うスキル。
+セッション終了時の検証・要約・再開準備を扱うスキル。campaign を親、session を子として扱い、
+campaign_id は創設 session_id と同値のまま再開後も変更しない。
 
 <!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず親 manifest.yaml / templates を更新して再生成する。 -->
 <!-- disable-model-invocation: true — モデル任意発火を抑止し、Hook / Session Protocol による自動管理との責務分離を維持する。 -->
@@ -29,7 +30,7 @@ disable-model-invocation: true
 
 セッション終了前に、可能な範囲で次を確認する。
 
-- 変更内容と未完了作業が追跡ドキュメント（`{{project.tracking_artifact}}`）に反映されている
+- 変更内容と未完了作業が state の `campaign_id` に対応する追跡ドキュメント（`{{project.tracking_artifact}}`）に反映されている
 - 実行可能な品質ゲートを実行した
 - 実行できなかったゲートは理由を記録した
 
@@ -79,11 +80,11 @@ handover には、次セッションが参照すべき一次情報へのリン�
 再開時は以下を上から確認する。
 
 1. handover の最新状態を読む
-2. `{{project.tracking_artifact}}` の未完了タスクを確認する
+2. state の `campaign_id` を確認し、`{{project.tracking_artifact}}` の未完了タスクを確認する
 3. git status と差分を確認し、ユーザー変更を壊さない
 4. 直近の検証結果を確認し、必要なら最小ゲートを再実行する
 5. 次アクションを1つに絞って再開する
 
 ## キャンペーン完了時の処理
 
-追跡ドキュメント（`{{project.tracking_artifact}}`）の完了チェックが全て `[x]` になり、キャンペーンが完了した場合は追跡ドキュメントの削除を提案する。残す価値のある情報（設計判断→`docs/DECISIONS.md`、失敗→`docs/GOTCHAS.md`）はキャンペーン中に既に抽出済み。削除によりコンテキストコストを削減する（SoT 原則5「コンテキスト保護」）。
+state の `campaign_id` に対応する追跡ドキュメント（`{{project.tracking_artifact}}`）の完了チェックが全て `[x]` になり、campaign が完了した場合は追跡ドキュメントの削除を提案する。残す価値のある情報（設計判断→`docs/DECISIONS.md`、失敗→`docs/GOTCHAS.md`）はキャンペーン中に既に抽出済み。削除によりコンテキストコストを削減する（SoT 原則5「コンテキスト保護」）。

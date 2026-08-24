@@ -32,7 +32,6 @@ fi
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 STATE_FILE="$SESSION_DIR/${SESSION_ID}.json"
-TRACKER_FILE="$PROJECT_DIR/.cursor/.tracking/tracker-${SESSION_ID}.md"
 
 mkdir -p "$SESSION_DIR" 2>/dev/null || { echo '{}'; exit 0; }
 
@@ -41,10 +40,12 @@ NOW_ISO="$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
 jq -n \
   --arg sid "$SESSION_ID" \
+  --arg cid "$SESSION_ID" \
   --argjson started_at_unix "$NOW_UNIX" \
   --arg started_at_iso "$NOW_ISO" \
   '{
     session_id: $sid,
+    campaign_id: $cid,
     started_at_unix: $started_at_unix,
     started_at_iso: $started_at_iso,
     prompt_count: 0,
@@ -72,6 +73,36 @@ for hf in "$SESSION_DIR"/handoff-*.md; do
 done
 
 HANDOFF_COUNT=${#HANDOFF_FILES[@]}
+
+# ---- campaign_id の mint / bind ----
+# campaign_id は campaign の親 ID（創設 session_id と同値）であり、
+# session_id は現在チャットの runtime ID に限定する。
+extract_campaign_id() {
+  local HANDOFF_FILE="$1"
+  local CANDIDATE
+  CANDIDATE="$(grep -E '^[[:space:]]*(-[[:space:]]*)?campaign_id:[[:space:]]*[A-Za-z0-9._-]+[[:space:]]*$' "$HANDOFF_FILE" 2>/dev/null \
+    | head -n 1 \
+    | sed -E 's/^[[:space:]]*(-[[:space:]]*)?campaign_id:[[:space:]]*//; s/[[:space:]]*$//')" || CANDIDATE=""
+  if [[ "$CANDIDATE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    printf '%s' "$CANDIDATE"
+  fi
+}
+
+CAMPAIGN_ID="$SESSION_ID"
+CAMPAIGN_ID_SOURCE="session_start"
+if (( HANDOFF_COUNT == 1 )); then
+  HANDOFF_CAMPAIGN_ID="$(extract_campaign_id "${HANDOFF_FILES[0]}")"
+  if [[ -n "$HANDOFF_CAMPAIGN_ID" ]]; then
+    CAMPAIGN_ID="$HANDOFF_CAMPAIGN_ID"
+    CAMPAIGN_ID_SOURCE="handoff"
+  fi
+fi
+
+# state は sessionStart で必ず campaign_id を持つ。2+ handoff はユーザー選択前に
+# 自動 bind せず、現在 session の ID を仮の創設 ID として保持する。
+jq --arg cid "$CAMPAIGN_ID" --arg source "$CAMPAIGN_ID_SOURCE" \
+  '.campaign_id = $cid | .campaign_id_source = $source' \
+  "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null
 
 # ---- handoff 注入ヘルパー（1 件の handoff を注入 + consumed リネーム） ----
 inject_handoff() {

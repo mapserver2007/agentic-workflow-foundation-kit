@@ -49,13 +49,17 @@ Red (manifest.yaml > framework.budget_thresholds 参照)
 
 ## tracker と handoff manifest の責務境界（詳細）
 
-| | tracker-{session_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
+campaign と session は別の責務を持つ。`campaign_id` は sessionStart で mint / handoff bind されるキャンペーンの安定 IDで、handoff が無い場合は創設 `session_id` と同値になる。`session_id` は現在チャットの runtime ID、`campaign_slug` は report / envelope の命名用であり、いずれも tracker の親 IDとして推測しない。
+
+| | tracker-{campaign_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
 |---|---|---|
-| **役割** | キャンペーン（= セッション）の SoT | セッション固有の揮発情報 + tracker へのポインタ |
+| **役割** | 複数 session にまたがる campaign の SoT | 現在の session 固有の揮発情報 + campaign tracker へのポインタ |
 | **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker のどこにいるか + tracker に未反映の差分 |
 | **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
 | **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
 | **矛盾時の優先** | **常に tracker が正** | tracker の劣化コピーとして扱う |
+
+handoff の `campaign_id` が次の session の state へコピーされ、`tracker-{campaign_id}.md` の同じファイルへ bind する。`campaign_id` のない handoff は本文を注入するだけで、最新 tracker の推定や自動 bind は行わない。
 
 ### 追跡ドキュメントのプランファイル連携
 
@@ -102,11 +106,11 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 スナップショットは次セッションの bootstrap で以下の2パターンで活用される:
 
 1. **handoff manifest あり**: manifest と snapshot を突合し、矛盾があれば WARN を追記
-2. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot の turns.jsonl セクションから直近のユーザー依頼を抽出し、fallback として `additional_context` に注入
+2. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot の turns.jsonl セクションから直近のユーザー依頼を抽出し、fallback として `additional_context` に注入。campaign tracker の bind は行わない
 
 ## manifest 骨格の機械生成
 
-Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.md` に必須見出しのみの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
+Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.md` に `campaign_id` / `tracker_path` と必須見出しの骨格を自動生成する。AI は `<!-- TODO -->` を埋めるだけで済む。既にファイルが存在する場合は上書きしない。
 
 ## 注入サイズ上限
 

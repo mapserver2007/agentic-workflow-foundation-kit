@@ -60,7 +60,7 @@ framework:
       meaning: 検査失敗（修正可能）。FAIL項目を修正し再実行（Advisoryループ）
     - code: 2
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
-  # 追跡ドキュメント（.cursor/.tracking/tracker-{session_id}.md）が満たすべき必須セクションの SoT。
+  # 追跡ドキュメント（.cursor/.tracking/tracker-{campaign_id}.md）が満たすべき必須セクションの SoT。
   # session-planning テンプレ（追跡ドキュメント作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
   # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
@@ -148,6 +148,12 @@ framework:
     paper_citation: "根拠: Liu et al. (2023) 『Lost in the Middle: How Language Models Use Long Contexts』 (TACL)。長い文脈では入力の中央付近にある情報の利用率が相対的に下がることを実証した。"
     degradation_example: "具体例: 序盤で「この更新処理は必ずトランザクション境界内で実行する」と決めたのに、終盤では境界外に実装してしまう。序盤の制約が AI の注意から落ちるのが典型的な劣化症状で、早期に気づけると handoff のタイミングを逃しにくい。"
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
+    # campaign_id は親 campaign の安定 ID。創設 session_id と同値で、再開時も変えない。
+    # campaign_slug（report / envelope 用）とは別の識別子である。
+    campaign_id_field: "campaign_id"
+    campaign_id_source: "sessionStart の session-bootstrap.sh が handoff から bind、なければ創設 session_id を mint"
+    state_campaign_id_field: "campaign_id"
+    tracker_path_pattern: ".cursor/.tracking/tracker-{campaign_id}.md"
     active_manifest_path: ".cursor/.session/handoff-{session_id}.md"
     consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{orig_sid}-{unix}.md"
     snapshot_path_pattern: ".cursor/.session/pre-compact-{session_id}.md"
@@ -235,7 +241,7 @@ framework:
       - "復旧メモ"
     # 追跡ドキュメント = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + 追跡ドキュメントへのポインタ。
     # manifest に追跡ドキュメントと同じ情報を重複して書かない。
-    manifest_responsibility: "追跡ドキュメントが SoT。manifest は追跡ドキュメントへのポインタ + セッション固有の揮発情報（直近の依頼・未コミットの判断）のみ"
+    manifest_responsibility: "追跡ドキュメント（campaign tracker）が SoT。manifest は campaign_id / tracker へのポインタ + session 固有の揮発情報（直近の依頼・未コミットの判断）のみ"
     # 復旧時の行動制約（session-bootstrap.sh の注入テキストの SoT）。
     # AI が manifest を読んだ後に「記録」と「指示」を混同しないための安全策。
     recovery_constraints:
@@ -714,6 +720,7 @@ outputs:
       - "## Session Protocol"
       - "## Context Budget Protocol"
       - "## Boundaries"
+      - "campaign_id"
   - path: CLAUDE.md
     template: CLAUDE.md.template
     mode: render
@@ -870,12 +877,16 @@ outputs:
       - "G-PLAN-SECTION-001"
       - "例外承認記録"
       - "フェーズ境界"
+      - "campaign_id"
+      - "親 = campaign"
   - path: docs/CONTEXT_BUDGET.md
     template: docs/CONTEXT_BUDGET.md.template
     mode: render
     required_sections:
       - "CONTEXT_BUDGET"
       - "handoff-{session_id}.md"
+      - "tracker-{campaign_id}.md"
+      - "campaign_id"
       - "## 生成根拠"
       - "## なぜ必要か"
       - "## ユーザーが実際にやること"
@@ -897,6 +908,7 @@ outputs:
       - "意図的に採用しない設計"
       - "閾値の決定根拠"
       - "tracker と handoff manifest"
+      - "campaign_id"
   # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
   - path: docs/tech-stack.md
     template: docs/tech-stack.md.template
@@ -1831,14 +1843,16 @@ project:
   # true は Phase 1.68 の対話承認を省略する PO opt-in。plan digest 検証は常に維持する。
   # sealed tech_contract.provisioning とは別の対話承認ポリシー。
   provisioning_auto_approve: false
-  # 全 workflow_pattern 共通の固定パス。状態管理ファイルのため .gitignore 対象・完了時は削除。
+  # 全 workflow_pattern 共通の固定パス。campaign 単位の SoT で、状態管理ファイルのため
+  # .gitignore 対象・完了時は削除。campaign_id は創設 session_id と同値で、
+  # campaign_slug（report / envelope 名）とは別の値である。
   # 設計根拠（SoT §6 からの意図的逸脱）:
   #   追跡ドキュメントはセッション固有の揮発的状態（フェーズ・TODO・ブロッカー）のみで構成され、
   #   永続化すべき判断は DECISIONS.md / GOTCHAS.md に抽出する設計。
   #   git 履歴にセッション状態のノイズを入れず、ルートディレクトリを .cursor/ 配下に隔離する。
   # 下流注記: トレーサビリティ要件がある業務プロジェクトでは SoT §6 準拠
   #   （ルート直下 plan.md + archive/ 保管 + git 管理）に戻すことを推奨する。
-  tracking_artifact: ".cursor/.tracking/tracker-{session_id}.md"
+  tracking_artifact: ".cursor/.tracking/tracker-{campaign_id}.md"
   # resolve_budget_thresholds.py（Phase 1.55）が確定する。以下は seed default。
   context_budget:
     min_context_window_tokens: 200000

@@ -60,6 +60,8 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
 2. **campaign_slug の凍結**: 親が `02-report-creation.md §2.1` の既存命名規約を一度だけ実行し、最初の worker dispatch 前に `campaign_slug` を決定する。要求正規化・深度判定・standard/deep 調査・Step②へ同値を渡し、以後変更しない
+   - `campaign_slug` は report / step envelope の命名専用であり、runtime の親 ID ではない。親 = campaign、子 = session の関係は `state.campaign_id` が表す
+   - `campaign_id` は sessionStart で mint または handoff bind され、Red 後の新 session でも再採番しない。tracker は `state.campaign_id` から解決する
 3. **要求正規化**: Subagent（`requirement-analysis/config.yaml > models.normalize`）で要求を構造化する
 4. **要求の完全性チェック（Gate A）**: 正規化結果のタスク種別対応マトリクスで検査。`INCOMPLETE` → 親が [`user-presentation.md`](../requirement-analysis/references/user-presentation.md) のテンプレに従いユーザーに質問
 4. **docs-first**: `AGENTS.md > Documentation Navigation` の参照順序に従い docs を先に確認する
@@ -195,16 +197,17 @@ Mode B（完了後の追加コメント対応）と standalone `agent-code-revie
 - **Yellow**: 現ステップを区切りまで完了 → タスクレポート最新化 → 次セッション引き継ぎ準備
 - **Red**: 即時中断 → タスクレポート最新化 → handoff manifest 書き出し。新ステップに進まない
 - **中断時**: 未完了チェックは `[ ]` 維持、再開ポイントをレポート + handoff に記録
+- **識別子**: handoff / state / turns / progress のファイル名は現在の `session_id`、追跡ドキュメントは不変の `campaign_id`。再開時に `campaign_slug` や `campaign_id` を再生成しない
 
 ---
 
 ## 進行中タスクレポートからの再開
 
-セッション開始時に `docs/agent-tasks/reports/` 直下にレポートが存在する場合（= 進行中キャンペーン）:
+セッション開始時に `docs/agent-tasks/reports/` 直下にレポートが存在する場合（= 進行中 campaign）:
 
 1. レポートを全体読み込みする
-2. 完了チェック 6 項目の状態から、どのステップまで完了しているかを判定する
-3. 未完了の最初のステップから再開する
+2. state の `campaign_id` に対応する tracker を全体読み込みし、完了チェック 6 項目の状態から、どのステップまで完了しているかを判定する
+3. `session_id` が変わっても `campaign_id` と report の `campaign_slug` を再採番せず、未完了の最初のステップから再開する
 
 | 完了チェック状態 | 再開ステップ |
 | --- | --- |

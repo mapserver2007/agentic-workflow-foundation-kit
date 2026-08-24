@@ -324,12 +324,25 @@ def docs_contract_only_precise() -> bool:
     if len(handover_lines) < 42:
         print("FAIL: session-handover too short", file=sys.stderr)
         return False
-    line42 = handover_lines[41]
-    if re.search(r"tech_stack\s*から", line42):
-        print("FAIL: session-handover line42 still claims tech_stack origin", line42, file=sys.stderr)
+    projection_lines = [
+        line for line in handover_lines if "resolve_quality_gate.py" in line
+    ]
+    if any(re.search(r"tech_stack\s*から", line) for line in projection_lines):
+        print(
+            "FAIL: session-handover still claims tech_stack origin",
+            projection_lines,
+            file=sys.stderr,
+        )
         return False
-    if not re.search(r"tech_contract|quality_gate\.profile", line42):
-        print("FAIL: session-handover line42 missing contract/profile projection", line42, file=sys.stderr)
+    if not any(
+        re.search(r"tech_contract|quality_gate\.profile", line)
+        for line in projection_lines
+    ):
+        print(
+            "FAIL: session-handover missing contract/profile projection",
+            projection_lines,
+            file=sys.stderr,
+        )
         return False
     legacy_patterns = (
         (SKILL, r"workflow_pattern[`\s×]+tech_stack"),

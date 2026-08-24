@@ -83,6 +83,12 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 {{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
 
+## campaign_id と session_id
+
+親は campaign、子は session とする。`campaign_id` は sessionStart で必ず state に設定されるキャンペーンの安定 IDで、handoff が無い場合は創設 `session_id` と同値で以後変わらない。追跡ドキュメントは `tracker-{campaign_id}.md` とし、state の `campaign_id` からのみ解決する。
+
+`session_id` は現在チャットの state / handoff ファイル名 / turns / progress に限定する。`campaign_slug` は report / envelope の命名専用で `campaign_id` とは別である。handoff に `campaign_id` が無い場合は本文を注入するだけで tracker を推測・自動 bind しない。
+
 > 責務境界の詳細表・プランファイル連携の具体例は [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 
 ## handoff manifest
