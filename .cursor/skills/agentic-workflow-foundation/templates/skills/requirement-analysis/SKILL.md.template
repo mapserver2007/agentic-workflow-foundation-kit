@@ -17,7 +17,7 @@ description: >-
 
 Step ① の要求分析を 3 段階ガード + 分析深度判定で統括する内部スキル。
 
-親オーケストレータは要求正規化 worker の dispatch 前に、`02-report-creation.md §2.1` の既存規約から `campaign_slug` を一度だけ決定して凍結する。要求正規化・深度判定・standard 調査・deep 経路はこの必須入力を透過し、生成・変更・再命名しない。
+親オーケストレータは要求正規化 worker の dispatch 前に、`02-report-creation.md §2.1` の既存規約から `campaign_slug` を一度だけ決定して凍結する。要求正規化・深度判定・standard 調査・deep 経路は独自に再計算・再命名・再発明せず、親から受領した値を artifact（front matter を含む）へそのまま記録する。
 
 > **参照ドキュメント**:
 > - [references/requirement-contract.md](references/requirement-contract.md) — 3 段階ガード・Issue Ledger・退出契約

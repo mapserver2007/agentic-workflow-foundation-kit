@@ -221,7 +221,7 @@ AI への指示:
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
-   `campaign_id: ${CAMPAIGN_ID}` と `tracker_path: ${TRACKER_FILE}` を先頭に保持する
+   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
    ## セッション判断ログ
@@ -243,7 +243,7 @@ AI への指示:
 3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
    未反映の判断があれば追記せよ。
 4. .cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す準備をする。
-   `campaign_id: ${CAMPAIGN_ID}` と `tracker_path: ${TRACKER_FILE}` を先頭に保持する
+   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
 5. ユーザーに「コンパクションが発生しました（使用率 ${COMPACT_PCT}%）。区切りの良いタイミングで
    新規チャット (Cmd+N) を開くことをお勧めします。」と短く伝える。"
   fi
@@ -296,7 +296,7 @@ if [[ "$LEVEL" == "red" ]]; then
 AI への指示:
 1. 追跡ドキュメント（${TRACKER_FILE}）の「次セッションTODO」「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。
 2. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
-   `campaign_id: ${CAMPAIGN_ID}` と `tracker_path: ${TRACKER_FILE}` を先頭に保持する
+   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
    ## ポインタ（追跡ドキュメントの現在位置）
    ## 直近のユーザー依頼
    ## セッション判断ログ
@@ -316,7 +316,7 @@ AI への指示:
 1. 追跡ドキュメント（${TRACKER_FILE}）の「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
 2. 追跡ドキュメントの「次セッションTODO」を最新化する。
 3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には追跡ドキュメントと重複する詳細を書かない。ポインタで参照し、追跡ドキュメント未反映の揮発情報のみ追記する。
-   `campaign_id: ${CAMPAIGN_ID}` と `tracker_path: ${TRACKER_FILE}` は変更しない。
+   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` は変更しない。
 4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
 5. Red 到達時は強制ハンドオフが発火する。"
 fi

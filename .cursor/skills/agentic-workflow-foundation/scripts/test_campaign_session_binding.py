@@ -127,6 +127,9 @@ def test_runtime_mint_bind_and_tracker_lookup() -> None:
         write_state(root, "S1", prompt_count=70)
         evaluator_output = run_hook(evaluator, root, "S1", {})
         assert "followup_message" in evaluator_output, "Red followup が発火しない"
+        followup = evaluator_output["followup_message"]
+        assert "`campaign_id: S1`" in followup, "followup の campaign_id がコマンド置換で失われた"
+        assert "`tracker_path:" in followup, "followup の tracker_path がコマンド置換で失われた"
         handoff_s1 = session_dir / "handoff-S1.md"
         assert handoff_s1.is_file(), "Red が handoff manifest を作成しない"
         handoff_text = handoff_s1.read_text(encoding="utf-8")
