@@ -5,6 +5,14 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if [[ -z "$INPUT" ]] || ! command -v jq >/dev/null 2>&1; then
   echo '{}'
@@ -51,21 +59,37 @@ case "$HOOK_EVENT" in
     ;;
 esac
 
-SUMMARY="$(jq -r --arg kind "$KIND" '
-  if $kind == "prompt" then .prompt // ""
-  elif $kind == "shell" then .command // .input // .output // ""
-  elif $kind == "subagent_start" or $kind == "subagent_stop" then .task // .text // ""
-  else .text // .response // ""
-  end
-  | if type == "string" then . else tostring end
-' <<<"$INPUT" 2>/dev/null)" || SUMMARY=""
-SUMMARY="$(printf '%.1000s' "$SUMMARY")"
-BYTES="$(LC_ALL=C printf '%s' "$SUMMARY" | wc -c | tr -d '[:space:]')" || BYTES=0
-[[ "$BYTES" =~ ^[0-9]+$ ]] || BYTES=0
+BYTE_SENTINEL="__SESSION_BYTE_COUNT_END__"
+SUMMARY_RAW="$(jq -j --arg kind "$KIND" --arg sentinel "$BYTE_SENTINEL" '
+  (
+    if $kind == "prompt" then .prompt // ""
+    elif $kind == "shell" then .command // .input // .output // ""
+    elif $kind == "subagent_start" or $kind == "subagent_stop" then .task // .text // ""
+    else .text // .response // ""
+    end
+    | if type == "string" then . else tostring end
+  ), $sentinel
+' <<<"$INPUT" 2>/dev/null)" || {
+  echo '{}'
+  exit 0
+}
+SUMMARY_RAW="${SUMMARY_RAW%$BYTE_SENTINEL}"
+SUMMARY="$(session_byte_prefix 1000 "$SUMMARY_RAW")" || {
+  echo '{}'
+  exit 0
+}
+BYTES="$(session_byte_count "$SUMMARY")" || {
+  echo '{}'
+  exit 0
+}
+[[ "$BYTES" =~ ^[0-9]+$ ]] || {
+  echo '{}'
+  exit 0
+}
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
 # beforeSubmitPrompt の全文は保存せず、JSON decode 済み文字列から canonical PR URL と
-# SHA-256 だけを構造化する。summary の1000文字切詰めより前の全文を証跡に使う。
+# SHA-256 だけを構造化する。summary の最大1000 UTF-8 bytes切詰めより前の全文を証跡に使う。
 PROMPT_META='{}'
 if [[ "$KIND" == "prompt" ]]; then
   PROMPT_META="$(python3 -c '
@@ -125,16 +149,19 @@ fi
 # Cursor afterShellExecution does not guarantee exit_code; output is the primary banner source.
 OUTPUT_TAIL=""
 if [[ "$KIND" == "shell" ]]; then
-  OUTPUT_TAIL="$(jq -r '
-    [.output, .stdout, .result]
-    | map(select(. != null and (type != "string" or length > 0)))
-    | .[0]
-    | if . == null then "" elif type == "string" then . else tostring end
-  ' <<<"$INPUT" 2>/dev/null)" || OUTPUT_TAIL=""
+  OUTPUT_TAIL_RAW="$(jq -j --arg sentinel "$BYTE_SENTINEL" '
+    (
+      [.output, .stdout, .result]
+      | map(select(. != null and (type != "string" or . != "")))
+      | .[0]
+      | if . == null then "" elif type == "string" then . else tostring end
+    ), $sentinel
+  ' <<<"$INPUT" 2>/dev/null)" || OUTPUT_TAIL_RAW=""
+  OUTPUT_TAIL="${OUTPUT_TAIL_RAW%$BYTE_SENTINEL}"
   # Keep the last ~6KiB (banner / Finding Code lines live near the end).
-  BYTES_OUT="$(LC_ALL=C printf '%s' "$OUTPUT_TAIL" | wc -c | tr -d '[:space:]')" || BYTES_OUT=0
+  BYTES_OUT="$(session_byte_count "$OUTPUT_TAIL")" || BYTES_OUT=0
   if [[ "$BYTES_OUT" =~ ^[0-9]+$ ]] && (( BYTES_OUT > 6144 )); then
-    OUTPUT_TAIL="$(printf '%s' "$OUTPUT_TAIL" | tail -c 6144)"
+    OUTPUT_TAIL="$(session_byte_suffix 6144 "$OUTPUT_TAIL")" || OUTPUT_TAIL=""
   fi
 fi
 
@@ -152,7 +179,7 @@ EXTRA="$(jq -c --arg kind "$KIND" --arg output_tail "$OUTPUT_TAIL" --argjson pro
        elif (.exitCode != null and .exitCode != "") then {exit_code: .exitCode}
        elif (.status_code != null and .status_code != "") then {exit_code: .status_code}
        else {} end)
-      + (if ($output_tail | length) > 0 then {output_tail: $output_tail} else {} end)
+      + (if $output_tail != "" then {output_tail: $output_tail} else {} end)
     elif $kind == "prompt" then
       $prompt_meta
     else {}

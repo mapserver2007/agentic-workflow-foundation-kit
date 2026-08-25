@@ -11,6 +11,20 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
+BYTE_SENTINEL="__SESSION_BYTE_COUNT_END__"
+read_file_preserving_bytes() {
+  local file_path="$1"
+  cat "$file_path" 2>/dev/null && printf '%s' "$BYTE_SENTINEL"
+}
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if ! command -v jq >/dev/null 2>&1; then
   echo '{}'
@@ -148,31 +162,53 @@ fi
 # ---- 4. 包括的スナップショット（preCompact 拡充退避） ----
 MAX_SNAPSHOT_BYTES={{framework.budget_thresholds.max_snapshot_bytes}}
 SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
-{
-  echo "# Pre-Compact Snapshot"
-  echo "## compact 情報"
-  echo "- trigger: ${TRIGGER}"
-  echo "- usage: ${USAGE_PCT}%"
-  echo "- tokens: ${CONTEXT_TOKENS:-?} / ${CONTEXT_WINDOW:-?}"
-  echo "- prompt_count: ${PROMPT_COUNT}"
-  echo "- campaign_id: ${CAMPAIGN_ID:-unbound}"
-  echo "- tracker_path: ${TRACKER_FILE:-unavailable}"
-  echo "- at: ${NOW_ISO}"
-  echo ""
-  echo "## 追跡ドキュメント"
-  if [[ -n "$TRACKER" ]] && [[ -f "$TRACKER" ]]; then
-    head -c 4096 "$TRACKER"
-  fi
-  echo ""
-  echo "## 直近のターンログ（turns.jsonl 末尾）"
-  TURNS_LOG="$SESSION_DIR/${SESSION_ID}.turns.jsonl"
-  if [[ -f "$TURNS_LOG" ]]; then
-    tail -20 "$TURNS_LOG"
-  fi
-  echo ""
-  echo "## state"
-  cat "$STATE_FILE" 2>/dev/null | jq '.' 2>/dev/null || true
-} | head -c "${MAX_SNAPSHOT_BYTES}" > "$SNAPSHOT" 2>/dev/null || true
+SNAPSHOT_CONTENT="$(
+  {
+    echo "# Pre-Compact Snapshot"
+    echo "## compact 情報"
+    echo "- trigger: ${TRIGGER}"
+    echo "- usage: ${USAGE_PCT}%"
+    echo "- tokens: ${CONTEXT_TOKENS:-?} / ${CONTEXT_WINDOW:-?}"
+    echo "- prompt_count: ${PROMPT_COUNT}"
+    echo "- campaign_id: ${CAMPAIGN_ID:-unbound}"
+    echo "- tracker_path: ${TRACKER_FILE:-unavailable}"
+    echo "- at: ${NOW_ISO}"
+    echo ""
+    echo "## 追跡ドキュメント"
+    if [[ -n "$TRACKER" ]] && [[ -f "$TRACKER" ]]; then
+      TRACKER_CONTENT="$(read_file_preserving_bytes "$TRACKER")" || TRACKER_CONTENT=""
+      TRACKER_CONTENT="${TRACKER_CONTENT%$BYTE_SENTINEL}"
+      if TRACKER_PREFIX="$(
+        session_byte_prefix 4096 "$TRACKER_CONTENT" &&
+        printf '%s' "$BYTE_SENTINEL"
+      )"; then
+        TRACKER_PREFIX="${TRACKER_PREFIX%$BYTE_SENTINEL}"
+        printf '%s' "$TRACKER_PREFIX"
+      fi
+    fi
+    echo ""
+    echo "## 直近のターンログ（turns.jsonl 末尾）"
+    TURNS_LOG="$SESSION_DIR/${SESSION_ID}.turns.jsonl"
+    if [[ -f "$TURNS_LOG" ]]; then
+      tail -20 "$TURNS_LOG"
+    fi
+    echo ""
+    echo "## state"
+    cat "$STATE_FILE" 2>/dev/null | jq '.' 2>/dev/null || true
+  }
+  printf '%s' "$BYTE_SENTINEL"
+)"
+SNAPSHOT_CONTENT="${SNAPSHOT_CONTENT%$BYTE_SENTINEL}"
+if TRUNCATED_SNAPSHOT="$(
+  session_byte_prefix "$MAX_SNAPSHOT_BYTES" "$SNAPSHOT_CONTENT" &&
+  printf '%s' "$BYTE_SENTINEL"
+)"; then
+  TRUNCATED_SNAPSHOT="${TRUNCATED_SNAPSHOT%$BYTE_SENTINEL}"
+  printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT" 2>/dev/null || true
+else
+  # fail-open: 切詰め失敗時は既存の復旧スナップショットを破棄しない。
+  :
+fi
 
 # ---- 5. user_message でユーザーに compact 発生を通知 ----
 USER_MSG="コンパクションが発生しました（${TRIGGER}、使用率 ${USAGE_PCT}%）。次の応答完了時に handoff 準備が自動的に行われます。"

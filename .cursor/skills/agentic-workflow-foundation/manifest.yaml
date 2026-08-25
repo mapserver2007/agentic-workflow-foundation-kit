@@ -756,6 +756,18 @@ outputs:
       - "gh auth token"
       - "secret store"
       - "git credential"
+  # Context Budget の source 専用 UTF-8 byte-count helper。
+  # hooks.json には登録せず、各 Hook が BASH_SOURCE から source する。
+  - path: .cursor/hooks/session-byte-count.sh
+    template: hooks/session-byte-count.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "session_byte_count"
+      - "session_byte_prefix"
+      - "session_byte_suffix"
+      - "source 専用ライブラリ"
+      - "return contract"
   - path: .cursor/hooks/session-bootstrap.sh
     template: hooks/session-bootstrap.sh.template
     mode: render

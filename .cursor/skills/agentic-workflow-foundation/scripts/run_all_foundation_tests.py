@@ -62,6 +62,7 @@ TESTS_IN_ORDER = [
     "test_plan_gate_review.py",
     "test_bootstrap_dead_blocks.py",
     "test_campaign_session_binding.py",
+    "test_session_byte_count.py",
 ]
 
 

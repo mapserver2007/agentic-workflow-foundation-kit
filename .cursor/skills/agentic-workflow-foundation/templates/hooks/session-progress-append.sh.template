@@ -12,6 +12,13 @@ fail() {
   exit "$code"
 }
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  fail 2 "byte-count helper が読み込めません"
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
   fail 2 "jq が必要です"
 fi
@@ -62,6 +69,7 @@ fi
 if [[ -z "$SUMMARY" ]]; then
   SUMMARY="PRレビュー検証開始"
 fi
+SUMMARY="$(session_byte_prefix 1000 "$SUMMARY")" || fail 2 "summary の UTF-8 切詰めに失敗しました"
 
 if [[ -z "$EXTRA_RAW" ]] || ! jq -e '
   type == "object"
@@ -98,8 +106,8 @@ EXTRA="$(jq -c '
   }
 ' <<<"$EXTRA_RAW" 2>/dev/null)" || fail 2 "extra の正規化に失敗しました"
 
-BYTES="$(LC_ALL=C printf '%s' "$SUMMARY" | wc -c | tr -d '[:space:]')" || BYTES=0
-[[ "$BYTES" =~ ^[0-9]+$ ]] || BYTES=0
+BYTES="$(session_byte_count "$SUMMARY")" || fail 2 "summary の byte 計測に失敗しました"
+[[ "$BYTES" =~ ^[0-9]+$ ]] || fail 2 "summary の byte 計測結果が不正です"
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 
 EVENT="$(jq -c -n \
@@ -127,8 +135,17 @@ append_and_verify() {
   else
     matches=""
   fi
-  if [[ -s "$PROGRESS_LOG" ]] && [[ "$(tail -c 1 "$PROGRESS_LOG" 2>/dev/null)" != "" ]]; then
-    printf '\n' >> "$PROGRESS_LOG" 2>/dev/null || return 2
+  if [[ -s "$PROGRESS_LOG" ]]; then
+    LAST_BYTE_KIND="$(python3 -c '
+import pathlib
+import sys
+
+data = pathlib.Path(sys.argv[1]).read_bytes()
+sys.stdout.write("newline" if data.endswith(b"\n") else "other")
+' "$PROGRESS_LOG" 2>/dev/null)" || return 2
+    if [[ "$LAST_BYTE_KIND" != "newline" ]]; then
+      printf '\n' >> "$PROGRESS_LOG" 2>/dev/null || return 2
+    fi
   fi
   if [[ -n "$matches" ]]; then
     if [[ "$(printf '%s\n' "$matches" | wc -l | tr -d '[:space:]')" != "1" ]]; then

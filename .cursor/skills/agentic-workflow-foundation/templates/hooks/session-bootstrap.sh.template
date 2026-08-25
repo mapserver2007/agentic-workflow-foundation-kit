@@ -7,6 +7,20 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
+BYTE_SENTINEL="__SESSION_BYTE_COUNT_END__"
+read_file_preserving_bytes() {
+  local file_path="$1"
+  cat "$file_path" 2>/dev/null && printf '%s' "$BYTE_SENTINEL"
+}
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if [[ -z "$INPUT" ]]; then
   echo '{}'
@@ -64,15 +78,15 @@ MAX_INJECTION_BYTES={{framework.budget_thresholds.max_injection_bytes}}
 
 # handoff-*.md を収集（handoff-consumed-* を除外）
 HANDOFF_FILES=()
+HANDOFF_COUNT=0
 for hf in "$SESSION_DIR"/handoff-*.md; do
   [[ -f "$hf" ]] || continue
   case "$(basename "$hf")" in
     handoff-consumed-*) continue ;;
   esac
-  HANDOFF_FILES+=("$hf")
+  HANDOFF_FILES[$HANDOFF_COUNT]="$hf"
+  HANDOFF_COUNT=$((HANDOFF_COUNT + 1))
 done
-
-HANDOFF_COUNT=${#HANDOFF_FILES[@]}
 
 # ---- campaign_id の mint / bind ----
 # campaign_id は campaign の親 ID（創設 session_id と同値）であり、
@@ -122,13 +136,15 @@ inject_handoff() {
   local TARGET_BASENAME
   TARGET_BASENAME="$(basename "$TARGET_FILE" .md)"
   local HANDOFF_CONTENT
-  HANDOFF_CONTENT="$(cat "$TARGET_FILE" 2>/dev/null)" || HANDOFF_CONTENT=""
+  HANDOFF_CONTENT="$(read_file_preserving_bytes "$TARGET_FILE")" || HANDOFF_CONTENT=""
+  HANDOFF_CONTENT="${HANDOFF_CONTENT%$BYTE_SENTINEL}"
   [[ -n "$HANDOFF_CONTENT" ]] || return 0
 
-  local HANDOFF_SIZE=${#HANDOFF_CONTENT}
+  local HANDOFF_SIZE
+  HANDOFF_SIZE="$(session_byte_count "$HANDOFF_CONTENT")" || return 0
   local SIZE_WARNING=""
   if (( HANDOFF_SIZE > MAX_INJECTION_BYTES )); then
-    HANDOFF_CONTENT="$(head -c "$MAX_INJECTION_BYTES" <<<"$HANDOFF_CONTENT" 2>/dev/null)"
+    HANDOFF_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$HANDOFF_CONTENT")" || return 0
     SIZE_WARNING="
 警告: manifest が ${HANDOFF_SIZE} bytes あり、注入上限 ${MAX_INJECTION_BYTES} bytes で切り詰めました。manifest 内「ポインタ」に記載された追跡ドキュメントを直接 Read して全体を補完してください。"
   fi
@@ -211,7 +227,8 @@ for snap in "$SESSION_DIR"/pre-compact-*.md; do
   fi
 done
 if [[ -n "$LATEST_SNAPSHOT" ]] && [[ -n "$ADDITIONAL_CONTEXT" ]]; then
-  SNAP_CONTENT="$(cat "$LATEST_SNAPSHOT" 2>/dev/null)" || SNAP_CONTENT=""
+  SNAP_CONTENT="$(read_file_preserving_bytes "$LATEST_SNAPSHOT")" || SNAP_CONTENT=""
+  SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
   if [[ -n "$SNAP_CONTENT" ]]; then
     SNAP_HAS_INCOMPLETE=false
     if echo "$SNAP_CONTENT" | grep -qE '^\s*- \[ \]' 2>/dev/null; then
@@ -233,12 +250,15 @@ fi
 
 # ---- pre-compact snapshot からの fallback 注入（handoff manifest なし時） ----
 if [[ -z "$ADDITIONAL_CONTEXT" ]] && [[ -n "$LATEST_SNAPSHOT" ]]; then
-  SNAP_CONTENT="$(cat "$LATEST_SNAPSHOT" 2>/dev/null)" || SNAP_CONTENT=""
+  SNAP_CONTENT="$(read_file_preserving_bytes "$LATEST_SNAPSHOT")" || SNAP_CONTENT=""
+  SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
   if [[ -n "$SNAP_CONTENT" ]]; then
-    SNAP_SIZE=${#SNAP_CONTENT}
-    if (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
-      SNAP_CONTENT="$(head -c "$MAX_INJECTION_BYTES" <<<"$SNAP_CONTENT" 2>/dev/null)"
+    SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
+    if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
+      SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
     fi
+  fi
+  if [[ -n "$SNAP_CONTENT" ]]; then
     RECENT_PROMPTS=""
     if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
       RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""

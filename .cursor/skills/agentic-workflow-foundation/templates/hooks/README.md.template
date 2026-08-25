@@ -23,7 +23,10 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 | ファイル | 呼び出し元 | 役割 | フェイル戦略 |
 |---|---|---|---|
+| [session-byte-count.sh](session-byte-count.sh) | 各 Context Budget Hook / `session-progress-append.sh` から `source` | UTF-8 byte-count と UTF-8安全な先頭・末尾切詰めを共通提供する source 専用ライブラリ | 呼出側へ return code を返す |
 | [session-progress-append.sh](session-progress-append.sh) | `review-start-gate.sh` 内部だけ | 検証済み session へ `kind=review_start` を lock 付きで追記し readback する | fail_closed |
+
+`session-byte-count.sh` は `hooks.json` に登録しない。source 時に stdin を消費せず、出力・`exit`・shell option 変更を行わない。`session_byte_count TEXT` は byte 数を stdout へ返し、`session_byte_prefix MAX_BYTES TEXT` / `session_byte_suffix MAX_BYTES TEXT` は UTF-8 code point の途中で切断せず上限以下の文字列を返す。成功は return 0、引数不正または不正 UTF-8 は return 2、実行時依存の欠落は return 127 とする。観測 Hook は helper の失敗時に fail-open、`session-progress-append.sh` は fail-closed で停止する。
 
 > `stop` Hook は `loop_limit`（hooks.json 側で 5）に従い同一セッション内で再発火可能。重複通知は `last_warning_level` で抑止する。
 
@@ -77,6 +80,14 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
   → pre-compact スナップショットと manifest を突合し矛盾があれば WARN 追記
   → AI が manifest / snapshot を読み込み、state.campaign_id の campaign tracker で作業継続
 ```
+
+### UTF-8 byte-count の共通契約
+
+Context Budget の byte フィールドはすべて UTF-8 byte-count で記録・比較する。`session-budget-tracker.sh` の prompt byte、`session-shell-tracker.sh` の `shell_bytes`、response / progress の `bytes`、bootstrap の注入サイズ、compact snapshot の tracker サイズ、progress の `output_tail` は同じ `session-byte-count.sh` を使う。`session-budget-evaluator.sh` は Hook が記録した byte 値の読取・比較だけを行い、計測単位を再解釈しない。
+
+`turns.jsonl` の `bytes` は切り詰め前の入力全体、`progress.jsonl` の `bytes` は保存された `summary` の UTF-8 byte 数を表す。両者は異なるログ契約のフィールドであり、入力サイズとして横断比較する共通指標ではない。
+
+`summary` は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値である。これは Context Budget の閾値・最小コンテキストウィンドウ・snapshot 全体の容量から算出した値ではない。compact snapshot は tracker を先頭最大 4096 bytes、全体を最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes、turns は直近最大 20 行として保持するが、全体 byte 制限により 20 行すべての保持を保証しない。復旧情報の SoT は `tracker-{campaign_id}.md` と `handoff-{session_id}.md` であり、turns の summary は直近イベントの識別・補助復旧情報である。`prompt_count` は byte 数ではなく送信回数のまま維持する。
 
 ## 判定優先順位
 
@@ -147,8 +158,8 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 - `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop` / `review_start`
 - `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
-- `prompt` の `extra`: `pr_urls`（JSON decode 済み prompt 全文から抽出した canonical GitHub PR URL の重複排除済み配列）と `prompt_sha256`（同じ全文を trim・改行追加・Unicode再正規化せずUTF-8化した SHA-256 lowercase hex）。prompt 全文は保存せず、1000文字の `summary` は照合に使わない。
-- `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大約 6KiB。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
+- `prompt` の `extra`: `pr_urls`（JSON decode 済み prompt 全文から抽出した canonical GitHub PR URL の重複排除済み配列）と `prompt_sha256`（同じ全文を trim・改行追加・Unicode再正規化せずUTF-8化した SHA-256 lowercase hex）。prompt 全文は保存せず、`summary` は最大 1000 UTF-8 bytes で、照合には使わない。
+- `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大 6144 UTF-8 bytes。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
 - `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
 - `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
 - `review_start` の `extra`: 文字列フィールド `gate_id: review` / `campaign` / `pr` / `review_go_id` / `source: review-start-gate` に固定する。書き込み契機は **workflow-orchestrator 初回 Step⑤ Mode A の review-start gate**。同一 prompt の完全一致だけを冪等 PASS とする。

@@ -7,6 +7,14 @@
 
 set -uo pipefail
 
+HOOK_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$HOOK_DIR" == "${BASH_SOURCE[0]}" ]] && HOOK_DIR="."
+BYTE_HELPER="$HOOK_DIR/session-byte-count.sh"
+if [[ ! -r "$BYTE_HELPER" ]] || ! source "$BYTE_HELPER"; then
+  echo '{}'
+  exit 0
+fi
+
 INPUT="$(cat 2>/dev/null)" || { echo '{}'; exit 0; }
 if ! command -v jq >/dev/null 2>&1; then
   echo '{}'
@@ -34,9 +42,16 @@ fi
 
 CHECKPOINT_INTERVAL={{framework.budget_thresholds.checkpoint_interval_prompts}}
 
-# プロンプト文字数から重み付きスコアを算出（データ収集用 — 閾値判定には未使用）
+# プロンプトの UTF-8 byte 数から重み付きスコアを算出（データ収集用 — 閾値判定には未使用）
 PROMPT_TEXT="$(jq -r '.prompt // ""' <<<"$INPUT" 2>/dev/null)" || PROMPT_TEXT=""
-PROMPT_BYTES=${#PROMPT_TEXT}
+PROMPT_BYTES="$(session_byte_count "$PROMPT_TEXT")" || {
+  echo '{}'
+  exit 0
+}
+if ! [[ "$PROMPT_BYTES" =~ ^[0-9]+$ ]]; then
+  echo '{}'
+  exit 0
+fi
 if (( PROMPT_BYTES < 100 )); then
   WEIGHT=1
 else
@@ -47,7 +62,10 @@ fi
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 TURNS_LOG="$SESSION_DIR/${SESSION_ID}.turns.jsonl"
-PROMPT_SUMMARY="$(printf '%.1000s' "$PROMPT_TEXT")"
+PROMPT_SUMMARY="$(session_byte_prefix 1000 "$PROMPT_TEXT")" || {
+  echo '{}'
+  exit 0
+}
 if [[ -n "$PROMPT_TEXT" ]]; then
   jq -c -n \
     --arg type "prompt" \

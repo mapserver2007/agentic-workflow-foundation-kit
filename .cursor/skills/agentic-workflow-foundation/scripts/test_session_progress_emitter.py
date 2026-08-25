@@ -15,6 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL_DIR = HERE.parent
 TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-emitter.sh.template"
+BYTE_HELPER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-byte-count.sh.template"
 HOOKS_TEMPLATE = SKILL_DIR / "templates" / "hooks.json.template"
 README_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "README.md.template"
 MANIFEST = SKILL_DIR / "manifest.yaml"
@@ -22,6 +23,10 @@ BASH_EXECUTABLE = "/bin/bash"
 
 
 def run_hook(script: Path, root: Path, payload: str, *, session_id: str = "test-emit-001") -> subprocess.CompletedProcess[str]:
+    helper = script.parent / "session-byte-count.sh"
+    if not helper.exists():
+        helper.write_text(BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        helper.chmod(0o700)
     env = dict(os.environ)
     env.update({
         "CURSOR_PROJECT_DIR": str(root),
@@ -107,7 +112,7 @@ def test_shell_exit_code_and_output_tail() -> None:
                 "exit_code": "",
                 "exitCode": 0,
             },
-            {"exit_code": 0, "output_tail": "=== session-start gate: PASS ==="},
+            {"exit_code": 0, "output_tail": "=== session-start gate: PASS ===\n"},
         ),
         (
             {
@@ -217,6 +222,9 @@ def test_payload_session_fallback_and_fail_open() -> None:
         script = root / "session-progress-emitter.sh"
         script.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
         script.chmod(0o700)
+        helper = root / "session-byte-count.sh"
+        helper.write_text(BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        helper.chmod(0o700)
 
         env = dict(os.environ)
         env["CURSOR_PROJECT_DIR"] = str(root)
@@ -293,14 +301,7 @@ def test_payload_session_fallback_and_fail_open() -> None:
         assert_equal(no_python.returncode, 0, "python3 unavailable exit code")
         assert_equal(no_python.stdout, "{}\n", "python3 unavailable stdout")
         fallback_path = session_dir / "no-python3-001.progress.jsonl"
-        assert fallback_path.is_file(), "python3 failure must preserve prompt event"
-        fallback_row = json.loads(fallback_path.read_text(encoding="utf-8"))
-        assert_equal(fallback_row["kind"], "prompt", "python3 fallback kind")
-        assert_equal(
-            fallback_row["extra"],
-            {"hook_event_name": "beforeSubmitPrompt"},
-            "python3 fallback metadata",
-        )
+        assert not fallback_path.exists(), "byte helper failure must fail-open without writing"
 
 
 def test_concurrent_writes_preserve_jsonl() -> None:
@@ -314,6 +315,9 @@ def test_concurrent_writes_preserve_jsonl() -> None:
         script = root / "session-progress-emitter.sh"
         script.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
         script.chmod(0o700)
+        helper = root / "session-byte-count.sh"
+        helper.write_text(BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        helper.chmod(0o700)
 
         env = dict(os.environ)
         env.update({
