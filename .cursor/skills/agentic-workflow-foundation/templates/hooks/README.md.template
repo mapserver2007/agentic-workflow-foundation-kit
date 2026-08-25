@@ -85,6 +85,8 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 Context Budget の byte フィールドはすべて UTF-8 byte-count で記録・比較する。`session-budget-tracker.sh` の prompt byte、`session-shell-tracker.sh` の `shell_bytes`、response / progress の `bytes`、bootstrap の注入サイズ、compact snapshot の tracker サイズ、progress の `output_tail` は同じ `session-byte-count.sh` を使う。`session-budget-evaluator.sh` は Hook が記録した byte 値の読取・比較だけを行い、計測単位を再解釈しない。
 
+`turns.jsonl` の `bytes` は切り詰め前の入力全体、`progress.jsonl` の `bytes` は保存された `summary` の UTF-8 byte 数を表す。両者は異なるログ契約のフィールドであり、入力サイズとして横断比較する共通指標ではない。
+
 `summary` は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値である。これは Context Budget の閾値・最小コンテキストウィンドウ・snapshot 全体の容量から算出した値ではない。compact snapshot は tracker を先頭最大 4096 bytes、全体を最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes、turns は直近最大 20 行として保持するが、全体 byte 制限により 20 行すべての保持を保証しない。復旧情報の SoT は `tracker-{campaign_id}.md` と `handoff-{session_id}.md` であり、turns の summary は直近イベントの識別・補助復旧情報である。`prompt_count` は byte 数ではなく送信回数のまま維持する。
 
 ## 判定優先順位

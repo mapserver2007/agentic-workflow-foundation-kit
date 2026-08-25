@@ -206,7 +206,8 @@ if TRUNCATED_SNAPSHOT="$(
   TRUNCATED_SNAPSHOT="${TRUNCATED_SNAPSHOT%$BYTE_SENTINEL}"
   printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT" 2>/dev/null || true
 else
-  : > "$SNAPSHOT" 2>/dev/null || true
+  # fail-open: 切詰め失敗時は既存の復旧スナップショットを破棄しない。
+  :
 fi
 
 # ---- 5. user_message でユーザーに compact 発生を通知 ----

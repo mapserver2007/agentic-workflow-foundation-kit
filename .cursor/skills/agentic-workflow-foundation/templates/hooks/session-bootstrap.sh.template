@@ -253,10 +253,12 @@ if [[ -z "$ADDITIONAL_CONTEXT" ]] && [[ -n "$LATEST_SNAPSHOT" ]]; then
   SNAP_CONTENT="$(read_file_preserving_bytes "$LATEST_SNAPSHOT")" || SNAP_CONTENT=""
   SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
   if [[ -n "$SNAP_CONTENT" ]]; then
-    SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_SIZE=0
-    if (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
+    SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
+    if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
       SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
     fi
+  fi
+  if [[ -n "$SNAP_CONTENT" ]]; then
     RECENT_PROMPTS=""
     if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
       RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""

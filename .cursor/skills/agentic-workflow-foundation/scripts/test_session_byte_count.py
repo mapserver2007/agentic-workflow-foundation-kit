@@ -137,6 +137,23 @@ def test_helper_api_and_boundaries() -> None:
         assert_equal(invalid.stdout, b"", "invalid UTF-8 byte count stdout")
         assert_equal(invalid.stderr, b"", "invalid UTF-8 byte count stderr")
 
+        missing_argument_cases = (
+            ("count", "session_byte_count"),
+            ("prefix", "session_byte_prefix 1"),
+            ("suffix", "session_byte_suffix 1"),
+        )
+        for label, invocation in missing_argument_cases:
+            missing = subprocess.run(  # noqa: S603 - controlled helper fixture
+                [BASH, "-c", f'source "$1"; {invocation}', "byte-count-missing", str(helper)],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            assert_equal(missing.returncode, 2, f"{label} missing argument return code")
+            assert_equal(missing.stdout, "", f"{label} missing argument stdout")
+            assert_equal(missing.stderr, "", f"{label} missing argument stderr")
+
         code_point_fixtures = (("A", 1), ("é", 2), ("あ", 3), ("😀", 4))
         for text, size in code_point_fixtures:
             actual, _ = helper_call(helper, "count", text)
@@ -294,7 +311,11 @@ def test_emitter_and_progress_append_byte_contracts() -> None:
 
 
 def test_bootstrap_injection_and_snapshot_limits() -> None:
-    handoff = "campaign_id: C1\n## ポインタ\ntracker-C1.md\n" + ("あ" * 3000)
+    handoff = (
+        "campaign_id: C1\n## ポインタ\ntracker-C1.md\n"
+        + ("あ" * 3000)
+        + "HANDOFF_TAIL_MARKER\n"
+    )
     expected_injected = handoff.encode("utf-8")[:8192].decode("utf-8", "ignore")
     with tempfile.TemporaryDirectory(prefix="session-byte-limits-") as tmp:
         root = Path(tmp)
@@ -310,7 +331,25 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
         bootstrap_output = json.loads(bootstrap.stdout)
         context = bootstrap_output.get("additional_context", "")
         assert expected_injected in context, "handoff was not truncated by UTF-8 bytes"
+        assert "HANDOFF_TAIL_MARKER" not in context, "handoff exceeded the 8192 byte limit"
         assert list(session_dir.glob("handoff-consumed-old-*.md"))
+
+        invalid_snapshot = session_dir / "pre-compact-invalid.md"
+        invalid_snapshot.write_bytes(b"\xff" * 9000)
+        invalid_bootstrap = run_hook(
+            root,
+            "session-bootstrap.sh",
+            "bootstrap-invalid",
+            {"session_id": "bootstrap-invalid"},
+        )
+        assert_equal(invalid_bootstrap.returncode, 0, "invalid snapshot bootstrap fail-open")
+        invalid_output = json.loads(invalid_bootstrap.stdout)
+        assert_equal(
+            invalid_output.get("env", {}).get("CTX_BUDGET_SESSION_ID"),
+            "bootstrap-invalid",
+            "invalid snapshot bootstrap session env",
+        )
+        assert "additional_context" not in invalid_output, "invalid snapshot was injected"
 
         tracker = ("# tracker\n" + ("あ" * 2000) + "TRACKER_TAIL_MARKER\n")
         (tracking_dir / "tracker-C1.md").write_text(tracker, encoding="utf-8")
@@ -342,6 +381,26 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
         snapshot.decode("utf-8")
         assert b"tracker-C1.md" in snapshot
         assert b"TRACKER_TAIL_MARKER" not in snapshot
+
+        helper = root / ".cursor" / "hooks" / "session-byte-count.sh"
+        helper.write_text("session_byte_prefix() { return 2; }\n", encoding="utf-8")
+        retry = run_hook(
+            root,
+            "session-compact-observer.sh",
+            "snapshot-001",
+            {
+                "context_usage_percent": 81,
+                "context_tokens": 162000,
+                "context_window_size": 200000,
+                "trigger": "auto",
+            },
+        )
+        assert_equal(retry.returncode, 0, "compact observer prefix failure fail-open")
+        assert_equal(
+            (session_dir / "pre-compact-snapshot-001.md").read_bytes(),
+            snapshot,
+            "prefix failure preserves existing snapshot",
+        )
 
 
 def test_missing_helper_failure_policy() -> None:
@@ -419,6 +478,8 @@ def test_static_contracts() -> None:
     assert "fail 2" in append_source
     assert "UTF-8 byte-count" in readme
     assert "最大 1000 UTF-8 bytes" in readme
+    assert "`turns.jsonl` の `bytes` は切り詰め前の入力全体" in readme
+    assert "`progress.jsonl` の `bytes` は保存された `summary`" in readme
     assert "直近最大 20 行" in readme and "20 行すべての保持を保証しない" in readme
     assert "tracker-{campaign_id}.md" in readme and "handoff-{session_id}.md" in readme
     assert "UTF-8 byte-count" in internals

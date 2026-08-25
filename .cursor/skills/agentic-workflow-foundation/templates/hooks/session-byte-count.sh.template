@@ -24,7 +24,10 @@
 # session-progress-append.sh は fail-closed を維持する。
 
 session_byte_count() {
-  local text="${1-}"
+  if (( $# != 1 )); then
+    return 2
+  fi
+  local text="$1"
   local validation_status
   LC_ALL=C printf '%s' "$text" | python3 -c '
 import sys
@@ -42,8 +45,11 @@ except UnicodeDecodeError:
 }
 
 session_byte_prefix() {
-  local max_bytes="${1-}"
-  local text="${2-}"
+  if (( $# != 2 )); then
+    return 2
+  fi
+  local max_bytes="$1"
+  local text="$2"
   if ! [[ "$max_bytes" =~ ^[0-9]+$ ]]; then
     return 2
   fi
@@ -62,8 +68,11 @@ sys.stdout.buffer.write(result.encode("utf-8"))
 }
 
 session_byte_suffix() {
-  local max_bytes="${1-}"
-  local text="${2-}"
+  if (( $# != 2 )); then
+    return 2
+  fi
+  local max_bytes="$1"
+  local text="$2"
   if ! [[ "$max_bytes" =~ ^[0-9]+$ ]]; then
     return 2
   fi
