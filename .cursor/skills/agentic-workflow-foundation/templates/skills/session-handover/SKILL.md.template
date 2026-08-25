@@ -87,4 +87,4 @@ handover には、次セッションが参照すべき一次情報へのリン�
 
 ## キャンペーン完了時の処理
 
-state の `campaign_id` に対応する追跡ドキュメント（`{{project.tracking_artifact}}`）の完了チェックが全て `[x]` になり、campaign が完了した場合は追跡ドキュメントの削除を提案する。残す価値のある情報（設計判断→`docs/DECISIONS.md`、失敗→`docs/GOTCHAS.md`）はキャンペーン中に既に抽出済み。削除によりコンテキストコストを削減する（SoT 原則5「コンテキスト保護」）。
+state の `campaign_id` に対応する追跡ドキュメント（`{{project.tracking_artifact}}`）の完了チェックが全て `[x]` になり、campaign が完了した場合に限り、AI は追跡ドキュメントの削除を提案する。削除はユーザー承認後に実行し、session が完了しただけでは削除しない。残す価値のある情報（設計判断→`docs/DECISIONS.md`、失敗→`docs/GOTCHAS.md`）はキャンペーン中に既に抽出済み。削除によりコンテキストコストを削減する（SoT 原則5「コンテキスト保護」）。

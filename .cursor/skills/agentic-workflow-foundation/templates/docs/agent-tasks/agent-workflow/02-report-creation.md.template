@@ -27,7 +27,7 @@
 
 - `report_slug = campaign_slug`。report stem、step1/step2 envelope の `--stepN` より前の prefix、各 front matter の `campaign_slug` は同じ値に束縛する
 - 親は凍結済みの `campaign_slug` と同値の `report_slug` を Step② worker に渡す
-- worker は slug を invent / 変更 / rename / copy しない。再dispatch・handoff では既存 envelope の `campaign_slug` を復元し、再計算しない
+- worker は slug を独自に再計算・再命名・再発明せず、親から受領した `campaign_slug` を artifact（front matter を含む）へそのまま記録する。再dispatch・handoff では既存 envelope の `campaign_slug` を復元し、再計算しない
 
 ## 2.2 タスクレポートの作成
 
