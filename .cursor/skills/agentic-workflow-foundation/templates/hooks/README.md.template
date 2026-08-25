@@ -118,7 +118,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 - **素通し（ローカル操作）**: `git add` / `git commit`（amend 無し）/ network を伴わない git 読み取り系。AI の fetch/push/clone/pull は専用 wrapper を使う。
 - **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
   - **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
-  - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`session-*` 系は全イベントで fail_open。
+  - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`hooks.json` に登録された `session-*` 観測 Hook は全イベントで fail_open。明示実行 helper の `session-progress-append.sh` は Hook ではなく fail_closed。
 
 ## State ファイル仕様（session-* 系）
 

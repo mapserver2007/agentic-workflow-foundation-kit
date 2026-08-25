@@ -54,12 +54,16 @@ def run_hook(
     name: str,
     session_id: str,
     payload: dict,
+    *,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env.update({
         "CURSOR_PROJECT_DIR": str(root),
         "CTX_BUDGET_SESSION_ID": session_id,
     })
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(  # noqa: S603 - controlled fixture script and environment
         [BASH, str(root / ".cursor" / "hooks" / name)],
         input=json.dumps(payload, ensure_ascii=False),
@@ -383,8 +387,22 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
         assert b"TRACKER_TAIL_MARKER" not in snapshot
 
         helper = root / ".cursor" / "hooks" / "session-byte-count.sh"
-        helper.write_text("session_byte_prefix() { return 2; }\n", encoding="utf-8")
-        retry = run_hook(
+        helper_original = helper.read_text(encoding="utf-8")
+
+        fake_bin = root / "fake-bin"
+        fake_bin.mkdir()
+        fake_cat = fake_bin / "cat"
+        fake_cat.write_text(
+            """#!/usr/bin/env bash
+if [[ $# -eq 1 && "$1" == */tracker-C1.md ]]; then
+  exit 1
+fi
+exec /bin/cat "$@"
+""",
+            encoding="utf-8",
+        )
+        fake_cat.chmod(0o700)
+        tracker_read_failure = run_hook(
             root,
             "session-compact-observer.sh",
             "snapshot-001",
@@ -394,13 +412,71 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
                 "context_window_size": 200000,
                 "trigger": "auto",
             },
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
         )
-        assert_equal(retry.returncode, 0, "compact observer prefix failure fail-open")
+        assert_equal(tracker_read_failure.returncode, 0, "tracker read failure fail-open")
         assert_equal(
             (session_dir / "pre-compact-snapshot-001.md").read_bytes(),
             snapshot,
-            "prefix failure preserves existing snapshot",
+            "tracker read failure preserves existing snapshot",
         )
+
+        helper.write_text(
+            """session_byte_prefix() {
+  if [[ "$1" == "4096" ]]; then
+    return 2
+  fi
+  printf '%s' "$2"
+}
+""",
+            encoding="utf-8",
+        )
+        tracker_prefix_failure = run_hook(
+            root,
+            "session-compact-observer.sh",
+            "snapshot-001",
+            {
+                "context_usage_percent": 82,
+                "context_tokens": 164000,
+                "context_window_size": 200000,
+                "trigger": "auto",
+            },
+        )
+        assert_equal(tracker_prefix_failure.returncode, 0, "tracker prefix failure fail-open")
+        assert_equal(
+            (session_dir / "pre-compact-snapshot-001.md").read_bytes(),
+            snapshot,
+            "tracker prefix failure preserves existing snapshot",
+        )
+
+        helper.write_text(
+            """session_byte_prefix() {
+  if [[ "$1" == "8192" ]]; then
+    return 2
+  fi
+  printf '%s' "$2"
+}
+""",
+            encoding="utf-8",
+        )
+        final_prefix_failure = run_hook(
+            root,
+            "session-compact-observer.sh",
+            "snapshot-001",
+            {
+                "context_usage_percent": 83,
+                "context_tokens": 166000,
+                "context_window_size": 200000,
+                "trigger": "auto",
+            },
+        )
+        assert_equal(final_prefix_failure.returncode, 0, "final prefix failure fail-open")
+        assert_equal(
+            (session_dir / "pre-compact-snapshot-001.md").read_bytes(),
+            snapshot,
+            "final prefix failure preserves existing snapshot",
+        )
+        helper.write_text(helper_original, encoding="utf-8")
 
 
 def test_missing_helper_failure_policy() -> None:

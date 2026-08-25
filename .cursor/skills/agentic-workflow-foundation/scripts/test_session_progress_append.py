@@ -204,6 +204,16 @@ def test_existing_log_without_trailing_newline_is_repaired() -> None:
         assert_equal(rows[-1]["kind"], "review_start", "appended kind")
 
 
+def test_tail_byte_read_contract() -> None:
+    source = TEMPLATE.read_text(encoding="utf-8")
+    assert '.open("rb")' in source, "progress log must be opened in binary mode"
+    assert "seek(-1, 2)" in source, "progress log must seek from EOF"
+    assert "read(1)" in source, "progress log must read only the final byte"
+    assert "read_bytes()" not in source, "progress log must not be loaded in full"
+    assert 'if [[ -s "$PROGRESS_LOG" ]]; then' in source, "empty-log guard is required"
+    assert '"$PROGRESS_LOG" 2>/dev/null)" || return 2' in source, "read failure must fail closed"
+
+
 def test_invalid_schema_is_noop() -> None:
     with tempfile.TemporaryDirectory(prefix="progress-append-schema-") as tmp:
         root = Path(tmp)
@@ -338,6 +348,8 @@ def test_generation_catalog_and_hooks_json() -> None:
     assert "review_start" in readme, "README missing review_start"
     assert "helper 検証チェックリスト" in readme, "README missing helper checklist"
     assert "Step⑤ Mode A" in readme and "review-start gate" in readme, "README missing review-start boundary"
+    assert "`session-*` 観測 Hook は全イベントで fail_open" in readme
+    assert "`session-progress-append.sh` は Hook ではなく fail_closed" in readme
 
 
 def test_workflow_boundary_contract() -> None:
@@ -380,6 +392,7 @@ def main() -> int:
         test_invalid_session_is_noop,
         test_valid_append_contract,
         test_existing_log_without_trailing_newline_is_repaired,
+        test_tail_byte_read_contract,
         test_invalid_schema_is_noop,
         test_shared_flock_with_emitter,
         test_lock_failure_is_nonzero,

@@ -140,8 +140,11 @@ append_and_verify() {
 import pathlib
 import sys
 
-data = pathlib.Path(sys.argv[1]).read_bytes()
-sys.stdout.write("newline" if data.endswith(b"\n") else "other")
+with pathlib.Path(sys.argv[1]).open("rb") as progress_log:
+    progress_log.seek(-1, 2)
+    last_byte = progress_log.read(1)
+
+sys.stdout.write("newline" if last_byte == b"\n" else "other")
 ' "$PROGRESS_LOG" 2>/dev/null)" || return 2
     if [[ "$LAST_BYTE_KIND" != "newline" ]]; then
       printf '\n' >> "$PROGRESS_LOG" 2>/dev/null || return 2
