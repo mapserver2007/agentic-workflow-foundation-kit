@@ -162,7 +162,7 @@ fi
 # ---- 4. 包括的スナップショット（preCompact 拡充退避） ----
 MAX_SNAPSHOT_BYTES={{framework.budget_thresholds.max_snapshot_bytes}}
 SNAPSHOT="$SESSION_DIR/pre-compact-${SESSION_ID}.md"
-SNAPSHOT_CONTENT="$(
+if SNAPSHOT_CONTENT="$(
   {
     echo "# Pre-Compact Snapshot"
     echo "## compact 情報"
@@ -176,15 +176,18 @@ SNAPSHOT_CONTENT="$(
     echo ""
     echo "## 追跡ドキュメント"
     if [[ -n "$TRACKER" ]] && [[ -f "$TRACKER" ]]; then
-      TRACKER_CONTENT="$(read_file_preserving_bytes "$TRACKER")" || TRACKER_CONTENT=""
+      if ! TRACKER_CONTENT="$(read_file_preserving_bytes "$TRACKER")"; then
+        exit 1
+      fi
       TRACKER_CONTENT="${TRACKER_CONTENT%$BYTE_SENTINEL}"
-      if TRACKER_PREFIX="$(
+      if ! TRACKER_PREFIX="$(
         session_byte_prefix 4096 "$TRACKER_CONTENT" &&
         printf '%s' "$BYTE_SENTINEL"
       )"; then
-        TRACKER_PREFIX="${TRACKER_PREFIX%$BYTE_SENTINEL}"
-        printf '%s' "$TRACKER_PREFIX"
+        exit 1
       fi
+      TRACKER_PREFIX="${TRACKER_PREFIX%$BYTE_SENTINEL}"
+      printf '%s' "$TRACKER_PREFIX"
     fi
     echo ""
     echo "## 直近のターンログ（turns.jsonl 末尾）"
@@ -197,16 +200,30 @@ SNAPSHOT_CONTENT="$(
     cat "$STATE_FILE" 2>/dev/null | jq '.' 2>/dev/null || true
   }
   printf '%s' "$BYTE_SENTINEL"
-)"
-SNAPSHOT_CONTENT="${SNAPSHOT_CONTENT%$BYTE_SENTINEL}"
-if TRUNCATED_SNAPSHOT="$(
-  session_byte_prefix "$MAX_SNAPSHOT_BYTES" "$SNAPSHOT_CONTENT" &&
-  printf '%s' "$BYTE_SENTINEL"
 )"; then
-  TRUNCATED_SNAPSHOT="${TRUNCATED_SNAPSHOT%$BYTE_SENTINEL}"
-  printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT" 2>/dev/null || true
+  SNAPSHOT_CONTENT="${SNAPSHOT_CONTENT%$BYTE_SENTINEL}"
+  if TRUNCATED_SNAPSHOT="$(
+    session_byte_prefix "$MAX_SNAPSHOT_BYTES" "$SNAPSHOT_CONTENT" &&
+    printf '%s' "$BYTE_SENTINEL"
+  )"; then
+    TRUNCATED_SNAPSHOT="${TRUNCATED_SNAPSHOT%$BYTE_SENTINEL}"
+    SNAPSHOT_TMP=""
+    if SNAPSHOT_TMP="$(mktemp "${SNAPSHOT}.tmp.XXXXXX" 2>/dev/null)" \
+      && printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT_TMP" 2>/dev/null \
+      && mv -f "$SNAPSHOT_TMP" "$SNAPSHOT" 2>/dev/null; then
+      :
+    else
+      # fail-open: 書き込みまたは原子置換の失敗時は一時ファイルを削除し、既存 snapshot を保持する。
+      if [[ -n "${SNAPSHOT_TMP:-}" ]]; then
+        rm -f -- "$SNAPSHOT_TMP"
+      fi
+    fi
+  else
+    # fail-open: 最終切詰め失敗時は既存の復旧スナップショットを破棄しない。
+    :
+  fi
 else
-  # fail-open: 切詰め失敗時は既存の復旧スナップショットを破棄しない。
+  # fail-open: tracker 読込・切詰め失敗時は部分 snapshot で既存退避を上書きしない。
   :
 fi
 
