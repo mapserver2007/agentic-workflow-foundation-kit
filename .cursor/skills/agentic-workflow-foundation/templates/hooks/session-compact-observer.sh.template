@@ -207,7 +207,17 @@ if SNAPSHOT_CONTENT="$(
     printf '%s' "$BYTE_SENTINEL"
   )"; then
     TRUNCATED_SNAPSHOT="${TRUNCATED_SNAPSHOT%$BYTE_SENTINEL}"
-    printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT" 2>/dev/null || true
+    SNAPSHOT_TMP=""
+    if SNAPSHOT_TMP="$(mktemp "${SNAPSHOT}.tmp.XXXXXX" 2>/dev/null)" \
+      && printf '%s' "$TRUNCATED_SNAPSHOT" > "$SNAPSHOT_TMP" 2>/dev/null \
+      && mv -f "$SNAPSHOT_TMP" "$SNAPSHOT" 2>/dev/null; then
+      :
+    else
+      # fail-open: 書き込みまたは原子置換の失敗時は一時ファイルを削除し、既存 snapshot を保持する。
+      if [[ -n "${SNAPSHOT_TMP:-}" ]]; then
+        rm -f -- "$SNAPSHOT_TMP"
+      fi
+    fi
   else
     # fail-open: 最終切詰め失敗時は既存の復旧スナップショットを破棄しない。
     :

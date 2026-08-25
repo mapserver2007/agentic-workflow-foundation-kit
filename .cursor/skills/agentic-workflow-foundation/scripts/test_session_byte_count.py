@@ -385,6 +385,39 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
         snapshot.decode("utf-8")
         assert b"tracker-C1.md" in snapshot
         assert b"TRACKER_TAIL_MARKER" not in snapshot
+        leftover_tmps = list(session_dir.glob("pre-compact-snapshot-001.md.tmp.*"))
+        assert_equal(leftover_tmps, [], "successful snapshot write left temp files")
+
+        fake_bin_mktemp = root / "fake-bin-mktemp"
+        fake_bin_mktemp.mkdir()
+        fake_mktemp = fake_bin_mktemp / "mktemp"
+        fake_mktemp.write_text(
+            """#!/usr/bin/env bash
+exit 1
+""",
+            encoding="utf-8",
+        )
+        fake_mktemp.chmod(0o700)
+        mktemp_failure = run_hook(
+            root,
+            "session-compact-observer.sh",
+            "snapshot-001",
+            {
+                "context_usage_percent": 80.5,
+                "context_tokens": 161000,
+                "context_window_size": 200000,
+                "trigger": "auto",
+            },
+            extra_env={"PATH": f"{fake_bin_mktemp}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+        assert_equal(mktemp_failure.returncode, 0, "snapshot write failure fail-open")
+        assert_equal(
+            (session_dir / "pre-compact-snapshot-001.md").read_bytes(),
+            snapshot,
+            "snapshot write failure preserves existing snapshot",
+        )
+        leftover_tmps_after_fail = list(session_dir.glob("pre-compact-snapshot-001.md.tmp.*"))
+        assert_equal(leftover_tmps_after_fail, [], "failed snapshot write left temp files")
 
         helper = root / ".cursor" / "hooks" / "session-byte-count.sh"
         helper_original = helper.read_text(encoding="utf-8")
