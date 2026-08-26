@@ -26,7 +26,7 @@ PR を作成し、レビュー指摘に対応するフェーズ。{{#if code_rev
 ④ テスト完了後、PR を作成する。
 
 {{#if agent_workflow.gate_scripts}}
-> **必須**: PR 作成**前**に `workflow-gate.sh step5` を実行し、検証ゲートを通過させること。
+> **必須**: PR 作成前、およびレビュー指摘でコード変更した後に `workflow-gate.sh step5 [report-file]` を実行し、`implementation-base-commit` からの実差分に Domain docs が含まれないことを再検査した上で検証ゲートを通過させること。
 
 {{/if}}{{#if github_pr.enabled}}
 `agent-github-pr` スキルを使用して PR を作成する。wrapper（`bin/github-pr-create-safe`）経由で安全に PR を作成できる。

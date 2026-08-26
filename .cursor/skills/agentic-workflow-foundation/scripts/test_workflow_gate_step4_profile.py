@@ -25,6 +25,8 @@ TEMPLATE = (
 )
 REAL_GATE_DIR = ROOT / ".cursor" / "skills" / "session-handover" / "scripts"
 FIXTURES = HERE.parent / "fixtures" / "artifacts"
+DOMAIN_WRITE_SCOPE_SCRIPTS = ("gate-domain-write-scope.py", "domain_doc_scope.py")
+IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
 def _read(path: Path) -> str:
@@ -46,7 +48,7 @@ def _stage_gate_tree(tmp: Path, profile: str) -> Path:
     gate_dir.mkdir(parents=True)
     bin_dir = tmp / "bin"
     bin_dir.mkdir(parents=True)
-    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py"):
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py", *DOMAIN_WRITE_SCOPE_SCRIPTS):
         src = REAL_GATE_DIR / name
         if not src.exists():
             raise FileNotFoundError(f"missing generated gate asset: {src}")
@@ -97,7 +99,8 @@ def _setup_envelopes(tmp: Path, slug: str) -> Path:
         "## 10. 完了チェック\n"
         "- [x] 実装完了\n"
         "- [x] テスト完了\n"
-        "- [x] コードゲート通過\n",
+        "- [x] コードゲート通過\n"
+        f"- implementation-base-commit: {IMPL_BASE_COMMIT}\n",
         encoding="utf-8",
     )
     art = tmp / ".cursor" / ".artifacts"

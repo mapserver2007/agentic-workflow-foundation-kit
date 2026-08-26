@@ -41,9 +41,11 @@ PR_REVIEW_TEMPLATE = (
 README_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "README.md.template"
 REAL_GATE_DIR = SKILL_DIR.parent / "session-handover" / "scripts"
 FIXTURES = SKILL_DIR / "fixtures" / "artifacts"
+DOMAIN_WRITE_SCOPE_SCRIPTS = ("gate-domain-write-scope.py", "domain_doc_scope.py")
 BASH = "/bin/bash"
 PR = "https://github.com/owner/repo/pull/1"
 CAMPAIGN = "TICKET-1-example"
+IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -428,6 +430,7 @@ def _setup_dispatch_fixture() -> tuple[tempfile.TemporaryDirectory[str], Path, P
         "review-start-gate.sh",
         "gate-artifact.py",
         "gate-test.py",
+        *DOMAIN_WRITE_SCOPE_SCRIPTS,
     ):
         shutil.copy2(REAL_GATE_DIR / name, gate_dir / name)
     for path in gate_dir.iterdir():
@@ -454,6 +457,7 @@ exit "${{STUB_FOUNDATION_EXIT:-0}}"
         "- [x] 実装完了\n"
         "- [x] テスト完了\n"
         "- [x] コードゲート通過\n"
+        f"- implementation-base-commit: {IMPL_BASE_COMMIT}\n"
         f"- review-pr-url: {PR}\n",
         encoding="utf-8",
     )

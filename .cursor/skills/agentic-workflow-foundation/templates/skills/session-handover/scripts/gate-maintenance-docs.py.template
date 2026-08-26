@@ -14,6 +14,16 @@ from pathlib import Path
 
 JUDGMENT_VALUES = {"pending", "required", "not_required"}
 QUEUE_DIR_REL = "docs/agent-tasks/maintenance-docs"
+REJECT_REASON_PATTERNS = (
+    r"本(?:変更|修正).{0,12}(?:反映済|反映した)",
+    r"実装\s*(?:PR|プルリク).{0,12}(?:同梱|反映)",
+    r"docs.{0,12}(?:直した|更新した).{0,12}(?:起票不要|不要)",
+)
+ALLOW_REASON_PATTERNS = (
+    r"コードから判断可能",
+    r"振る舞い.{0,8}(?:非変更|変更なし)",
+    r"バグ修正.{0,16}仕様.{0,8}(?:復帰|戻)",
+)
 
 
 def _out(level: str, msg: str, code: str = ""):
@@ -165,6 +175,15 @@ def check_report(report_path: Path, project_dir: Path):
             return 1
 
         _out("PASS", f"judgment=not_required, 理由あり, 矛盾 queue なし", "G-MDOCS-REASON-001")
+
+        # --- G-MDOCS-REASON-002: 理由の意味を allowlist に限定 ---
+        if any(re.search(pattern, judgment_reason, re.IGNORECASE) for pattern in REJECT_REASON_PATTERNS):
+            _out("FAIL", "not_required 理由が Domain docs 同梱・反映済みを示しています", "G-MDOCS-REASON-002")
+            return 1
+        if not any(re.search(pattern, judgment_reason, re.IGNORECASE) for pattern in ALLOW_REASON_PATTERNS):
+            _out("FAIL", "not_required 理由が許可趣旨に一致しません", "G-MDOCS-REASON-002")
+            return 1
+        _out("PASS", "not_required 理由が許可趣旨に一致", "G-MDOCS-REASON-002")
 
     _out("PASS", f"maintenance-docs 起票判定 OK (judgment={judgment})", "G-MDOCS-JUDGMENT-001")
     return 0

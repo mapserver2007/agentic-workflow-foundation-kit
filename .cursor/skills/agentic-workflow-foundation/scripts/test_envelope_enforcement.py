@@ -36,6 +36,8 @@ _gate_artifact_path = (
 _gate_report_path = (
     ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "gate-report.py"
 )
+GATE_SCRIPTS_DIR = _gate_artifact_path.parent
+DOMAIN_WRITE_SCOPE_SCRIPTS = ("domain_doc_scope.py", "gate-domain-write-scope.py")
 
 FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
 REPORT_FIXTURES_DIR = HERE.parent / "fixtures" / "reports"
@@ -52,6 +54,9 @@ def _load_gate_artifact():
 
 
 def _load_gate_report():
+    scripts_dir = str(GATE_SCRIPTS_DIR)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
     spec = importlib.util.spec_from_file_location("gate_report", str(_gate_report_path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -171,7 +176,12 @@ def _stage_gate(tmp: Path) -> Path:
     src_dir = _find_workflow_gate().parent
     dst = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
     dst.mkdir(parents=True, exist_ok=True)
-    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-report.py"):
+    for name in (
+        "workflow-gate.sh",
+        "gate-artifact.py",
+        "gate-report.py",
+        *DOMAIN_WRITE_SCOPE_SCRIPTS,
+    ):
         src = src_dir / name
         if src.exists():
             shutil.copy2(str(src), str(dst / name))
@@ -460,6 +470,7 @@ def test_gate_report_artifact_dir_cli():
             ],
             capture_output=True,
             text=True,
+            env={**os.environ, "PYTHONPATH": str(GATE_SCRIPTS_DIR)},
         )
         assert result.returncode == 0, (
             f"gate-report --artifact-dir should PASS (got {result.returncode})\n"

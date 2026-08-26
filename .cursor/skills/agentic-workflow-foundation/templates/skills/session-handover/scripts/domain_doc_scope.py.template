@@ -1,0 +1,83 @@
+"""生成時に焼き込む Domain docs 書込みスコープ判定。
+
+実行時に manifest を読まない。入力の曖昧さは安全側で拒否できる API に集約する。
+"""
+from __future__ import annotations
+
+import re
+from pathlib import PurePosixPath
+
+POLICY_ENABLED = (
+    {{#if agent_workflow.enabled}}True{{else}}False{{/if}}
+    and {{#if agent_workflow.maintenance_docs.enabled}}True{{else}}False{{/if}}
+    and "{{project.quality_gate.profile}}" == "application"
+)
+DOMAIN_PATHS = [
+{{#each project.doc_navigation.domain}}    "{{this.path}}",
+{{/each}}]
+EXCLUDED_PREFIXES = (
+    "docs/agent-tasks/reports/",
+    "docs/agent-tasks/reviews/",
+    "docs/agent-tasks/maintenance-docs/",
+    ".cursor/.artifacts/",
+)
+
+
+class ScopeInputError(ValueError):
+    """パスセルを一意に repo-relative path として解釈できない。"""
+
+
+def _strip_markdown(value: str) -> str:
+    value = value.strip()
+    if len(re.findall(r"\[[^\]]+\]\([^)]+\)", value)) > 1:
+        raise ScopeInputError("複数の Markdown link を含むパスセルです")
+    link = re.fullmatch(r"\[([^\]]+)\]\(([^)\s]+)\)", value)
+    if link:
+        value = link.group(2)
+    if value.startswith("`") and value.endswith("`") and value.count("`") == 2:
+        value = value[1:-1].strip()
+    return value
+
+
+def normalize_path_cell(value: object) -> str:
+    """Markdown 表記を除去し、repo-relative POSIX path へ正規化する。
+
+    空値、絶対パス、parent traversal、複数パスを表すセルは ScopeInputError。
+    """
+    if not isinstance(value, str):
+        raise ScopeInputError("パスセルが文字列ではありません")
+    raw = _strip_markdown(value)
+    if not raw or any(token in raw for token in ("\n", "\r", "|", ",", ";", "<br>", "<br/>", "<br />")):
+        raise ScopeInputError("空値または複数パスを含むセルです")
+    if re.search(r"\s", raw):
+        raise ScopeInputError("複数パスを含む曖昧なセルです")
+    if re.search(r"\s(?:and|or|と|及び|および)\s", raw, re.IGNORECASE):
+        raise ScopeInputError("複数パスを含む曖昧なセルです")
+    if raw.startswith("/") or re.match(r"^[A-Za-z]:[\\/]", raw):
+        raise ScopeInputError("絶対パスは許可されません")
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if not raw or "\\" in raw:
+        raise ScopeInputError("POSIX repo-relative path ではありません")
+    parts = PurePosixPath(raw).parts
+    if any(part in ("", ".", "..") for part in parts):
+        raise ScopeInputError("parent traversal または不正な path segment です")
+    return "/".join(parts) + ("/" if raw.endswith("/") else "")
+
+
+def classify_path(value: object) -> tuple[bool, str | None, str | None]:
+    """(domain_match, normalized_path, error) を返す fail-closed API。"""
+    try:
+        path = normalize_path_cell(value)
+    except ScopeInputError as exc:
+        return False, None, str(exc)
+    if any(path.startswith(prefix) for prefix in EXCLUDED_PREFIXES):
+        return False, path, None
+    for configured in DOMAIN_PATHS:
+        target = normalize_path_cell(configured)
+        if target.endswith("/"):
+            if path.startswith(target):
+                return True, path, None
+        elif path == target:
+            return True, path, None
+    return False, path, None

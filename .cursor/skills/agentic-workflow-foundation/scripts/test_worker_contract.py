@@ -118,6 +118,14 @@ def test_step3_complete():
     assert rc == 0, "step3-complete should PASS"
 
 
+def test_step3_missing_untracked_fails():
+    rc, check_ids = _check_artifact_json(
+        FIXTURES_DIR / "step3-complete-missing-untracked.md"
+    )
+    assert rc == 1, "step3 complete without untracked_files should FAIL"
+    assert "G-ARTIFACT-STEP3-UNTRACKED-001" in check_ids
+
+
 def test_step4_complete():
     rc = check_artifact(str(FIXTURES_DIR / "step4-complete.md"), json_mode=True)
     assert rc == 0, "step4-complete should PASS"
@@ -957,6 +965,7 @@ def main() -> int:
         test_step1_complete,
         test_step2_complete,
         test_step3_complete,
+        test_step3_missing_untracked_fails,
         test_step4_complete,
         test_blocked_with_reason,
         test_blocked_no_reason_fails,

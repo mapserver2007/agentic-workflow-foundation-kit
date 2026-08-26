@@ -499,6 +499,9 @@ agent_workflow:
     - id: step2-report
       desc: "レポート構造検査（必須10セクション充足）"
       cmd: "gate-report.py"
+    - id: step3
+      desc: "実装→検証（Step③ envelope + 基準SHA一致 + Domain実差分）"
+      cmd: "gate-artifact.py → gate-domain-write-scope.py"
     - id: step4
       desc: "実装→検証（コードゲート + 完了チェック3項目）"
       cmd: "code-gate → gate-test.py"
@@ -891,6 +894,10 @@ outputs:
       - "フェーズ境界"
       - "campaign_id"
       - "親 = campaign"
+      - "G-REPORT-DOC-SCOPE-001"
+      - "G-WRITE-SCOPE-DOMAIN-001"
+      - "G-ARTIFACT-STEP3-UNTRACKED-001"
+      - "G-MDOCS-REASON-002"
   - path: docs/CONTEXT_BUDGET.md
     template: docs/CONTEXT_BUDGET.md.template
     mode: render
@@ -1025,7 +1032,10 @@ outputs:
       - "=== workflow gate ==="
       - "step2"
       - "step2-report"
+      - "step3"
       - "step4"
+      - "gate-domain-write-scope.py"
+      - "G-WRITE-SCOPE-DOMAIN-001"
       - "review-start"
       - "adr"
       - "maintenance-docs"
@@ -1056,6 +1066,7 @@ outputs:
       - "=== archive gate ==="
       - "G-ARCHIVE-CHECK-001"
       - "G-ARCHIVE-MDOCS-001"
+      - "G-WRITE-SCOPE-DOMAIN-001"
   - path: .cursor/skills/session-handover/scripts/gate-report.py
     template: skills/session-handover/scripts/gate-report.py.template
     mode: render
@@ -1063,7 +1074,26 @@ outputs:
     executable: true
     required_sections:
       - "G-REPORT-SECTION-001"
+      - "G-REPORT-DOC-SCOPE-001"
       - "=== report gate ==="
+  - path: .cursor/skills/session-handover/scripts/domain_doc_scope.py
+    template: skills/session-handover/scripts/domain_doc_scope.py.template
+    mode: render
+    feature: agent_workflow
+    executable: false
+    required_sections:
+      - "POLICY_ENABLED"
+      - "classify_path"
+      - "normalize_path_cell"
+  - path: .cursor/skills/session-handover/scripts/gate-domain-write-scope.py
+    template: skills/session-handover/scripts/gate-domain-write-scope.py.template
+    mode: render
+    feature: agent_workflow
+    executable: true
+    required_sections:
+      - "G-WRITE-SCOPE-DOMAIN-001"
+      - "implementation-base-commit"
+      - "G-WRITE-SCOPE-BASE-001"
   - path: .cursor/skills/session-handover/scripts/gate-test.py
     template: skills/session-handover/scripts/gate-test.py.template
     mode: render
@@ -1096,6 +1126,7 @@ outputs:
       - "G-ARTIFACT-STATUS-001"
       - "G-ARTIFACT-ADR-SHA-001"
       - "G-ARTIFACT-ADR-ALTS-001"
+      - "G-ARTIFACT-STEP3-UNTRACKED-001"
   - path: .cursor/skills/session-handover/scripts/gate-redispatch.py
     template: skills/session-handover/scripts/gate-redispatch.py.template
     mode: render
@@ -1113,6 +1144,7 @@ outputs:
       - "G-MDOCS-JUDGMENT-001"
       - "G-MDOCS-QUEUE-001"
       - "G-MDOCS-REASON-001"
+      - "G-MDOCS-REASON-002"
       - "=== maintenance-docs gate ==="
   # agent-code-review スキル（feature: code_review で条件生成）。
   # code_review.enabled: true の場合のみ生成される。seed default: true。変更は root manifest 直接編集。
@@ -1448,6 +1480,8 @@ outputs:
       - "プレースホルダ禁止"
       - "進行中キャンペーン"
       - "review-pr-url:"
+      - "implementation-base-commit:"
+      - "maintenance-docs-workflow"
   - path: docs/agent-tasks/agent-workflow/03-implementation.md
     template: docs/agent-tasks/agent-workflow/03-implementation.md.template
     mode: render
@@ -1455,6 +1489,7 @@ outputs:
     required_sections:
       - "既存実装の踏襲"
       - "設計判断が発生した場合"
+      - "Domain docs 本体を編集しない"
   - path: docs/agent-tasks/agent-workflow/04-testing.md
     template: docs/agent-tasks/agent-workflow/04-testing.md.template
     mode: render

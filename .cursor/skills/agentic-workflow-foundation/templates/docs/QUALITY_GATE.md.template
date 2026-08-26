@@ -107,6 +107,8 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 - gen 系（`docs/gen/`）
 - 調査系（`docs/investigations/`）
 
+**Domain docs 同梱防止（application + maintenance-docs 有効時）**: `G-REPORT-DOC-SCOPE-001` は Step② で §6 の変更対象、§5 の直接書込み意図、AC の直接成果を検査し、queue または後続 `maintenance-docs-workflow` を伴わない Domain docs 成果を拒否する。`G-WRITE-SCOPE-BASE-001` は Step③ envelope `base_commit_sha` と report の `implementation-base-commit` を完全 SHA に正規化して一致検査する。`G-WRITE-SCOPE-DOMAIN-001` は report の基準から `git diff --name-only` と未追跡ファイルの和集合を検査し、Step③→④・Step⑤再実行・archive 前に Domain docs 実差分を拒否する。policy 無効時は既存 G-DOC-SPEC 経路を変更しない。
+
 **G-ARCHIVE の動作**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを確認し、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行する。archives 移動でキャンペーン完了を表現する。
 {{#if agent_workflow.maintenance_docs.enabled}}
 **G-ARCHIVE-MDOCS の動作（maintenance-docs 起票判定 Hard Gate）**:
@@ -118,6 +120,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 | G-MDOCS-JUDGMENT-001 | `maintenance-docs-judgment` 行の存在と値域 | 行欠落 / `pending` / 不正値 |
 | G-MDOCS-QUEUE-001 | `required` 時の queue 整合性 | `queue_file` 未設定 / queue 不在 / front matter 不正 / `status != pending` / `source_report` 不一致 / `target_docs` 空 |
 | G-MDOCS-REASON-001 | `not_required` 時の理由・矛盾チェック | `judgment_reason` 空 / `queue_file` 設定あり / `source_report` 一致の pending queue 存在 |
+| G-MDOCS-REASON-002 | `not_required` 時の理由 allowlist | 「本変更で反映済み」「実装 PR に同梱」「docs を直したので起票不要」等の拒否表現、または「コードから判断可能 / 振る舞い非変更 / バグ修正で仕様へ復帰」の許可趣旨に一致しない自由文 |
 
 `source_type: manual` の queue は突合スキャンから除外する。移行期間なし・即時 Hard Fail。
 
@@ -320,7 +323,7 @@ workflow-gate.sh step6 TICKET-1234
 
 **step2-report envelope 必須検査**: `workflow-gate.sh step2-report` はレポート構造検査（`gate-report.py`）の前に、対応する step1/step2 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。report basename、step1/step2 envelope prefix、両 front matter の `campaign_slug`、step2 の `report_path` stem、`report_slug` を同じ campaign slug に束縛する。envelope 欠落・不正・不一致は exit 1（`gate-report.py` を実行しない）。
 
-**step4 envelope 必須検査**: `workflow-gate.sh step4` はコードゲートの前に、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。envelope 欠落・不正は exit 1（profile に応じた code gate と `gate-test.py` を実行しない）。`foundation` profile では `bin/foundation-gate self`、`application` profile では G-GEN + `bin/quality-gate verify` を実行し、コードゲート成功後に完了チェック3項目を検査する。
+**step3 / step4 envelope 必須検査**: `workflow-gate.sh step3` は Step③ complete を検査し、`G-WRITE-SCOPE-BASE-001` と `G-WRITE-SCOPE-DOMAIN-001` が PASS の場合だけ④ worker を dispatch できる。`workflow-gate.sh step4` は防御層として同じ Step③基準 SHA・実差分検査を再実行した後、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。Step③ complete は `untracked_files` が必須（G-ARTIFACT-STEP3-UNTRACKED-001）。envelope 欠落・不正または実差分違反は exit 1（profile に応じた code gate と `gate-test.py` を実行しない）。`foundation` profile では `bin/foundation-gate self`、`application` profile では G-GEN + `bin/quality-gate verify` を実行し、コードゲート成功後に完了チェック3項目を検査する。
 {{/if}}
 {{/if}}
 
@@ -394,8 +397,9 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
 | **Step② 機械退出** | report + step2 envelope complete + `step2-report` PASS + `step2` PASS | 完成レポートを PO に提示して待機 | `workflow-gate.sh step2-report` → `workflow-gate.sh step2`。PO承認はこの機械ゲートに含めない |
 | **Step③ 親 pre-dispatch** | step2 envelope の `step=step2` + `status=complete` + CLI `report_path` と `envelope.report_path` の resolve 一致 + `implementation_approval.status: approved` + `decider: PO` + 必須payload抽出成功 + 現在reportからの digest 再計算一致 + 実装開始指示 | Step③ worker dispatch 可（exit 0 のみ） | 必須の親 pre-dispatch fail-closed 検査: `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path} --emit-validated-report-json`。checker は report を一度だけ読み、検証に使った同じ本文を `validated_report_snapshot` として返す。親はこれを改変せず worker へ渡し、worker は snapshot のみを実装方針入力とし、可変な `report_path` は成果記録の書戻し先に限定する。checker は状態を書き換えず非0で停止し、親が R1/R2 分類と pending 復帰を行う。相対パスは repo root cwd 基準で resolve。新規 shell gate / Hook ではない |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲート + 完了チェック3項目を実行できる状態 | `workflow-gate.sh step4`（G-ARTIFACT step3/step4 complete envelope 必須 → profile selector に応じたコードゲート → `gate-test.py` の G-TEST-COMP-001/002/003） |
-| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
+| **実装 → 検証** | Step③ worker complete | ④ worker dispatch 可 | `workflow-gate.sh step3`（step3 complete → G-WRITE-SCOPE-BASE-001 → G-WRITE-SCOPE-DOMAIN-001） |
+| **Step④ コード検証** | step3 境界 PASS + Step④ worker complete | コードゲート + 完了チェック3項目を実行できる状態 | `workflow-gate.sh step4`（step3/step4 envelope + defense-in-depth の SHA/実差分検査 → profile selector → `gate-test.py`） |
+| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |

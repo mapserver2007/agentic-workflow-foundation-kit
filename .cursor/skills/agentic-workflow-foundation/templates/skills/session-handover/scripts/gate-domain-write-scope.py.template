@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Step③ 以降の実差分に Domain docs が含まれないことを検査する。"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+from domain_doc_scope import POLICY_ENABLED, classify_path
+
+GATE_ID = "G-WRITE-SCOPE-DOMAIN-001"
+BASE_GATE_ID = "G-WRITE-SCOPE-BASE-001"
+
+
+def _report_base_commit(report: Path) -> tuple[int, str | None, str | None]:
+    if not report.is_file():
+        return 2, None, "report が存在しません"
+    try:
+        text = report.read_text(encoding="utf-8")
+    except OSError as exc:
+        return 2, None, f"report を読めません: {exc}"
+    matches = re.findall(r"^\s*-\s*implementation-base-commit:\s*([0-9a-fA-F]{7,40})\s*$", text, re.MULTILINE)
+    if len(matches) != 1:
+        return 1, None, "implementation-base-commit が欠落・不正・複数です"
+    return 0, matches[0], None
+
+
+def _git_names(repo: Path, argv: list[str]) -> tuple[list[str] | None, str | None]:
+    result = subprocess.run(
+        ["git", *argv], cwd=repo, text=True, capture_output=True, check=False
+    )
+    if result.returncode:
+        return None, result.stderr.strip() or "git コマンドが失敗しました"
+    return [line for line in result.stdout.splitlines() if line], None
+
+
+def _resolve_commit(repo: Path, sha: str) -> tuple[str | None, str | None]:
+    result = subprocess.run(
+        ["git", "rev-parse", f"{sha}^" + "{commit}"],
+        cwd=repo, text=True, capture_output=True, check=False,
+    )
+    if result.returncode:
+        return None, result.stderr.strip() or f"commit を解決できません: {sha}"
+    return result.stdout.strip(), None
+
+
+def _step3_base_commit(path: Path) -> tuple[int, str | None, str | None]:
+    if not path.is_file():
+        return 2, None, "step3 envelope が存在しません"
+    try:
+        import yaml
+    except ImportError:
+        return 2, None, "PyYAML が未導入です"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return 2, None, f"step3 envelope を読めません: {exc}"
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return 1, None, "step3 envelope に YAML front matter がありません"
+    try:
+        front_matter = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return 1, None, "step3 envelope の YAML front matter が不正です"
+    if not isinstance(front_matter, dict):
+        return 1, None, "step3 envelope front matter がマッピングではありません"
+    base = front_matter.get("base_commit_sha")
+    if not isinstance(base, str) or re.fullmatch(r"[0-9a-fA-F]{7,40}", base) is None:
+        return 1, None, "step3 envelope の base_commit_sha が欠落または不正です"
+    return 0, base, None
+
+
+def check(report: Path, repo: Path, step3_envelope: Path | None = None) -> tuple[int, list[str]]:
+    if not POLICY_ENABLED:
+        return 0, [f"[PASS] policy 無効のため実差分検査をスキップ ({GATE_ID})"]
+    if not repo.is_dir():
+        return 2, [f"[FATAL] repo が存在しません: {repo} ({GATE_ID})"]
+    report_rc, base, error = _report_base_commit(report)
+    if report_rc:
+        return report_rc, [f"[{'FATAL' if report_rc == 2 else 'FAIL'}] {error} ({GATE_ID})"]
+    _, error = _git_names(repo, ["rev-parse", "--is-inside-work-tree"])
+    if error:
+        return 2, [f"[FATAL] {error} ({GATE_ID})"]
+    resolved_base, error = _resolve_commit(repo, base or "")
+    if error:
+        return 1, [f"[FAIL] implementation-base-commit が無効です: {error} ({GATE_ID})"]
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if ancestry.returncode == 1:
+        return 1, [f"[FAIL] implementation-base-commit が HEAD の祖先ではありません ({BASE_GATE_ID})"]
+    if ancestry.returncode:
+        return 2, [f"[FATAL] 基準 commit の祖先判定に失敗しました ({BASE_GATE_ID})"]
+    if step3_envelope is not None:
+        step3_rc, step3_base, error = _step3_base_commit(step3_envelope)
+        if step3_rc:
+            return step3_rc, [f"[{'FATAL' if step3_rc == 2 else 'FAIL'}] {error} ({BASE_GATE_ID})"]
+        resolved_step3, error = _resolve_commit(repo, step3_base or "")
+        if error:
+            return 1, [f"[FAIL] step3 envelope の base_commit_sha が無効です: {error} ({BASE_GATE_ID})"]
+        if resolved_base != resolved_step3:
+            return 1, [f"[FAIL] report と step3 envelope の base_commit_sha が不一致 ({BASE_GATE_ID})"]
+    tracked, error = _git_names(repo, ["diff", "--name-only", base])
+    if error:
+        return 2, [f"[FATAL] {error} ({GATE_ID})"]
+    untracked, error = _git_names(repo, ["ls-files", "--others", "--exclude-standard"])
+    if error:
+        return 2, [f"[FATAL] {error} ({GATE_ID})"]
+    findings = []
+    for path in sorted(set((tracked or []) + (untracked or []))):
+        is_domain, normalized, invalid = classify_path(path)
+        if invalid:
+            return 1, [f"[FAIL] 実差分 path を解釈できません: {path}: {invalid} ({GATE_ID})"]
+        if is_domain:
+            findings.append(normalized or path)
+    if findings:
+        return 1, [
+            f"[FAIL] Domain docs の直接変更を検出: {path} ({GATE_ID})"
+            for path in findings
+        ]
+    return 0, [f"[PASS] 実差分に Domain docs なし ({GATE_ID})"]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--report", required=True)
+    parser.add_argument("--repo", default=".")
+    parser.add_argument("--step3-envelope")
+    args = parser.parse_args()
+    report = Path(args.report).resolve()
+    repo = Path(args.repo).resolve()
+    step3_envelope = Path(args.step3_envelope).resolve() if args.step3_envelope else None
+    rc, messages = check(report, repo, step3_envelope)
+    print("=== domain write scope gate ===")
+    print("\n".join(messages))
+    print(f"=== domain write scope gate: {('PASS' if rc == 0 else 'FAIL' if rc == 1 else 'FATAL')} ===")
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

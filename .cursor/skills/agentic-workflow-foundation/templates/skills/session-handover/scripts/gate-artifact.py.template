@@ -44,7 +44,7 @@ STEP_REQUIRED_FIELDS = {
         "campaign_slug",
     ],
     "step2": ["report_path", "report_slug", "campaign_slug", "implementation_approval"],
-    "step3": ["changed_files", "base_commit_sha", "impl_summary", "adr_needed"],
+    "step3": ["changed_files", "untracked_files", "base_commit_sha", "impl_summary", "adr_needed"],
     "step4": ["gate_results", "test_summary", "advisory_loop_count"],
 }
 
@@ -293,6 +293,9 @@ def check_artifact(filepath: str, json_mode: bool = False,
     # --- ステップ別必須フィールド（complete 時）---
     if step and step in STEP_REQUIRED_FIELDS and status == "complete":
         for field in STEP_REQUIRED_FIELDS[step]:
+            # Step③ untracked_files 欠落は専用 ID で一度だけ診断する。
+            if step == "step3" and field == "untracked_files" and field not in fm:
+                continue
             if field not in fm:
                 results.append({
                     "id": "G-ARTIFACT-STEP-FIELD-001",
@@ -406,6 +409,15 @@ def check_artifact(filepath: str, json_mode: bool = False,
                 "msg": f"base_commit_sha '{sha}' は有効な git SHA ではありません",
             })
             fail = True
+
+    # --- Step③ complete は未追跡ファイル一覧を明示必須にする ---
+    if step == "step3" and status == "complete" and "untracked_files" not in fm:
+        results.append({
+            "id": "G-ARTIFACT-STEP3-UNTRACKED-001",
+            "level": "FAIL",
+            "msg": "step3/status=complete では untracked_files が必須です",
+        })
+        fail = True
 
     # --- implementation_approval 検証（step2 complete 時。approved は強制しない）---
     if step == "step2" and status == "complete":
