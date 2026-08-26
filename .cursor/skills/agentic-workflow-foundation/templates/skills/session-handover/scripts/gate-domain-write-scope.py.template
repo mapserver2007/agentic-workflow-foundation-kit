@@ -86,6 +86,17 @@ def check(report: Path, repo: Path, step3_envelope: Path | None = None) -> tuple
     resolved_base, error = _resolve_commit(repo, base or "")
     if error:
         return 1, [f"[FAIL] implementation-base-commit が無効です: {error} ({GATE_ID})"]
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if ancestry.returncode == 1:
+        return 1, [f"[FAIL] implementation-base-commit が HEAD の祖先ではありません ({BASE_GATE_ID})"]
+    if ancestry.returncode:
+        return 2, [f"[FATAL] 基準 commit の祖先判定に失敗しました ({BASE_GATE_ID})"]
     if step3_envelope is not None:
         step3_rc, step3_base, error = _step3_base_commit(step3_envelope)
         if step3_rc:

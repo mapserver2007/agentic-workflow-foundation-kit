@@ -112,6 +112,37 @@ def test_source_passes_and_base_mismatch_fails():
         context.cleanup()
 
 
+def test_non_ancestor_base_commit_fails():
+    mod = _module()
+    context, repo, report, base = _repo()
+    try:
+        (repo / "docs").mkdir()
+        (repo / "docs/spec.md").write_text("same\n", encoding="utf-8")
+        (repo / "src/main.py").write_text("current\n", encoding="utf-8")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "current")
+        current = _git(repo, "rev-parse", "HEAD")
+
+        _git(repo, "branch", "other", base)
+        _git(repo, "checkout", "other")
+        (repo / "docs").mkdir(exist_ok=True)
+        (repo / "docs/spec.md").write_text("same\n", encoding="utf-8")
+        _git(repo, "add", "docs/spec.md")
+        _git(repo, "commit", "-m", "non-ancestor-base")
+        non_ancestor = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "checkout", current)
+
+        report.write_text(
+            f"- implementation-base-commit: {non_ancestor}\n",
+            encoding="utf-8",
+        )
+        rc, messages = mod.check(report, repo)
+        assert rc == 1
+        assert "G-WRITE-SCOPE-BASE-001" in "\n".join(messages)
+    finally:
+        context.cleanup()
+
+
 def test_report_and_repository_error_contract():
     mod = _module()
     context, repo, report, _ = _repo()
@@ -153,6 +184,7 @@ def main() -> int:
         test_tracked_domain_modification_fails,
         test_untracked_domain_file_fails_even_if_envelope_omits_it,
         test_source_passes_and_base_mismatch_fails,
+        test_non_ancestor_base_commit_fails,
         test_report_and_repository_error_contract,
         test_foundation_profile_skips_before_report_and_repo_validation,
         test_maintenance_docs_disabled_skips_before_base_commit_validation,

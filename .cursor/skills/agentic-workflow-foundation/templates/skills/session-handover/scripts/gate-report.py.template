@@ -57,6 +57,20 @@ QUEUE_HANDOFF = re.compile(r"maintenance-docs/.{0,32}(?:queue.{0,16})?(?:起票|
 WORKFLOW_HANDOFF = re.compile(
     r"maintenance-docs-workflow.{0,32}(?:実施|反映|更新)"
 )
+WORKFLOW_HANDOFF_ONLY = re.compile(
+    r"^\s*[-*]?\s*"
+    r"(?:`[^`]+`|\[[^\]]+\]\([^)]+\)|(?:\./)?docs/[A-Za-z0-9_./-]+)"
+    r"\s*(?:(?:の\s*)?(?:反映|更新|変更|編集|追加|削除|修正|置換)\s*(?:は|を)\s*)?"
+    r"(?:後続(?:の)?\s*)?maintenance-docs-workflow\s*"
+    r"(?:が|により|で)\s*"
+    r"(?:実施|反映|更新|変更|編集|追加|削除|修正|置換|担当|管理)"
+    r"(?:する|します|される|されます)?\s*[。．.]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_workflow_handoff_only(line: str) -> bool:
+    return bool(WORKFLOW_HANDOFF_ONLY.fullmatch(line))
 
 
 def _section(content: str, title: str) -> str:
@@ -94,7 +108,7 @@ def _doc_scope_checks(content: str) -> list[str]:
             matched, normalized, error = classify_path(raw)
             if error:
                 continue
-            if matched and WRITE_VERBS.search(line):
+            if matched and WRITE_VERBS.search(line) and not _is_workflow_handoff_only(line):
                 failures.append(f"§5 が Domain docs を直接書込み対象にしている: {normalized}")
 
     requirements = _section(content, "問題・要件の詳細")

@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -13,17 +14,55 @@ from typing import Dict, Optional, Tuple
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent.parent
+sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"))
+from genlib import load_manifest, render  # noqa: E402
+
+
+FOUNDATION = ROOT / ".cursor" / "skills" / "agentic-workflow-foundation"
 REAL_GATE_DIR = ROOT / ".cursor" / "skills" / "session-handover" / "scripts"
 FIXTURES = HERE.parent / "fixtures" / "artifacts"
 DOMAIN_WRITE_SCOPE_SCRIPTS = ("gate-domain-write-scope.py", "domain_doc_scope.py")
 IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
+def _git(repo: Path, *args: str) -> str:
+    env = dict(os.environ)
+    env.update(
+        GIT_AUTHOR_NAME="test",
+        GIT_AUTHOR_EMAIL="test@example.invalid",
+        GIT_COMMITTER_NAME="test",
+        GIT_COMMITTER_EMAIL="test@example.invalid",
+    )
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
 def _stage_gate(tmp: Path, profile: str = "foundation") -> Tuple[Path, Path]:
     gate_dir = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
     gate_dir.mkdir(parents=True)
-    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py", *DOMAIN_WRITE_SCOPE_SCRIPTS):
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py", "gate-domain-write-scope.py"):
         shutil.copy2(REAL_GATE_DIR / name, gate_dir / name)
+    manifest = load_manifest(str(FOUNDATION / "manifest.yaml"))
+    manifest["project"]["quality_gate"]["profile"] = profile
+    domain_scope_template = FOUNDATION / "templates/skills/session-handover/scripts/domain_doc_scope.py.template"
+    (gate_dir / "domain_doc_scope.py").write_text(
+        render(domain_scope_template.read_text(encoding="utf-8"), manifest),
+        encoding="utf-8",
+    )
+    if profile == "application":
+        _git(tmp, "init")
+        (tmp / "src").mkdir()
+        (tmp / "src/main.py").write_text("base\n", encoding="utf-8")
+        _git(tmp, "add", ".")
+        _git(tmp, "commit", "-m", "base")
+        (tmp / ".test-base-commit").write_text(_git(tmp, "rev-parse", "HEAD"), encoding="utf-8")
 
     gate = gate_dir / "workflow-gate.sh"
     text = gate.read_text(encoding="utf-8")
@@ -91,16 +130,22 @@ def _setup_report(
     reports = tmp / "docs" / "agent-tasks" / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     report = reports / f"{slug}.md"
+    base_commit = IMPL_BASE_COMMIT
+    base_commit_file = tmp / ".test-base-commit"
+    if base_commit_file.is_file():
+        base_commit = base_commit_file.read_text(encoding="utf-8").strip()
     report.write_text(
         f"## 10. 完了チェック\n{completion}"
-        f"- implementation-base-commit: {IMPL_BASE_COMMIT}\n",
+        f"- implementation-base-commit: {base_commit}\n",
         encoding="utf-8",
     )
 
     artifacts = tmp / ".cursor" / ".artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
     for step in ("step3", "step4"):
-        shutil.copy2(FIXTURES / f"{step}-complete.md", artifacts / f"{slug}--{step}.md")
+        fixture = (FIXTURES / f"{step}-complete.md").read_text(encoding="utf-8")
+        fixture = fixture.replace(IMPL_BASE_COMMIT, base_commit)
+        (artifacts / f"{slug}--{step}.md").write_text(fixture, encoding="utf-8")
     return report
 
 
@@ -145,6 +190,14 @@ def test_application_success_runs_gate_test_once() -> None:
         assert quality_log.read_text(encoding="utf-8").splitlines() == ["verify"]
         assert not foundation_log.exists()
         assert gate_test_log.read_text(encoding="utf-8").splitlines() == ["invoked"]
+
+
+def test_application_profile_propagates_to_domain_scope_fixture() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        _stage_gate(tmp, "application")
+        domain_scope = tmp / ".cursor" / "skills" / "session-handover" / "scripts" / "domain_doc_scope.py"
+        assert '"application" == "application"' in domain_scope.read_text(encoding="utf-8")
 
 
 def test_envelope_failure_skips_code_and_completion_gates() -> None:
@@ -353,6 +406,7 @@ def main() -> int:
     tests = [
         test_foundation_success_runs_gate_test_once,
         test_application_success_runs_gate_test_once,
+        test_application_profile_propagates_to_domain_scope_fixture,
         test_envelope_failure_skips_code_and_completion_gates,
         test_invalid_gate_results_skips_code_and_completion_gates,
         test_code_gate_failure_propagates_and_skips_completion_gate,

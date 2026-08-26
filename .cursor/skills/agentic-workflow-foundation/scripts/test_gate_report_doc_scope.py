@@ -82,8 +82,26 @@ def test_plan_write_and_ac_fail_but_reference_passes():
     assert "G-REPORT-DOC-SCOPE-001" not in _ids(allowed)
 
 
+def test_plan_handoff_only_is_allowed_but_direct_write_plus_handoff_fails():
+    allowed = BASE.replace(
+        "- **参照ドキュメント**: `docs/spec.md`",
+        "- `docs/spec.md` の反映は後続 maintenance-docs-workflow が実施する",
+    )
+    assert "G-REPORT-DOC-SCOPE-001" not in _ids(allowed)
+
+    direct_write = BASE.replace(
+        "- **参照ドキュメント**: `docs/spec.md`",
+        "- `docs/spec.md` を更新し、後続 maintenance-docs-workflow が実施する",
+    )
+    assert "G-REPORT-DOC-SCOPE-001" in _ids(direct_write)
+
+
 def main() -> int:
-    tests = [test_section6_and_ambiguous_fail, test_plan_write_and_ac_fail_but_reference_passes]
+    tests = [
+        test_section6_and_ambiguous_fail,
+        test_plan_write_and_ac_fail_but_reference_passes,
+        test_plan_handoff_only_is_allowed_but_direct_write_plus_handoff_fails,
+    ]
     for test in tests:
         test()
     print(f"[test_gate_report_doc_scope] {len(tests)}/{len(tests)} passed")
