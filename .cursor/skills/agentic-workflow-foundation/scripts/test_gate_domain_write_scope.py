@@ -15,9 +15,13 @@ sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" /
 from genlib import load_manifest, render  # noqa: E402
 
 
-def _module(profile: str = "application"):
+def _module(
+    profile: str = "application",
+    maintenance_docs_enabled: bool = True,
+):
     manifest = load_manifest(str(SKILL / "manifest.yaml"))
     manifest["project"]["quality_gate"]["profile"] = profile
+    manifest["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_docs_enabled
     with tempfile.TemporaryDirectory() as td:
         temp = Path(td)
         scripts = SKILL / "templates/skills/session-handover/scripts"
@@ -125,13 +129,21 @@ def test_report_and_repository_error_contract():
         context.cleanup()
 
 
-def test_foundation_profile_is_unchanged():
+def test_foundation_profile_skips_before_report_and_repo_validation():
     mod = _module("foundation")
+    rc, messages = mod.check(Path("/missing-report.md"), Path("/missing-repo"))
+    assert rc == 0
+    assert "policy 無効" in "\n".join(messages)
+
+
+def test_maintenance_docs_disabled_skips_before_base_commit_validation():
+    mod = _module(maintenance_docs_enabled=False)
     context, repo, report, _ = _repo()
     try:
-        (repo / "docs").mkdir()
-        (repo / "docs/spec.md").write_text("untracked\n", encoding="utf-8")
-        assert mod.check(report, repo)[0] == 0
+        report.write_text("", encoding="utf-8")
+        rc, messages = mod.check(report, repo)
+        assert rc == 0
+        assert "policy 無効" in "\n".join(messages)
     finally:
         context.cleanup()
 
@@ -142,7 +154,8 @@ def main() -> int:
         test_untracked_domain_file_fails_even_if_envelope_omits_it,
         test_source_passes_and_base_mismatch_fails,
         test_report_and_repository_error_contract,
-        test_foundation_profile_is_unchanged,
+        test_foundation_profile_skips_before_report_and_repo_validation,
+        test_maintenance_docs_disabled_skips_before_base_commit_validation,
     ]
     for test in tests:
         test()

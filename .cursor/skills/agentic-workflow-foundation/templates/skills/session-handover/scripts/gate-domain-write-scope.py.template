@@ -73,13 +73,13 @@ def _step3_base_commit(path: Path) -> tuple[int, str | None, str | None]:
 
 
 def check(report: Path, repo: Path, step3_envelope: Path | None = None) -> tuple[int, list[str]]:
+    if not POLICY_ENABLED:
+        return 0, [f"[PASS] policy 無効のため実差分検査をスキップ ({GATE_ID})"]
     if not repo.is_dir():
         return 2, [f"[FATAL] repo が存在しません: {repo} ({GATE_ID})"]
     report_rc, base, error = _report_base_commit(report)
     if report_rc:
         return report_rc, [f"[{'FATAL' if report_rc == 2 else 'FAIL'}] {error} ({GATE_ID})"]
-    if not POLICY_ENABLED:
-        return 0, [f"[PASS] policy 無効のため実差分検査をスキップ ({GATE_ID})"]
     _, error = _git_names(repo, ["rev-parse", "--is-inside-work-tree"])
     if error:
         return 2, [f"[FATAL] {error} ({GATE_ID})"]

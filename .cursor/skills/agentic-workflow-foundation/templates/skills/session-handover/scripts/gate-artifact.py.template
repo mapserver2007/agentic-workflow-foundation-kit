@@ -293,6 +293,9 @@ def check_artifact(filepath: str, json_mode: bool = False,
     # --- ステップ別必須フィールド（complete 時）---
     if step and step in STEP_REQUIRED_FIELDS and status == "complete":
         for field in STEP_REQUIRED_FIELDS[step]:
+            # Step③ untracked_files 欠落は専用 ID で一度だけ診断する。
+            if step == "step3" and field == "untracked_files" and field not in fm:
+                continue
             if field not in fm:
                 results.append({
                     "id": "G-ARTIFACT-STEP-FIELD-001",
