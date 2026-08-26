@@ -15,12 +15,14 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent.parent
 REAL_GATE_DIR = ROOT / ".cursor" / "skills" / "session-handover" / "scripts"
 FIXTURES = HERE.parent / "fixtures" / "artifacts"
+DOMAIN_WRITE_SCOPE_SCRIPTS = ("gate-domain-write-scope.py", "domain_doc_scope.py")
+IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
 def _stage_gate(tmp: Path, profile: str = "foundation") -> Tuple[Path, Path]:
     gate_dir = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
     gate_dir.mkdir(parents=True)
-    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py"):
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py", *DOMAIN_WRITE_SCOPE_SCRIPTS):
         shutil.copy2(REAL_GATE_DIR / name, gate_dir / name)
 
     gate = gate_dir / "workflow-gate.sh"
@@ -89,7 +91,11 @@ def _setup_report(
     reports = tmp / "docs" / "agent-tasks" / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     report = reports / f"{slug}.md"
-    report.write_text(f"## 10. 完了チェック\n{completion}", encoding="utf-8")
+    report.write_text(
+        f"## 10. 完了チェック\n{completion}"
+        f"- implementation-base-commit: {IMPL_BASE_COMMIT}\n",
+        encoding="utf-8",
+    )
 
     artifacts = tmp / ".cursor" / ".artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)

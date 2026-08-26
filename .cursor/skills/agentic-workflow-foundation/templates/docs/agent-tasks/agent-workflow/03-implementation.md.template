@@ -46,6 +46,8 @@ D-* 不該当の判断（バグ修正の判断 / 通常リファクタの選択 
 
 コード変更が Domain 層 docs の記述と乖離を生む場合、`docs/agent-tasks/maintenance-docs/{slug}.md` を作成する。
 
+**実装経路は queue のみ**: Step③ は Domain docs 本体を編集しない。必要な反映は `maintenance-docs/` の起票として残し、後続の `maintenance-docs-workflow` が独立して実施する。
+
 ### 反映要否の判定基準
 
 以下のいずれかに該当するコード変更を検知した場合、起票ファイルを作成する:
@@ -122,7 +124,7 @@ change_type: feature | behavior | api | config | architecture | deprecation
 | `report_path` | string | yes | タスクレポートの成果記録書戻し先。検証後に変化し得るため、worker は実装方針の入力として再読込しない |
 | `validated_report_snapshot` | string | yes | 親 checker が report を一度だけ読み、同じ本文の digest 一致を検証して返した全文 snapshot。実装方針の唯一入力（「実装方針」セクションを含む） |
 | `approved_plan_digest` | string | yes | step2 envelope の PO承認済み digest。親が現在のレポートから再計算して一致確認した値 |
-| `base_commit_sha` | string | yes | 実装開始時点の commit SHA（re-dispatch 時の差分基準） |
+| `base_commit_sha` | string | yes | 親 pre-dispatch が Step③開始直前に保存した commit SHA。report の `implementation-base-commit` と同値（re-dispatch・実差分検査の基準） |
 | `revised_plan_ref` | string | no | 再 dispatch 時: 修正方針への参照 |
 | `prev_envelope_ref` | string | no | 再 dispatch 時: 前回の step envelope パス |
 | `approved_adr_id` | string | no | 再 dispatch 時: 承認済み ADR 番号 |
@@ -145,7 +147,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### 終端状態と遷移
 
-- `complete`: オーケストレータは正式成果物（`changed_files` / `untracked_files` と working tree の照合）を確認し、レポートの完了チェックを更新して④へ遷移する
+- `complete`: ④ worker を dispatch する前に、オーケストレータは `workflow-gate.sh step3 [report-file]` を実行する。これは step3 envelope の complete 検査、report の `implementation-base-commit` と envelope `base_commit_sha` の一致、実差分 Domain scope を fail-closed で検査する専用境界である
 - `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
 - `blocked` (`reason: adr_required`): D-* 変更検知。`base_commit_sha` と `decision_alternatives`（2 件以上）が必須。オーケストレータは ADR worker を dispatch → 草案ゲート → ユーザー承認 → 確定追記 → 新規③ worker を `revised_plan_ref` + `prev_envelope_ref` + `approved_adr_id` 付きで起動する
 - `fatal`: exit 2 相当。オーケストレータがユーザーに報告し QUALITY_GATE §2 例外承認導線を案内する

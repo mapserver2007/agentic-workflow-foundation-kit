@@ -42,6 +42,19 @@ check_report() {
     return 2
   fi
 
+{{#if agent_workflow.gate_scripts}}
+  # --- G-WRITE-SCOPE-DOMAIN-001: archive 前の実差分最終検査 ---
+  python3 "$SCRIPT_DIR/gate-domain-write-scope.py" --report "$file" --repo "$PROJECT_DIR"
+  local scope_rc=$?
+  if (( scope_rc == 2 )); then
+    echo "[FATAL] 実差分 Domain scope 検査が致命的エラー (G-WRITE-SCOPE-DOMAIN-001)"
+    return 2
+  elif (( scope_rc == 1 )); then
+    echo "[FAIL] 実差分 Domain scope 検査失敗 (G-WRITE-SCOPE-DOMAIN-001)"
+    fail=1
+  fi
+{{/if}}
+
   # 完了チェックセクションを抽出（"完了チェック" 見出し以降の行を対象）
   local in_section=0
   local checked=0

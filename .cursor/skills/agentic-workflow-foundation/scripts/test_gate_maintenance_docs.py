@@ -185,6 +185,19 @@ def test_not_required_no_reason():
         assert rc == 1, f"not_required + no reason should FAIL (got exit {rc})"
 
 
+def test_not_required_reflected_reason_fails():
+    """not_required + 「反映済み」理由 → G-MDOCS-REASON-002 FAIL"""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        report_path = _setup_project(
+            tmp_path,
+            queue_files=[],
+            report_file="report-not-required-reflected.md",
+        )
+        rc = _run_gate(report_path, tmp_path)
+        assert rc == 1, f"reflected reason should FAIL (got exit {rc})"
+
+
 def test_not_required_conflicting_queue():
     """not_required + 矛盾queue存在 → FAIL"""
     with tempfile.TemporaryDirectory() as tmp:
@@ -250,6 +263,7 @@ def main() -> int:
         test_required_no_queuefile,
         test_not_required_valid,
         test_not_required_no_reason,
+        test_not_required_reflected_reason_fails,
         test_not_required_conflicting_queue,
         test_pending,
         test_no_judgment_section,

@@ -89,6 +89,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 {{#if agent_workflow.gate_scripts}}
 1. **事前検査**: `.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/{report}.md` を実行
    - 完了チェック 6 項目すべて `[x]` であるか（G-ARCHIVE-CHECK-001）
+   - `implementation-base-commit` からの実差分に Domain docs がないか（G-WRITE-SCOPE-DOMAIN-001）
    - FAIL 項目が出れば修正して再実行。**exit 0 を確認するまで次に進まない**（Advisory ループ）
 {{else}}
 1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する
@@ -105,6 +106,8 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 ### 実質完了の定義
 
 archives 移動済み時点でタスクは**実質完了**とみなす。以降の工程（PR マージ / 本番反映）で発生した問題は元 reports を再編集せず、新規レポートとして起票する。
+
+Mode B で archive 後に実装変更が必要になった場合も同じく新規 campaign とし、既存の archive 済みレポート・基準 commit を再利用しない。
 
 ## 6.4 ユーザーへの報告
 

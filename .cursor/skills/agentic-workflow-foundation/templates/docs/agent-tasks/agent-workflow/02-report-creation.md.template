@@ -44,6 +44,8 @@
 9. **追加調査が必要な項目** — 未解決項目
 10. **完了チェック** — 実装完了 / テスト完了 / コードゲート / PR レビュー検証 / docs 反映 / ADR 起票判定の 6 項目
 
+> Domain docs は AC・実装方針・§6 の直接書込み対象にしない。必要な成果は `maintenance-docs/` queue または後続 `maintenance-docs-workflow` として記録する。§5 の参照ドキュメントと §8 の docs-first 読取り証跡は許可する。
+
 ### テンプレート
 
 以下のスケルトンをコピーして `reports/{report}.md` に使用する:
@@ -120,6 +122,7 @@
 - [ ] コードゲート通過（G-BUILD / G-LINT / G-GEN）
 - [ ] PRレビュー検証完了
 - review-pr-url:
+- implementation-base-commit:
 {{#if agent_workflow.maintenance_docs.enabled}}- [ ] maintenance-docs/ 起票判定（G-DOC-SPEC）
 {{else}}- [ ] docs への仕様反映（G-DOC-SPEC）
 {{/if}}- [ ] ADR 起票判定（設計次元 D-* 該当なら ADR worker dispatch → 承認後 docs/DECISIONS.md へ確定追記、該当なしなら「該当なし」と記載）
@@ -145,6 +148,8 @@ implementation_approval:
 ```
 
 PO が完成レポートのレビューと実装開始を承認したとき、親オーケストレータが envelope とこの転記を同時に `status: approved` へ更新する。Step③ dispatch 前の `--check-implementation-approval`（checker）は状態を書き換えず exit 非0で停止する。親は非0時に承認を `pending` に戻し R1/R2 に分類する。
+
+`implementation-base-commit:` は R3 の payload 外記録である。親は Step③ worker を dispatch する直前に pre-dispatch で得た `base_commit_sha` をここへ保存し、Step④・Step⑤再検査・archive 前の実差分ゲートが同じ基準を使う。
 ````
 
 ### プレースホルダ禁止
