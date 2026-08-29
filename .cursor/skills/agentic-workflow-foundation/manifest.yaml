@@ -493,12 +493,15 @@ agent_workflow:
   #     - python3
   #     - .cursor/skills/session-handover/scripts/gate-review.py
   step_gates:
-    - id: step2
-      desc: "計画→実装境界（必須セクション充足）"
-      cmd: "plan-gate.sh report"
+    - id: step1
+      desc: "調査→レポート境界（Step① envelope 完全検査）"
+      cmd: "gate-artifact.py <step1-envelope>"
     - id: step2-report
       desc: "レポート構造検査（必須10セクション充足）"
       cmd: "gate-report.py"
+    - id: step2
+      desc: "計画→実装境界（必須セクション充足）"
+      cmd: "plan-gate.sh report"
     - id: step3
       desc: "実装→検証（Step③ envelope + 基準SHA一致 + Domain実差分）"
       cmd: "gate-artifact.py → gate-domain-write-scope.py"
@@ -1030,6 +1033,7 @@ outputs:
     executable: true
     required_sections:
       - "=== workflow gate ==="
+      - "step1"
       - "step2"
       - "step2-report"
       - "step3"

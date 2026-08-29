@@ -7,9 +7,9 @@ description: >-
   Progressive Disclosure で分割されており、本スキルは全体の制御フローと Step Gate Matrix を担う。
   Use when - 「タスクを実行して」「バグを修正して」「この機能を実装して」「リファクタして」
   「パフォーマンス改善して」等の実装系タスク指示、または issue URL / タスクレポートを渡された場合。
-  Do NOT use for - (1) PR レビュー対応のみ（agent-code-review を使う）、
-  (2) PR 作成のみ（agent-github-pr を使う）、(3) issue 作成のみ（agent-github-issue を使う）、
-  (4) docs 反映のみ（maintenance-docs-workflow を使う）、
+  Do NOT use for - (1) PR レビュー対応のみ（{{#if code_review.enabled}}agent-code-review を使う{{else}}本ワークフローでは扱わない{{/if}}）、
+  (2) PR 作成のみ（{{#if github_pr.enabled}}agent-github-pr を使う{{else}}本ワークフローでは扱わない{{/if}}）、(3) issue 作成のみ（{{#if github_issue.enabled}}agent-github-issue を使う{{else}}本ワークフローでは扱わない{{/if}}）、
+  (4) docs 反映のみ（{{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs-workflow を使う{{else}}本ワークフローでは独立 docs 反映を扱わない{{/if}}）、
   (5) 調査・質問応答のみ（ワークフローを起動せず直接回答する）{{#if agent_workflow.maintenance_gotchas.enabled}}、
   (6) GOTCHAS エントリのメタ層修復（maintenance-gotchas-workflow を使う）{{/if}}。
 ---
@@ -47,12 +47,12 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 | Step | 詳細ドキュメント | 入口条件 | 退出条件 | 対応ゲート |
 | --- | --- | --- | --- | --- |
-| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | 一次調査 → レポート作成 |
-| **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | report + step2 envelope complete + `step2-report` PASS + `step2` PASS（機械退出） | `step2-report` → `step2` → PO待ち |
-| **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | 親 pre-dispatch: step2+complete+report_path束縛 + PO承認 SoT + digest 再計算一致（exit 0 のみ） | コード変更完了 + レポート更新 | — |
+| **① 調査・分析** | [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md) | タスク実行依頼受領 | 根本原因 or 実装方針の特定完了 + 退出ゲート（判定チェックリスト 5 項目）PASS | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} |
+| **② レポート作成** | [02-report-creation.md](../../../docs/agent-tasks/agent-workflow/02-report-creation.md) | ①退出ゲート PASS | report + step2 envelope complete + `step2-report` PASS + `step2` PASS（機械退出） | {{#if agent_workflow.gate_scripts}}`step2-report` → {{/if}}`step2` → PO待ち |
+| **③ 実装** | [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) | 親 pre-dispatch: step2+complete+report_path束縛 + PO承認 SoT + digest 再計算一致（exit 0 のみ） | コード変更完了 + レポート更新 | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3`{{else}}親の実差分検査{{/if}} → ④ dispatch |
 | **④ テスト** | [04-testing.md](../../../docs/agent-tasks/agent-workflow/04-testing.md) | Step ③ 完了 | コードゲート全 PASS + 完了チェック3項目（G-TEST-COMP-001/002/003）PASS | 実装 → 検証{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step4`{{/if}} |
-| **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | 検証 → PR（入口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step5`{{/if}} + PR → 完了（出口）{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}{{/if}} |
-| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | Step ⑤ で `workflow-gate.sh step6` PASS 済み | archives 移動完了 | 完了 → アーカイブ{{#if agent_workflow.gate_scripts}} / `workflow-gate.sh archive`{{/if}} |
+| **⑤ PR レビュー** | [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) | Step ④ 通過 | レビュー完了承認 | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step5` → `review-start` → `step6`{{else}}検証ゲート → レビュー完了承認{{/if}} |
+| **⑥ 完了報告** | [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) | {{#if agent_workflow.gate_scripts}}Step ⑤ で `workflow-gate.sh step6` PASS 済み{{else}}Step ⑤ のレビュー完了承認取得済み{{/if}} | report archive 完了 | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh archive`{{else}}完了チェック確認{{/if}}{{#if agent_workflow.maintenance_docs.enabled}} → report archive 後に pending queue があれば `maintenance-docs-workflow`{{/if}} |
 
 ### Step ①: 調査・分析（退出ゲートを内包）
 
@@ -74,7 +74,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 8. ADR 起票判定（D-* 該当検知時は ADR worker を dispatch — [`references/worker-dispatch.md §ADR Worker 契約`](references/worker-dispatch.md) 参照）
 9. **①退出ゲート**: 既存5項目 + 3段階ガード全PASS + 先に回答が必要な確認事項がない（blocking_open_issues: []）。不合格時は `user-presentation.md` の退出不合格テンプレに従いユーザーに状況報告
 
-`workflow-gate.sh step1` が PASS したら、親は4分類進捗通知のみを行い、人間の requirements ack や進行可否質問を待たず、同一ターンで凍結済み `campaign_slug` / 同値の `report_slug` を Step② worker へ dispatchする。
+{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} が PASS したら、親は4分類進捗通知のみを行い、人間の requirements ack や進行可否質問を待たず、同一ターンで凍結済み `campaign_slug` / 同値の `report_slug` を Step② worker へ dispatchする。
 {{else}}[`references/worker-dispatch.md`](references/worker-dispatch.md) に従い Subagent を dispatch する（`config.yaml > models.step1_investigation`）。Step doc: [01-investigation.md](../../../docs/agent-tasks/agent-workflow/01-investigation.md)。
 
 1. ユーザーとの対話で問題・要件を把握する（親が担当）
@@ -105,8 +105,11 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 1. `docs/agent-tasks/reports/{{agent_workflow.report_slug_format}}.md` を作成する（必須 10 セクション）
 2. プレースホルダ `{XXX}` を残さない
-3. `workflow-gate.sh step2-report {report_path}` を PASS まで実行する（Step②レポート構造・envelope検査）
+{{#if agent_workflow.gate_scripts}}3. `workflow-gate.sh step2-report {report_path}` を PASS まで実行する（Step②レポート構造・envelope検査）
 4. `workflow-gate.sh step2` を PASS まで実行する（Step②機械退出）
+{{else}}3. `gate-report.py {report_path}` と step1/step2 envelope の個別検査を PASS まで実行する
+4. `plan-gate.sh report` を PASS まで実行する（Step②機械退出）
+{{/if}}
 5. Step② phase complete として完成レポートと実装方針を PO に提示し、実装開始を一回の判断で待つ。同じ応答で③を dispatch しない
 
 ### Step ③: 実装の実行
@@ -139,7 +142,7 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 
 親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md)。
 
-{{#if agent_workflow.gate_scripts}}この境界は workflow-orchestrator 経由の初回 Step⑤（`agent-code-review` Mode A）だけを対象とする。PR URL 受領後、親は active report の完了チェック節へ `review-pr-url: <canonical-pr-url>` を正確に1行記録し、`workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。exit 0 を確認できた場合だけレビューを委譲する。
+{{#if agent_workflow.gate_scripts}}この境界は workflow-orchestrator 経由の初回 Step⑤（{{#if code_review.enabled}}`agent-code-review` Mode A{{else}}レビュー検証{{/if}}）だけを対象とする。PR URL 受領後、親は active report の完了チェック節へ `review-pr-url: <canonical-pr-url>` を正確に1行記録し、`workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。exit 0 を確認できた場合だけレビューを委譲する。
 
 `review-start` は Hook が記録した期限内の構造化 PR prompt から session を一意に解決し、Step③/④・campaign・PR・writer readback を再検証して `kind=review_start` を発行する。session 特定不能、prompt 未記録、Step③/④失敗、または readback 失敗時はレビュー委譲を停止する。handoff / 新規チャット後は canonical PR URL を新 session で再送する。親が `session-progress-append.sh` を直接実行してはならない。
 {{/if}}
@@ -165,27 +168,26 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 5. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
 {{/if}}
 
-Mode B（完了後の追加コメント対応）と standalone `agent-code-review` は `review-start` 対象外であり、新しい `review_start` を要求・発行しない。その活動を初回 Step⑤のレビューGO証跡へ昇格してはならない。
+Mode B（完了後の追加コメント対応）{{#if code_review.enabled}}と standalone `agent-code-review`{{/if}} は `review-start` 対象外であり、新しい `review_start` を要求・発行しない。その活動を初回 Step⑤のレビューGO証跡へ昇格してはならない。
 
 ### Step ⑥: 完了報告
 
-親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} Step ⑤ で `workflow-gate.sh step6` を通過済みであることが前提（`plan-gate.sh review` は追跡ドキュメントの `## レビュー完了承認` が `承認取得済み` であることを検査する。この更新は `agent-code-review` Step 7 の責務）。{{/if}}
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} Step ⑤ で `workflow-gate.sh step6` を通過済みであることが前提（`plan-gate.sh review` は追跡ドキュメントの `## レビュー完了承認` が `承認取得済み` であることを検査する。この更新は {{#if code_review.enabled}}`agent-code-review` Step 7{{else}}レビュー担当{{/if}} の責務）。{{/if}}
 
-{{#if agent_workflow.maintenance_docs.enabled}}
 以下を実行する:
-{{else}}
-以下を実行する:
-{{/if}}
 
-{{#if agent_workflow.maintenance_docs.enabled}}1. maintenance-docs/ 起票ファイルの最終確認（起票ファイルが存在する場合は最終実装状態との整合を確認。反映不要と判定した場合は起票ファイルを削除）
-2. 完了チェック 6 項目の確認
-3. archives 移動（`git mv reports/{report}.md reports/archives/`）
-4. ユーザーへの完了報告（docs 反映が必要な場合は `maintenance-docs-workflow` の起動を案内）
-{{else}}1. Domain 層 docs への仕様反映（G-DOC-SPEC）
-2. 完了チェック 6 項目の確認
-3. archives 移動（`git mv reports/{report}.md reports/archives/`）
-4. ユーザーへの完了報告
-{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}5. Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
+{{#if agent_workflow.maintenance_docs.enabled}}1. **最終判定**: maintenance-docs/ 起票ファイルと最終実装状態の整合を確認し、`maintenance-docs-judgment` を確定する。`required` の queue は `pending` のまま残し、完了チェック第5項目を `[x]` にする
+2. 完了チェック 6 項目を確認する
+{{#if agent_workflow.gate_scripts}}3. `workflow-gate.sh archive <report-file>` を実行し、archive gate の exit 0 を確認する。archive gate は Domain docs を反映せず、pending queue の整合性だけを検査する
+4. archive gate PASS 後に report を `reports/archives/` へ移動する
+{{else}}3. report を `reports/archives/` へ移動する
+{{/if}}- report archive 後、`maintenance-docs/` に `status: pending` の queue がある場合だけ独立 `maintenance-docs-workflow` を起動する。queue がなければ起動しない
+{{else}}1. **最終判定**: Domain 層 docs への仕様反映（G-DOC-SPEC）を完了し、完了チェック第5項目を `[x]` にする
+2. 完了チェック 6 項目を確認する
+{{#if agent_workflow.gate_scripts}}3. `workflow-gate.sh archive <report-file>` を実行し、exit 0 を確認する
+4. archive gate PASS 後に report を `reports/archives/` へ移動する
+{{else}}3. report を `reports/archives/` へ移動する
+{{/if}}{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
 {{/if}}
 
 ---

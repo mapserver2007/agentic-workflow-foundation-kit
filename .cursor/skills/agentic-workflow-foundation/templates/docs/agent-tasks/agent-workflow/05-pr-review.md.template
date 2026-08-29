@@ -41,6 +41,7 @@ PR 作成方法を選択してください：
 ```
 {{/if}}
 
+{{#if agent_workflow.gate_scripts}}{{#if code_review.enabled}}
 ## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界
 
 PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が次を実行する。
@@ -62,6 +63,7 @@ PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-o
 - handoff / 新規チャット後は旧 session を handoff 証跡で退役させ、新 session で canonical PR URL を再送する。
 - 成功時だけ `kind=review_start`、`extra.gate_id=review`、campaign、PR、決定論的 `review_go_id` を記録する。同じ prompt の再実行は追記なしで冪等 PASS となる。
 - 対象は **workflow-orchestrator 経由の初回 Step⑤（Mode A）のみ**。standalone `agent-code-review`、Mode B、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外で、新しいレビューGO証跡へ昇格しない。
+{{/if}}{{/if}}
 
 ## 5.2 レビュー指摘の取得
 
@@ -118,7 +120,7 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
    - **承認する** → ⑥ 完了報告へ進む
    - **新規のレビューコメントを取得して** → 指摘取得ステップへ戻る
 3. AI はポーリングできないため、承認待ちでターンを終了する
-4. 承認取得後、`agent-code-review` Step 7 が追跡ドキュメントの `## レビュー完了承認` を `承認状態: 承認取得済み` に更新する（`workflow-gate.sh step6` / `plan-gate.sh review` の通過に必要）
+4. 承認取得後、{{#if code_review.enabled}}`agent-code-review` Step 7 が{{else}}レビュー担当が{{/if}}追跡ドキュメントの `## レビュー完了承認` を `承認状態: 承認取得済み` に更新する（{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step6` / `plan-gate.sh review`{{else}}完了確認{{/if}} の通過に必要）
 
 ---
 
@@ -127,4 +129,4 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 - [04-testing.md](04-testing.md) — 前ステップ（テスト）
 - [06-completion.md](06-completion.md) — 次ステップ（完了報告）
 {{#if code_review.enabled}}- [.cursor/skills/agent-code-review/SKILL.md](../../../.cursor/skills/agent-code-review/SKILL.md) — レビュー検証スキル
-{{/if}}- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — 「実装 → PR レビュー」フェーズ境界
+{{/if}}- [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 — 「検証 → PR レビュー」フェーズ境界

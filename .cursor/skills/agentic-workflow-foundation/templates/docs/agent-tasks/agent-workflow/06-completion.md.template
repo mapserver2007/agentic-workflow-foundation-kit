@@ -2,16 +2,18 @@
 
 [← agent-workflow.md（index）に戻る](../agent-workflow.md)
 
-実装・テスト・レビューが完了した後、maintenance-docs/ 起票ファイルの最終確認と archives 自動移動を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
+実装・テスト・レビューが完了した後、最終判定{{#if agent_workflow.gate_scripts}}・archive gate{{/if}}・report archive を行うフェーズ。[docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の「PR レビュー → 完了報告」「完了報告 → アーカイブ」フェーズ境界に対応する。
 
 **前提条件**: ⑤ PR レビュー検証が全て完了していること。レビューが未完了の場合はこのステップに進めない。
-{{#if agent_workflow.step6.project_gate_command}}
+{{#if agent_workflow.gate_scripts}}{{#if agent_workflow.step6.project_gate_command}}
 **プロジェクト固有ゲート**: Step ⑤ で `workflow-gate.sh step6` を実行済みであり、プロジェクト固有の検査と汎用レビューゲートの両方を通過していることが前提となる。
-{{/if}}
+{{/if}}{{/if}}
 
 ---
 
-## 6.1 maintenance-docs/ 起票ファイルの最終確認
+{{#if agent_workflow.maintenance_docs.enabled}}## 6.1 maintenance-docs/ 起票ファイルの最終確認
+{{else}}## 6.1 Domain 層 docs への仕様反映
+{{/if}}
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 `docs/agent-tasks/maintenance-docs/` に起票ファイルが存在する場合、最終実装状態との整合を確認する。
@@ -33,7 +35,7 @@
 - **反映が必要な場合**: `maintenance-docs-judgment: required` / `queue_file: docs/agent-tasks/maintenance-docs/{slug}.md`
 - **反映不要の場合**: `maintenance-docs-judgment: not_required` / `queue_file: なし` / `judgment_reason: {「コードから判断可能」「振る舞い非変更」「バグ修正で仕様へ復帰」のいずれかの許可趣旨に一致する理由}`
 
-上記 key-value を確定した**後に** `- [x] maintenance-docs/ 起票判定（G-DOC-SPEC）` チェックボックスを `[x]` にする（順序厳守）。`archive-gate.sh` は `gate-maintenance-docs.py` を呼び出し、判定と queue の整合性を機械検査する。
+上記 key-value を確定した**後に** `- [x] maintenance-docs/ 起票判定（G-DOC-SPEC）` チェックボックスを `[x]` にする（順序厳守）。この時点では `required` queue を `pending` のまま残す。`archive-gate.sh` は `gate-maintenance-docs.py` を呼び出し、判定と queue の整合性を機械検査する。独立 `maintenance-docs-workflow` は archive gate と report archive の後に起動する。
 {{else}}
 PR レビュー完了後、以下の原則に従い Domain 層ドキュメントへの仕様反映を行う。
 
@@ -61,7 +63,7 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 - gen 系（`docs/gen/`）
 - 調査系（`docs/investigations/`）
 
-反映完了後、タスクレポートの「docs への仕様反映」チェックボックスを `[x]` に更新する。
+Domain docs への反映完了後、タスクレポートの「docs への仕様反映」チェックボックスを `[x]` に更新する。maintenance-docs disabled 時は独立 queue を作成・起動しない。
 {{/if}}
 
 ## 6.2 完了条件の確認（QUALITY_GATE 6項目）
@@ -78,9 +80,11 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 
 ## 6.3 archives 移動
 
-{{#if agent_workflow.maintenance_docs.enabled}}
-完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
+{{#if agent_workflow.maintenance_docs.enabled}}{{#if agent_workflow.gate_scripts}}
+Step ⑥の順序は **最終判定 → archive gate → report archive → 独立 maintenance-docs workflow** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
 {{else}}
+Step ⑥の順序は **最終判定 → report archive → 独立 maintenance-docs workflow** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
+{{/if}}{{else}}
 完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{/if}}
 
@@ -90,14 +94,21 @@ PR レビュー完了後、以下の原則に従い Domain 層ドキュメント
 1. **事前検査**: `.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/{report}.md` を実行
    - 完了チェック 6 項目すべて `[x]` であるか（G-ARCHIVE-CHECK-001）
    - `implementation-base-commit` からの実差分に Domain docs がないか（G-WRITE-SCOPE-DOMAIN-001）
+{{#if agent_workflow.maintenance_docs.enabled}}   - `maintenance-docs-judgment` と `pending` queue の整合性があるか（G-ARCHIVE-MDOCS-001）。この検査は Domain docs の反映を実行しない
+{{/if}}   - report archive 前の残存 artifact がないか（G-ARCHIVE-ARTIFACT-001）
    - FAIL 項目が出れば修正して再実行。**exit 0 を確認するまで次に進まない**（Advisory ループ）
 {{else}}
 1. **事前検査**: タスクレポートの完了チェック 6 項目が全て `[x]` であることを目視確認する
 {{/if}}
-2. **ファイル移動**: `git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
+{{#if agent_workflow.gate_scripts}}2. **report archive**: archive gate の exit 0 を確認した後、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
+{{else}}2. **report archive**: 完了チェックの確認後、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行
+{{/if}}
 {{#if code_review.report.enabled}}   - **レビューレポートの同梱**: 対応する `{task-report-stem}-review.md` が `{{code_review.report.output_dir}}/` に存在する場合は `git add {{code_review.report.output_dir}}/{task-report-stem}-review.md` で `reviews/` 直下のままタスクレポートと同一コミットに含める（`reviews/archives/` へは移動しない）
 {{/if}}   - archives 移動完了をもってキャンペーン完了とする（進行中キャンペーンの SoT は `reports/` 直下のファイル存在）
-3. 次の pending レポートへ（複数レポート処理時）
+{{#if agent_workflow.maintenance_docs.enabled}}3. **独立 maintenance-docs workflow**: report archive 後、`maintenance-docs/` に `status: pending` の queue がある場合だけ [`maintenance-docs-workflow`](../../../.cursor/skills/maintenance-docs-workflow/SKILL.md) を起動する。workflow が Domain docs を反映し、queue を `done` にして queue archive へ移動する。queue がなければ起動しない。
+4. 次の pending レポートへ（複数レポート処理時）
+{{else}}3. 次の pending レポートへ（複数レポート処理時）
+{{/if}}
 
 この手順により [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3「完了報告 → アーカイブ」フェーズ境界の出口条件を満たす。
 
@@ -123,7 +134,7 @@ Mode B で archive 後に実装変更が必要になった場合も同じく新�
 - 確認事項: {ユーザーに確認してほしい内容}
 ```
 {{#if agent_workflow.maintenance_docs.enabled}}
-docs 反映起票ファイルが存在する場合は、`maintenance-docs-workflow` の起動を案内する。
+report archive 後に docs 反映起票ファイルが残っている場合は、`maintenance-docs-workflow` の起動を案内する。
 {{/if}}
 
 ## 6.5 例外: PR に追加レビューコメントが付いた場合

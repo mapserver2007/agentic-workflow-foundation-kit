@@ -147,7 +147,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### 終端状態と遷移
 
-- `complete`: ④ worker を dispatch する前に、オーケストレータは `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合する。続けて `workflow-gate.sh step3 [report-file]` を実行し、step3 envelope の complete、report の `implementation-base-commit` と envelope `base_commit_sha` の一致、実差分 Domain scope を fail-closed で検査する。一般差分一覧の照合と専用 Domain ゲートの両方が PASS の場合だけ④ worker を dispatch する
+- `complete`: ④ worker を dispatch する前に、オーケストレータは `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合する。続けて {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}step3 envelope / Domain scope の個別ゲート{{/if}} を実行し、step3 envelope の complete、report の `implementation-base-commit` と envelope `base_commit_sha` の一致、実差分 Domain scope を fail-closed で検査する。一般差分一覧の照合と専用 Domain ゲートの両方が PASS の場合だけ④ worker を dispatch する
 - `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
 - `blocked` (`reason: adr_required`): D-* 変更検知。`base_commit_sha` と `decision_alternatives`（2 件以上）が必須。オーケストレータは ADR worker を dispatch → 草案ゲート → ユーザー承認 → 確定追記 → 新規③ worker を `revised_plan_ref` + `prev_envelope_ref` + `approved_adr_id` 付きで起動する
 - `fatal`: exit 2 相当。オーケストレータがユーザーに報告し QUALITY_GATE §2 例外承認導線を案内する

@@ -37,7 +37,7 @@
 4. タスクレポートを作成し `reports/` に保存
 5. 作成したタスクレポートに従って実装を実行
 6. テスト実装後、PR レビュー検証を実行
-7. レビュー完了後、docs に仕様反映 + `reports/{report}.md` を `reports/archives/` に移動（archives 移動でキャンペーン完了を表現）
+7. レビュー完了後、{{#if agent_workflow.maintenance_docs.enabled}}`maintenance-docs/` 起票判定を確定 → {{#if agent_workflow.gate_scripts}}archive gate → {{/if}}`reports/{report}.md` を `reports/archives/` に移動 → pending queue があれば独立 `maintenance-docs-workflow` を起動{{else}}Domain docs への仕様反映を完了 → `reports/{report}.md` を `reports/archives/` に移動{{/if}}（archives 移動でキャンペーン完了を表現）
 
 ### AIエージェントが既存のタスクレポートから実装を実行する場合
 1. **reports/{report}.md** を最初に参照
