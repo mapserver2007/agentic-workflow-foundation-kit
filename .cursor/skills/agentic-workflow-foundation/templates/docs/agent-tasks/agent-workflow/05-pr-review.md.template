@@ -41,7 +41,7 @@ PR 作成方法を選択してください：
 ```
 {{/if}}
 
-{{#if agent_workflow.gate_scripts}}{{#if code_review.enabled}}
+{{#if agent_workflow.gate_scripts}}
 ## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界
 
 PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が次を実行する。
@@ -49,7 +49,7 @@ PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-o
 1. ユーザーから canonical PR URL を受領する。beforeSubmitPrompt Hook は prompt 全文を保存せず、全文から抽出した canonical URL 配列と prompt SHA-256 を progress event に記録する。
 2. active report の完了チェック節に `review-pr-url: <canonical-pr-url>` を正確に1行記録する。
 3. `workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。
-4. exit 0 の場合だけ `agent-code-review` Mode A へ委譲する。
+4. exit 0 の場合だけ {{#if code_review.enabled}}`agent-code-review` Mode A {{else}}レビュー担当{{/if}}へ委譲する。
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
@@ -62,8 +62,8 @@ PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-o
 - session 特定不能、対象 PR prompt 未記録、Step③/④再検証失敗、書込みまたは readback 失敗は exit 1/2 とし、レビュー委譲を停止する。自動例外や偽の `review_start` は作らない。
 - handoff / 新規チャット後は旧 session を handoff 証跡で退役させ、新 session で canonical PR URL を再送する。
 - 成功時だけ `kind=review_start`、`extra.gate_id=review`、campaign、PR、決定論的 `review_go_id` を記録する。同じ prompt の再実行は追記なしで冪等 PASS となる。
-- 対象は **workflow-orchestrator 経由の初回 Step⑤（Mode A）のみ**。standalone `agent-code-review`、Mode B、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外で、新しいレビューGO証跡へ昇格しない。
-{{/if}}{{/if}}
+- 対象は **workflow-orchestrator 経由の初回 Step⑤（{{#if code_review.enabled}}Mode A{{else}}レビュー検証{{/if}}）のみ**。{{#if code_review.enabled}}standalone `agent-code-review`、{{/if}}Mode B、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` は対象外で、新しいレビューGO証跡へ昇格しない。
+{{/if}}
 
 ## 5.2 レビュー指摘の取得
 

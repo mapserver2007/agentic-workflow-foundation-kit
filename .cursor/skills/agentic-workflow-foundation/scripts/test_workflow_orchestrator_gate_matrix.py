@@ -369,6 +369,13 @@ def test_representative_feature_renders_hide_disabled_contracts():
         rendered = _render_with_features(path, code_review=False, github_pr=False)
         assert "agent-code-review" not in rendered, path
         assert "agent-github-pr" not in rendered, path
+        assert "workflow-gate.sh review-start" in rendered, path
+        assert "review_start" in rendered, path
+    pr_review_disabled = _render_with_features(
+        PR_REVIEW_TEMPLATE, code_review=False, github_pr=False
+    )
+    assert "## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界" in pr_review_disabled
+    assert "レビュー担当へ委譲する" in pr_review_disabled
 
 
 def main() -> int:
