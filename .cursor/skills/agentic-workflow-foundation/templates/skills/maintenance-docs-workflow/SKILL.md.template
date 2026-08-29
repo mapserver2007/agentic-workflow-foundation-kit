@@ -35,6 +35,10 @@ description: >-
 2. `docs/agent-tasks/maintenance-docs/` に未処理の起票ファイル（`*.md`、`archives/` 除く）が存在すること
 3. `AGENTS.md > Session Protocol` 完了が前提
 
+この workflow は workflow-orchestrator の Step ⑥で `maintenance-docs-judgment` を確定し、
+archive gate を通過してタスクレポートを `reports/archives/` へ移動した**後**にだけ起動する。
+archive gate 前に Domain docs を反映して queue を `done` にするための経路ではない。
+
 ---
 
 ## 実行フロー
@@ -47,6 +51,8 @@ description: >-
 - 本文: コード変更の要約、影響を受ける docs セクション、期待する反映内容
 
 `status: pending` のファイルのみ処理対象とする。`source`（PR URL / report パス）を参照してコード変更の詳細を把握する。
+Step ⑥の report archive はこのスキャンより先に完了しているため、
+`source_report` は `reports/archives/` 側を含む完了済みレポートとして解決する。
 
 起票ファイルテンプレートの全文定義は [03-implementation.md](../../../docs/agent-tasks/agent-workflow/03-implementation.md) を SoT として参照する（二重定義しない）。
 
@@ -117,7 +123,7 @@ description: >-
 - レビュー対応なし。直接完了処理に進む
 
 **完了処理（共通）:**
-1. 処理済みファイルを `docs/agent-tasks/maintenance-docs/archives/` へ移動（`git mv`）
+1. Domain docs の反映が完了したら、処理済み queue を `docs/agent-tasks/maintenance-docs/archives/` へ移動（`git mv`）
 2. 移動をコミットする（ユーザー承認後）
 3. 処理結果をユーザーに報告する:
    - 処理件数・反映した docs 一覧

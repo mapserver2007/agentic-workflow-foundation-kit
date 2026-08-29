@@ -292,7 +292,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### 終端状態と遷移
 
-- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）と `workflow-gate.sh step1 <step1-envelope>` の完全検査通過を確認し、4分類進捗通知を行った同一ターンで人間の ack なしに②を dispatch する
+- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）と {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} の完全検査通過を確認し、4分類進捗通知を行った同一ターンで人間の ack なしに②を dispatch する
 - `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
 - `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは step envelope を読み追加情報付与で再 dispatch する
 - `blocked`: オーケストレータが reason に応じてエスカレーション

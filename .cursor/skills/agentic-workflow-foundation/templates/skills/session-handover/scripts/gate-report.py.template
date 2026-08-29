@@ -38,7 +38,11 @@ COMPLETION_ITEMS = [
     "テスト完了",
     "コードゲート通過",
     "PRレビュー検証完了",
+{{#if agent_workflow.maintenance_docs.enabled}}
     "maintenance-docs/ 起票判定",
+{{else}}
+    "docs への仕様反映",
+{{/if}}
     "ADR 起票判定",
 ]
 

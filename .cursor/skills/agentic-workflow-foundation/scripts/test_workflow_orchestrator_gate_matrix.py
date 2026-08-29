@@ -12,6 +12,8 @@ step4/step5/step6 の境界責務を正しく案内していることを検証�
 """
 from __future__ import annotations
 
+import copy
+import re
 import sys
 from pathlib import Path
 
@@ -23,12 +25,37 @@ SKILL_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKILL.md.t
 SKILL_GENERATED = ROOT / ".cursor" / "skills" / "workflow-orchestrator" / "SKILL.md"
 PR_REVIEW_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md.template"
 PR_REVIEW_GENERATED = ROOT / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md"
+MANIFEST = HERE.parent / "manifest.yaml"
+INDEX_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow.md.template"
+QUALITY_GATE_TEMPLATE = TEMPLATE_DIR / "docs" / "QUALITY_GATE.md.template"
+README_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "README.md.template"
+COMPLETION_TEMPLATE = (
+    TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "06-completion.md.template"
+)
+sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"))
+from genlib import load_manifest, render  # noqa: E402
 
 
 def _read(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _render_with_features(
+    path: Path,
+    *,
+    maintenance_docs: bool = True,
+    gate_scripts: bool = True,
+    code_review: bool = True,
+    github_pr: bool = True,
+) -> str:
+    context = copy.deepcopy(load_manifest(str(MANIFEST)))
+    context["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_docs
+    context["agent_workflow"]["gate_scripts"] = gate_scripts
+    context["code_review"]["enabled"] = code_review
+    context["github_pr"]["enabled"] = github_pr
+    return render(_read(path), context)
 
 
 def test_step4_matrix_implementation_to_verification():
@@ -225,6 +252,132 @@ def test_05_pr_review_tracker_update_responsibility():
     )
 
 
+def test_step1_catalog_and_matrix_require_envelope_argument():
+    """Step①のcatalogと各Matrixが実行可能なenvelope引数を案内すること。"""
+    manifest = _read(MANIFEST)
+    assert re.search(
+        r"- id: step1\s+desc: \"調査→レポート境界（Step① envelope 完全検査）\"\s+"
+        r"cmd: \"gate-artifact\.py <step1-envelope>\"",
+        manifest,
+        re.MULTILINE,
+    ), "seed manifest の step1 catalog が不足している"
+
+    for path in (SKILL_TEMPLATE, INDEX_TEMPLATE, QUALITY_GATE_TEMPLATE):
+        content = _read(path)
+        assert "step1" in content and "<step1-envelope>" in content, (
+            f"{path} に step1 envelope 引数の Matrix 契約がない"
+        )
+
+
+def test_step6_archive_maintenance_docs_order_is_explicit():
+    """Step⑥の判定・archive gate・report archive・独立workflow順を固定する。"""
+    sources = (
+        README_TEMPLATE,
+        INDEX_TEMPLATE,
+        COMPLETION_TEMPLATE,
+        SKILL_TEMPLATE,
+    )
+    for path in sources:
+        content = _read(path)
+        if path == README_TEMPLATE:
+            content = content[content.find("7. レビュー完了後") :]
+        elif path == INDEX_TEMPLATE:
+            content = content[content.find("## 基本フロー") :]
+        if path == COMPLETION_TEMPLATE:
+            content = content[content.find("## 6.3 archives 移動") :]
+        elif path == SKILL_TEMPLATE:
+            content = content[content.find("### Step ⑥: 完了報告") :]
+        positions = [
+            content.find("最終判定"),
+            content.find("archive gate"),
+            content.find("report archive"),
+            content.find("maintenance-docs-workflow"),
+        ]
+        if path == README_TEMPLATE:
+            positions = [
+                content.find("起票判定を確定"),
+                content.find("archive gate"),
+                content.find("reports/archives/"),
+                content.find("maintenance-docs-workflow"),
+            ]
+        assert all(position >= 0 for position in positions), (
+            f"{path} にStep⑥の順序要素が不足している"
+        )
+        assert positions == sorted(positions), (
+            f"{path} のStep⑥順序が不正: {positions}"
+        )
+
+
+def test_completion_labels_keep_maintenance_docs_feature_branches():
+    """完了チェック第5項目の表示名を enabled/disabled で分岐する。"""
+    for path in (
+        INDEX_TEMPLATE,
+        COMPLETION_TEMPLATE,
+        TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "archive-gate.sh.template",
+        TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "gate-report.py.template",
+    ):
+        content = _read(path)
+        assert "{{#if agent_workflow.maintenance_docs.enabled}}" in content, path
+        assert "maintenance-docs/ 起票判定" in content, path
+        assert "docs への仕様反映" in content, path
+
+
+def test_representative_feature_renders_hide_disabled_contracts():
+    """代表feature分岐で無効な手順・リンクを露出させない。"""
+    default_completion = _render_with_features(COMPLETION_TEMPLATE)
+    completion_step6 = default_completion[
+        default_completion.find("## 6.3 archives 移動") :
+    ]
+    order = [
+        completion_step6.find("最終判定"),
+        completion_step6.find("archive gate"),
+        completion_step6.find("report archive"),
+        completion_step6.find("maintenance-docs-workflow"),
+    ]
+    assert order == sorted(order) and all(position >= 0 for position in order)
+
+    disabled_docs_paths = (
+        INDEX_TEMPLATE,
+        COMPLETION_TEMPLATE,
+        SKILL_TEMPLATE,
+        TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "archive-gate.sh.template",
+        TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "gate-report.py.template",
+    )
+    for path in disabled_docs_paths:
+        rendered = _render_with_features(path, maintenance_docs=False)
+        assert "docs への仕様反映" in rendered, path
+        assert "maintenance-docs/ 起票判定" not in rendered, path
+        if path.name == "gate-report.py.template":
+            assert "[maintenance-docs-workflow]" not in rendered, path
+        else:
+            assert "maintenance-docs-workflow" not in rendered, path
+
+    no_dispatcher_paths = (
+        INDEX_TEMPLATE,
+        QUALITY_GATE_TEMPLATE,
+        COMPLETION_TEMPLATE,
+        PR_REVIEW_TEMPLATE,
+        SKILL_TEMPLATE,
+        TEMPLATE_DIR / "hooks" / "README.md.template",
+        TEMPLATE_DIR / "skills" / "session-handover" / "SKILL.md.template",
+    )
+    for path in no_dispatcher_paths:
+        rendered = _render_with_features(path, gate_scripts=False)
+        assert "workflow-gate.sh" not in rendered, path
+
+    for path in (PR_REVIEW_TEMPLATE, SKILL_TEMPLATE):
+        rendered = _render_with_features(path, code_review=False, github_pr=False)
+        assert "agent-code-review" not in rendered, path
+        assert "agent-github-pr" not in rendered, path
+        assert "workflow-gate.sh review-start" in rendered, path
+        assert "review_start" in rendered, path
+    pr_review_disabled = _render_with_features(
+        PR_REVIEW_TEMPLATE, code_review=False, github_pr=False
+    )
+    assert "## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界" in pr_review_disabled
+    assert "レビュー担当へ委譲する" in pr_review_disabled
+
+
 def main() -> int:
     tests = [
         test_step4_matrix_implementation_to_verification,
@@ -241,6 +394,10 @@ def main() -> int:
         test_05_pr_review_generated_gate_contract,
         test_step6_tracker_approval_prerequisite,
         test_05_pr_review_tracker_update_responsibility,
+        test_step1_catalog_and_matrix_require_envelope_argument,
+        test_step6_archive_maintenance_docs_order_is_explicit,
+        test_completion_labels_keep_maintenance_docs_feature_branches,
+        test_representative_feature_renders_hide_disabled_contracts,
     ]
     passed = 0
     failed = 0

@@ -151,7 +151,7 @@ Step ① の要求分析を 3 段階ガード + 分析深度判定で統括す�
 
 1. 4分類サマリ（確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち）と受入条件を進捗通知として提示
 2. canonical requirements + AC から `requirements_digest`（SHA-256）を生成
-3. `workflow-gate.sh step1` PASS 後、親は同一ターンで Step②を dispatch する。進行可否の質問や要件確定 ack はしない
+3. {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} PASS 後、親は同一ターンで Step②を dispatch する。進行可否の質問や要件確定 ack はしない
 4. 実装開始の人間 STOP は完成 Step② report に対する PO の `implementation_approval` だけで判定する
 5. **R1**（AC/対象/対象外）: Step①再ゲート → digest再生成 → Step②再作成 → PO実装承認を再取得する。R1 で要件確認の再取得は禁止。**R2**（実装方針/変更ファイル/テスト計画）: Step②更新 + PO境界承認を再取得。**R3**（payload外 non-blocking 文言/完了チェック）: digest と承認を維持
 

@@ -30,7 +30,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-LINT | `bin/quality-gate lint` | exit 0 |
 | G-TEST | `bin/quality-gate test` | exit 0（全テスト PASS） |
 
-**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
+**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}コードゲートの実行{{/if}} は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:
 - 生成物に関わる変更: `bin/quality-gate gen && bin/quality-gate verify`
@@ -40,7 +40,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 #### Step4 完了チェックゲート
 
-`workflow-gate.sh step4` は、envelope 検査と profile 別コードゲートが exit 0 の場合だけ、対象レポート1件へ `gate-test.py` を実行する。`gate-test.py` は完了チェック節内の次の3項目を検査する。
+{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}profile 別コードゲート{{/if}} は、envelope 検査と profile 別コードゲートが exit 0 の場合だけ、対象レポート1件へ `gate-test.py` を実行する。`gate-test.py` は完了チェック節内の次の3項目を検査する。
 
 | 検査 ID | 項目 | 合格条件 |
 | --- | --- | --- |
@@ -50,10 +50,10 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 完了チェック見出しは `## 完了チェック` と番号付きの `## 10. 完了チェック` を認識し、見出しが重複する場合は fail-closed で exit 2 とする。3項目の未完了・欠落は exit 1、レポートパス不正・読込不能は exit 2 とする。
 
-CLI 契約は `gate-test.py <report-file> [--format=<human|json>]` または `gate-test.py <report-file> [--format <human|json>]` であり、`workflow-gate.sh step4` も同じ2形式を受理する。`--format=json` / `--format json` の JSON には正規化済み `report_path` と `exit_code` を含める。
+CLI 契約は `gate-test.py <report-file> [--format=<human|json>]` または `gate-test.py <report-file> [--format <human|json>]` であり、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` も同じ2形式を受理する{{else}}個別の `gate-test.py` がこの形式を受理する{{/if}}。`--format=json` / `--format json` の JSON には正規化済み `report_path` と `exit_code` を含める。
 
 JSON モードのストリーム契約:
-- `workflow-gate.sh` のゲートヘッダ、envelope / コードゲートの出力、引数エラーの `FATAL` は stderr に出力する
+- {{#if agent_workflow.gate_scripts}}`workflow-gate.sh`{{else}}各ゲート{{/if}} のゲートヘッダ、envelope / コードゲートの出力、引数エラーの `FATAL` は stderr に出力する
 - 引数エラー時は stdout を空にし、`gate-test.py` が生成する完了チェックの JSON 結果だけを stdout に出力する
 
 #### quality gate backend contract
@@ -109,7 +109,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 
 **Domain docs 同梱防止（application + maintenance-docs 有効時）**: `G-REPORT-DOC-SCOPE-001` は Step② で §6 の変更対象、§5 の直接書込み意図、AC の直接成果を検査し、queue または後続 `maintenance-docs-workflow` を伴わない Domain docs 成果を拒否する。`G-WRITE-SCOPE-BASE-001` は Step③ envelope `base_commit_sha` と report の `implementation-base-commit` を完全 SHA に正規化して一致検査する。`G-WRITE-SCOPE-DOMAIN-001` は report の基準から `git diff --name-only` と未追跡ファイルの和集合を検査し、Step③→④・Step⑤再実行・archive 前に Domain docs 実差分を拒否する。policy 無効時は既存 G-DOC-SPEC 経路を変更しない。
 
-**G-ARCHIVE の動作**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを確認し、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行する。archives 移動でキャンペーン完了を表現する。
+**G-ARCHIVE の動作**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs への仕様反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを確認し、`git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` を実行する。archives 移動でキャンペーン完了を表現する。
 {{#if agent_workflow.maintenance_docs.enabled}}
 **G-ARCHIVE-MDOCS の動作（maintenance-docs 起票判定 Hard Gate）**:
 
@@ -124,7 +124,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 
 `source_type: manual` の queue は突合スキャンから除外する。移行期間なし・即時 Hard Fail。
 
-**失敗時の戻り先**: レポートの maintenance-docs-judgment を確定し、必要に応じて queue ファイルを作成・修正した後 `workflow-gate.sh archive` を再実行する。
+**失敗時の戻り先**: レポートの maintenance-docs-judgment を確定し、必要に応じて queue ファイルを作成・修正した後 {{#if agent_workflow.gate_scripts}}`workflow-gate.sh archive`{{else}}`archive-gate.sh`{{/if}} を再実行する。
 {{/if}}
 {{/if}}
 
@@ -395,12 +395,14 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
+| **Step① 調査 → レポート** | Step① envelope complete + 調査結果の整理完了 | Step② worker dispatch 可 | `workflow-gate.sh step1 <step1-envelope>`（envelope 完全検査） |
 | **Step② 機械退出** | report + step2 envelope complete + `step2-report` PASS + `step2` PASS | 完成レポートを PO に提示して待機 | `workflow-gate.sh step2-report` → `workflow-gate.sh step2`。PO承認はこの機械ゲートに含めない |
 | **Step③ 親 pre-dispatch** | step2 envelope の `step=step2` + `status=complete` + CLI `report_path` と `envelope.report_path` の resolve 一致 + `implementation_approval.status: approved` + `decider: PO` + 必須payload抽出成功 + 現在reportからの digest 再計算一致 + 実装開始指示 | Step③ worker dispatch 可（exit 0 のみ） | 必須の親 pre-dispatch fail-closed 検査: `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path} --emit-validated-report-json`。checker は report を一度だけ読み、検証に使った同じ本文を `validated_report_snapshot` として返す。親はこれを改変せず worker へ渡し、worker は snapshot のみを実装方針入力とし、可変な `report_path` は成果記録の書戻し先に限定する。checker は状態を書き換えず非0で停止し、親が R1/R2 分類と pending 復帰を行う。相対パスは repo root cwd 基準で resolve。新規 shell gate / Hook ではない |
 | **実装 → 検証** | Step③ worker complete | ④ worker dispatch 可 | `workflow-gate.sh step3`（step3 complete → G-WRITE-SCOPE-BASE-001 → G-WRITE-SCOPE-DOMAIN-001） |
 | **Step④ コード検証** | step3 境界 PASS + Step④ worker complete | コードゲート + 完了チェック3項目を実行できる状態 | `workflow-gate.sh step4`（step3/step4 envelope + defense-in-depth の SHA/実差分検査 → profile selector → `gate-test.py`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
-| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}} + `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}。Step⑤の出口かつStep⑥の入口 |
+| **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |

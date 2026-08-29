@@ -34,7 +34,7 @@
 
 ## 親代行の禁止
 
-Subagent dispatch が指定された Step（①〜④）の worker 責務を、親が Subagent を dispatch せず直接実行してはならない。`workflow-gate.sh step2-report` は step1/step2 の complete envelope を、`workflow-gate.sh step4` は step3/step4 の complete envelope を必須検査するため、dispatch なしではゲートを通過できない。正規の親責務（Gate C の直接検査、ユーザーへの質問、deep-thinking 起動、Step ⑤⑥ の直接実行等）はこの制約の対象外である。
+Subagent dispatch が指定された Step（①〜④）の worker 責務を、親が Subagent を dispatch せず直接実行してはならない。{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step2-report` は step1/step2 の complete envelope を、`workflow-gate.sh step4` は step3/step4 の complete envelope を必須検査するため、{{else}}`gate-artifact.py` 等の個別ゲートが各 envelope を検査するため、{{/if}}dispatch なしではゲートを通過できない。正規の親責務（Gate C の直接検査、ユーザーへの質問、deep-thinking 起動、Step ⑤⑥ の直接実行等）はこの制約の対象外である。
 
 ## Subagent 起動方式
 
@@ -56,7 +56,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 6. Subagent 完了後、次ステップへの遷移:
    - 全終端状態で step envelope（`{{agent_workflow.artifact.dir}}/\{slug\}--step\{N\}.md`）の存在と YAML front matter を `gate-artifact.py` で検査する
    - worker が結果または有効な step envelope を返せない場合は、親の **ABORT**（dispatch failure）としてユーザーに報告する。`incomplete` への読み替えや自動再 dispatch はしない
-   - `complete`: Step①は4分類通知後、`workflow-gate.sh step1` PASS を確認した同一ターンで Step②を dispatchする。Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに `workflow-gate.sh step3 [report-file]`（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
+   - `complete`: Step①は4分類通知後、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} PASS を確認した同一ターンで Step②を dispatchする。Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}}（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
    - `incomplete`: 親が step envelope を読み、追加情報付与で再 dispatch
    - `blocked`: 親が reason に応じてエスカレーション
    - `fatal`: 親がユーザーに報告
@@ -72,7 +72,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 {{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` + `normalize_artifact_path` / `depth_triage_artifact_path`（中間 artifact 存在・schema・整合を `gate-artifact.py` が検査） |
 {{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
 {{/if}}| ② | `report_path` の存在 + 親による `step2-report` → `step2` PASS。step2 envelope の `implementation_approval` は `pending` + 候補 digest + `decider: PO` を必須とし、PO承認は機械退出条件に含めない |
-| ③ | `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合し、さらに `workflow-gate.sh step3 [report-file]` が step3 complete、report `implementation-base-commit` と envelope `base_commit_sha` の完全 SHA 一致、Domain 実差分を検査してから④を dispatch |
+| ③ | `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}} が step3 complete、report `implementation-base-commit` と envelope `base_commit_sha` の完全 SHA 一致、Domain 実差分を検査してから④を dispatch |
 | ④ | `gate_results` は `gen` / `build` / `lint` / `test` の4キーだけを持ち、`status: complete` では全値が整数 `0` + 親による `workflow-gate.sh step4` PASS。`PASS` / `SKIP` / `SKIPPED` / 文字列 `"0"` は禁止。application は `gen_artifact_paths` 非空時に変更有無を問わず G-GEN を実測し、空の場合だけ `gen: 0` と未実行理由を記録する。foundation は `bin/foundation-gate self` 成功時に全4キーを `0` へ正規化し、exit 1 のループ超過は blocked、exit 2 は fatal とする |
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。

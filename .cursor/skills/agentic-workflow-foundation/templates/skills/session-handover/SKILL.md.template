@@ -55,7 +55,7 @@ campaign_id は創設 session_id と同値のまま再開後も変更しない�
 .cursor/skills/session-handover/scripts/plan-gate.sh review   # レビュー→完了
 ```
 
-workflow-orchestrator 経由の初回 Step⑤（Mode A）は、レビュー委譲前に fail-closed な review-start 境界を通す。
+{{#if agent_workflow.gate_scripts}}workflow-orchestrator 経由の初回 Step⑤（Mode A）は、レビュー委譲前に fail-closed な review-start 境界を通す。
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
@@ -64,6 +64,7 @@ workflow-orchestrator 経由の初回 Step⑤（Mode A）は、レビュー委�
 ```
 
 このゲートは Step③/④ 再検証、report の `review-pr-url:` と canonical PR URL の一致、直前 prompt event の SHA-256 と鮮度、fresh な未退役 session、`review_go_id`、writer readback を結合する。report 本文の SHA-256 は計算しない。handoff / 新規チャット後は新 session で canonical PR URL を再送する。exit 0 以外ではレビューを委譲しない。standalone review と Mode B は対象外である。
+{{/if}}
 
 ## リンク衛生
 
