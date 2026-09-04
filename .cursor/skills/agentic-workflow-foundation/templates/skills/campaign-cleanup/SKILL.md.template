@@ -1,0 +1,106 @@
+---
+name: campaign-cleanup
+description: >-
+  現在の campaign を保護したまま、`.cursor/.tracking`・`.cursor/.artifacts`・`.cursor/.session`
+  に残る他 campaign の runtime を承認なしで削除する。キャンペーンの runtime 残存を
+  整理したいとき、tracker / handoff / session state / step envelope の掃除を依頼されたときに使う。
+  reports / Domain docs は変更しない。
+---
+
+# campaign-cleanup
+
+現在の campaign の runtime を保護し、それ以外の allowlist 内 runtime をまとめて削除するスキル。
+完了・未完了・stale・orphan の状態を推測して選別せず、現在の campaign だけを安全境界として扱う。
+
+## 対象と非対象
+
+対象は次の3ディレクトリ直下にある allowlist 済み regular file のみ。
+
+- `.cursor/.tracking/` — `tracker-{campaign_id}.md`
+- `.cursor/.artifacts/` — `{slug}--{suffix}.md`
+- `.cursor/.session/` — state / turns / progress / lock / checkpoint / pending-handoff / handoff /
+  consumed handoff / pre-compact / `compact-events.jsonl`
+
+次は絶対に変更しない。
+
+- `docs/agent-tasks/reports/`（直下・archives とも）、`docs/agent-tasks/reviews/`、`maintenance-docs/`
+- `docs/DECISIONS.md`、`docs/GOTCHAS.md`、Domain docs
+- `.cursor/hooks/`、`.cursor/skills/`、`.cursor/rules/`、`.cursor/plans/`
+- allowlist 外のファイル、git 管理下のファイル、symlink、ディレクトリ
+
+reports は current campaign の artifact を照合するために読み取ることがあるが、書込み・削除はしない。
+
+## 実行契約
+
+### 1. current campaign の確定
+
+`--current-session-id SID` は必須。SID は `[A-Za-z0-9._-]+` のみ受け付ける。
+`.cursor/.session/{SID}.json` を読み、次の全条件を満たす場合だけ current campaign を確定する。
+
+- JSON が妥当な object
+- `session_id` が SID と完全一致
+- 空でない `campaign_id` が `[A-Za-z0-9._-]+`
+
+未指定・不正な SID は exit 2、state の欠落・不正・不一致は exit 1 とする。
+`CTX_BUDGET_SESSION_ID`、最新 mtime、tracker 名の推測は使わない。
+
+### 2. apply（既定）
+
+スキル起動時はユーザー承認を待たず、直ちに `apply` を実行する。
+
+```bash
+.cursor/skills/session-handover/scripts/campaign-cleanup.sh \
+  apply --current-session-id <SID>
+```
+
+`apply` は保護対象と削除対象を表示したうえで、current campaign の runtime 一式を除く
+allowlist 内ファイルをすべて削除する。完了・未完了・stale・orphan による分岐は設けない。
+したがって並行 campaign の runtime を保持したい場合はスキルを実行しないこと。
+
+### 3. inventory（任意の dry-run）
+
+削除せずに保護対象 / 削除対象だけを確認するときだけ使う。スキルの必須手順ではない。
+
+```bash
+.cursor/skills/session-handover/scripts/campaign-cleanup.sh \
+  inventory --current-session-id <SID>
+```
+
+## current campaign の保護
+
+次を保護する。
+
+- current campaign の `tracker-{campaign_id}.md`
+- state の `campaign_id` が current campaign と一致する全 SID の state 一式
+- 上記 SID の `.lock`、checkpoint、pending-handoff、turns、progress、pre-compact snapshot
+- 上記 SID の active / consumed handoff
+- `campaign_slug`、report basename、tracker path のいずれかが current campaign と完全一致する artifact
+
+artifact の slug は substring で照合しない。current campaign への所属を判定できない artifact は
+current campaign の保護対象にせず、削除対象とする。
+
+current SID の state が無い場合は全体を停止する。current campaign 以外の unbound session も、
+このスキルの「現在の campaign 以外」に含まれるため削除対象となる。
+
+`compact-events.jsonl` は session / campaign に属さない共有校正ログであり、常に削除対象とする。
+削除後は Hook が再作成できるが、過去の校正履歴は失われる。
+
+## 安全規則
+
+- 削除のユーザー承認は行わない。確認だけしたい場合は任意の `inventory` を使う
+- スキルから `rm` / `rm -rf` を直接実行しない。削除は契約済みスクリプトだけに委譲する
+- `--include-current-session` や current campaign を削除する別モードを追加しない
+- allowlist 外、tracked file、symlink、未対応のディレクトリエントリを検知したら削除せず exit 2
+- commit / push を行わない
+
+## 事後確認
+
+apply 後に次を実行する。
+
+```bash
+.cursor/skills/session-handover/scripts/session-start-gate.sh
+git status --porcelain
+```
+
+runtime cleanup はコード変更の品質ゲートではない。ただし kit の template / manifest を変更した
+場合は、変更作業側で `project.quality_gate.profile` に対応する自己検証入口を実行する。

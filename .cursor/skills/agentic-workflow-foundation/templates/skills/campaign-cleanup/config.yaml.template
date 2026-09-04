@@ -1,0 +1,5 @@
+# campaign-cleanup 実行設定
+#
+# mode は cleanup の削除境界を表す固定 seed 値。
+# 現在の campaign 以外を削除し、現在の campaign は常に保護する。
+mode: current_campaign_only

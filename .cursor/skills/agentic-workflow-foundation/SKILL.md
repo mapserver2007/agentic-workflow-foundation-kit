@@ -8,7 +8,7 @@ description: >-
   .cursor/rules/*.mdc / .cursor/hooks/* / .cursor/hooks.json /
   docs/AGENT_RUNBOOK.md / DECISIONS.md / GOTCHAS.md / QUALITY_GATE.md /
   CONTEXT_BUDGET.md / docs/tech-stack.md / session-planning /
-  session-handover / .gitignore / .cursorignore）を
+  session-handover / campaign-cleanup / .gitignore / .cursorignore）を
   冪等・再現的に生成/メンテナンスする。「Agentic 基盤を生成して」
   「基盤ファイルを作って/更新して」「techstack を取り込んで再生成して」
   「session 系スキルも含めて整備して」「agentic-workflow-foundation スキル」
@@ -60,7 +60,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。SoT 更新時は対話 SKILL が `tmp/tech-stack-contract-draft.yaml` を起案し、`tech_contract.py` が検証・承認済み pin を行う。consumer は未承認契約を fail-closed で拒否する。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成し、承認済み `tech_contract.quality_gate` から `quality_gate_contract` を一時展開した skill-dir を作る。engine には解決済み入力だけを渡し、`outputs` は seed が単一 SoT であり root には保持しない。
-- **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。
+- **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `campaign-cleanup` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。runtime cleanup は current campaign を保護し、承認なしの apply で他 campaign の allowlist 内 runtime を削除する。
 
 ### 構成ファイル
 
@@ -399,7 +399,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
 - `bin/_github-auth.sh` / `bin/_github-{app,keychain}-auth.sh` は `code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に生成し、各 operation wrapper は対応 feature で条件生成する。API と Git は `init.yaml` の単一 provider を使用する。`github_app` は対象 owner/repo の installation を動的解決し、`keychain` は専用 service/account の PAT を完全一致で取得する。AI の clone/fetch/pull/push は wrapper 内で HTTPS + operation-scoped `GIT_ASKPASS` を使い、既存 credential helper と SSH remote を恒久変更しない。
-- `session-planning` / `session-handover` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
+- `session-planning` / `session-handover` / `campaign-cleanup` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
 
 ### Phase 3: 監査ゲート
 
