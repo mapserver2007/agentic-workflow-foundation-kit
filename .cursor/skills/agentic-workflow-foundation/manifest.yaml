@@ -996,6 +996,22 @@ outputs:
       - "## 追跡ドキュメントの存在保証"
       - "## ワークフローパターン"
       - "## 追跡ドキュメント"
+  - path: .cursor/skills/campaign-cleanup/SKILL.md
+    template: skills/campaign-cleanup/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: campaign-cleanup"
+      - "inventory"
+      - "apply"
+      - "--current-session-id"
+      - "current campaign"
+      - "reports / Domain docs"
+  - path: .cursor/skills/campaign-cleanup/config.yaml
+    template: skills/campaign-cleanup/config.yaml.template
+    mode: seed
+    required_sections:
+      - "mode: current_campaign_only"
+      - "current_campaign_only"
   - path: .cursor/skills/session-handover/SKILL.md
     template: skills/session-handover/SKILL.md.template
     mode: render
@@ -1011,6 +1027,19 @@ outputs:
     required_sections:
       - "quality gate profile"
       - "=== verification gate ==="
+  - path: .cursor/skills/session-handover/scripts/campaign-cleanup.sh
+    template: skills/session-handover/scripts/campaign-cleanup.sh.template
+    mode: render
+    executable: true
+    required_sections:
+      - "campaign-cleanup.sh"
+      - "inventory"
+      - "apply"
+      - "--current-session-id"
+      - "git ls-files"
+      - "symlink"
+      - "compact-events.jsonl"
+      - "rm -rf"
   - path: .cursor/skills/session-handover/scripts/session-start-gate.sh
     template: skills/session-handover/scripts/session-start-gate.sh.template
     mode: render

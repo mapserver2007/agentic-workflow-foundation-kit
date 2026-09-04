@@ -159,11 +159,17 @@ G-{GATE}-{CATEGORY}-{NNN}
 | --- | --- | --- |
 | G-SESSION-HANDOFF-001 | `.cursor/.session/handoff-*.md`（consumed 除外）が残存していない | WARN（exit 0）で残存パス表示（新規チャットの sessionStart Hook が consume すべき） |
 | G-SESSION-STALE-001 | `{{project.tracking_artifact}}` がファイル mtime 基準で 24 時間以上未更新でない | WARN（exit 0）で停滞ファイル列挙（注意喚起のみ） |
-| G-SESSION-DONE-001 | 完了チェックがすべて `[x]` の追跡ドキュメントが残存していない | WARN（exit 0）で残存ファイル列挙（削除を促す） |
+| G-SESSION-DONE-001 | 完了チェックがすべて `[x]` の追跡ドキュメントが残存していない | WARN（exit 0）で残存ファイル列挙（`campaign-cleanup` の apply を促す） |
 | G-SESSION-RED-CONTINUE-001 | 前セッションの state に `last_warning_level: "red"` が残存していない | WARN（exit 0）で Red 後継続を検出し新規チャット推奨 |
 | G-SESSION-TRACKER-001 | CHECKPOINT 発火可能（prompt_count >= {{framework.budget_thresholds.checkpoint_interval_prompts}}）だが追跡ドキュメントが session 開始前から未更新でない | WARN（exit 0）で追跡ドキュメント未更新を注意喚起 |
 
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
+
+**runtime cleanup の責務**: セッション開始ゲートは残存を検知するだけで削除しない。
+`.cursor/.tracking` / `.cursor/.artifacts` / `.cursor/.session` の整理は
+`.cursor/skills/campaign-cleanup/SKILL.md` に委譲する。`apply --current-session-id <SID>` を
+承認なしで実行する。`inventory` は任意の dry-run である。current campaign の
+tracker / session / handoff / linked artifact と、reports / Domain docs は対象外である。
 
 **campaign / session の識別子責務**: **親 = campaign、子 = session** とする。`campaign_id` は創設 `session_id` と同値の不変 IDであり、tracker（`{{project.tracking_artifact}}`）を解決する唯一のキーである。`session_id` は現在チャットの state / handoff / turns / progress に限定し、`campaign_slug` は report / envelope の命名用として別管理する。
 
@@ -244,7 +250,7 @@ workflow-gate.sh step6 TICKET-1234
 
 **設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。tech stack 変更時は、対話 SKILL で contract draft を起案 → `tech_contract.py validate --check` → PO 承認 → `tech_contract.py apply` で root manifest に pin → 承認済み contract を quality gate / CodeRabbit / Domain docs へ投影 → `run_resolved_engine.py generate` / `audit` の順に反映・検証する。
 
-**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後に手動で削除する。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
+**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。正式 artifact 確認後、必要な runtime の整理は `campaign-cleanup` の apply に委譲し、手動 `rm` は行わない。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 
 {{#if agent_workflow.artifact}}
 **artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。Step ③ `blocked: adr_required` 時は `base_commit_sha` と `decision_alternatives`（2 件以上）を必須化する（G-ARTIFACT-ADR-SHA-001 / G-ARTIFACT-ADR-ALTS-001）。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。
@@ -394,7 +400,7 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 {{#if agent_workflow.gate_scripts}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
-| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
+| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 必要な runtime cleanup の実行 | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
 | **Step① 調査 → レポート** | Step① envelope complete + 調査結果の整理完了 | Step② worker dispatch 可 | `workflow-gate.sh step1 <step1-envelope>`（envelope 完全検査） |
 | **Step② 機械退出** | report + step2 envelope complete + `step2-report` PASS + `step2` PASS | 完成レポートを PO に提示して待機 | `workflow-gate.sh step2-report` → `workflow-gate.sh step2`。PO承認はこの機械ゲートに含めない |
 | **Step③ 親 pre-dispatch** | step2 envelope の `step=step2` + `status=complete` + CLI `report_path` と `envelope.report_path` の resolve 一致 + `implementation_approval.status: approved` + `decider: PO` + 必須payload抽出成功 + 現在reportからの digest 再計算一致 + 実装開始指示 | Step③ worker dispatch 可（exit 0 のみ） | 必須の親 pre-dispatch fail-closed 検査: `python3 .cursor/skills/session-handover/scripts/gate-artifact.py --check-implementation-approval {step2_envelope} {report_path} --emit-validated-report-json`。checker は report を一度だけ読み、検証に使った同じ本文を `validated_report_snapshot` として返す。親はこれを改変せず worker へ渡し、worker は snapshot のみを実装方針入力とし、可変な `report_path` は成果記録の書戻し先に限定する。checker は状態を書き換えず非0で停止し、親が R1/R2 分類と pending 復帰を行う。相対パスは repo root cwd 基準で resolve。新規 shell gate / Hook ではない |
@@ -406,11 +412,11 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
-| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 完了キャンペーンの追跡ドキュメント削除済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
+| **セッション開始** | （前セッション終了時）handoff manifest 消費済み + 必要な runtime cleanup の実行 | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
 | **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `bin/quality-gate verify`（gen 対象変更時は先に `bin/quality-gate gen` + porcelain チェック） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
-| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了キャンペーンの追跡ドキュメントを削除 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ 追跡ドキュメントの残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
+| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了 campaign の runtime cleanup を apply で実行可能 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ runtime 残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
 {{/if}}
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
