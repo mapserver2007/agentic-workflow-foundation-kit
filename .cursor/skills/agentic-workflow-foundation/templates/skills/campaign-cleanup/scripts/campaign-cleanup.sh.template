@@ -10,7 +10,6 @@ PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 TRACKING_DIR="$PROJECT_DIR/.cursor/.tracking"
 ARTIFACTS_DIR="$PROJECT_DIR/.cursor/.artifacts"
-REPORTS_DIR="$PROJECT_DIR/docs/agent-tasks/reports"
 
 COMMAND=""
 CURRENT_SESSION_ID=""
@@ -94,7 +93,6 @@ if [[ "$PROJECT_DIR" != /* ]]; then
   SESSION_DIR="$PROJECT_DIR/.cursor/.session"
   TRACKING_DIR="$PROJECT_DIR/.cursor/.tracking"
   ARTIFACTS_DIR="$PROJECT_DIR/.cursor/.artifacts"
-  REPORTS_DIR="$PROJECT_DIR/docs/agent-tasks/reports"
 fi
 
 if command -v git >/dev/null 2>&1 && git -C "$PROJECT_DIR" rev-parse --show-toplevel >/dev/null 2>&1; then
@@ -181,7 +179,8 @@ scan_directory() {
 
 json_campaign_id() {
   local state_path="$1"
-  python3 - "$state_path" <<'PY'
+  local expected_session_id="$2"
+  python3 - "$state_path" "$expected_session_id" <<'PY'
 import json
 import re
 import sys
@@ -189,10 +188,12 @@ import sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         value = json.load(handle)
-except (OSError, ValueError):
+except (OSError, UnicodeError, ValueError):
     raise SystemExit(1)
 
-campaign_id = value.get("campaign_id") if isinstance(value, dict) else None
+if not isinstance(value, dict) or value.get("session_id") != sys.argv[2]:
+    raise SystemExit(1)
+campaign_id = value.get("campaign_id")
 if not isinstance(campaign_id, str) or re.fullmatch(r"[A-Za-z0-9._-]+", campaign_id) is None:
     raise SystemExit(1)
 print(campaign_id)
@@ -218,7 +219,7 @@ import sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         value = json.load(handle)
-except (OSError, ValueError):
+except (OSError, UnicodeError, ValueError):
     raise SystemExit(1)
 
 if not isinstance(value, dict):
@@ -266,7 +267,8 @@ collect_campaign_sessions() {
     base="$(basename "$path")"
     [[ "$base" =~ ^([A-Za-z0-9._-]+)\.json$ ]] || continue
     session_id="${BASH_REMATCH[1]}"
-    campaign_id="$(json_campaign_id "$path" 2>/dev/null)" || continue
+    campaign_id="$(json_campaign_id "$path" "$session_id" 2>/dev/null)" ||
+      fatal "session state を読み取れないため中止します: $(display_path "$path")"
     if [[ "$campaign_id" == "$CURRENT_CAMPAIGN_ID" ]]; then
       add_protected_session "$session_id"
     fi
@@ -276,8 +278,59 @@ collect_campaign_sessions() {
 collect_artifact_keys() {
   local key
   local tracker="$CURRENT_TRACKER_PATH"
-  [[ -f "$tracker" ]] || tracker=""
-  command -v python3 >/dev/null 2>&1 || fatal "artifact の campaign 所属判定に python3 が必要です"
+  local key_output
+  local has_artifacts=0
+  local i
+
+  for i in "${!CANDIDATE_KINDS[@]}"; do
+    if [[ "${CANDIDATE_KINDS[$i]}" == "artifacts" ]]; then
+      has_artifacts=1
+      break
+    fi
+  done
+
+  if [[ -L "$tracker" ]]; then
+    fatal "current tracker が symlink です: $(display_path "$tracker")"
+  fi
+  if [[ -e "$tracker" && ! -f "$tracker" ]]; then
+    fatal "current tracker が regular file ではありません: $(display_path "$tracker")"
+  fi
+  if [[ ! -e "$tracker" ]]; then
+    (( has_artifacts == 0 )) ||
+      fatal "artifact が存在するのに current tracker がありません: $(display_path "$tracker")"
+    return 0
+  fi
+
+  command -v python3 >/dev/null 2>&1 || fatal "tracker の所有キー判定に python3 が必要です"
+  key_output="$(
+    python3 - "$tracker" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+identifier = r"[A-Za-z0-9._-]+"
+tracker_path = Path(sys.argv[1])
+keys = set()
+
+def add(value):
+    if re.fullmatch(identifier, value):
+        keys.add(value)
+
+try:
+    tracker_text = tracker_path.read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+for field in ("campaign_slug",):
+    for match in re.finditer(rf"(?m)^\s*{field}:\s*[\"'`]?({identifier})[\"'`]?\s*$", tracker_text):
+        add(match.group(1))
+for match in re.finditer(rf"\.cursor/\.artifacts/({identifier})--", tracker_text):
+    add(match.group(1))
+
+for value in sorted(keys):
+    print(value)
+PY
+  )" || fatal "current tracker を読み取れないため中止します: $(display_path "$tracker")"
 
   while IFS= read -r key; do
     [[ -n "$key" ]] || continue
@@ -288,107 +341,22 @@ collect_artifact_keys() {
       done
     fi
     [[ -n "$key" ]] && CURRENT_ARTIFACT_KEYS+=("$key")
-  done < <(
-    python3 - "$tracker" "$REPORTS_DIR" "$CURRENT_TRACKER_REL" "$CURRENT_CAMPAIGN_ID" <<'PY'
-import re
-import sys
-from pathlib import Path
+  done <<< "$key_output"
 
-identifier = r"[A-Za-z0-9._-]+"
-tracker_path = Path(sys.argv[1]) if sys.argv[1] else None
-reports_dir = Path(sys.argv[2])
-tracker_rel = sys.argv[3]
-campaign_id = sys.argv[4]
-keys = set()
-
-def add(value):
-    if re.fullmatch(identifier, value):
-        keys.add(value)
-
-def read_text(path):
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        return ""
-
-tracker_text = read_text(tracker_path) if tracker_path else ""
-for field in ("campaign_slug", "report_slug"):
-    for match in re.finditer(rf"(?m)^\s*{field}:\s*[\"'`]?({identifier})[\"'`]?\s*$", tracker_text):
-        add(match.group(1))
-for match in re.finditer(rf"\.cursor/\.artifacts/({identifier})--", tracker_text):
-    add(match.group(1))
-for match in re.finditer(rf"docs/agent-tasks/reports/(?:archives/)?({identifier})\.md", tracker_text):
-    add(match.group(1))
-
-for directory in (reports_dir, reports_dir / "archives"):
-    if not directory.is_dir():
-        continue
-    for report in directory.glob("*.md"):
-        text = read_text(report)
-        if re.search(rf"(?m)^\s*campaign_id:\s*{re.escape(campaign_id)}\s*$", text):
-            add(report.stem)
-        if tracker_rel in text:
-            add(report.stem)
-
-for value in sorted(keys):
-    print(value)
-PY
-  )
+  (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 || has_artifacts == 0 )) ||
+    fatal "artifact が存在するのに current tracker に所有キーがありません: $(display_path "$tracker")"
 }
 
 artifact_belongs_to_current() {
   local artifact_path="$1"
-  local -a key_args=()
-  if (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 )); then
-    key_args=("${CURRENT_ARTIFACT_KEYS[@]}")
-  fi
-  python3 - "$artifact_path" "$CURRENT_TRACKER_REL" "${key_args[@]}" <<'PY'
-import re
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-tracker_rel = sys.argv[2]
-keys = set(sys.argv[3:])
-identifier = r"[A-Za-z0-9._-]+"
-
-try:
-    text = path.read_text(encoding="utf-8")
-except (OSError, UnicodeError):
-    raise SystemExit(1)
-
-prefix = path.name.split("--", 1)[0]
-if prefix in keys:
-    raise SystemExit(0)
-
-front_matter = text
-if text.startswith("---\n"):
-    parts = text.split("\n---", 2)
-    front_matter = parts[0][4:] if len(parts) >= 2 else text
-
-for field in ("campaign_slug", "report_slug"):
-    match = re.search(rf"(?m)^\s*{field}:\s*[\"'`]?({identifier})[\"'`]?\s*$", front_matter)
-    if match and match.group(1) in keys:
-        raise SystemExit(0)
-
-if re.search(rf"(?m)(?:^|[\s`]){re.escape(tracker_rel)}(?:$|[\s`])", text):
-    raise SystemExit(0)
-for match in re.finditer(rf"docs/agent-tasks/reports/(?:archives/)?({identifier})\.md", text):
-    if match.group(1) in keys:
-        raise SystemExit(0)
-
-for field in ("report_path", "tracker_path", "tracking_artifact"):
-    match = re.search(rf"(?m)^\s*{field}:\s*[\"'`]?([^\"'`\s]+)[\"'`]?\s*$", front_matter)
-    if not match:
-        continue
-    value = match.group(1).replace("\\", "/")
-    if field == "report_path" and value.endswith(".md") and Path(value).stem in keys:
-        raise SystemExit(0)
-    if field != "report_path" and value == tracker_rel:
-        raise SystemExit(0)
-
-raise SystemExit(1)
-PY
+  local prefix
+  local key
+  prefix="$(basename "$artifact_path")"
+  prefix="${prefix%%--*}"
+  for key in "${CURRENT_ARTIFACT_KEYS[@]}"; do
+    [[ "$prefix" == "$key" ]] && return 0
+  done
+  return 1
 }
 
 session_file_belongs_to_current() {

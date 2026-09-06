@@ -85,14 +85,3 @@ handover には、次セッションが参照すべき一次情報へのリン�
 3. git status と差分を確認し、ユーザー変更を壊さない
 4. 直近の検証結果を確認し、必要なら最小ゲートを再実行する
 5. 次アクションを1つに絞って再開する
-
-## キャンペーン runtime の整理
-
-campaign の完了は report の archives 移動で表現し、runtime の寿命管理は
-[`campaign-cleanup`](../campaign-cleanup/SKILL.md) に委譲する。cleanup は current campaign の
-tracker / session / handoff / linked artifact を常に保護し、別 campaign の runtime だけを対象にする。
-
-cleanup はユーザー承認を待たず `apply` を実行する。`inventory` は任意の dry-run である。完了した campaign を
-削除対象にしたい場合は、その campaign に bind した handoff を持たない session で apply する。
-session が完了しただけで自動削除してはならない。reports / Domain docs と、設計判断・失敗の記録
-（`docs/DECISIONS.md` / `docs/GOTCHAS.md`）は本スキルの対象外である。
