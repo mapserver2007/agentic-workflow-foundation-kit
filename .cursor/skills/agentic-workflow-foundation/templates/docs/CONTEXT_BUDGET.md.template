@@ -83,24 +83,7 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 {{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
 
-tracker は current campaign の runtime として保護される。完了 campaign を含む他 campaign の runtime は
-[`campaign-cleanup`](../.cursor/skills/campaign-cleanup/SKILL.md) の apply で承認なしに削除する。
-session が完了しただけでは自動削除しない。確認だけしたい場合は任意の inventory を使う。
-
-## runtime cleanup
-
-runtime cleanup の対象は `.cursor/.tracking/`、`.cursor/.artifacts/`、`.cursor/.session/` の
-allowlist 内ファイルだけである。reports（archives を含む）、reviews、maintenance-docs、Domain docs、
-Meta docs は対象外で、report の archive 移動は Step ⑥が担う。
-
-```bash
-.cursor/skills/session-handover/scripts/campaign-cleanup.sh \
-  apply --current-session-id <SID>
-```
-
-`apply` は state の `session_id` と指定 SID が一致し、空でない `campaign_id` を解決できる場合だけ
-実行される。current campaign の tracker、全 SID の session runtime、linked artifact は保護される。
-`compact-events.jsonl` は共有校正ログのため保護されず、apply で削除される。
+tracker は campaign の runtime として保持される。session が完了しただけでは自動削除しない。
 
 ## campaign_id と session_id
 

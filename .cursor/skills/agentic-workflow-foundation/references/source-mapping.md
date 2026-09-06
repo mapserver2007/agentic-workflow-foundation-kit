@@ -42,7 +42,7 @@
 | `tech_contract.domain_docs.resolved` | `docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/coding-standards.md` / `docs/workflows.md`（Domain 層スケルトン。承認済み contract の sections/content をそのまま投影、seed モード） |
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
-| `outputs[]`（campaign cleanup） | `.cursor/skills/campaign-cleanup/SKILL.md` / `.cursor/skills/campaign-cleanup/config.yaml` / `.cursor/skills/session-handover/scripts/campaign-cleanup.sh`。allowlist 内 runtime の current campaign 保護と承認なし apply の削除境界 |
+| `outputs[]`（campaign cleanup） | `.cursor/skills/campaign-cleanup/SKILL.md` / `.cursor/skills/campaign-cleanup/config.yaml` / `.cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh`。allowlist 内 runtime の current campaign 保護と承認なし apply の削除境界 |
 | `framework.security` | `AGENTS.md > Boundaries`（宣言的ルール）/ `.cursor/hooks/guard-git-write.sh`（deterministic deny/ask 強制）/ `.cursor/skills/agent-code-review/references/gh-commands.md`（レビュー用 wrapper コマンドリファレンス）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（PR 作成用 wrapper コマンドリファレンス） |
 | `github_pr` | `.cursor/skills/agent-github-pr/SKILL.md`（PR 作成ワークフロー）/ `.cursor/skills/agent-github-pr/references/pr-commands.md`（`github-pr-create-safe` wrapper 仕様） |
 | `init.yaml > github_access` → root/resolved `github_access` | `bin/_github-auth.sh`（provider dispatcher / API・HTTPS Git 共通契約）/ `bin/_github-{app,keychain}-auth.sh`（backend）/ `bin/github-git-fetch-safe` / `bin/github-*-safe` / `bin/cross-repo-sync-safe`。token / PAT / JWT 本体は manifest に保持しない |

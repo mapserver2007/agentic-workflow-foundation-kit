@@ -9,15 +9,14 @@
 このプロジェクトのパターン: **{{project.workflow_pattern}}**（開発型専用。主アウトプットは動くアプリケーション、検証は自動テスト + ビルド + 型チェック）。
 
 - 主アウトプットと生成/検証ゲート: `bin/quality-gate gen` / `bin/quality-gate build` / `bin/quality-gate lint` / `bin/quality-gate test`
-- 追跡ドキュメント: `{{project.tracking_artifact}}`（キャンペーン単位の SoT。`.gitignore` 対象。current campaign は保護し、他 campaign の runtime は `campaign-cleanup` の apply で削除）
+- 追跡ドキュメント: `{{project.tracking_artifact}}`（キャンペーン単位の SoT。`.gitignore` 対象）
 - 識別子の親子関係: **親 = campaign、子 = session**。`campaign_id` は創設 `session_id` と同値で以後不変、`campaign_slug`（report / envelope 用）とは別
-{{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate、runtime の整理は `campaign-cleanup` が行う）{{/if}}
-- runtime 整理: `campaign-cleanup` は current campaign の runtime を保護し、承認なしの apply で他 campaign の allowlist 内 runtime を削除する。reports / Domain docs は対象外
+{{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate）{{/if}}
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
 - **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
-- **runtime 保護**: current campaign の tracker / session / handoff / linked artifact は `campaign-cleanup` でも削除しない。完了 campaign の runtime は別 session からの apply で削除する
+- **runtime 保護**: current campaign の tracker / session / handoff / linked artifact はセッション再開に必要な runtime として保護する
 {{#if agent_workflow.artifact}}- **step envelope の削除**: 前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。削除前にオーケストレータが `gate-artifact.py` で検証する（誤削除防止）。最終的な残存検査・削除は archive gate が行う{{/if}}
 
 ## Documentation Naming Convention
@@ -159,7 +158,6 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン
 {{/if}}
-- **`.cursor/skills/campaign-cleanup/SKILL.md`**: current campaign を保護した runtime apply（inventory は任意の dry-run）
 {{#if deep_thinking.enabled}}
 ### 多角評価（deep_thinking 有効時）
 - **`.cursor/skills/deep-thinking/SKILL.md`**: 内部で A/B 並列分析 + C 統合裁定を行い、通常のチャット返答と同じ体裁で応答する多角評価スキル

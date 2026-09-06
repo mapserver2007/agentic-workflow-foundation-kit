@@ -28,7 +28,7 @@ description: >-
 - `.cursor/hooks/`、`.cursor/skills/`、`.cursor/rules/`、`.cursor/plans/`
 - allowlist 外のファイル、git 管理下のファイル、symlink、ディレクトリ
 
-reports は current campaign の artifact を照合するために読み取ることがあるが、書込み・削除はしない。
+reports / Domain docs は読み書きせず、cleanup の対象外とする。
 
 ## 実行契約
 
@@ -49,7 +49,7 @@ reports は current campaign の artifact を照合するために読み取る�
 スキル起動時はユーザー承認を待たず、直ちに `apply` を実行する。
 
 ```bash
-.cursor/skills/session-handover/scripts/campaign-cleanup.sh \
+.cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh \
   apply --current-session-id <SID>
 ```
 
@@ -62,7 +62,7 @@ allowlist 内ファイルをすべて削除する。完了・未完了・stale�
 削除せずに保護対象 / 削除対象だけを確認するときだけ使う。スキルの必須手順ではない。
 
 ```bash
-.cursor/skills/session-handover/scripts/campaign-cleanup.sh \
+.cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh \
   inventory --current-session-id <SID>
 ```
 
@@ -74,16 +74,21 @@ allowlist 内ファイルをすべて削除する。完了・未完了・stale�
 - state の `campaign_id` が current campaign と一致する全 SID の state 一式
 - 上記 SID の `.lock`、checkpoint、pending-handoff、turns、progress、pre-compact snapshot
 - 上記 SID の active / consumed handoff
-- `campaign_slug`、report basename、tracker path のいずれかが current campaign と完全一致する artifact
+- tracker の `campaign_slug:` または `.cursor/.artifacts/{slug}--` の明示参照により current campaign に所属すると判定できる artifact
 
-artifact の slug は substring で照合しない。current campaign への所属を判定できない artifact は
-current campaign の保護対象にせず、削除対象とする。
+artifact の slug は substring で照合しない。tracker の明示参照から current campaign への所属を判定できない artifact は
+保護対象にせず、削除対象とする。current tracker が存在する場合は、所有キーを読み取れない状態を
+正常な非所属として扱わず、fail-closed で停止する。
 
 current SID の state が無い場合は全体を停止する。current campaign 以外の unbound session も、
 このスキルの「現在の campaign 以外」に含まれるため削除対象となる。
 
 `compact-events.jsonl` は session / campaign に属さない共有校正ログであり、常に削除対象とする。
 削除後は Hook が再作成できるが、過去の校正履歴は失われる。
+
+current tracker の欠落は artifact が存在しない場合だけ許容する。artifact が存在するのに
+tracker が欠落している、または tracker に所有キーがない場合は、所属を判定できないため
+削除せず exit 2 で停止する。
 
 ## 安全規則
 
@@ -98,7 +103,6 @@ current SID の state が無い場合は全体を停止する。current campaign
 apply 後に次を実行する。
 
 ```bash
-.cursor/skills/session-handover/scripts/session-start-gate.sh
 git status --porcelain
 ```
 

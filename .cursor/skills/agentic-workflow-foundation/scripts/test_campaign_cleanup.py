@@ -11,7 +11,10 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-TEMPLATE = HERE.parent / "templates" / "skills" / "session-handover" / "scripts" / "campaign-cleanup.sh.template"
+TEMPLATE = HERE.parent / "templates" / "skills" / "campaign-cleanup" / "scripts" / "campaign-cleanup.sh.template"
+PROJECT_ROOT = HERE.parents[3]
+GENERATED_SCRIPT = PROJECT_ROOT / ".cursor" / "skills" / "campaign-cleanup" / "scripts" / "campaign-cleanup.sh"
+LEGACY_GENERATED_SCRIPT = PROJECT_ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "campaign-cleanup.sh"
 
 
 def write_script(root: Path) -> Path:
@@ -51,6 +54,13 @@ def touch(root: Path, relative: str, content: str = "runtime\n") -> Path:
     return path
 
 
+def touch_bytes(root: Path, relative: str, content: bytes) -> Path:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
 def test_inventory_and_apply_protect_current_campaign() -> None:
     with tempfile.TemporaryDirectory(prefix="campaign-cleanup-") as tmp:
         root = Path(tmp)
@@ -60,11 +70,25 @@ def test_inventory_and_apply_protect_current_campaign() -> None:
         state(root, "S2", "C1")
         state(root, "S3", "C2")
 
-        touch(root, ".cursor/.tracking/tracker-C1.md", "report_path: docs/agent-tasks/reports/TICKET-current.md\n")
+        touch(
+            root,
+            ".cursor/.tracking/tracker-C1.md",
+            "campaign_slug: TICKET-current\n"
+            "report_path: docs/agent-tasks/reports/TICKET-report.md\n"
+            ".cursor/.artifacts/TICKET-current--step1.md\n",
+        )
         touch(root, ".cursor/.tracking/tracker-C2.md")
         touch(root, ".cursor/.artifacts/TICKET-current--step1.md", "campaign_slug: TICKET-current\n")
         touch(root, ".cursor/.artifacts/TICKET-current-extra--step1.md")
         touch(root, ".cursor/.artifacts/TICKET-other--step1.md")
+        touch(
+            root,
+            ".cursor/.artifacts/TICKET-report--step1.md",
+            "report_slug: TICKET-current\nreport_path: docs/agent-tasks/reports/TICKET-report.md\n",
+        )
+        touch(root, ".cursor/.artifacts/C1--step1.md", "campaign_slug: C1\n")
+        touch(root, "docs/agent-tasks/reports/TICKET-report.md", "campaign_id: C1\n")
+        touch(root, "docs/agent-tasks/reports/archives/TICKET-archive.md", "campaign_id: C1\n")
         touch(root, ".cursor/.session/S1.turns.jsonl")
         touch(root, ".cursor/.session/S1.progress.jsonl")
         touch(root, ".cursor/.session/S1.lock")
@@ -94,10 +118,12 @@ def test_inventory_and_apply_protect_current_campaign() -> None:
         assert ".cursor/.session/compact-events.jsonl" in delete_section
         assert ".cursor/.artifacts/TICKET-current-extra--step1.md" in delete_section
         assert ".cursor/.artifacts/TICKET-other--step1.md" in delete_section
+        assert ".cursor/.artifacts/TICKET-report--step1.md" in delete_section
+        assert ".cursor/.artifacts/C1--step1.md" in delete_section
 
         applied = run(script, root, "apply", "--current-session-id", "S1")
         assert applied.returncode == 0, applied.stderr
-        assert "deleted: 9" in applied.stdout, applied.stdout
+        assert "deleted: 11" in applied.stdout, applied.stdout
         for relative in (
             ".cursor/.tracking/tracker-C1.md",
             ".cursor/.artifacts/TICKET-current--step1.md",
@@ -113,6 +139,8 @@ def test_inventory_and_apply_protect_current_campaign() -> None:
             ".cursor/.tracking/tracker-C2.md",
             ".cursor/.artifacts/TICKET-current-extra--step1.md",
             ".cursor/.artifacts/TICKET-other--step1.md",
+            ".cursor/.artifacts/TICKET-report--step1.md",
+            ".cursor/.artifacts/C1--step1.md",
             ".cursor/.session/S3.json",
             ".cursor/.session/S3.turns.jsonl",
             ".cursor/.session/handoff-S3.md",
@@ -120,6 +148,8 @@ def test_inventory_and_apply_protect_current_campaign() -> None:
             ".cursor/.session/compact-events.jsonl",
         ):
             assert not (root / relative).exists(), f"other runtime remains: {relative}"
+        assert (root / "docs/agent-tasks/reports/TICKET-report.md").is_file()
+        assert (root / "docs/agent-tasks/reports/archives/TICKET-archive.md").is_file()
 
 
 def test_current_state_and_path_safety_fail_closed() -> None:
@@ -140,6 +170,63 @@ def test_current_state_and_path_safety_fail_closed() -> None:
         assert symlink_result.returncode == 2
         assert outside.is_file()
         assert link.is_symlink()
+
+
+def test_tracker_ownership_evidence_is_required_when_artifacts_exist() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-ownership-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        artifact = touch(root, ".cursor/.artifacts/OTHER--step1.md")
+
+        missing_tracker = run(script, root, "apply", "--current-session-id", "S1")
+        assert missing_tracker.returncode == 2
+        assert artifact.is_file()
+
+        touch(root, ".cursor/.tracking/tracker-C1.md", "report_path: docs/report.md\n")
+        empty_keys = run(script, root, "inventory", "--current-session-id", "S1")
+        assert empty_keys.returncode == 2
+        assert artifact.is_file()
+
+
+def test_tracker_read_failure_and_broken_other_state_abort_without_deletion() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-read-failure-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        tracker = touch_bytes(root, ".cursor/.tracking/tracker-C1.md", b"campaign_slug: \xff\n")
+        artifact = touch(root, ".cursor/.artifacts/OTHER--step1.md")
+
+        unreadable = run(script, root, "apply", "--current-session-id", "S1")
+        assert unreadable.returncode == 2
+        assert tracker.is_file()
+        assert artifact.is_file()
+
+        tracker.write_text("campaign_slug: TICKET-current\n", encoding="utf-8")
+        broken_state = touch_bytes(root, ".cursor/.session/S2.json", b"{\xff")
+        blocked = run(script, root, "apply", "--current-session-id", "S1")
+        assert blocked.returncode == 2
+        assert broken_state.is_file()
+        assert artifact.is_file()
+
+
+def test_explicit_tracker_artifact_path_is_authoritative() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-explicit-path-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        touch(
+            root,
+            ".cursor/.tracking/tracker-C1.md",
+            "` .cursor/.artifacts/EXPLICIT--step1.md `\n",
+        )
+        protected = touch(root, ".cursor/.artifacts/EXPLICIT--step1.md")
+        extra = touch(root, ".cursor/.artifacts/EXPLICIT-extra--step1.md")
+
+        result = run(script, root, "apply", "--current-session-id", "S1")
+        assert result.returncode == 0, result.stderr
+        assert protected.is_file()
+        assert not extra.exists()
 
 
 def test_tracked_file_is_rejected_before_delete() -> None:
@@ -203,13 +290,22 @@ def test_invalid_arguments_and_allowlist_are_rejected() -> None:
         assert unknown.is_file()
 
 
+def test_generated_script_uses_skill_owned_path() -> None:
+    assert GENERATED_SCRIPT.is_file(), f"generated script is missing: {GENERATED_SCRIPT}"
+    assert not LEGACY_GENERATED_SCRIPT.exists(), f"legacy script remains: {LEGACY_GENERATED_SCRIPT}"
+
+
 def main() -> int:
     tests = (
         test_inventory_and_apply_protect_current_campaign,
         test_current_state_and_path_safety_fail_closed,
+        test_tracker_ownership_evidence_is_required_when_artifacts_exist,
+        test_tracker_read_failure_and_broken_other_state_abort_without_deletion,
+        test_explicit_tracker_artifact_path_is_authoritative,
         test_tracked_file_is_rejected_before_delete,
         test_empty_runtime_directories_do_not_abort_under_set_u,
         test_invalid_arguments_and_allowlist_are_rejected,
+        test_generated_script_uses_skill_owned_path,
     )
     for test in tests:
         try:

@@ -64,7 +64,7 @@ campaign と session は別の責務を持つ。`campaign_id` は sessionStart �
 | **役割** | 複数 session にまたがる campaign の SoT | 現在の session 固有の揮発情報 + campaign tracker へのポインタ |
 | **含める情報** | フェーズ・TODO・完了条件・判断ログ・ブロッカー | tracker のどこにいるか + tracker に未反映の差分 |
 | **更新タイミング** | セッション中に随時 | Yellow/Red 到達時のみ |
-| **ライフサイクル** | キャンペーン完了時に削除 | 次セッションで消費されて消える |
+| **ライフサイクル** | session 完了だけでは消えない campaign runtime として保持される | 次セッションで消費されて消える |
 | **矛盾時の優先** | **常に tracker が正** | tracker の劣化コピーとして扱う |
 
 handoff の `campaign_id` が次の session の state へコピーされ、`tracker-{campaign_id}.md` の同じファイルへ bind する。`campaign_id` のない handoff は本文を注入するだけで、最新 tracker の推定や自動 bind は行わない。

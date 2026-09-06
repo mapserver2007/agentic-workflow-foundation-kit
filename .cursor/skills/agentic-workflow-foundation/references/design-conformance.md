@@ -94,6 +94,9 @@
 - `apply`（既定、承認なし） / `inventory`（任意 dry-run）: `--current-session-id` による current campaign 解決と削除境界。
 - `reports / Domain docs`: runtime cleanup の責務外を明示し、report archive と Domain docs 更新を混同しないこと。
 
+### .cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh
+- allowlist 内 runtime の current campaign 保護と、他 campaign runtime の承認なし apply を実装する。
+
 ### .cursor/skills/session-handover/scripts/verification-gate.sh
 - `session.verification.gate_command`: 生成済み root `manifest.yaml` の検証コマンドが展開されていること。
 - `=== verification gate ===`: 実行ログでゲート実行を識別できること。

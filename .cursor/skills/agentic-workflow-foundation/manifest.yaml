@@ -1027,8 +1027,8 @@ outputs:
     required_sections:
       - "quality gate profile"
       - "=== verification gate ==="
-  - path: .cursor/skills/session-handover/scripts/campaign-cleanup.sh
-    template: skills/session-handover/scripts/campaign-cleanup.sh.template
+  - path: .cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh
+    template: skills/campaign-cleanup/scripts/campaign-cleanup.sh.template
     mode: render
     executable: true
     required_sections:
