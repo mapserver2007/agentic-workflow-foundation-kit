@@ -83,8 +83,7 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 {{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
 
-tracker は campaign の runtime として保持される。session が完了しただけでは自動削除せず、
-campaign 完了後に整理対象となりうる。
+tracker は campaign の runtime として保持される。session が完了しただけでは自動削除しない。
 
 ## campaign_id と session_id
 
