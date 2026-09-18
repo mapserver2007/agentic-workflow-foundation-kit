@@ -36,6 +36,8 @@ description: >
 - transport は HTTPS 固定で、`github_access` の選択 provider を API と共用する。既存 clone の origin が SSH でも恒久変更せず invocation 単位で HTTPS を使う
 - clone 先は `clone_base_path` 配下のみ。clone 先への書き込み（コミット・プッシュ等）は一切禁止
 - `name` は `^[A-Za-z0-9._-]+$` でバリデーション済みの値のみ使用（wrapper が検証）
+- `config.json > repositories[]` の `active` は省略時 `false`。`active: true` のエントリだけを同期する
+- 各 repository エントリの `branch` は省略時または空文字を既定とし、空なら `origin/HEAD`、非空なら指定されたリモートブランチを使用する（wrapper が ref 形式と存在を検証）
 - 知識参照のたびに `bin/cross-repo-sync-safe sync` を毎回実行する（clone 済みでも省略しない）
 - 同期失敗時は関連リポの知識なしで可能な範囲で回答する
 - exit code: `0` = 成功 / `1` = 操作失敗（ネットワーク/認証を確認案内）/ `2` = 致命的エラー（config.json 確認案内。`clone_base_path` 消失を含む）
@@ -68,7 +70,7 @@ Step 3: 知識参照（AGENTS.md → CLAUDE.md → コードサーチの 3 段�
 
 ### Step 1: 設定読み込みと対象特定
 
-config.json を読み込み、`active: true` のリポジトリから必要な知識に関連するリポジトリを特定する。必要なリポジトリのみを同期する。設定値の詳細・バリデーション手順は [`references/repository-admin.md`](references/repository-admin.md) を参照。
+config.json を読み込み、`repositories[]` から `active: true` のリポジトリを対象に、必要な知識に関連するリポジトリを特定する。対象エントリの `branch` が空なら `origin/HEAD`、非空なら指定ブランチで同期する。設定値の詳細・バリデーション手順は [`references/repository-admin.md`](references/repository-admin.md) を参照。
 
 ### Step 2: リポジトリ同期
 

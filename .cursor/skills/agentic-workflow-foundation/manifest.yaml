@@ -1783,10 +1783,14 @@ outputs:
       - "Step Gate Matrix"
       - "Hard Stop"
       - "## 関連スキル"
+      - "active: true"
+      - "origin/HEAD"
   - path: .cursor/skills/cross-repository-knowledge-link/config.json
     template: skills/cross-repository-knowledge-link/config.json.template
     mode: seed
     feature: cross_repo_knowledge
+    required_sections:
+      - '"repositories": []'
   - path: .cursor/skills/cross-repository-knowledge-link/references/sync-commands.md
     template: skills/cross-repository-knowledge-link/references/sync-commands.md.template
     mode: render
@@ -1795,6 +1799,8 @@ outputs:
       - "cross-repo-sync-safe"
       - "エラーハンドリング詳細"
       - "追跡ドキュメント"
+      - "origin/HEAD"
+      - "repositories[]"
   - path: .cursor/skills/cross-repository-knowledge-link/references/knowledge-retrieval.md
     template: skills/cross-repository-knowledge-link/references/knowledge-retrieval.md.template
     mode: render
@@ -1814,6 +1820,8 @@ outputs:
       - "バリデーション"
       - "追加フロー"
       - "無効化フロー"
+      - "active: false"
+      - "origin/HEAD"
   - path: bin/cross-repo-sync-safe
     template: bin/cross-repo-sync-safe.template
     mode: render
@@ -1823,6 +1831,9 @@ outputs:
       - "cross-repo-sync-safe"
       - "validate_name"
       - "clone_base_path"
+      - "REPO_ACTIVE"
+      - "REPO_BRANCH"
+      - "origin/HEAD"
   # agent-kaizen スキル（feature: agent_kaizen で条件生成）。
   # agent_kaizen.enabled: true の場合のみ生成される。
   # kit 内部の manifest→生成物チェーンの整合性を検査し、defect を .cursor/plans/ に出力する。

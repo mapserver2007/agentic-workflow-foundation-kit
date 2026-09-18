@@ -16,7 +16,9 @@ wrapper が内部で以下を実行する。network operation はすべて `gith
    - 既存パスが健全 → fetch
    - 既存だが非健全なパス（通常ファイル・dangling symlink を含む。破損・bare・親リポジトリ配下のサブディレクトリ）→ 固定形式 `mv` 退避（`{name}-yyyyMMddhhmmss`）→ 再 clone
 2. origin を invocation 単位で HTTPS に上書きして fetch
-3. 最新ブランチの自動特定（remote ref 列挙失敗は exit 1。列挙成功後、`origin/<branch>` 形式のみ採用し、`origin/HEAD` および `origin` 裸 ref を除外）
+3. 同期ブランチの決定
+   - 対象 `repositories[]` エントリの `branch` が空（既定）: `origin/HEAD` が指すリモート既定ブランチ
+   - 対象 `repositories[]` エントリの `branch` が非空: ユーザーが指定したブランチ（ref 形式と `origin/<branch>` の存在を検証）
 4. ブランチ切り替え + pull（pull 失敗時は WARN + exit 0 で継続）
 
 破損退避の詳細:
@@ -63,7 +65,9 @@ bin/cross-repo-sync-safe status .cursor/skills/cross-repository-knowledge-link/c
 | 破損検知 → 退避先衝突（dangling symlink を含む） | exit 1 | 退避先パスの存在を確認するようユーザーに案内。秒が変われば新しい退避先になり、再実行で解消し得る |
 | 破損検知 → 退避成功 → clone 失敗 | exit 1（退避物は残る） | ネットワーク / 認証を確認するようユーザーに案内。clone 先が不在なら次回 sync は通常 clone、部分ディレクトリが残存した場合は再退避して clone |
 | 健全時の fetch 失敗 | exit 1（退避しない） | ネットワーク / 認証設定を確認するようユーザーに案内 |
-| remote ref 列挙失敗 | exit 1 | リポジトリの ref 状態を確認するようユーザーに案内 |
+| `branch` の形式不正 | exit 2 | 対象 repository エントリの `branch` を有効なブランチ名へ修正するようユーザーに案内 |
+| `origin/HEAD` 解決失敗 | exit 1 | リモートの default branch 設定と clone の ref 状態を確認するようユーザーに案内 |
+| 指定ブランチ不在 | exit 1 | 対象 repository エントリの `branch` とリモートブランチを確認するようユーザーに案内 |
 | pull 失敗 | WARN + exit 0（成功 JSON） | fetch 済み状態で継続。知識参照は可能 |
 | clone 失敗（初回） | exit 1 | ネットワーク / 認証設定を確認するようユーザーに案内 |
 | AGENTS.md 不在 | — | パターン B の CLAUDE.md フォールバックへ（[`references/knowledge-retrieval.md`](knowledge-retrieval.md) 参照） |
