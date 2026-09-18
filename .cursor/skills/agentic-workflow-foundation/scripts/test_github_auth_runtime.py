@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -534,6 +535,179 @@ def _test_cross_repo_wrapper_exit_codes(errors: list[str]) -> None:
         _assert(result_inactive.returncode == 2, "inactive repo should exit 2", errors)
 
 
+def _test_cross_repo_branch_selection(errors: list[str]) -> None:
+    """ローカル remote fixture で既定 branch と明示 branch の選択を検証する。"""
+    cross_repo = (BIN_TEMPLATES / "cross-repo-sync-safe.template").read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="github-crossrepo-branch-fixture-") as tmp:
+        root = Path(tmp)
+        remote = root / "remote.git"
+        source = root / "source"
+        subprocess.run(
+            ["git", "init", "--bare", str(remote)],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "init", str(source)],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        def source_git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args],
+                cwd=source,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        source_git("config", "user.name", "cross-repo-fixture")
+        source_git("config", "user.email", "cross-repo-fixture@example.invalid")
+        (source / "README.md").write_text("main\n", encoding="utf-8")
+        source_git("add", "README.md")
+        source_git("commit", "-m", "main")
+        source_git("branch", "-M", "main")
+        source_git("remote", "add", "origin", str(remote))
+        source_git("push", "-u", "origin", "main")
+        source_git("checkout", "-q", "-b", "topic")
+        (source / "README.md").write_text("topic\n", encoding="utf-8")
+        source_git("commit", "-am", "topic")
+        source_git("push", "-u", "origin", "topic")
+        subprocess.run(
+            ["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        auth = f"""#!/usr/bin/env bash
+set -euo pipefail
+_github_git_run() {{
+  local owner="$1" repo="$2" operation="$3"
+  shift 3
+  local -a args=("$@")
+  local i
+  for i in "${{!args[@]}}"; do
+    if [[ "${{args[$i]}}" == https://github.com/* ]]; then
+      args[$i]={shlex.quote(str(remote))}
+    fi
+  done
+  command git "${{args[@]}}"
+}}
+"""
+        auth_path = bin_dir / "_github-auth.sh"
+        auth_path.write_text(auth, encoding="utf-8")
+        auth_path.chmod(0o700)
+        wrapper_path = bin_dir / "cross-repo-sync-safe"
+        wrapper_path.write_text(cross_repo, encoding="utf-8")
+        wrapper_path.chmod(0o700)
+
+        def write_config(filename: str, repository: dict[str, object]) -> Path:
+            config = root / filename
+            config.write_text(
+                json.dumps(
+                    {
+                        "clone_base_path": str(root / "clones"),
+                        "github_org": "org",
+                        "repositories": [repository],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            return config
+
+        def run_sync(config: Path) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [str(wrapper_path), "sync", str(config), "demo"],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        default_config = write_config(
+            "default.json",
+            {
+                "name": "demo",
+                "active": True,
+                "branch": "",
+            },
+        )
+        default_data = json.loads(default_config.read_text(encoding="utf-8"))
+        default_data["branch"] = "topic"
+        default_config.write_text(
+            json.dumps(default_data, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        default_result = run_sync(default_config)
+        _assert(default_result.returncode == 0, "origin/HEAD fixture sync failed", errors)
+        if default_result.returncode == 0:
+            default_payload = json.loads(default_result.stdout)
+            _assert(
+                default_payload.get("branch") == "main",
+                "empty branch did not select origin/HEAD",
+                errors,
+            )
+
+        explicit_config = write_config(
+            "explicit.json",
+            {
+                "name": "demo",
+                "active": True,
+                "branch": "topic",
+            },
+        )
+        explicit_result = run_sync(explicit_config)
+        _assert(explicit_result.returncode == 0, "explicit branch fixture sync failed", errors)
+        if explicit_result.returncode == 0:
+            explicit_payload = json.loads(explicit_result.stdout)
+            _assert(
+                explicit_payload.get("branch") == "topic",
+                "explicit repository branch was not selected",
+                errors,
+            )
+
+        missing_config = write_config(
+            "missing.json",
+            {
+                "name": "demo",
+                "active": True,
+                "branch": "missing",
+            },
+        )
+        missing_result = run_sync(missing_config)
+        _assert(missing_result.returncode == 1, "missing branch should exit 1", errors)
+
+        invalid_config = write_config(
+            "invalid.json",
+            {
+                "name": "demo",
+                "active": True,
+                "branch": "bad..branch",
+            },
+        )
+        invalid_result = run_sync(invalid_config)
+        _assert(invalid_result.returncode == 2, "invalid branch should exit 2", errors)
+
+        inactive_config = write_config(
+            "inactive.json",
+            {
+                "name": "demo",
+            },
+        )
+        inactive_result = run_sync(inactive_config)
+        _assert(inactive_result.returncode == 2, "omitted active should default false", errors)
+
+
 def _test_static_contract(errors: list[str]) -> None:
     common = (BIN_TEMPLATES / "_github-auth.sh.template").read_text(encoding="utf-8")
     app = (BIN_TEMPLATES / "_github-app-auth.sh.template").read_text(encoding="utf-8")
@@ -568,6 +742,27 @@ def _test_static_contract(errors: list[str]) -> None:
             "cross-repo fetch does not use explicit HTTPS URL", errors)
     _assert('pull --quiet "$HTTPS_REPO_URL" "$branch"' in cross_repo,
             "cross-repo pull does not use explicit HTTPS URL", errors)
+    _assert(
+        "symbolic-ref --short refs/remotes/origin/HEAD" in cross_repo,
+        "cross-repo empty branch does not resolve origin/HEAD",
+        errors,
+    )
+    _assert(
+        'git check-ref-format --branch "$REPO_BRANCH"' in cross_repo,
+        "cross-repo configured branch validation missing",
+        errors,
+    )
+    _assert(
+        'show-ref --verify --quiet "refs/remotes/origin/$branch"' in cross_repo,
+        "cross-repo remote branch existence validation missing",
+        errors,
+    )
+    _assert(
+        "--sort=-committerdate" not in cross_repo,
+        "cross-repo still selects the most recently committed branch",
+        errors,
+    )
+    _assert("CONFIG_BRANCH" not in cross_repo, "cross-repo still reads a global branch", errors)
 
     wrapper_text = "\n".join(
         path.read_text(encoding="utf-8")
@@ -588,6 +783,9 @@ def _test_static_contract(errors: list[str]) -> None:
     ).read_text(encoding="utf-8")
     _assert("git_protocol:" not in seed, "seed git_protocol remains", errors)
     _assert('"git_protocol"' not in config_template, "generated config git_protocol remains", errors)
+    parsed_config = json.loads(config_template)
+    _assert("branch" not in parsed_config, "generated config still has a global branch", errors)
+    _assert(parsed_config.get("repositories") == [], "generated config repositories default changed", errors)
 
 
 def _run_guard_hook(guard: Path, command: str) -> tuple[int, str, dict[str, str] | None]:
@@ -1041,6 +1239,7 @@ def main() -> int:
     _test_exit_code_contract(errors)
     _test_cross_repo_https_transport(errors)
     _test_cross_repo_wrapper_exit_codes(errors)
+    _test_cross_repo_branch_selection(errors)
     _test_static_contract(errors)
     _test_guard_deny_patterns(errors)
     _test_guard_allow_and_ask_regression(errors)
