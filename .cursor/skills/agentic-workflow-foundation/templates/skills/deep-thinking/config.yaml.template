@@ -7,7 +7,7 @@ models:
   # A（推進視点）: readonly subagent
   analyst_a: "{{#if deep_thinking.models.analyst_a}}{{deep_thinking.models.analyst_a}}{{else}}composer-2.5-fast{{/if}}"
   # B（反証視点）: readonly subagent
-  analyst_b: "{{#if deep_thinking.models.analyst_b}}{{deep_thinking.models.analyst_b}}{{else}}gpt-5.6-terra-medium{{/if}}"
+  analyst_b: "{{#if deep_thinking.models.analyst_b}}{{deep_thinking.models.analyst_b}}{{else}}cursor-grok-4.7-high{{/if}}"
 
 execution:
   # true の場合、A/B を別プロセスとして起動する

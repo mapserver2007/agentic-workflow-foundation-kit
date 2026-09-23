@@ -561,7 +561,7 @@ deep_thinking:
   enabled: true
   models:
     analyst_a: "composer-2.5-fast"
-    analyst_b: "gpt-5.6-terra-medium"
+    analyst_b: "cursor-grok-4.7-high"
   execution:
     require_distinct_agents: true
     require_distinct_models: true
@@ -605,8 +605,8 @@ requirement_analysis:
   enabled: true
   models:
     normalize: "composer-2.5-fast"
-    depth_triage: "composer-2.5-fast"
-    standard_investigation: "claude-4.6-opus-high-thinking"
+    depth_triage: "cursor-grok-4.6-high-fast"
+    standard_investigation: "cursor-grok-4.6-high-fast"
   execution:
     score_threshold: 2
     max_gate_retries: 3
