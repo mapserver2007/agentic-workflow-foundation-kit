@@ -52,7 +52,7 @@ transport selector は持たない。AI の cross-repo transport は HTTPS 固�
    - `description`: 説明
    - `relation`: 本リポジトリとの関連
 2. `config.json` の `repositories` 配列に新エントリを追加（`active: false`, `branch: ""`）
-3. 同期 + 知識参照を実行
+3. 対象の `active` を `true` に変更した場合だけ、同期 + 知識参照を実行する。`active: false` の間は延期する
 
 ## リポジトリの無効化フロー
 

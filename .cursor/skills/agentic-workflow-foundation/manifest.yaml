@@ -1790,7 +1790,7 @@ outputs:
     mode: seed
     feature: cross_repo_knowledge
     required_sections:
-      - '"repositories": []'
+      - '"repositories"'
   - path: .cursor/skills/cross-repository-knowledge-link/references/sync-commands.md
     template: skills/cross-repository-knowledge-link/references/sync-commands.md.template
     mode: render

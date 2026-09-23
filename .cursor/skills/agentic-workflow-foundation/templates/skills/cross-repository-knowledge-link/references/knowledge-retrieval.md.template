@@ -96,4 +96,4 @@ Layer 1 Context が指示する docs 構造がある場合は**それに従う�
 
 読み込んだ情報をもとに、ユーザーの質問・タスクに回答する。
 
-**重要**: 関連リポジトリの知識を参照するたびに、必ず同期（[`references/sync-commands.md`](sync-commands.md)）を先に実行して最新化すること。既に clone 済みでも `bin/cross-repo-sync-safe sync` は毎回実行する（wrapper 内部で fetch し、対象 repository エントリの `branch` が空なら `origin/HEAD`、非空なら指定ブランチへ切り替える）。
+**重要**: `active: true` の関連リポジトリの知識を参照するときは、必ず同期（[`references/sync-commands.md`](sync-commands.md)）を先に実行して最新化すること。`active: false` のエントリは有効化するまで同期しない。既に clone 済みでも `bin/cross-repo-sync-safe sync` は毎回実行する（wrapper 内部で fetch し、対象 repository エントリの `branch` が空なら `origin/HEAD`、非空なら指定ブランチへ切り替える）。

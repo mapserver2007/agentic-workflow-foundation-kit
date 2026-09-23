@@ -598,6 +598,8 @@ _github_git_run() {{
   for i in "${{!args[@]}}"; do
     if [[ "${{args[$i]}}" == https://github.com/* ]]; then
       args[$i]={shlex.quote(str(remote))}
+    elif [[ "${{args[$i]}}" == remote.origin.url=https://github.com/* ]]; then
+      args[$i]=remote.origin.url={shlex.quote(str(remote))}
     fi
   done
   command git "${{args[@]}}"
@@ -655,6 +657,23 @@ _github_git_run() {{
             _assert(
                 default_payload.get("branch") == "main",
                 "empty branch did not select origin/HEAD",
+                errors,
+            )
+
+        subprocess.run(
+            ["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/topic"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        refreshed_result = run_sync(default_config)
+        _assert(refreshed_result.returncode == 0, "origin/HEAD refresh sync failed", errors)
+        if refreshed_result.returncode == 0:
+            refreshed_payload = json.loads(refreshed_result.stdout)
+            _assert(
+                refreshed_payload.get("branch") == "topic",
+                "stale origin/HEAD was not refreshed to the remote default",
                 errors,
             )
 
@@ -745,6 +764,16 @@ def _test_static_contract(errors: list[str]) -> None:
     _assert(
         "symbolic-ref --short refs/remotes/origin/HEAD" in cross_repo,
         "cross-repo empty branch does not resolve origin/HEAD",
+        errors,
+    )
+    _assert(
+        'remote set-head origin --auto' in cross_repo,
+        "cross-repo empty branch does not refresh origin/HEAD",
+        errors,
+    )
+    _assert(
+        "failed to refresh origin/HEAD" in cross_repo,
+        "cross-repo stale origin/HEAD failure is not fatal",
         errors,
     )
     _assert(
