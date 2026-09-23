@@ -82,4 +82,4 @@ context_budget:
   # この値から Yellow / Red の handoff 閾値を自動算出する。
   # 例: 200K モデルを含む場合は 200000、300K モデルのみなら 300000。
   # 省略時の既定値・推奨値は 200000。
-  min_context_window_tokens: 200000
+  min_context_window_tokens: 256000

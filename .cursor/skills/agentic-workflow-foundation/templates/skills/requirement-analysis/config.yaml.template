@@ -7,9 +7,9 @@ models:
   # 要求正規化 Subagent
   normalize: "{{#if requirement_analysis.models.normalize}}{{requirement_analysis.models.normalize}}{{else}}composer-2.5-fast{{/if}}"
   # 分析深度判定 Subagent
-  depth_triage: "{{#if requirement_analysis.models.depth_triage}}{{requirement_analysis.models.depth_triage}}{{else}}composer-2.5-fast{{/if}}"
+  depth_triage: "{{#if requirement_analysis.models.depth_triage}}{{requirement_analysis.models.depth_triage}}{{else}}cursor-grok-4.6-high-fast{{/if}}"
   # standard 調査 Subagent
-  standard_investigation: "{{#if requirement_analysis.models.standard_investigation}}{{requirement_analysis.models.standard_investigation}}{{else}}claude-4.6-opus-high-thinking{{/if}}"
+  standard_investigation: "{{#if requirement_analysis.models.standard_investigation}}{{requirement_analysis.models.standard_investigation}}{{else}}cursor-grok-4.6-high-fast{{/if}}"
 
 execution:
   # スコア起動の閾値（信号がこの件数以上で deep）
