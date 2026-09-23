@@ -13,7 +13,7 @@
 exit code:
   0 = 生成成功 / --check で全出力が冪等（差分なし）
   1 = --check で差分あり（再生成が必要）
-  2 = 致命的エラー（manifest 破損 / テンプレート不在 等）
+ 2 = 致命的エラー（manifest 破損 / テンプレート不在 / 出力パスへの権限拒否 等）
 """
 from __future__ import annotations
 
@@ -23,6 +23,9 @@ import stat
 import sys
 
 import genlib
+
+
+EXECUTABLE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 
 def _marker_block(marker_id: str, body: str) -> str:
@@ -106,6 +109,8 @@ def run(skill_dir: str, check: bool) -> int:
 
     changed = []
     written = []
+    skipped = []
+    permission_errors = []
     for out in outputs:
         try:
             rel = out["path"]
@@ -118,6 +123,7 @@ def run(skill_dir: str, check: bool) -> int:
         mode = out.get("mode", "render")
 
         if mode == "seed" and existing is not None:
+            skipped.append(rel)
             continue
 
         template_text = _read(template_path)
@@ -137,8 +143,28 @@ def run(skill_dir: str, check: bool) -> int:
                 changed.append((rel, "新規作成" if existing is None else "差分あり"))
             continue
 
-        _write(target_path, expected, bool(out.get("executable")))
-        written.append((rel, mode))
+        executable = bool(out.get("executable"))
+        if existing == expected:
+            if executable:
+                try:
+                    current_mode = os.stat(target_path).st_mode
+                    if current_mode & EXECUTABLE_BITS != EXECUTABLE_BITS:
+                        os.chmod(target_path, current_mode | EXECUTABLE_BITS)
+                        written.append((rel, "chmod"))
+                    else:
+                        skipped.append(rel)
+                except PermissionError as exc:
+                    permission_errors.append((rel, exc))
+            else:
+                skipped.append(rel)
+            continue
+
+        try:
+            _write(target_path, expected, executable)
+        except PermissionError as exc:
+            permission_errors.append((rel, exc))
+        else:
+            written.append((rel, mode))
 
     if check:
         if changed:
@@ -149,7 +175,19 @@ def run(skill_dir: str, check: bool) -> int:
         print(f"冪等性ドライラン: 全 {len(outputs)} 出力が最新（差分なし）")
         return 0
 
-    print(f"生成完了: {len(written)} 出力 (marker_id={marker_id}, root={root})")
+    if permission_errors:
+        for rel, exc in permission_errors:
+            print(
+                f"FATAL: 出力パスへの権限拒否 ({rel}): {exc}。"
+                "差分がある出力だけ権限昇格して再実行してください。",
+                file=sys.stderr,
+            )
+        return 2
+
+    print(
+        f"生成完了: {len(written)} 出力 / {len(skipped)} スキップ "
+        f"(marker_id={marker_id}, root={root})"
+    )
     for rel, mode in written:
         print(f"  [{mode}] {rel}")
     return 0
