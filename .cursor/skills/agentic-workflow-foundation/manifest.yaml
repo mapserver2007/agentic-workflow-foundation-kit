@@ -561,7 +561,7 @@ deep_thinking:
   enabled: true
   models:
     analyst_a: "composer-2.5-fast"
-    analyst_b: "cursor-grok-4.7-high"
+    analyst_b: "grok-4.7-high"
   execution:
     require_distinct_agents: true
     require_distinct_models: true

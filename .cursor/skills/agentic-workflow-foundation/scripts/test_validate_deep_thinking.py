@@ -24,7 +24,7 @@ from validate_deep_thinking import validate  # noqa: E402
 VALID_CONFIG = {
     "models": {
         "analyst_a": "composer-2.5-fast",
-        "analyst_b": "gpt-5.6-terra-medium",
+        "analyst_b": "grok-4.7-high",
     },
     "execution": {
         "require_distinct_agents": True,
