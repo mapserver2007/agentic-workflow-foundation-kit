@@ -14,7 +14,34 @@ transport selector は持たない。AI の cross-repo transport は HTTPS 固�
 ## 設定のバリデーション
 
 - `repositories` 配列の各エントリの `name` が `^[A-Za-z0-9._-]+$` に一致することを確認
+- `active` は boolean。省略時は `false` として扱い、`true` のエントリだけが同期対象になる
+- `branch` は各 repository エントリ内の文字列。省略時または空文字では `origin/HEAD` が指すリモート既定ブランチを使用する。非空の場合は wrapper が `git check-ref-format --branch` 相当の形式検証と、fetch 後の `origin/<branch>` 存在検証を行う
 - バリデーション失敗時は処理を中断し、config.json の修正をユーザーに依頼
+
+## 参照ブランチの設定
+
+- 通常は各 repository エントリを `active: false` のままにして同期しない
+- 同期対象にする場合は `active: true` を設定する
+- `active: true` で特定ブランチを参照したい場合だけ、そのエントリの `branch` にブランチ名を設定する
+- `branch` を省略または空文字に戻すと、リモート既定ブランチ（`origin/HEAD`）へ戻る
+
+例:
+
+```json
+{
+  "clone_base_path": "/tmp/cross-repo-knowledge",
+  "github_org": "example-org",
+  "repositories": [
+    {
+      "name": "example-service",
+      "description": "関連サービスのサンプル",
+      "relation": "本リポジトリとの連携仕様を参照する",
+      "active": true,
+      "branch": "release/v1.0.0"
+    }
+  ]
+}
+```
 
 ## リポジトリの追加フロー
 
@@ -24,8 +51,8 @@ transport selector は持たない。AI の cross-repo transport は HTTPS 固�
    - `name`: リポジトリ名（例: `my-service`）
    - `description`: 説明
    - `relation`: 本リポジトリとの関連
-2. `config.json` の `repositories` 配列に新エントリを追加（`active: true`）
-3. 同期 + 知識参照を実行
+2. `config.json` の `repositories` 配列に新エントリを追加（`active: false`, `branch: ""`）
+3. 対象の `active` を `true` に変更した場合だけ、同期 + 知識参照を実行する。`active: false` の間は延期する
 
 ## リポジトリの無効化フロー
 

@@ -72,12 +72,43 @@ if [[ -z "$GITHUB_ORG" ]]; then
   exit 2
 fi
 
-# Verify the repo is registered and active
+# Verify the repo is registered, active, and has a valid branch setting.
+readonly REPO_MATCH_COUNT=$(jq -r --arg name "$REPO_NAME" \
+  '[.repositories[]? | select(.name == $name)] | length' "$CONFIG_JSON")
+if [[ "$REPO_MATCH_COUNT" != "1" ]]; then
+  echo "ERROR: repository '$REPO_NAME' is not registered exactly once in config.json" >&2
+  exit 2
+fi
+
+readonly REPO_ACTIVE_TYPE=$(jq -r --arg name "$REPO_NAME" \
+  '[.repositories[] | select(.name == $name)] |
+   if length == 1 then ((.[0].active // false) | type) else "missing" end' \
+  "$CONFIG_JSON")
 readonly REPO_ACTIVE=$(jq -r --arg name "$REPO_NAME" \
-  '.repositories[] | select(.name == $name) | .active // false' "$CONFIG_JSON")
+  '[.repositories[] | select(.name == $name)] | .[0].active // false' \
+  "$CONFIG_JSON")
+readonly REPO_BRANCH_TYPE=$(jq -r --arg name "$REPO_NAME" \
+  '[.repositories[] | select(.name == $name)] |
+   if length == 1 then
+     (if .[0].branch == null then "string" else (.[0].branch | type) end)
+   else "missing" end' \
+  "$CONFIG_JSON")
+readonly REPO_BRANCH=$(jq -r --arg name "$REPO_NAME" \
+  '[.repositories[] | select(.name == $name)] | .[0].branch // ""' \
+  "$CONFIG_JSON")
+
+if [[ "$REPO_ACTIVE_TYPE" != "boolean" || "$REPO_BRANCH_TYPE" != "string" ]]; then
+  echo "ERROR: repository '$REPO_NAME' has invalid active or branch type in config.json" >&2
+  exit 2
+fi
 
 if [[ "$REPO_ACTIVE" != "true" ]]; then
   echo "ERROR: repository '$REPO_NAME' is not registered or not active in config.json" >&2
+  exit 2
+fi
+
+if [[ -n "$REPO_BRANCH" ]] && ! git check-ref-format --branch "$REPO_BRANCH" >/dev/null 2>&1; then
+  echo "ERROR: invalid branch for repository '$REPO_NAME': $REPO_BRANCH" >&2
   exit 2
 fi
 
@@ -144,26 +175,29 @@ if ! _github_git_run "$GITHUB_ORG" "$REPO_NAME" git-read \
   exit 1
 fi
 
-# Find the most recently committed remote branch (origin/<branch> only)
-if ! remote_refs=$(git -C "$REPO_PATH" for-each-ref \
-  --sort=-committerdate refs/remotes/origin/ \
-  --format='%(refname:short)'); then
-  echo "ERROR: failed to enumerate origin refs for $REPO_NAME" >&2
-  exit 1
+# An explicit config branch overrides the remote default. Otherwise refresh
+# origin/HEAD over HTTPS. The fetch refspec does not update that symbolic ref,
+# and a stale value must not select the previous default branch.
+if [[ -n "$REPO_BRANCH" ]]; then
+  branch="$REPO_BRANCH"
+else
+  if ! _github_git_run "$GITHUB_ORG" "$REPO_NAME" git-read \
+      -c "remote.origin.url=${HTTPS_REPO_URL}" \
+      -C "$REPO_PATH" remote set-head origin --auto >/dev/null 2>&1; then
+    echo "ERROR: failed to refresh origin/HEAD for $REPO_NAME" >&2
+    exit 1
+  fi
+  if ! default_ref=$(git -C "$REPO_PATH" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null); then
+    echo "ERROR: origin/HEAD is not available for $REPO_NAME" >&2
+    exit 1
+  fi
+  branch="${default_ref#origin/}"
 fi
 
-latest_ref=$(printf '%s\n' "$remote_refs" \
-  | grep -E '^origin/.+' \
-  | grep -v '^origin/HEAD$' \
-  | head -1 || true)
-
-if [[ -z "$latest_ref" ]]; then
-  echo "ERROR: no remote branches found for $REPO_NAME" >&2
+if ! git -C "$REPO_PATH" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+  echo "ERROR: remote branch 'origin/$branch' not found for $REPO_NAME" >&2
   exit 1
 fi
-
-# Strip "origin/" prefix
-branch="${latest_ref#origin/}"
 
 # Checkout and pull
 if ! git -C "$REPO_PATH" checkout --quiet "$branch" 2>/dev/null; then
