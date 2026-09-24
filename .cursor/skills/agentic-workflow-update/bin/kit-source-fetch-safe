@@ -2,33 +2,19 @@
 set -euo pipefail
 set +x
 
-# agentic-workflow-foundation-kit の取得専用 wrapper。
-# network operation は provider-aware HTTPS 経由に限定する。
+# agentic-workflow-foundation-kit の public 取得専用 wrapper。
+# 対象アプリの認証・設定・並置 clone は参照しない。
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=_github-auth.sh
-source "${SCRIPT_DIR}/_github-auth.sh"
+readonly KIT_URL="https://github.com/mapserver2007/agentic-workflow-foundation-kit.git"
 
 usage() {
-  echo "Usage: kit-source-fetch-safe --kit-root <path> --app-root <path> [--clone-root <path>]" >&2
+  echo "Usage: kit-source-fetch-safe --clone-root <path>" >&2
   exit 2
 }
 
-KIT_ROOT=""
-APP_ROOT="$(pwd)"
 CLONE_ROOT="/tmp/agentic-workflow-foundation-kit"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --kit-root)
-      [[ $# -ge 2 ]] || usage
-      KIT_ROOT="$2"
-      shift 2
-      ;;
-    --app-root)
-      [[ $# -ge 2 ]] || usage
-      APP_ROOT="$2"
-      shift 2
-      ;;
     --clone-root)
       [[ $# -ge 2 ]] || usage
       CLONE_ROOT="$2"
@@ -40,15 +26,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$KIT_ROOT" ]] || usage
-KIT_ROOT="$(cd "$KIT_ROOT" 2>/dev/null && pwd -P)" || {
-  echo "ERROR: kit root が見つかりません" >&2
-  exit 2
-}
-APP_ROOT="$(cd "$APP_ROOT" 2>/dev/null && pwd -P)" || {
-  echo "ERROR: application root が見つかりません" >&2
-  exit 2
-}
 CLONE_ROOT="$(python3 - "$CLONE_ROOT" <<'PY'
 import os
 import sys
@@ -56,105 +33,8 @@ print(os.path.abspath(sys.argv[1]))
 PY
 )" || exit 2
 
-actual_root=$(git -C "$KIT_ROOT" rev-parse --show-toplevel 2>/dev/null) || {
-  echo "ERROR: kit root は Git worktree ではありません" >&2
-  exit 2
-}
-[[ "$(cd "$actual_root" && pwd -P)" == "$KIT_ROOT" ]] || {
-  echo "ERROR: kit root は Git worktree の root である必要があります" >&2
-  exit 2
-}
-git -C "$KIT_ROOT" remote get-url origin >/dev/null 2>&1 || {
-  echo "ERROR: kit の origin が設定されていません" >&2
-  exit 2
-}
-
-dirty_source=$(
-  git -C "$KIT_ROOT" status --porcelain --untracked-files=all -- \
-    .cursor/skills/agentic-workflow-foundation \
-    .cursor/skills/agentic-workflow-engine \
-    .cursor/docs/AI_AGENT_UNIFIED_DESIGN.md \
-    .cursor/docs/AI_BUSINESS_AGENT_SUITE.md
-) || {
-  echo "ERROR: kit の source 状態を検査できません" >&2
-  exit 2
-}
-[[ -z "$dirty_source" ]] || {
-  echo "ERROR: kit の配布 source に未コミット変更があります" >&2
-  exit 2
-}
-
-if [[ -f "$APP_ROOT/init.yaml" ]]; then
-  eval "$(
-    python3 - "$APP_ROOT/init.yaml" <<'PY'
-import re
-import shlex
-import sys
-
-path = sys.argv[1]
-values = {
-    "provider": "github_app",
-    "service": "agentic-workflow-github-api",
-    "account": "",
-}
-section = ""
-for raw in open(path, encoding="utf-8"):
-    line = raw.rstrip("\n")
-    if not line.strip() or line.lstrip().startswith("#"):
-        continue
-    if not line.startswith(" "):
-        section = line.split(":", 1)[0].strip()
-        continue
-    if re.match(r"^\s{2}keychain:\s*$", line):
-        section = "keychain"
-        continue
-    match = re.match(r"^\s{2,}([A-Za-z0-9_]+):\s*(.*?)\s*$", line)
-    if not match:
-        continue
-    key, value = match.groups()
-    value = value.split("#", 1)[0].strip().strip("'\"")
-    if section == "github_access" and key == "api_credential_provider":
-        values["provider"] = value
-    elif section == "keychain" and key in ("service", "account"):
-        values["service" if key == "service" else "account"] = value
-for key, value in values.items():
-    variable = {
-        "provider": "AGENTIC_WORKFLOW_UPDATE_CREDENTIAL_PROVIDER",
-        "service": "AGENTIC_WORKFLOW_UPDATE_KEYCHAIN_SERVICE",
-        "account": "AGENTIC_WORKFLOW_UPDATE_KEYCHAIN_ACCOUNT",
-    }[key]
-    print(f"export {variable}={shlex.quote(value)}")
-PY
-  )" || {
-    echo "ERROR: init.yaml の provider を解決できません" >&2
-    exit 2
-  }
-fi
-
-[[ "$AGENTIC_WORKFLOW_UPDATE_CREDENTIAL_PROVIDER" == "github_app" ||
-  "$AGENTIC_WORKFLOW_UPDATE_CREDENTIAL_PROVIDER" == "keychain" ]] || {
-  echo "ERROR: unsupported github_access.api_credential_provider" >&2
-  exit 2
-}
-
-_kit_git_with_remote "$KIT_ROOT" origin fetch --prune origin || {
-  echo "ERROR: kit の origin fetch に失敗しました" >&2
-  exit 1
-}
-
-head_ref=$(git -C "$KIT_ROOT" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) || {
-  echo "ERROR: origin/HEAD を解決できません" >&2
-  exit 2
-}
-[[ "$head_ref" == origin/* && "$head_ref" != "origin/HEAD" ]] || {
-  echo "ERROR: origin/HEAD が許可されたリモートブランチを指していません" >&2
-  exit 2
-}
-branch="${head_ref#origin/}"
-[[ "$branch" =~ ^[A-Za-z0-9._/-]+$ && "$branch" != *".."* ]] || {
-  echo "ERROR: origin/HEAD のブランチ名が不正です" >&2
-  exit 2
-}
+git_config=(git -c credential.helper= -c core.askPass=)
+export GIT_TERMINAL_PROMPT=0
 
 clone_parent="$(dirname "$CLONE_ROOT")"
 mkdir -p "$clone_parent"
@@ -167,18 +47,19 @@ if [[ -e "$CLONE_ROOT" || -L "$CLONE_ROOT" ]]; then
   mv "$CLONE_ROOT" "$stale"
 fi
 
-_kit_git_clone "$KIT_ROOT" "$CLONE_ROOT" "$branch" || {
-  echo "ERROR: origin/HEAD の clone に失敗しました" >&2
+if ! "${git_config[@]}" clone -- "$KIT_URL" "$CLONE_ROOT"; then
+  echo "ERROR: public kit の clone に失敗しました" >&2
   exit 1
-}
+fi
 
 sha=$(git -C "$CLONE_ROOT" rev-parse HEAD 2>/dev/null) || {
   echo "ERROR: clone の revision を解決できません" >&2
   exit 2
 }
-printf '{"kit_root":%s,"clone_root":%s,"branch":%s,"sha":%s}\n' \
-  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$KIT_ROOT")" \
+branch=$(git -C "$CLONE_ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'detached')
+printf '{"clone_root":%s,"branch":%s,"sha":%s,"url":%s}\n' \
   "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$CLONE_ROOT")" \
   "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$branch")" \
-  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$sha")"
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$sha")" \
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$KIT_URL")"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agentic-workflow-update の allowlist / preimage / host 配置契約を検査する。"""
+"""agentic-workflow-update の consumer / lock / preimage 契約を検査する。"""
 from __future__ import annotations
 
 import importlib.util
@@ -16,6 +16,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 UPDATE_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/scripts/kit_update.py"
 RUNNER_SCRIPT = HERE / "run_resolved_engine.py"
+FETCH_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/bin/kit-source-fetch-safe"
+SKILL_FILE = ROOT / ".cursor/skills/agentic-workflow-update/SKILL.md"
 
 
 def _load_module(path: Path, name: str):
@@ -31,29 +33,50 @@ UPDATE = _load_module(UPDATE_SCRIPT, "test_kit_update_impl")
 RUNNER = _load_module(RUNNER_SCRIPT, "test_kit_update_runner")
 
 
-def _write(root: Path, relative: str, content: str) -> None:
+def _write(root: Path, relative: str, content: str, mode: int | None = None) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+    if mode is not None:
+        path.chmod(mode)
 
 
-def _manifest(outputs: list[tuple[str, str]]) -> str:
-    lines = ["version: 1", "outputs:"]
-    for path, mode in outputs:
+def _manifest(outputs: list[tuple[str, str, str | None]]) -> str:
+    lines = [
+        "version: 1",
+        "code_review:",
+        "  enabled: true",
+        "outputs:",
+    ]
+    for path, mode, feature in outputs:
         lines.extend(
             [
-                f"  - path: {path}",
-                f"    template: {path}.template",
+                f'  - path: "{path}"',
+                f'    template: "{path}.template"',
                 f"    mode: {mode}",
             ]
         )
+        if feature:
+            lines.append(f"    feature: {feature}")
     return "\n".join(lines) + "\n"
+
+
+def _root_manifest(*, code_review: bool = False) -> str:
+    return (
+        "version: 1\n"
+        "project:\n"
+        "  quality_gate:\n"
+        "    profile: application\n"
+        "code_review:\n"
+        f"  enabled: {'true' if code_review else 'false'}\n"
+    )
 
 
 def _fixture(
     *,
-    outputs: list[tuple[str, str]] | None = None,
+    outputs: list[tuple[str, str, str | None]] | None = None,
     candidate_updates: dict[str, str] | None = None,
+    app_manifest: str | None = None,
 ) -> tuple[Path, Path, Path, tempfile.TemporaryDirectory[str]]:
     temp = tempfile.TemporaryDirectory(prefix="kit-update-test-")
     base = Path(temp.name)
@@ -61,9 +84,9 @@ def _fixture(
     clone = base / "clone"
     work = base / "work"
     outputs = outputs or [
-        ("AGENTS.md", "render"),
-        ("docs/spec.md", "seed"),
-        (".gitignore", "marker"),
+        ("AGENTS.md", "render", None),
+        ("docs/spec.md", "seed", None),
+        (".gitignore", "marker", None),
     ]
     candidate_updates = candidate_updates or {
         "AGENTS.md": "generated-v2\n",
@@ -72,28 +95,28 @@ def _fixture(
     }
 
     (app / ".git").mkdir(parents=True)
-    _write(app, "manifest.yaml", "version: 1\nproject:\n  name: fixture\n")
-    _write(app, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", _manifest(outputs))
-    _write(app, ".cursor/skills/agentic-workflow-foundation/source.py", "old-source\n")
-    _write(app, ".cursor/skills/agentic-workflow-engine/scripts/engine.py", "old-engine\n")
-    _write(app, ".cursor/docs/AI_AGENT_UNIFIED_DESIGN.md", "old-agent-design\n")
-    _write(app, ".cursor/docs/AI_BUSINESS_AGENT_SUITE.md", "old-business-design\n")
+    _write(app, "manifest.yaml", app_manifest or _root_manifest())
     _write(app, "AGENTS.md", "generated-v1\n")
     _write(app, ".gitignore", "# marker-v1\n")
     _write(app, "docs/spec.md", "domain-owned\n")
     _write(app, "docs/DECISIONS.md", "decision-owned\n")
     _write(app, "docs/GOTCHAS.md", "gotcha-owned\n")
+    _write(app, "bin/quality-gate", "#!/usr/bin/env bash\nexit 0\n", 0o755)
 
     _write(clone, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", _manifest(outputs))
-    _write(clone, ".cursor/skills/agentic-workflow-foundation/source.py", "new-source\n")
-    _write(clone, ".cursor/skills/agentic-workflow-foundation/new.py", "new-file\n")
-    _write(clone, ".cursor/skills/agentic-workflow-engine/scripts/engine.py", "new-engine\n")
-    _write(clone, ".cursor/docs/AI_AGENT_UNIFIED_DESIGN.md", "new-agent-design\n")
-    _write(clone, ".cursor/docs/AI_BUSINESS_AGENT_SUITE.md", "new-business-design\n")
-    engine_source = ROOT / ".cursor/skills/agentic-workflow-engine/scripts/genlib.py"
-    target_engine = clone / ".cursor/skills/agentic-workflow-engine/scripts/genlib.py"
-    target_engine.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(engine_source, target_engine)
+    _write(clone, ".cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py", "")
+    shutil.copytree(
+        ROOT / ".cursor/skills/agentic-workflow-foundation/scripts",
+        clone / ".cursor/skills/agentic-workflow-foundation/scripts",
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    shutil.copytree(
+        ROOT / ".cursor/skills/agentic-workflow-engine/scripts",
+        clone / ".cursor/skills/agentic-workflow-engine/scripts",
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
     shutil.copytree(
         ROOT / ".cursor/skills/agentic-workflow-update",
         clone / ".cursor/skills/agentic-workflow-update",
@@ -103,117 +126,193 @@ def _fixture(
     subprocess.run(["git", "config", "user.email", "kit-update-test@example.invalid"], cwd=clone, check=True)
     subprocess.run(["git", "config", "user.name", "kit-update-test"], cwd=clone, check=True)
     subprocess.run(["git", "add", "."], cwd=clone, check=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture"],
-        cwd=clone,
-        check=True,
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=clone, check=True)
 
+    _write(work, "manifest.yaml", app_manifest or _root_manifest())
     for relative, content in candidate_updates.items():
         _write(work, relative, content)
     return app, clone, work, temp
 
 
-def _plan(app: Path, clone: Path, work: Path, *, outputs=None) -> dict:
+def _revision(clone: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(clone), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _plan(app: Path, clone: Path, work: Path, *, overlay: Path | None = None) -> dict:
     return UPDATE._build_plan(
         app,
         clone,
         work,
+        overlay or app / "manifest.yaml",
         validate=False,
-        kit_revision=subprocess.run(
-            ["git", "-C", str(clone), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip(),
+        kit_revision=_revision(clone),
     )
 
 
-def test_allowlist_and_protection() -> None:
+def test_public_fetch_contract() -> None:
+    content = FETCH_SCRIPT.read_text(encoding="utf-8")
+    assert 'https://github.com/mapserver2007/agentic-workflow-foundation-kit.git' in content
+    assert "--kit-root" not in content
+    assert "--app-root" not in content
+    assert "init.yaml" not in content
+    assert "_github-auth" not in content
+    assert "credential.helper=" in content
+
+
+def test_consumer_plan_and_apply_exclude_kit_sources() -> None:
     app, clone, work, temp = _fixture()
     try:
-        _write(work, "src/app.py", "application-code\n")
         plan = _plan(app, clone, work)
         paths = {item["path"] for item in plan["changes"]}
-        assert ".cursor/skills/agentic-workflow-foundation/new.py" in paths
         assert "AGENTS.md" in paths
         assert ".gitignore" in paths
-        assert "src/app.py" not in paths
-        assert "docs/spec.md" not in paths
-        assert "docs/DECISIONS.md" not in paths
+        assert "agentic-workflow-kit.lock.yaml" in paths
+        assert not any(path.startswith(".cursor/skills/agentic-workflow-") for path in paths)
+        assert not any(path.startswith(".cursor/docs/AI_") for path in paths)
+        assert plan["baseline"] == "adopt"
         assert not plan["blocking_issues"], plan
+        UPDATE._validate_plan(plan, app, plan["plan_digest"])
         UPDATE._apply_plan(plan)
         assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
-        assert (app / ".cursor/skills/agentic-workflow-foundation/new.py").is_file()
-        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+        assert (app / "agentic-workflow-kit.lock.yaml").is_file()
+        assert not (app / ".cursor/skills/agentic-workflow-foundation").exists()
+        assert not (app / ".cursor/skills/agentic-workflow-engine").exists()
+        UPDATE._run_application_validation(app, clone, app / "manifest.yaml")
     finally:
         temp.cleanup()
 
 
-def test_seed_denylist_and_orphan_are_blocking() -> None:
+def test_resolved_catalog_applies_overlay_features() -> None:
+    outputs = [
+        ("AGENTS.md", "render", None),
+        ("optional.md", "render", "code_review"),
+    ]
     app, clone, work, temp = _fixture(
-        outputs=[
-            ("AGENTS.md", "render"),
-            ("docs/spec.md", "seed"),
-            ("docs/DECISIONS.md", "render"),
-        ],
-        candidate_updates={
-            "AGENTS.md": "generated-v2\n",
-            "docs/spec.md": "domain-changed\n",
-            "docs/DECISIONS.md": "decision-candidate\n",
-        },
+        outputs=outputs,
+        candidate_updates={"AGENTS.md": "generated-v2\n"},
+        app_manifest=_root_manifest(code_review=False),
     )
     try:
         plan = _plan(app, clone, work)
-        assert "KU-SEED-001" in plan["blocking_issues"]
-        assert "KU-DENY-001" in plan["blocking_issues"]
-
-        orphan_outputs = [("AGENTS.md", "render")]
-        app2, clone2, work2, temp2 = _fixture(outputs=orphan_outputs)
-        try:
-            _write(app2, "removed-render.md", "old\n")
-            _write(
-                app2,
-                ".cursor/skills/agentic-workflow-foundation/manifest.yaml",
-                _manifest([("removed-render.md", "render")]),
-            )
-            _write(clone2, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", _manifest([]))
-            orphan_plan = _plan(app2, clone2, work2)
-            assert "KU-ORPHAN-001" in orphan_plan["blocking_issues"]
-            assert orphan_plan["orphan"] == ["removed-render.md"]
-        finally:
-            temp2.cleanup()
+        catalog_paths = {item["path"] for item in plan["catalog"]}
+        assert "AGENTS.md" in catalog_paths
+        assert "optional.md" not in catalog_paths
     finally:
         temp.cleanup()
 
 
-def test_digest_preimage_and_atomic_rollback() -> None:
+def test_initial_adopt_does_not_infer_orphans() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        _write(app, "legacy-project-owned.md", "keep\n")
+        plan = _plan(app, clone, work)
+        assert plan["baseline"] == "adopt"
+        assert plan["orphan"] == []
+        assert "KU-ORPHAN-001" not in plan["blocking_issues"]
+    finally:
+        temp.cleanup()
+
+
+def test_lock_catalog_detects_removed_managed_output() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("AGENTS.md", "render", None)],
+        candidate_updates={"AGENTS.md": "generated-v2\n"},
+    )
+    try:
+        _write(app, "removed-managed.md", "old\n")
+        _write(
+            app,
+            "agentic-workflow-kit.lock.yaml",
+            "version: 1\n"
+            f'kit_revision: "{_revision(clone)}"\n'
+            "catalog:\n"
+            '  - path: "removed-managed.md"\n'
+            '    mode: "render"\n'
+            f'    sha256: "{UPDATE._sha256(app / "removed-managed.md")}"\n',
+        )
+        plan = _plan(app, clone, work)
+        assert plan["orphan"] == ["removed-managed.md"]
+        assert "KU-ORPHAN-001" in plan["blocking_issues"]
+    finally:
+        temp.cleanup()
+
+
+def test_overlay_preflight_happens_before_fetch() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-preflight-") as temp_dir:
+        app = Path(temp_dir) / "app"
+        (app / ".git").mkdir(parents=True)
+        called = False
+
+        def fail_fetch(_clone: Path) -> dict:
+            nonlocal called
+            called = True
+            raise AssertionError("fetch が overlay preflight より先に実行された")
+
+        with patch.object(UPDATE, "_fetch_kit", side_effect=fail_fetch):
+            result = UPDATE.main(["plan", "--app-root", str(app)])
+        assert result == 2
+        assert not called
+
+
+def test_external_overlay_is_copied_to_work_tree() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-overlay-") as temp_dir:
+        base = Path(temp_dir)
+        app = base / "app"
+        work = base / "work"
+        overlay = base / "overlay.yaml"
+        (app / ".git").mkdir(parents=True)
+        _write(app, "AGENTS.md", "owned\n")
+        _write(base, "overlay.yaml", _root_manifest())
+        UPDATE._prepare_work_tree(app, overlay, work)
+        assert (work / "manifest.yaml").read_text(encoding="utf-8") == _root_manifest()
+
+
+def test_plan_digest_and_preimage_reject_unapproved_apply() -> None:
     app, clone, work, temp = _fixture()
     try:
         plan = _plan(app, clone, work)
-        UPDATE._validate_plan(plan, app, plan["plan_digest"])
-        tampered = json.loads(json.dumps(plan))
-        tampered["kit_revision"] = "tampered"
         try:
-            UPDATE._validate_plan(tampered, app, plan["plan_digest"])
+            UPDATE._validate_plan(plan, app, "unapproved")
         except UPDATE.UpdateError as exc:
             assert "KU-PREIMAGE-001" in str(exc)
         else:
-            raise AssertionError("tampered plan was accepted")
-
-        (app / "AGENTS.md").write_text("changed-after-approval\n", encoding="utf-8")
+            raise AssertionError("未承認 plan が受理された")
+        (app / "AGENTS.md").write_text("changed-after-plan\n", encoding="utf-8")
         try:
             UPDATE._apply_plan(plan)
         except UPDATE.UpdateError as exc:
             assert "KU-PREIMAGE-001" in str(exc)
         else:
-            raise AssertionError("preimage drift was accepted")
-        assert not (app / ".cursor/skills/agentic-workflow-foundation/new.py").exists()
-        assert (app / ".cursor/skills/agentic-workflow-foundation/source.py").read_text(
-            encoding="utf-8"
-        ) == "old-source\n"
+            raise AssertionError("preimage drift が受理された")
     finally:
         temp.cleanup()
+
+
+def test_subprocess_error_keeps_exit_and_stderr() -> None:
+    try:
+        UPDATE._run(
+            [sys.executable, "-c", "import sys; print('diagnostic', file=sys.stderr); sys.exit(2)"],
+            Path.cwd(),
+        )
+    except UPDATE.CommandUpdateError as exc:
+        assert exc.exit_code == 2
+        assert "exit 2" in str(exc)
+    else:
+        raise AssertionError("subprocess failure が受理された")
+
+
+def test_skill_contract_excludes_vendor_flow() -> None:
+    content = SKILL_FILE.read_text(encoding="utf-8")
+    assert "固定public URL" in content
+    assert "並置 kit の `origin`" not in content
+    assert "foundation/engine" in content
+    assert "agentic-workflow-kit.lock.yaml" in content
+    assert "--root-manifest" in content
 
 
 def test_host_install_and_check_do_not_update_host() -> None:
@@ -238,6 +337,7 @@ def test_host_install_and_check_do_not_update_host() -> None:
                         str(ROOT / "manifest.yaml"),
                         "--work-root",
                         str(host / "candidate"),
+                        "--skip-host-update",
                     ]
                 )
                 == 0
@@ -248,15 +348,6 @@ def test_host_install_and_check_do_not_update_host() -> None:
             if path.is_file()
         }
         assert before == after
-
-    app, clone, work, temp = _fixture()
-    try:
-        with tempfile.TemporaryDirectory(prefix="kit-update-apply-host-") as host_dir:
-            with patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": host_dir}):
-                assert UPDATE._install_host_updater(clone) == 0
-            assert (Path(host_dir) / "agentic-workflow-update/SKILL.md").is_file()
-    finally:
-        temp.cleanup()
 
 
 def test_generate_host_flags() -> None:
@@ -304,9 +395,16 @@ def test_generate_host_flags() -> None:
 
 def main() -> int:
     tests = (
-        ("allowlist and protection", test_allowlist_and_protection),
-        ("seed denylist and orphan", test_seed_denylist_and_orphan_are_blocking),
-        ("digest preimage rollback", test_digest_preimage_and_atomic_rollback),
+        ("public fetch contract", test_public_fetch_contract),
+        ("consumer plan and apply", test_consumer_plan_and_apply_exclude_kit_sources),
+        ("resolved catalog", test_resolved_catalog_applies_overlay_features),
+        ("initial adopt", test_initial_adopt_does_not_infer_orphans),
+        ("lock orphan", test_lock_catalog_detects_removed_managed_output),
+        ("overlay preflight", test_overlay_preflight_happens_before_fetch),
+        ("external overlay", test_external_overlay_is_copied_to_work_tree),
+        ("plan digest and preimage", test_plan_digest_and_preimage_reject_unapproved_apply),
+        ("subprocess diagnostics", test_subprocess_error_keeps_exit_and_stderr),
+        ("skill contract", test_skill_contract_excludes_vendor_flow),
         ("host install and check", test_host_install_and_check_do_not_update_host),
         ("generate host flags", test_generate_host_flags),
     )
