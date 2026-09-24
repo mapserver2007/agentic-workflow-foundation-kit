@@ -11,6 +11,11 @@
 
 使い方:
   python3 audit.py --skill-dir <config-skill-dir>
+  python3 audit.py --skill-dir <config-skill-dir> --skip-seed-required-sections
+
+既定では seed を含む全 outputs[] の required_sections を検査する。
+--skip-seed-required-sections は、consumer updater が適用対象外の既存 seed を
+「存在」のみ監査するときに限って使用する。
 
 exit code（QUALITY_GATE 3段階に準拠）:
   0 = 冪等 + 必須要件充足（`[要確認]` 残存は WARN だが PASS）
@@ -29,7 +34,7 @@ from generate import _read, _safe_join, _upsert_marker
 PENDING_MARK = "[要確認]"
 
 
-def run(skill_dir: str) -> int:
+def run(skill_dir: str, *, skip_seed_required_sections: bool = False) -> int:
     skill_dir = os.path.abspath(skill_dir)
     manifest_path = os.path.join(skill_dir, "manifest.yaml")
     templates_dir = os.path.join(skill_dir, "templates")
@@ -87,7 +92,9 @@ def run(skill_dir: str) -> int:
             print(f"FATAL: 描画失敗 ({rel}): {e}", file=sys.stderr)
             return 2
 
-        missing = [s for s in (out.get("required_sections") or []) if s not in existing]
+        missing = []
+        if not (skip_seed_required_sections and mode == "seed"):
+            missing = [s for s in (out.get("required_sections") or []) if s not in existing]
         if missing:
             failures.append((rel, f"必須要件欠落: {missing}"))
             continue
@@ -114,8 +121,16 @@ def run(skill_dir: str) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="出力の冪等性 + 必須要件を監査")
     parser.add_argument("--skill-dir", required=True, help="設定スキルのディレクトリ")
+    parser.add_argument(
+        "--skip-seed-required-sections",
+        action="store_true",
+        help="consumer updater 用: seed は存在のみ検査し、required_sections を検査しない",
+    )
     args = parser.parse_args(argv)
-    return run(args.skill_dir)
+    return run(
+        args.skill_dir,
+        skip_seed_required_sections=args.skip_seed_required_sections,
+    )
 
 
 if __name__ == "__main__":

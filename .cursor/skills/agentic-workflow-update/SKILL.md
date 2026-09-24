@@ -57,9 +57,28 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
 2. 固定public URLから `/tmp/agentic-workflow-foundation-kit` へcloneする。
 3. 対象アプリを `/tmp/work` へコピーし、外部overlayがあれば `/tmp/work/manifest.yaml` へ安全に取り込む。
 4. clone版のseed/engineと対象overlayから resolved manifestを作り、一時作業ツリーで生成・check・auditを実行する。
+   consumer の audit は `--skip-seed-required-sections` を指定する。denylist または
+   `mode: seed` の既存ファイル（ADR / GOTCHAS / Domain docs / skill config）は
+   適用・再生成せず、ファイルの存在だけを確認する。render / marker の drift と
+   required_sections、seed の不在、未知の mode、テンプレート不在、描画失敗は検査対象に残る。
 5. 対象アプリの `bin/quality-gate verify` を一時作業ツリーで実行する。
 6. resolved output catalogと既存lockを比較し、生成成果物の差分とlock候補だけをplanへ出す。
 7. foundation/engine、upstream design docs、root manifest、Domain docs、アプリコードは変更候補に含めない。
+
+### 初回利用時の host updater bootstrap
+
+旧 host updater は新しい consumer audit flag を渡せないため、consumer の `plan` より先に
+改訂済み kit checkout から host updater を更新する。kit checkout のルートで次を実行する。
+
+```bash
+cd /tmp/agentic-workflow-foundation-kit
+bin/foundation-gate generate
+```
+
+`generate` 成功後、kit の updater が `~/.cursor/skills/agentic-workflow-update` へ
+原子的に配置される。対象アプリの作業ツリーや root manifest は変更されない。
+host updater が更新されたことを確認してから、対象アプリで `plan` を実行する。
+`apply` は plan が成功した後の更新経路なので、host updater の bootstrap 手段には使わない。
 
 表示された計画全体の `plan_digest` と差分を確認し、POの計画全体承認を得る。
 ファイル単位の部分承認・部分適用は行わない。

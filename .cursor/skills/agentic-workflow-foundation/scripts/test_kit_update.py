@@ -306,6 +306,167 @@ def test_subprocess_error_keeps_exit_and_stderr() -> None:
         raise AssertionError("subprocess failure が受理された")
 
 
+def test_candidate_validation_scopes_seed_audit() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-audit-scope-") as temp_dir:
+        base = Path(temp_dir)
+        clone = base / "clone"
+        work = base / "work"
+        runner = clone / ".cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py"
+        seed = clone / ".cursor/skills/agentic-workflow-foundation/manifest.yaml"
+        (runner.parent).mkdir(parents=True)
+        seed.parent.mkdir(parents=True, exist_ok=True)
+        runner.write_text("", encoding="utf-8")
+        seed.write_text("version: 1\n", encoding="utf-8")
+        (clone / ".cursor/skills/agentic-workflow-engine").mkdir(parents=True)
+        (clone / ".cursor/skills/agentic-workflow-foundation/scripts").mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        (work / "manifest.yaml").parent.mkdir(parents=True)
+        (work / "manifest.yaml").write_text("version: 1\n", encoding="utf-8")
+        gate = work / "bin/quality-gate"
+        gate.parent.mkdir()
+        gate.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+        calls: list[list[str]] = []
+
+        def record(command: list[str], cwd: Path) -> None:
+            calls.append(command)
+
+        with (
+            patch.object(UPDATE, "_run", side_effect=record),
+            patch.object(
+                UPDATE,
+                "_load_resolved_manifest",
+                return_value={"project": {"quality_gate": {"profile": "application"}}},
+            ),
+        ):
+            result = UPDATE._run_candidate_validation(clone, work)
+        assert result["project"]["quality_gate"]["profile"] == "application"
+        assert [command[2] for command in calls[:3]] == ["generate", "check", "audit"]
+        assert "--skip-seed-required-sections" in calls[2]
+        assert all(
+            "--skip-seed-required-sections" not in command
+            for command in (calls[0], calls[1], calls[3])
+        )
+
+        calls.clear()
+
+        def fail_on_audit(command: list[str], cwd: Path) -> None:
+            calls.append(command)
+            if command[2] == "audit":
+                raise UPDATE.CommandUpdateError("audit failed", 1)
+
+        with patch.object(UPDATE, "_run", side_effect=fail_on_audit):
+            try:
+                UPDATE._run_candidate_validation(clone, work)
+            except UPDATE.CommandUpdateError as exc:
+                assert exc.exit_code == 1
+            else:
+                raise AssertionError("audit failure が quality gate へ進行した")
+        assert len(calls) == 3
+
+
+def test_candidate_validation_rehearses_existing_seed() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-rehearsal-") as temp_dir:
+        base = Path(temp_dir)
+        clone = base / "clone"
+        work = base / "work"
+        seed_dir = clone / ".cursor/skills/agentic-workflow-foundation"
+        seed_dir.mkdir(parents=True)
+        _write(
+            seed_dir,
+            "manifest.yaml",
+            """\
+version: 1
+outputs:
+  - path: rendered.md
+    template: rendered.template
+    mode: render
+    required_sections:
+      - RENDERED-V2
+  - path: managed.txt
+    template: managed.template
+    mode: marker
+    required_sections:
+      - MANAGED-V2
+  - path: seed.md
+    template: seed.template
+    mode: seed
+    required_sections:
+      - KIT-SEED-SECTION
+""",
+        )
+        foundation_scripts = seed_dir / "scripts"
+        shutil.copytree(
+            ROOT / ".cursor/skills/agentic-workflow-foundation/scripts",
+            foundation_scripts,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(
+                "test_worker_contract.py",
+                "__pycache__",
+                "*.pyc",
+            ),
+        )
+        shutil.copytree(
+            ROOT / ".cursor/skills/agentic-workflow-engine/scripts",
+            clone / ".cursor/skills/agentic-workflow-engine/scripts",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        shutil.copytree(
+            ROOT / ".cursor/skills/agentic-workflow-foundation/templates",
+            seed_dir / "templates",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        _write(
+            seed_dir / "templates",
+            "rendered.template",
+            "RENDERED-V2\n",
+        )
+        _write(seed_dir / "templates", "managed.template", "MANAGED-V2\n")
+        _write(seed_dir / "templates", "seed.template", "KIT-SEED-SECTION\n")
+        _write(
+            foundation_scripts,
+            "run_resolved_engine.py",
+            (ROOT / ".cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py").read_text(
+                encoding="utf-8"
+            ),
+        )
+
+        _write(
+            work,
+            "manifest.yaml",
+            """\
+version: 1
+project:
+  quality_gate:
+    profile: application
+""",
+        )
+        _write(work, "rendered.md", "RENDERED-V1\n")
+        _write(
+            work,
+            "managed.txt",
+            "project-owned\n"
+            "# >>> managed managed >>>\n"
+            "MANAGED-V1\n"
+            "# <<< managed managed <<<\n",
+        )
+        _write(work, "seed.md", "consumer-owned seed\n")
+        gate = work / "bin/quality-gate"
+        gate.parent.mkdir(parents=True)
+        gate.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        gate.chmod(0o755)
+
+        manifest = UPDATE._run_candidate_validation(clone, work)
+        assert manifest["project"]["quality_gate"]["profile"] == "application"
+        assert (work / "seed.md").read_text(encoding="utf-8") == "consumer-owned seed\n"
+        assert (work / "rendered.md").read_text(encoding="utf-8") == "RENDERED-V2\n"
+        assert "MANAGED-V2" in (work / "managed.txt").read_text(encoding="utf-8")
+
+
 def test_skill_contract_excludes_vendor_flow() -> None:
     content = SKILL_FILE.read_text(encoding="utf-8")
     assert "固定public URL" in content
@@ -404,6 +565,8 @@ def main() -> int:
         ("external overlay", test_external_overlay_is_copied_to_work_tree),
         ("plan digest and preimage", test_plan_digest_and_preimage_reject_unapproved_apply),
         ("subprocess diagnostics", test_subprocess_error_keeps_exit_and_stderr),
+        ("candidate validation audit scope", test_candidate_validation_scopes_seed_audit),
+        ("candidate validation rehearsal", test_candidate_validation_rehearses_existing_seed),
         ("skill contract", test_skill_contract_excludes_vendor_flow),
         ("host install and check", test_host_install_and_check_do_not_update_host),
         ("generate host flags", test_generate_host_flags),

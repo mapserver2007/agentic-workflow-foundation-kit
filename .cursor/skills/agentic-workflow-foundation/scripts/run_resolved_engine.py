@@ -738,7 +738,20 @@ def _install_update_skill(destination_root: str | None = None) -> int:
         _remove_staged_update_path(staging_parent)
 
 
-def run_engine(command: str, resolved_dir: str, manifest: dict | None = None, work_root: str | None = None) -> int:
+def run_engine(
+    command: str,
+    resolved_dir: str,
+    manifest: dict | None = None,
+    work_root: str | None = None,
+    *,
+    skip_seed_required_sections: bool = False,
+) -> int:
+    if skip_seed_required_sections and command != "audit":
+        print(
+            "FATAL: --skip-seed-required-sections は audit でのみ使用できます",
+            file=sys.stderr,
+        )
+        return 2
     cwd = work_root or ROOT
     if command in ("generate", "check"):
         args = [
@@ -756,6 +769,8 @@ def run_engine(command: str, resolved_dir: str, manifest: dict | None = None, wo
             "--skill-dir",
             resolved_dir,
         ]
+        if skip_seed_required_sections:
+            args.append("--skip-seed-required-sections")
     else:
         raise ValueError(f"未知の command: {command}")
     rc = subprocess.call(args, cwd=cwd)
@@ -790,7 +805,18 @@ def main(argv=None) -> int:
         "--update-skill-home",
         help="個人 updater の配置先 skills ディレクトリ（テスト用）",
     )
+    parser.add_argument(
+        "--skip-seed-required-sections",
+        action="store_true",
+        help="consumer updater 用: audit の seed は存在のみ検査する",
+    )
     args = parser.parse_args(argv)
+    if args.skip_seed_required_sections and args.command != "audit":
+        print(
+            "FATAL: --skip-seed-required-sections は audit でのみ使用できます",
+            file=sys.stderr,
+        )
+        return 2
     work_root = os.path.abspath(args.work_root) if args.work_root else ROOT
 
     if args.command == "generate" and work_root == ROOT:
@@ -815,7 +841,13 @@ def main(argv=None) -> int:
             dir=resolved_parent,
         ) as tmp_skill_dir:
             resolved_dir = prepare_skill_dir(tmp_skill_dir, manifest)
-            rc = run_engine(args.command, resolved_dir, manifest, work_root=work_root)
+            rc = run_engine(
+                args.command,
+                resolved_dir,
+                manifest,
+                work_root=work_root,
+                skip_seed_required_sections=args.skip_seed_required_sections,
+            )
             if rc != 0:
                 return rc
             if args.command == "generate" and work_root == ROOT:

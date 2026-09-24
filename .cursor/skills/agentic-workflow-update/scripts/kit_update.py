@@ -249,7 +249,16 @@ def _run_candidate_validation(kit_root: Path, work_root: Path) -> dict[str, Any]
     # work_root が kit clone の ROOT ではないため、runner は host updater を配置しない。
     _run([*common[:1], common[1], "generate", *common[2:]], work_root)
     _run([*common[:1], common[1], "check", *common[2:]], work_root)
-    _run([*common[:1], common[1], "audit", *common[2:]], work_root)
+    _run(
+        [
+            *common[:1],
+            common[1],
+            "audit",
+            "--skip-seed-required-sections",
+            *common[2:],
+        ],
+        work_root,
+    )
 
     manifest = _load_resolved_manifest(seed, root_manifest, kit_root)
     profile = (
