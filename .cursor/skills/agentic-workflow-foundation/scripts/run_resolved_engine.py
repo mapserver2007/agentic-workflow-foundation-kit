@@ -676,6 +676,68 @@ def _run_worker_contract_validator() -> int:
     return rc
 
 
+def _remove_staged_update_path(path: str) -> None:
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.lexists(path):
+        os.unlink(path)
+
+
+def _install_update_skill(destination_root: str | None = None) -> int:
+    """kit 内の updater 正本を個人スキルへ原子的に配置する。"""
+    source = os.path.join(os.path.dirname(SKILL_DIR), "agentic-workflow-update")
+    if not os.path.isdir(source):
+        print("[KU-HOST-001] SKIP: updater 正本が kit にありません")
+        return 0
+
+    base = destination_root or os.environ.get(
+        "AGENTIC_WORKFLOW_UPDATE_HOME",
+        os.path.expanduser("~/.cursor/skills"),
+    )
+    base = os.path.abspath(os.path.expanduser(base))
+    destination = os.path.join(base, "agentic-workflow-update")
+    try:
+        os.makedirs(base, exist_ok=True)
+        staging_parent = tempfile.mkdtemp(prefix=".agentic-workflow-update.", dir=base)
+    except OSError as exc:
+        print(f"[KU-HOST-001] FATAL: 個人スキル配置先を準備できません: {exc}", file=sys.stderr)
+        return 2
+    staged = os.path.join(staging_parent, "agentic-workflow-update")
+    backup = os.path.join(
+        base,
+        f".agentic-workflow-update.previous.{os.getpid()}",
+    )
+    try:
+        shutil.copytree(
+            source,
+            staged,
+            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
+        )
+        if not os.path.isfile(os.path.join(staged, "SKILL.md")):
+            print("[KU-HOST-001] FATAL: updater SKILL.md がありません", file=sys.stderr)
+            return 2
+        if os.path.lexists(backup):
+            print("[KU-HOST-001] FATAL: updater 退避先が既に存在します", file=sys.stderr)
+            return 2
+        if os.path.lexists(destination):
+            os.replace(destination, backup)
+        try:
+            os.replace(staged, destination)
+        except OSError:
+            if os.path.lexists(backup):
+                os.replace(backup, destination)
+            raise
+        if os.path.lexists(backup):
+            _remove_staged_update_path(backup)
+        print(f"[KU-HOST-001] PASS: 個人スキルを配置しました: {destination}")
+        return 0
+    except OSError as exc:
+        print(f"[KU-HOST-001] FATAL: 個人スキル配置に失敗しました: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        _remove_staged_update_path(staging_parent)
+
+
 def run_engine(command: str, resolved_dir: str, manifest: dict | None = None, work_root: str | None = None) -> int:
     cwd = work_root or ROOT
     if command in ("generate", "check"):
@@ -719,6 +781,15 @@ def main(argv=None) -> int:
     parser.add_argument("--seed-manifest", default=os.path.join(SKILL_DIR, "manifest.yaml"))
     parser.add_argument("--root-manifest", default=os.path.join(ROOT, "manifest.yaml"))
     parser.add_argument("--work-root", help="generate/check の出力先リポジトリルート（省略時 kit ROOT）")
+    parser.add_argument(
+        "--skip-host-update",
+        action="store_true",
+        help="generate 成功後の個人 updater 配置を行わない（外部候補生成用。既定でも work-root 外では配置しない）",
+    )
+    parser.add_argument(
+        "--update-skill-home",
+        help="個人 updater の配置先 skills ディレクトリ（テスト用）",
+    )
     args = parser.parse_args(argv)
     work_root = os.path.abspath(args.work_root) if args.work_root else ROOT
 
@@ -760,7 +831,14 @@ def main(argv=None) -> int:
                 rc = _cleanup_legacy_workflow_triage(manifest)
                 if rc != 0:
                     return rc
-                return 0
+            if (
+                args.command == "generate"
+                and not args.skip_host_update
+                and (work_root == ROOT or args.update_skill_home is not None)
+            ):
+                rc = _install_update_skill(args.update_skill_home)
+                if rc != 0:
+                    return rc
             return 0
     except genlib.YamlError as e:
         print(f"FATAL: {e}", file=sys.stderr)
