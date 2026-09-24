@@ -9,13 +9,26 @@
 `audit.py` は次の2軸で exit code を返す（QUALITY_GATE exit code 3段階に準拠）。
 
 1. **冪等性 / SoT 一元化**: 出力ファイル == immutable upstream docs + seed manifest + root `manifest.yaml` の per-project 値を overlay した一時 resolved manifest / templates の再生成結果。差分があれば「出力ファイルが直接編集された」= exit 1。
-2. **required sections 準拠**: 各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。
+2. **required sections 準拠**: 既定の `audit.py` では各出力ファイルが `outputs[].required_sections` を全て含む。欠落は exit 1。consumer updater の候補検証だけは `--skip-seed-required-sections` を指定でき、適用対象外の既存 `mode: seed` は存在のみ検査する。
 3. **致命的エラー**（テンプレート不在 / manifest 破損）は exit 2。
 4. `project.*` / `session.*` の `[要確認]` 残存は **WARN（exit 0）**。確定は Phase 1.5 / 1.65 / 生成済み root `manifest.yaml` 設定の責務であり、生成基盤の欠陥ではないため FAIL にしない。キット配布時の初期状態を素の監査で壊さないことを優先する。
 
 > **エンジン自体は監査の生成物対象外**: `audit.py` が検査するのは設定スキルの `outputs[]`（生成された出力ファイル）である。生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）はどの設定スキルの `outputs` にも含まれないため、「出力 == 再生成結果」の冪等性検査の対象にならない。エンジンは設計符号化生成の出力ではなく、独立スキルとして工学仕様を正本に保守される。
 >
 > **resolved manifest は一時入力**: immutable upstream docs と root manifest overlay は foundation 固有の `run_resolved_engine.py` が担い、engine には解決済み skill-dir を渡す。これにより engine は統一設計書や root `manifest.yaml` を直接読まず、How ツールとしての境界を維持する。
+
+## consumer updater の監査範囲
+
+consumer updater は、対象アプリへ適用する `render` / `marker` 成果物と lock の差分を計画する。
+kit が適用しない既存 seed（ADR / GOTCHAS / Domain docs / skill config）は project-owned
+append-log または設定として保護し、内容を再生成・適用しない。そのため updater の候補検証だけは
+`audit.py --skip-seed-required-sections` を使用し、seed のファイル存在を確認したうえで
+`required_sections` の一致を要求しない。
+
+このフラグは foundation の公開監査契約を変更しない。`bin/foundation-gate audit` / `self`
+は既定のフラグなし経路で、seed の `required_sections` を含むテンプレート準拠検査を継続する。
+seed の不在、未知の mode、テンプレート不在、render / marker の drift または必須要件欠落は、
+consumer 経路でも引き続き失敗とする。
 
 ## 必須要件の設計根拠
 

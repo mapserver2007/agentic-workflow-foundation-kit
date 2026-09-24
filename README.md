@@ -150,6 +150,10 @@ agentic-workflow-foundation-kit/
         │       ├── genlib.py
         │       ├── generate.py
         │       └── audit.py
+        ├── agentic-workflow-update/         # ── ホスト個人スキルへ配置する正本 ──
+        │   ├── SKILL.md
+        │   ├── scripts/kit_update.py
+        │   └── bin/kit-source-fetch-safe
         │
         └── （生成スキル）                     # session-planning, session-handover,
                                                # workflow-orchestrator,
@@ -165,6 +169,7 @@ agentic-workflow-foundation-kit/
 | --- | --- |
 | [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査の orchestration を担う |
 | [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) | 生成・監査エンジン。設定スキルから渡された `manifest.yaml + templates/` を決定論的に変換する |
+| [`agentic-workflow-update`](.cursor/skills/agentic-workflow-update/SKILL.md) | kit の `origin/HEAD` から所有ソースを取得し、対象アプリの overlay で候補生成・差分承認・安全同期を行う更新専用スキル（ホスト個人スキルとして配置） |
 
 生成先プロジェクトで利用可能になるスキル（本リポジトリでは dogfooding 済み）:
 
@@ -228,6 +233,54 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 12. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
 13. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
 14. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+
+## 適用済みアプリへの kit 更新
+
+初回導入と継続更新は別の操作です。初回は kit の
+`agentic-workflow-foundation` / `agentic-workflow-engine` を対象アプリへ配置して
+通常の foundation 生成を行います。kit リポジトリで `bin/foundation-gate generate`
+が成功すると、更新専用スキルの正本
+`.cursor/skills/agentic-workflow-update/` が
+`~/.cursor/skills/agentic-workflow-update/` へ原子的に配置されます。更新専用スキル自体は
+対象アプリへ vendor しません。
+
+更新は対象アプリの root で次の dry-run から始めます。
+
+```bash
+python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
+  --plan-file /tmp/kit-update-plan.json
+```
+
+更新元は対象アプリの親に並置された
+`agentic-workflow-foundation-kit` の `origin` です。`origin/HEAD` が指す版を
+HTTPS + `init.yaml` で選択された credential provider の safe wrapper 経由で取得し、
+`/tmp/agentic-workflow-foundation-kit` に clone します。並置されていない場合だけ
+`--kit-root` で明示します。dirty な kit source、`origin/HEAD` を解決できない取得元、
+認証・通信エラーは停止要因です。
+
+dry-run は clone 上で foundation の生成物を作りません。clone の seed /
+templates / engine / upstream design docs と対象アプリの root `manifest.yaml` を
+一時 overlay に渡し、`/tmp/work` で generate → check → audit → profile quality gate
+を実行します。候補と digest を確認し、承認した計画だけを適用します。
+
+```bash
+python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
+  --plan-file /tmp/kit-update-plan.json \
+  --approve-plan <plan_digest>
+```
+
+同期対象は kit 所有の foundation / engine / upstream design docs と、アプリ overlay
+から再生成された render / marker 成果物だけです。`init.yaml`、root
+`manifest.yaml`、技術スタック設計書、`docs/spec/**`、ADR / GOTCHAS、reports、
+seed、アプリコードは保護されます。削除・rename・orphan、allowlist 外の差分、
+preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
+適用後の検証に失敗した場合は同期済みファイルをロールバックします。自動 commit /
+push は行いません。
+
+更新時の検査 ID は `KU-OVERLAY-001`（アプリ overlay）、`KU-SCOPE-001`
+（所有範囲）、`KU-PREIMAGE-001`（承認後変更）、`KU-ORPHAN-001`
+（削除・rename・orphan）、`KU-SEED-001`（seed 保護）、`KU-DENY-001`
+（denylist 保護）、`KU-HOST-001`（ホスト個人スキル配置）です。
 
 ## 手動実行
 

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set +x
+
+# agentic-workflow-foundation-kit の public 取得専用 wrapper。
+# 対象アプリの認証・設定・並置 clone は参照しない。
+
+readonly KIT_URL="https://github.com/mapserver2007/agentic-workflow-foundation-kit.git"
+
+usage() {
+  echo "Usage: kit-source-fetch-safe --clone-root <path>" >&2
+  exit 2
+}
+
+CLONE_ROOT="/tmp/agentic-workflow-foundation-kit"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --clone-root)
+      [[ $# -ge 2 ]] || usage
+      CLONE_ROOT="$2"
+      shift 2
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+CLONE_ROOT="$(python3 - "$CLONE_ROOT" <<'PY'
+import os
+import sys
+print(os.path.abspath(sys.argv[1]))
+PY
+)" || exit 2
+
+git_config=(git -c credential.helper= -c core.askPass=)
+export GIT_TERMINAL_PROMPT=0
+
+clone_parent="$(dirname "$CLONE_ROOT")"
+mkdir -p "$clone_parent"
+if [[ -e "$CLONE_ROOT" || -L "$CLONE_ROOT" ]]; then
+  stale="${CLONE_ROOT}.stale.$(date +%Y%m%d%H%M%S)"
+  [[ ! -e "$stale" && ! -L "$stale" ]] || {
+    echo "ERROR: stale clone の退避先が既に存在します" >&2
+    exit 1
+  }
+  mv "$CLONE_ROOT" "$stale"
+fi
+
+if ! "${git_config[@]}" clone -- "$KIT_URL" "$CLONE_ROOT"; then
+  echo "ERROR: public kit の clone に失敗しました" >&2
+  exit 1
+fi
+
+sha=$(git -C "$CLONE_ROOT" rev-parse HEAD 2>/dev/null) || {
+  echo "ERROR: clone の revision を解決できません" >&2
+  exit 2
+}
+branch=$(git -C "$CLONE_ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'detached')
+printf '{"clone_root":%s,"branch":%s,"sha":%s,"url":%s}\n' \
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$CLONE_ROOT")" \
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$branch")" \
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$sha")" \
+  "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$KIT_URL")"
+

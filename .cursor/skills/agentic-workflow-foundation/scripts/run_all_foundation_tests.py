@@ -18,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 
 TESTS_IN_ORDER = [
     "test_engine_readonly.py",
+    "test_seed_audit_scope.py",
     "test_generate_skip_unchanged.py",
     "test_genlib_literal_render.py",
     "test_apply_kit_init.py",
@@ -46,6 +47,7 @@ TESTS_IN_ORDER = [
     "test_session_progress_emitter.py",
     "test_session_progress_append.py",
     "test_review_start_gate.py",
+    "test_kit_update.py",
     "test_validate_deep_thinking.py",
     "test_validate_requirement_analysis.py",
     "test_validate_agent_kaizen.py",

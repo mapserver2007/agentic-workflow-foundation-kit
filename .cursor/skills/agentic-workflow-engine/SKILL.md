@@ -30,7 +30,7 @@ Agentic Workflow 基盤の **生成/監査エンジン（How）** を提供す�
 | --- | --- |
 | `scripts/genlib.py` | 共有ライブラリ。最小 YAML ローダ（`load_manifest`）/ `sha256_file` / `skill_dir_of` / `root_from_skill_dir` / `deep_merge` / `apply_inherited_project`（project 継承）/ `YamlError` / テンプレート描画ヘルパ。`generate.py` と `audit.py` が同一描画ロジックを共有するための土台。 |
 | `scripts/generate.py` | `--skill-dir <dir>` の `manifest.yaml` + `templates/` から `outputs[]` を生成。モードは `render`（ファイル全体）/ `marker`（`.gitignore` 等のマーカーブロック upsert）/ `seed`（不在時のみ初期生成・存在時は不可侵）。`--check` で冪等性ドライラン。`executable: true` の出力には実行ビット付与。 |
-| `scripts/audit.py` | `--skill-dir <dir>` を監査。(1) 冪等性（出力 == 再生成結果、差分があれば直接編集とみなす）、(2) `outputs[].required_sections` の充足を検査し、exit code を返す。 |
+| `scripts/audit.py` | `--skill-dir <dir>` を監査。(1) 冪等性（出力 == 再生成結果、差分があれば直接編集とみなす）、(2) `outputs[].required_sections` の充足を検査し、exit code を返す。`--skip-seed-required-sections` は consumer updater が適用対象外の既存 seed を存在のみ検査する場合に限る。 |
 
 > 依存: **Python 3.9 以上（標準ライブラリのみ、PyYAML 不要）**。`manifest.yaml` は次の最小 YAML サブセットで記述する: block style のみ（flow `{}` / `[]` 不可）/ インデント半角スペース2 / スカラは 裸・`"…"`・`'…'`・整数・真偽値 / マッピング・シーケンス（`- item` / `- key: value`）/ 行頭・行中 `#` コメント。**複数行ブロックスカラ（`|` / `>`）は非対応**（現行 manifest は不使用）。
 
@@ -71,6 +71,11 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/generate.py --skill-dir <
 
 # 監査（冪等性 + 必須要件）
 python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py --skill-dir <config-skill-dir>
+
+# consumer updater の候補検証（既存 seed の required_sections は検査しない）
+python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py \
+  --skill-dir <config-skill-dir> \
+  --skip-seed-required-sections
 ```
 
 ## exit code（QUALITY_GATE 3段階に準拠）
@@ -80,6 +85,18 @@ python3 .cursor/skills/agentic-workflow-engine/scripts/audit.py --skill-dir <con
 | 0 | 冪等性 OK + 必須要件充足（`project.*` の `[要確認]` 残存は WARN だが PASS） |
 | 1 | drift（出力の直接編集）/ 必須要件欠落 / 出力ファイル不在 |
 | 2 | 致命的エラー（テンプレート不在 / `manifest.yaml` 破損） |
+
+## consumer updater の seed 監査例外
+
+既定の `audit.py` は、`mode: seed` を含む全 outputs[] について
+`required_sections` を検査する。この既定動作は foundation 自己検証
+（`bin/foundation-gate audit` / `self`）のテンプレート準拠検査として維持する。
+
+consumer updater の `plan` は、kit が適用対象にしない既存 seed
+（ADR / GOTCHAS / Domain docs / skill config）を内容変更せず保護する。
+この経路だけ `--skip-seed-required-sections` を指定し、seed は存在のみ、
+render / marker は従来どおり drift と required_sections を検査する。
+ファイル不在、未知の mode、テンプレート不在、描画失敗はこの例外で緩和しない。
 
 ## スコープ外
 
