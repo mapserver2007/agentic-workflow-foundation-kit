@@ -119,11 +119,12 @@ def validate(config: dict) -> list[tuple[str, str]]:
     return failures
 
 
-def validate_legacy_reference() -> list[tuple[str, str]]:
+def validate_legacy_reference(root: str | None = None) -> list[tuple[str, str]]:
     """requirement-analysis テンプレート内に旧 workflow-triage 参照が残存しないことを検査する。"""
     failures: list[tuple[str, str]] = []
+    scan_root = os.path.abspath(root or ROOT)
     ra_dir = os.path.join(
-        ROOT, ".cursor", "skills", "requirement-analysis",
+        scan_root, ".cursor", "skills", "requirement-analysis",
     )
     if not os.path.isdir(ra_dir):
         return failures
@@ -136,7 +137,7 @@ def validate_legacy_reference() -> list[tuple[str, str]]:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
             if "workflow-triage" in content:
-                rel = os.path.relpath(filepath, ROOT)
+                rel = os.path.relpath(filepath, scan_root)
                 failures.append((
                     "G-RA-LEGACY-001",
                     f"旧参照 'workflow-triage' が残存: {rel}",
@@ -144,14 +145,17 @@ def validate_legacy_reference() -> list[tuple[str, str]]:
     return failures
 
 
-def validate_deep_thinking_sot_duplication() -> list[tuple[str, str]]:
+def validate_deep_thinking_sot_duplication(
+    root: str | None = None,
+) -> list[tuple[str, str]]:
     """deep-thinking config に triage が残存かつ requirement-analysis が有効の場合を FAIL とする。"""
     failures: list[tuple[str, str]] = []
+    scan_root = os.path.abspath(root or ROOT)
     dt_config_path = os.path.join(
-        ROOT, ".cursor", "skills", "deep-thinking", "config.yaml",
+        scan_root, ".cursor", "skills", "deep-thinking", "config.yaml",
     )
     ra_config_path = os.path.join(
-        ROOT, ".cursor", "skills", "requirement-analysis", "config.yaml",
+        scan_root, ".cursor", "skills", "requirement-analysis", "config.yaml",
     )
     if not os.path.isfile(dt_config_path) or not os.path.isfile(ra_config_path):
         return failures
@@ -181,7 +185,11 @@ def validate_deep_brief(path: str) -> list[tuple[str, str]]:
     ]
 
 
-def run(config_path: str, deep_brief_path: str | None = None) -> int:
+def run(
+    config_path: str,
+    deep_brief_path: str | None = None,
+    root: str | None = None,
+) -> int:
     if not os.path.isfile(config_path):
         print(f"FATAL: config 不在: {config_path}", file=sys.stderr)
         return 2
@@ -191,10 +199,11 @@ def run(config_path: str, deep_brief_path: str | None = None) -> int:
         print(f"FATAL: config YAML 破損: {config_path}", file=sys.stderr)
         return 2
 
+    scan_root = os.path.abspath(root or ROOT)
     failures = validate(config)
-    failures.extend(validate_legacy_reference())
-    failures.extend(validate_deep_thinking_sot_duplication())
-    deep_brief_path = deep_brief_path or os.path.join(ROOT, DEEP_BRIEF_REL)
+    failures.extend(validate_legacy_reference(scan_root))
+    failures.extend(validate_deep_thinking_sot_duplication(scan_root))
+    deep_brief_path = deep_brief_path or os.path.join(scan_root, DEEP_BRIEF_REL)
     try:
         failures.extend(validate_deep_brief(deep_brief_path))
     except OSError as exc:

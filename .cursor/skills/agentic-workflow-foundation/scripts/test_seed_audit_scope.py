@@ -199,6 +199,64 @@ def test_resolved_runner_routes_flag_only_to_audit() -> None:
         assert RUNNER.main(["generate", "--skip-seed-required-sections"]) == 2
 
 
+def test_audit_passes_work_root_to_post_validators() -> None:
+    """audit 後段の全 validator が同じ work_root を検査対象にする。"""
+    with tempfile.TemporaryDirectory(prefix="seed-audit-validator-root-") as temp_dir:
+        work_root = Path(temp_dir) / "work"
+        manifest = {
+            "deep_thinking": {"enabled": True},
+            "requirement_analysis": {"enabled": True},
+            "agent_kaizen": {"enabled": True},
+            "agent_workflow": {"enabled": True},
+        }
+        captured: dict[str, tuple[object, ...]] = {}
+
+        def capture(name: str):
+            def _capture(*args: object) -> int:
+                captured[name] = args
+                return 0
+
+            return _capture
+
+        with (
+            patch.object(RUNNER.subprocess, "call", return_value=0),
+            patch.object(
+                RUNNER,
+                "_run_deep_thinking_validator",
+                side_effect=capture("deep"),
+            ),
+            patch.object(
+                RUNNER,
+                "_run_requirement_analysis_validator",
+                side_effect=capture("requirement"),
+            ),
+            patch.object(
+                RUNNER,
+                "_run_agent_kaizen_validator",
+                side_effect=capture("kaizen"),
+            ),
+            patch.object(
+                RUNNER,
+                "_run_worker_contract_validator",
+                side_effect=capture("worker"),
+            ),
+        ):
+            assert (
+                RUNNER.run_engine(
+                    "audit",
+                    "/tmp/resolved",
+                    manifest,
+                    work_root=str(work_root),
+                )
+                == 0
+            )
+
+        assert set(captured) == {"deep", "requirement", "kaizen", "worker"}
+        for args in captured.values():
+            assert args[0] is manifest
+            assert args[1] == str(work_root)
+
+
 def main() -> int:
     tests = (
         ("default audit requires seed sections", test_default_audit_requires_seed_sections),
@@ -206,6 +264,7 @@ def main() -> int:
         ("seed exception keeps fatal errors", test_seed_exception_keeps_fatal_errors),
         ("foundation gate keeps default audit", test_foundation_gate_keeps_default_audit),
         ("resolved runner routes flag", test_resolved_runner_routes_flag_only_to_audit),
+        ("audit validator work root", test_audit_passes_work_root_to_post_validators),
     )
     for label, test in tests:
         try:

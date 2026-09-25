@@ -18,6 +18,7 @@ UPDATE_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/scripts/kit_updat
 RUNNER_SCRIPT = HERE / "run_resolved_engine.py"
 FETCH_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/bin/kit-source-fetch-safe"
 SKILL_FILE = ROOT / ".cursor/skills/agentic-workflow-update/SKILL.md"
+README_FILE = ROOT / "README.md"
 
 
 def _load_module(path: Path, name: str):
@@ -141,6 +142,43 @@ def _revision(clone: Path) -> str:
         text=True,
         check=True,
     ).stdout.strip()
+
+
+def _worker_contract_fixture(base: Path) -> tuple[Path, Path]:
+    """clone 側に worker test/fixture、work 側に生成済み gate を用意する。"""
+    clone_skill = (
+        base
+        / "clone"
+        / ".cursor"
+        / "skills"
+        / "agentic-workflow-foundation"
+    )
+    clone_scripts = clone_skill / "scripts"
+    clone_scripts.mkdir(parents=True)
+    shutil.copytree(
+        ROOT / ".cursor/skills/agentic-workflow-foundation/scripts",
+        clone_scripts,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    shutil.copytree(
+        ROOT / ".cursor/skills/agentic-workflow-foundation/fixtures",
+        clone_skill / "fixtures",
+    )
+
+    work_root = base / "work"
+    work_root.mkdir()
+    return clone_scripts, work_root
+
+
+def _install_worker_gate(work_root: Path) -> Path:
+    gate = work_root / ".cursor/skills/session-handover/scripts/gate-artifact.py"
+    gate.parent.mkdir(parents=True)
+    shutil.copy2(
+        ROOT / ".cursor/skills/session-handover/scripts/gate-artifact.py",
+        gate,
+    )
+    return gate
 
 
 def _plan(app: Path, clone: Path, work: Path, *, overlay: Path | None = None) -> dict:
@@ -467,6 +505,51 @@ project:
         assert "MANAGED-V2" in (work / "managed.txt").read_text(encoding="utf-8")
 
 
+def test_worker_contract_uses_work_root_and_exit_boundaries() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-worker-contract-") as temp_dir:
+        base = Path(temp_dir)
+        clone_scripts, work_root = _worker_contract_fixture(base)
+        enabled = {"agent_workflow": {"enabled": True}}
+        disabled = {"agent_workflow": {"enabled": False}}
+
+        with patch.object(RUNNER, "HERE", str(clone_scripts)):
+            assert (
+                RUNNER._run_worker_contract_validator(disabled, str(work_root))
+                == 0
+            )
+            assert (
+                RUNNER._run_worker_contract_validator(enabled, str(work_root))
+                == 2
+            )
+
+            gate = _install_worker_gate(work_root)
+            assert (
+                RUNNER._run_worker_contract_validator(enabled, str(work_root))
+                == 0
+            )
+
+            sample = (
+                clone_scripts.parent
+                / "fixtures"
+                / "artifacts"
+                / "sample-report--step1.md"
+            )
+            sample.write_text(
+                "\n".join(
+                    line
+                    for line in sample.read_text(encoding="utf-8").splitlines()
+                    if not line.startswith("requirements_digest:")
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            assert (
+                RUNNER._run_worker_contract_validator(enabled, str(work_root))
+                == 1
+            )
+            assert gate.is_file()
+
+
 def test_skill_contract_excludes_vendor_flow() -> None:
     content = SKILL_FILE.read_text(encoding="utf-8")
     assert "固定public URL" in content
@@ -474,6 +557,17 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "foundation/engine" in content
     assert "agentic-workflow-kit.lock.yaml" in content
     assert "--root-manifest" in content
+    assert "bin/foundation-gate generate" not in content
+    assert "--update-skill-home" in content
+
+    readme = README_FILE.read_text(encoding="utf-8")
+    update_section = readme.split("## 適用済みアプリへの kit 更新", 1)[1]
+    update_section = update_section.split("## 手動実行", 1)[0]
+    assert "並置された" not in update_section
+    assert "--kit-root" not in update_section
+    assert "bin/foundation-gate generate" not in update_section
+    assert "対象アプリへ配置" not in update_section
+    assert "--update-skill-home" in update_section
 
 
 def test_host_install_and_check_do_not_update_host() -> None:
@@ -554,6 +648,35 @@ def test_generate_host_flags() -> None:
         assert not skipped_host.exists()
 
 
+def test_fresh_clone_bootstrap_installs_host_updater() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-bootstrap-") as temp_dir:
+        base = Path(temp_dir)
+        candidate = base / "candidate"
+        host = base / "host"
+        missing_root_manifest = base / "fresh-clone" / "manifest.yaml"
+        assert (
+            RUNNER.main(
+                [
+                    "generate",
+                    "--seed-manifest",
+                    str(
+                        ROOT
+                        / ".cursor/skills/agentic-workflow-foundation/manifest.yaml"
+                    ),
+                    "--root-manifest",
+                    str(missing_root_manifest),
+                    "--work-root",
+                    str(candidate),
+                    "--update-skill-home",
+                    str(host),
+                ]
+            )
+            == 0
+        )
+        assert not candidate.exists()
+        assert (host / "agentic-workflow-update/SKILL.md").is_file()
+
+
 def main() -> int:
     tests = (
         ("public fetch contract", test_public_fetch_contract),
@@ -567,9 +690,11 @@ def main() -> int:
         ("subprocess diagnostics", test_subprocess_error_keeps_exit_and_stderr),
         ("candidate validation audit scope", test_candidate_validation_scopes_seed_audit),
         ("candidate validation rehearsal", test_candidate_validation_rehearses_existing_seed),
+        ("worker contract work root", test_worker_contract_uses_work_root_and_exit_boundaries),
         ("skill contract", test_skill_contract_excludes_vendor_flow),
         ("host install and check", test_host_install_and_check_do_not_update_host),
         ("generate host flags", test_generate_host_flags),
+        ("fresh clone bootstrap", test_fresh_clone_bootstrap_installs_host_updater),
     )
     for label, test in tests:
         try:

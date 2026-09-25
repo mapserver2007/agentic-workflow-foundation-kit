@@ -603,44 +603,49 @@ def prepare_skill_dir(resolved_dir: str, manifest: dict) -> str:
     return resolved_dir
 
 
-def _run_deep_thinking_validator(manifest: dict) -> int:
+def _run_deep_thinking_validator(
+    manifest: dict,
+    work_root: str | None = None,
+) -> int:
     """deep_thinking が有効なら静的契約検査を実行する。無効時は skip。"""
     if not _is_feature_enabled(manifest, "deep_thinking"):
         return 0
-    config_path = os.path.join(
-        ROOT, ".cursor", "skills", "deep-thinking", "config.yaml",
-    )
-    if not os.path.isfile(config_path):
-        print("[validate_deep_thinking] SKIP: config.yaml 不在（feature 有効だが未生成）")
-        return 0
+    audit_root = os.path.abspath(work_root or ROOT)
+    config_path = os.path.join(audit_root, ".cursor", "skills", "deep-thinking", "config.yaml")
     from validate_deep_thinking import run as validate_run
     return validate_run(config_path)
 
 
-def _run_requirement_analysis_validator(manifest: dict) -> int:
+def _run_requirement_analysis_validator(
+    manifest: dict,
+    work_root: str | None = None,
+) -> int:
     """requirement_analysis が有効なら静的契約検査を実行する。無効時は skip。"""
     if not _is_feature_enabled(manifest, "requirement_analysis"):
         return 0
+    audit_root = os.path.abspath(work_root or ROOT)
     config_path = os.path.join(
-        ROOT, ".cursor", "skills", "requirement-analysis", "config.yaml",
+        audit_root, ".cursor", "skills", "requirement-analysis", "config.yaml",
     )
-    if not os.path.isfile(config_path):
-        print("[validate_requirement_analysis] SKIP: config.yaml 不在（feature 有効だが未生成）")
-        return 0
+    deep_brief_path = os.path.join(
+        audit_root, ".cursor", "skills", "requirement-analysis",
+        "references", "deep-brief.md",
+    )
     from validate_requirement_analysis import run as validate_run
-    return validate_run(config_path)
+    return validate_run(config_path, deep_brief_path, audit_root)
 
 
-def _run_agent_kaizen_validator(manifest: dict) -> int:
+def _run_agent_kaizen_validator(
+    manifest: dict,
+    work_root: str | None = None,
+) -> int:
     """agent_kaizen が有効なら静的契約検査を実行する。無効時は skip。"""
     if not _is_feature_enabled(manifest, "agent_kaizen"):
         return 0
+    audit_root = os.path.abspath(work_root or ROOT)
     config_path = os.path.join(
-        ROOT, ".cursor", "skills", "agent-kaizen", "config.yaml",
+        audit_root, ".cursor", "skills", "agent-kaizen", "config.yaml",
     )
-    if not os.path.isfile(config_path):
-        print("[validate_agent_kaizen] SKIP: config.yaml 不在（feature 有効だが未生成）")
-        return 0
     from validate_agent_kaizen import run as validate_run
     return validate_run(config_path)
 
@@ -666,14 +671,35 @@ def _cleanup_legacy_workflow_triage(manifest: dict) -> int:
     return 0
 
 
-def _run_worker_contract_validator() -> int:
-    """Worker Contract 整合テストを実行する。fixture が存在しない場合は skip。"""
+def _run_worker_contract_validator(
+    manifest: dict,
+    work_root: str | None = None,
+) -> int:
+    """生成済み作業ツリーを対象に Worker Contract 整合テストを実行する。"""
+    if not _is_feature_enabled(manifest, "agent_workflow"):
+        return 0
     test_script = os.path.join(HERE, "test_worker_contract.py")
     if not os.path.isfile(test_script):
-        print("[test_worker_contract] SKIP: test_worker_contract.py 不在")
-        return 0
-    rc = subprocess.call([sys.executable, test_script], cwd=ROOT)
-    return rc
+        print(
+            f"[test_worker_contract] FATAL: test_worker_contract.py 不在: {test_script}",
+            file=sys.stderr,
+        )
+        return 2
+    audit_root = os.path.abspath(work_root or ROOT)
+    child_env = os.environ.copy()
+    child_env["AGENTIC_WORKFLOW_WORK_ROOT"] = audit_root
+    try:
+        return subprocess.call(
+            [sys.executable, test_script],
+            cwd=audit_root,
+            env=child_env,
+        )
+    except OSError as exc:
+        print(
+            f"[test_worker_contract] FATAL: Worker Contract 検査を起動できません: {exc}",
+            file=sys.stderr,
+        )
+        return 2
 
 
 def _remove_staged_update_path(path: str) -> None:
@@ -777,16 +803,17 @@ def run_engine(
     if rc != 0:
         return rc
     if command == "audit" and manifest is not None:
-        rc = _run_deep_thinking_validator(manifest)
+        audit_root = os.path.abspath(work_root or ROOT)
+        rc = _run_deep_thinking_validator(manifest, audit_root)
         if rc != 0:
             return rc
-        rc = _run_requirement_analysis_validator(manifest)
+        rc = _run_requirement_analysis_validator(manifest, audit_root)
         if rc != 0:
             return rc
-        rc = _run_agent_kaizen_validator(manifest)
+        rc = _run_agent_kaizen_validator(manifest, audit_root)
         if rc != 0:
             return rc
-        return _run_worker_contract_validator()
+        return _run_worker_contract_validator(manifest, audit_root)
     return 0
 
 
@@ -830,6 +857,19 @@ def main(argv=None) -> int:
         except OSError as e:
             print(f"FATAL: bootstrap 失敗: {e}", file=sys.stderr)
             return 2
+
+    # 公開 kit clone は root manifest を配布しないため、host updater の
+    # 初回 bootstrap だけは生成入力なしで実行できるようにする。
+    # --update-skill-home がない通常の generate は従来どおり入力不備で停止する。
+    if (
+        args.command == "generate"
+        and args.update_skill_home is not None
+        and not os.path.isfile(args.root_manifest)
+    ):
+        print(
+            "[bootstrap] root manifest 不在のため host updater のみを配置します"
+        )
+        return _install_update_skill(args.update_skill_home)
 
     try:
         manifest = resolved_manifest(args.seed_manifest, args.root_manifest)

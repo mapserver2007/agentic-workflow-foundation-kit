@@ -60,11 +60,36 @@ def test_missing_required_heading_fails():
     assert exit_code == 1, f"missing required heading should return exit 1: exit {exit_code}"
 
 
+def test_explicit_root_controls_legacy_scans():
+    """consumer work_root 配下の legacy 参照を検査する。"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir) / "work"
+        ra_dir = root / ".cursor" / "skills" / "requirement-analysis"
+        dt_dir = root / ".cursor" / "skills" / "deep-thinking"
+        ra_dir.mkdir(parents=True)
+        dt_dir.mkdir(parents=True)
+        config_path = root / "config.yaml"
+        deep_brief_path = root / "deep-brief.md"
+        config_path.write_text(VALID_CONFIG, encoding="utf-8")
+        deep_brief_path.write_text(
+            "## 必須ブリーフ要素\n\n内容\n\n"
+            "## 検査次元インベントリ\n\n内容\n",
+            encoding="utf-8",
+        )
+        (ra_dir / "legacy.md").write_text("workflow-triage\n", encoding="utf-8")
+        (ra_dir / "config.yaml").write_text(VALID_CONFIG, encoding="utf-8")
+        (dt_dir / "config.yaml").write_text("triage:\n  enabled: true\n", encoding="utf-8")
+
+        exit_code = run(str(config_path), str(deep_brief_path), str(root))
+        assert exit_code == 1, "explicit work_root の legacy 参照を検出すべき"
+
+
 def main() -> int:
     tests = [
         test_valid_deep_brief_passes,
         test_missing_deep_brief_fails,
         test_missing_required_heading_fails,
+        test_explicit_root_controls_legacy_scans,
     ]
     passed = 0
     failed = 0

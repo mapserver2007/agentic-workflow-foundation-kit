@@ -68,11 +68,16 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
 ### 初回利用時の host updater bootstrap
 
 旧 host updater は新しい consumer audit flag を渡せないため、consumer の `plan` より先に
-改訂済み kit checkout から host updater を更新する。kit checkout のルートで次を実行する。
+改訂済み kit checkout から host updater を更新する。clone に root manifest がある場合は
+throwaway work root へ生成し、host updater だけを原子的に更新する。公開 clone のように
+root manifest がない場合は updater-only の fallback が選ばれ、生成や対象アプリへの書込みは行わない。
 
 ```bash
-cd /tmp/agentic-workflow-foundation-kit
-bin/foundation-gate generate
+python3 /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate \
+  --seed-manifest /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-foundation/manifest.yaml \
+  --root-manifest /tmp/agentic-workflow-foundation-kit/manifest.yaml \
+  --work-root /tmp/kit-updater-bootstrap \
+  --update-skill-home ~/.cursor/skills
 ```
 
 `generate` 成功後、kit の updater が `~/.cursor/skills/agentic-workflow-update` へ
