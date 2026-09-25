@@ -26,18 +26,45 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent.parent
 
+_work_root_value = os.environ.get("AGENTIC_WORKFLOW_WORK_ROOT")
+WORK_ROOT = Path(_work_root_value).expanduser().resolve() if _work_root_value else ROOT
 _gate_artifact_path = (
-    ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "gate-artifact.py"
+    WORK_ROOT
+    / ".cursor"
+    / "skills"
+    / "session-handover"
+    / "scripts"
+    / "gate-artifact.py"
 )
-_spec = importlib.util.spec_from_file_location("gate_artifact", str(_gate_artifact_path))
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
+_mod = None
+_gate_artifact_load_error: Exception | None = None
+try:
+    if not _gate_artifact_path.is_file():
+        raise FileNotFoundError(_gate_artifact_path)
+    _spec = importlib.util.spec_from_file_location(
+        "gate_artifact",
+        str(_gate_artifact_path),
+    )
+    if _spec is None or _spec.loader is None:
+        raise ImportError(f"gate-artifact loader を作成できません: {_gate_artifact_path}")
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+except Exception as exc:  # noqa: BLE001
+    _gate_artifact_load_error = exc
 
-COMMON_REQUIRED = _mod.COMMON_REQUIRED
-STEP_REQUIRED_FIELDS = _mod.STEP_REQUIRED_FIELDS
-VALID_STATUSES = _mod.VALID_STATUSES
-VALID_STEPS = _mod.VALID_STEPS
-check_artifact = _mod.check_artifact
+COMMON_REQUIRED = getattr(_mod, "COMMON_REQUIRED", ())
+STEP_REQUIRED_FIELDS = getattr(_mod, "STEP_REQUIRED_FIELDS", {})
+VALID_STATUSES = getattr(_mod, "VALID_STATUSES", set())
+VALID_STEPS = getattr(_mod, "VALID_STEPS", set())
+
+
+def check_artifact(*args, **kwargs):
+    """gate-artifact の検査関数を遅延解決する。"""
+    if _gate_artifact_load_error is not None or _mod is None:
+        raise RuntimeError(
+            f"gate-artifact の読み込みに失敗しました: {_gate_artifact_path}"
+        ) from _gate_artifact_load_error
+    return _mod.check_artifact(*args, **kwargs)
 
 FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
 
@@ -957,6 +984,14 @@ def test_step1_provenance_non_mapping_field_fails():
 
 
 def main() -> int:
+    if _gate_artifact_load_error is not None:
+        print(
+            "[test_worker_contract] FATAL: "
+            f"gate-artifact を読み込めません: {_gate_artifact_path}: "
+            f"{_gate_artifact_load_error}",
+            file=sys.stderr,
+        )
+        return 2
     tests = [
         test_step_required_fields_subset_of_doc,
         test_valid_steps_match_doc,

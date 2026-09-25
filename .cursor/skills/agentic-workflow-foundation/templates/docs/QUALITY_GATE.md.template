@@ -38,6 +38,12 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 **G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
 
+**resolved audit の検査対象**: `run_resolved_engine.py` に `--work-root` を指定した場合、
+engine の audit 後段で実行する deep-thinking / requirement-analysis / agent-kaizen /
+Worker Contract の静的検査も、生成済み作業ツリーの `work_root` を検査対象とする。
+対応 feature が無効な場合だけ検査を skip し、有効な feature の生成物・validator・loader
+が欠落した場合は exit 2（致命的エラー）、生成物の契約違反は exit 1（修正可能な失敗）で停止する。
+
 #### Step4 完了チェックゲート
 
 {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}profile 別コードゲート{{/if}} は、envelope 検査と profile 別コードゲートが exit 0 の場合だけ、対象レポート1件へ `gate-test.py` を実行する。`gate-test.py` は完了チェック節内の次の3項目を検査する。
