@@ -262,8 +262,9 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
 
 更新元は固定 public URL
 `https://github.com/mapserver2007/agentic-workflow-foundation-kit.git` です。
-`bin/kit-source-fetch-safe` 経由の無認証 HTTPS で
-`/tmp/agentic-workflow-foundation-kit` に clone します。対象アプリの
+`bin/kit-source-fetch-safe` 経由の無認証 HTTPS で取得します。固定パス
+`/tmp/agentic-workflow-foundation-kit` は、上の初回 bootstrap 専用です。
+`plan` は plan ごとの権限限定一時 root 配下の `kit/` へ clone します。対象アプリの
 `init.yaml`、credential provider、並置 kit は参照しません。
 
 dry-run は clone の seed / templates / engine と対象アプリの root `manifest.yaml` を
@@ -287,7 +288,9 @@ seed、アプリコードは保護されます。orphan / rename は plan の `r
 `delete` または `keep` のときだけ、計画全体の承認後に解消します。未指定、allowlist
 外の差分、preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
 ファイル適用、quality gate、host 配置は一つのトランザクションです。いずれかが例外で失敗した場合は、
-同期済みファイルと host 個人スキルを適用前へ戻します。自動 commit / push は行いません。
+同期済みファイルと host 個人スキルを適用前へ戻します。プロセスが強制終了された場合は復元されず、
+同期済みファイルや host 個人スキルに混在状態が残ります。次回の apply は preimage 不一致で停止します。
+自動 commit / push は行いません。
 
 更新時の検査 ID は `KU-OVERLAY-001`（アプリ overlay）、`KU-SCOPE-001`
 （所有範囲）、`KU-PREIMAGE-001`（承認後変更）、`KU-ORPHAN-001`

@@ -1048,6 +1048,52 @@ def test_transaction_gate_failure_restores_app_and_leaves_host() -> None:
         temp.cleanup()
 
 
+def test_transaction_host_lock_failure_is_update_error() -> None:
+    app, _clone, _work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        plan = _plan(app, _clone, _work)
+        with (
+            patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}),
+            patch.object(
+                UPDATE,
+                "host_install_lock",
+                side_effect=UPDATE.HostInstallError("個人スキル配置先がsymlinkです"),
+            ),
+        ):
+            try:
+                UPDATE._apply_transaction(plan)
+            except UPDATE.UpdateError as exc:
+                assert "KU-HOST-001" in str(exc)
+                assert "symlink" in str(exc)
+            else:
+                raise AssertionError("host lock 失敗が適用成功になった")
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v1\n"
+    finally:
+        temp.cleanup()
+
+
+def test_min_context_window_rejects_truncated_numbers() -> None:
+    for raw in (250000.5, True, "200000.7"):
+        merged = {
+            "project": {"context_budget": {"min_context_window_tokens": raw}},
+            "framework": {},
+        }
+        try:
+            RUNNER._apply_derived_budget_thresholds(merged)
+        except SystemExit as exc:
+            assert exc.code == 2, raw
+        else:
+            raise AssertionError(f"非整数が受理された: {raw!r}")
+
+    merged = {
+        "project": {"context_budget": {"min_context_window_tokens": "250000"}},
+        "framework": {},
+    }
+    result = RUNNER._apply_derived_budget_thresholds(merged)
+    assert result["framework"]["budget_thresholds"]["min_context_window_tokens"] == 250000
+
+
 def test_transaction_host_stage_failure_restores_app_and_host() -> None:
     app, clone, work, temp = _fixture()
     try:
@@ -1240,6 +1286,8 @@ def main() -> int:
         ("retire without targets", test_retire_without_targets_is_fatal),
         ("transaction gate failure", test_transaction_gate_failure_restores_app_and_leaves_host),
         ("transaction host failure", test_transaction_host_stage_failure_restores_app_and_host),
+        ("transaction host lock failure", test_transaction_host_lock_failure_is_update_error),
+        ("min context window integers", test_min_context_window_rejects_truncated_numbers),
         ("transaction success", test_transaction_success_commits_app_and_host),
         ("overlay preflight", test_overlay_preflight_happens_before_fetch),
         ("malformed overlay preflight", test_malformed_overlay_stops_before_fetch),

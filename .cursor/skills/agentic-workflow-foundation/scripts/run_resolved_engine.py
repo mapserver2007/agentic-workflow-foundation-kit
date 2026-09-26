@@ -476,16 +476,23 @@ def _apply_derived_budget_thresholds(merged: dict) -> dict:
     if raw is None:
         min_window = 200000
     else:
-        try:
-            min_window = int(raw)
-        except (TypeError, ValueError):
+        if isinstance(raw, bool) or not isinstance(raw, (int, str)):
             print(
                 "FATAL: project.context_budget.min_context_window_tokens は整数必須です: "
                 f"{raw!r}",
                 file=sys.stderr,
             )
             sys.exit(2)
-        if isinstance(raw, bool) or min_window <= 0:
+        try:
+            min_window = int(raw)
+        except ValueError:
+            print(
+                "FATAL: project.context_budget.min_context_window_tokens は整数必須です: "
+                f"{raw!r}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if min_window <= 0:
             print(
                 "FATAL: project.context_budget.min_context_window_tokens は正の整数必須です: "
                 f"{raw!r}",

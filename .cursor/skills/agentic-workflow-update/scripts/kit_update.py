@@ -1080,20 +1080,25 @@ def _apply_transaction(plan: dict[str, Any]) -> None:
             Path(plan["clone_root"]).resolve(),
             Path(plan["overlay_manifest_path"]).resolve(),
         )
-        with host_install_lock(_host_skill_base()):
-            host_result = _stage_host_updater(Path(plan["clone_root"]).resolve())
-            skill = host_result.destination / "SKILL.md"
-            if not skill.is_file() or skill.is_symlink():
-                raise UpdateError("KU-HOST-001: 配置後の SKILL.md がありません")
-            try:
-                commit_host_updater(host_result)
-            except OSError as exc:
-                host_result.committed = True
-                commit_preserved = True
-                raise UpdateError(
-                    "KU-HOST-001: 更新は適用済みですが updater 退避の削除に失敗しました: "
-                    f"{exc}"
-                ) from exc
+        try:
+            with host_install_lock(_host_skill_base()):
+                host_result = _stage_host_updater(Path(plan["clone_root"]).resolve())
+                skill = host_result.destination / "SKILL.md"
+                if not skill.is_file() or skill.is_symlink():
+                    raise UpdateError("KU-HOST-001: 配置後の SKILL.md がありません")
+                try:
+                    commit_host_updater(host_result)
+                except OSError as exc:
+                    host_result.committed = True
+                    commit_preserved = True
+                    raise UpdateError(
+                        "KU-HOST-001: 更新は適用済みですが updater 退避の削除に失敗しました: "
+                        f"{exc}"
+                    ) from exc
+        except HostInstallError as exc:
+            raise UpdateError(
+                f"KU-HOST-001: 個人 updater の lock を取得できません: {exc}"
+            ) from exc
     except Exception as exc:
         if commit_preserved:
             raise

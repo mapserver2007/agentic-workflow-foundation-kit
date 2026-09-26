@@ -9,6 +9,43 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 
 
+def _enabled_flag(node: object) -> bool | None:
+    if isinstance(node, dict) and isinstance(node.get("enabled"), bool):
+        return node["enabled"]
+    return None
+
+
+def _coderabbit_explicitly_disabled(root: Path) -> bool:
+    """生成と同じ優先順で coderabbit.enabled が false と確定しているときだけ真。
+
+    seed の top-level、root overlay、承認済み tech_contract.review.coderabbit の順。
+    契約投影は top-level を置き換える。判定できないときは false（ファイル不在を失敗のままにする）。
+    """
+    import yaml
+
+    enabled: bool | None = None
+    seed = root / ".cursor/skills/agentic-workflow-foundation/manifest.yaml"
+    root_manifest = root / "manifest.yaml"
+    for path in (seed, root_manifest):
+        if not path.is_file():
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            continue
+        flag = _enabled_flag(data.get("coderabbit"))
+        if flag is not None:
+            enabled = flag
+        if path != root_manifest:
+            continue
+        contract = data.get("tech_contract")
+        review = contract.get("review") if isinstance(contract, dict) else None
+        coderabbit = review.get("coderabbit") if isinstance(review, dict) else None
+        projected = _enabled_flag(coderabbit)
+        if projected is not None:
+            enabled = projected
+    return enabled is False
+
+
 def main() -> int:
     try:
         import yaml
@@ -17,6 +54,12 @@ def main() -> int:
         return 2
 
     path = ROOT / ".coderabbit.yaml"
+    if not path.is_file():
+        if _coderabbit_explicitly_disabled(ROOT):
+            print("[test_coderabbit_yaml] SKIP: .coderabbit.yaml 不在（coderabbit 無効）")
+            return 0
+        print("[test_coderabbit_yaml] FAIL: .coderabbit.yaml がありません", file=sys.stderr)
+        return 1
     try:
         value = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
