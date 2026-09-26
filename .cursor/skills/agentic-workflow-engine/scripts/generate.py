@@ -21,6 +21,7 @@ import argparse
 import os
 import stat
 import sys
+import tempfile
 
 import genlib
 
@@ -60,12 +61,25 @@ def _read(path: str) -> str | None:
 
 
 def _write(path: str, content: str, executable: bool) -> None:
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(content)
-    if executable:
-        mode = os.stat(path).st_mode
-        os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    existing_mode = (
+        stat.S_IMODE(os.lstat(path).st_mode)
+        if os.path.lexists(path) and not os.path.islink(path)
+        else 0o644
+    )
+    mode = existing_mode | EXECUTABLE_BITS if executable else existing_mode
+    fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def _safe_join(base: str, rel: str, field_name: str) -> str:
@@ -76,6 +90,14 @@ def _safe_join(base: str, rel: str, field_name: str) -> str:
     candidate = os.path.abspath(os.path.join(base_abs, rel))
     if os.path.isabs(rel) or os.path.commonpath([base_abs, candidate]) != base_abs:
         raise genlib.YamlError(f"{field_name} が許可範囲外です: {rel}")
+    current = base_abs
+    relative = os.path.relpath(candidate, base_abs)
+    for part in relative.split(os.sep):
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            raise genlib.YamlError(
+                f"{field_name} が symlink を経由しています: {rel}"
+            )
     return candidate
 
 

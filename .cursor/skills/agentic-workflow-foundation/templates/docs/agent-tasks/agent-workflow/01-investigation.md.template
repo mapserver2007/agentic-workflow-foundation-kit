@@ -269,6 +269,7 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `feasibility_gate` | enum | `PASS` | Gate C 通過 |
 | `blocking_open_issues` | array | `[]` | blocking issue（退出時は空） |
 | `non_blocking_issues` | array | — | non-blocking warning のサマリ配列 |
+| `acceptance_criteria_status` | enum | `complete` | 受入条件が具体化・確定済みであること |
 | `resolved_issues` | array | — | 解決済み issue のサマリ配列 |
 | `normalize_artifact_path` | string | — | 要求正規化中間 artifact のパス（repo root 相対） |
 | `depth_triage_artifact_path` | string | — | 分析深度判定中間 artifact のパス（repo root 相対） |

@@ -21,13 +21,16 @@ foundation/engineを対象アプリへ保持しないconsumerアプリへ、kit�
 
 - kitの取得元は `https://github.com/mapserver2007/agentic-workflow-foundation-kit.git` に固定する。
 - Git network operationは `bin/kit-source-fetch-safe` 経由の無認証HTTPSのみ。対象アプリの `init.yaml`、Keychain、GitHub App、並置kit、認証helperを参照しない。
-- `/tmp/agentic-workflow-foundation-kit` は取得したkitの実行時clone、`/tmp/work` は一時アプリ作業ツリーとして扱う。
+- plan ごとに権限限定の一意な一時rootを作り、その配下の `kit/` を実行時clone、
+  `work/` を一時アプリ作業ツリーとして扱う。plan/apply失敗またはapply完了時に、
+  updater所有markerを確認して一時rootを削除する。
 - root `manifest.yaml` はfetch前に検証する。欠落・不正形式は `KU-OVERLAY-001` / exit 2で停止する。
 - 承認前に対象アプリへ書き込まない。
 - root `manifest.yaml`、Domain docs、ADR/GOTCHAS、reports、seed、アプリコード、foundation/engine、upstream design docsは適用対象外。
 - `agentic-workflow-kit.lock.yaml` はupdaterの生成状態であり、計画全体の承認後に生成成果物と同時に適用する。
-- lockなし初回adoptではorphan、rename、削除を自動解決しない。
-- preimage不一致、orphan、rename、未承認の計画はapplyしない。
+- lockなし初回adoptではorphan、rename、削除を推測しない。
+- orphan または rename がある plan は、`retirement` が `delete` または `keep` のときだけ apply できる。未指定では apply しない。
+- preimage不一致、未承認の計画はapplyしない。
 - updater自身を対象アプリの `.cursor/skills/` や Git履歴へ配置しない。
 - 自動 commit / push はしない。
 
@@ -39,23 +42,17 @@ foundation/engineを対象アプリへ保持しないconsumerアプリへ、kit�
 
 ```bash
 python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
-  --app-root /path/to/target
-```
-
-外部overlayを使う場合は `--root-manifest` を明示する。
-
-```bash
-python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
   --app-root /path/to/target \
-  --root-manifest /path/to/overlay/manifest.yaml \
   --plan-file /tmp/kit-update-plan.json
 ```
 
+`--root-manifest` は、対象アプリ直下の `manifest.yaml` 自身か、sha256 が一致するコピーだけを受け付ける。内容が違う外部ファイルは fetch 前に拒否する。アプリの `manifest.yaml` は上書きしない。
+
 `plan` は次を行う。
 
-1. fetch前にoverlayの存在・形式を検証する。
-2. 固定public URLから `/tmp/agentic-workflow-foundation-kit` へcloneする。
-3. 対象アプリを `/tmp/work` へコピーし、外部overlayがあれば `/tmp/work/manifest.yaml` へ安全に取り込む。
+1. fetch前にoverlayの存在・形式を検証し、アプリ直下の `manifest.yaml` と同一パスまたは同一 sha256 であることを確認する。
+2. 固定public URLから plan 固有一時rootの `kit/` へcloneする。
+3. 対象アプリを同一rootの `work/` へコピーする。同一内容の別パスを渡したときは、そのバイト列を一時 `work/manifest.yaml` へコピーする。アプリ直下の `manifest.yaml` は変更しない。
 4. clone版のseed/engineと対象overlayから resolved manifestを作り、一時作業ツリーで生成・check・auditを実行する。
    consumer の audit は `--skip-seed-required-sections` を指定する。denylist または
    `mode: seed` の既存ファイル（ADR / GOTCHAS / Domain docs / skill config）は
@@ -85,6 +82,19 @@ python3 /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-fou
 host updater が更新されたことを確認してから、対象アプリで `plan` を実行する。
 `apply` は plan が成功した後の更新経路なので、host updater の bootstrap 手段には使わない。
 
+orphan または rename がある場合は、計画全体の承認の前に delete か keep を選ぶ。
+エージェント実行時は AskQuestion で選ばせ、選んだ値で plan を作り直す。
+CLI を直接実行するときは、次のどちらかを付けて plan する。
+
+```bash
+python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
+  --app-root /path/to/target \
+  --retire delete \
+  --plan-file /tmp/kit-update-plan.json
+```
+
+`delete` は lock に記録されていた旧生成ファイルを削除する。rename では旧パスだけを削除し、新しいパスは通常の追加または更新として残す。`keep` はファイルを残し、新しい lock の管理から外す。`seed` のドメイン文書、lock に入ったことのないアプリ独自ファイル、保護対象は削除しない。`apply` は plan 内の `retirement` だけを使い、別フラグでは上書きできない。
+
 表示された計画全体の `plan_digest` と差分を確認し、POの計画全体承認を得る。
 ファイル単位の部分承認・部分適用は行わない。
 
@@ -102,8 +112,8 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
 preimage、保護対象digestを再検証する。不一致時は `KU-PREIMAGE-001` で停止し、
 対象アプリへ書かない。
 適用対象は生成されたrender/marker成果物と `agentic-workflow-kit.lock.yaml` だけである。
-適用後に対象アプリのapplication quality gateを実行し、成功時だけcloneの最新版updaterを
-ホスト個人スキルへ原子的に配置する。
+ファイル適用、application quality gate、host 個人スキルへの updater 配置は一つのトランザクションである。
+いずれかが例外で失敗した場合は、アプリと host を適用前へ戻す。
 
 ## 生成経路
 
@@ -111,27 +121,28 @@ clone上でfoundationの6フェーズを再実行しない。生成は必ずkit 
 対象アプリoverlayを使い、次の引数を明示する。
 
 ```bash
-python3 /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate \
-  --seed-manifest /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-foundation/manifest.yaml \
-  --root-manifest /tmp/work/manifest.yaml \
-  --work-root /tmp/work
+python3 <plan-temp-root>/kit/.cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate \
+  --seed-manifest <plan-temp-root>/kit/.cursor/skills/agentic-workflow-foundation/manifest.yaml \
+  --root-manifest <plan-temp-root>/work/manifest.yaml \
+  --work-root <plan-temp-root>/work
 ```
 
-`--work-root /tmp/work` を指定することでdry-run中の個人updater自己更新を防ぐ。
+kit updater は plan ごとにこの work root を割り当て、dry-run中の個人updater自己更新を防ぐ。
 foundation/engineとupstream design docsは生成依存としてclone側から読み、
-テンプレートから展開された候補は `/tmp/work` にのみ書かれる。
+テンプレートから展開された候補は plan 固有の `work/` にのみ書かれる。
 
 ## 検査 ID
 
-- `KU-OVERLAY-001`: fetch前にoverlayを検証し、対象overlayで生成された
+- `KU-OVERLAY-001`: fetch前にoverlayを検証し、アプリの manifest と違う外部ファイルを拒否した
 - `KU-SCOPE-001`: 生成成果物とlockだけが適用対象になった
 - `KU-PREIMAGE-001`: 承認後の対象変更を検出して無変更で停止した
-- `KU-ORPHAN-001`: orphan / rename 候補を検出し、自動削除しなかった
+- `KU-ORPHAN-001`: orphan / rename を検出し、delete または keep が計画に含まれるときだけ解消した
 - `KU-DENY-001`: denylist のバイト列が不変だった
 - `KU-HOST-001`: 個人スキルがホストに配置され、対象アプリには存在しなかった
 
 ## 失敗時
 
 exit `1` は修正可能な候補差分・停止要因、exit `2` は入力不備・契約違反・実行不能を
-表す。失敗時は対象アプリを変更せず、報告された停止要因を解消して `plan` から再実行する。
+表す。例外で失敗した場合は対象アプリと host 個人スキルを適用前へ戻し、報告された停止要因を解消して `plan` から再実行する。
+プロセスの強制終了で例外処理が走らなかった混在は、次の apply が preimage 不一致で停止する。
 

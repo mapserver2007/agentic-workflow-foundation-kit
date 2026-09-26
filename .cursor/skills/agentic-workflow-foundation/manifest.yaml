@@ -1443,9 +1443,12 @@ outputs:
       - "build"
       - "lint"
       - "test"
+  # project-setup wrapper（feature: foundation で条件生成）。
+  # provision_runtime.py に依存するため foundation.enabled: false では生成しない。
   - path: bin/project-setup
     template: bin/project-setup.template
     mode: render
+    feature: foundation
     executable: true
     required_sections:
       - "project-setup"

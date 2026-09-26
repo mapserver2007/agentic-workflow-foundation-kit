@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -16,18 +18,43 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from host_install import (  # noqa: E402
+    HostInstallError,
+    HostInstallResult,
+    commit_host_updater,
+    host_install_lock,
+    restore_host_updater,
+    stage_host_updater,
+)
+
 
 SCHEMA_VERSION = 1
 LOCK_SCHEMA_VERSION = 1
 LOCK_PATH = Path("agentic-workflow-kit.lock.yaml")
 DEFAULT_CLONE_ROOT = Path("/tmp/agentic-workflow-foundation-kit")
 DEFAULT_WORK_ROOT = Path("/tmp/work")
+OWNED_ROOT_MARKER = ".agentic-workflow-update-owned"
 DENY_EXACT = {
     Path("init.yaml"),
     Path("manifest.yaml"),
     Path(".cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md"),
     Path("docs/DECISIONS.md"),
     Path("docs/GOTCHAS.md"),
+    Path("docs/spec.md"),
+    Path("docs/architecture.md"),
+    Path("docs/api.md"),
+    Path("docs/data-models.md"),
+    Path("docs/coding-standards.md"),
+    Path("docs/workflows.md"),
+    Path(".cursor/skills/campaign-cleanup/config.yaml"),
+    Path(".cursor/skills/workflow-orchestrator/config.yaml"),
+    Path(".cursor/skills/deep-thinking/config.yaml"),
+    Path(".cursor/skills/requirement-analysis/config.yaml"),
+    Path(".cursor/skills/cross-repository-knowledge-link/config.json"),
+    Path(".cursor/skills/agent-kaizen/config.yaml"),
 }
 DENY_PREFIXES = (
     Path("docs/spec"),
@@ -77,7 +104,7 @@ def _mode(path: Path) -> int:
 def _safe_rel(value: str | Path) -> Path:
     path = Path(value)
     if path.is_absolute() or ".." in path.parts or str(path) in ("", "."):
-        raise UpdateError(f"KU-SCOPE-001: 不正な相対パスです: {value}")
+        raise FatalUpdateError(f"KU-SCOPE-001: 不正な相対パスです: {value}")
     return path
 
 
@@ -95,6 +122,86 @@ def _safe_target(root: Path, rel: str | Path) -> Path:
     return root / relative
 
 
+def _contains(parent: Path, child: Path) -> bool:
+    parent_real = parent.resolve(strict=False)
+    child_real = child.resolve(strict=False)
+    return os.path.commonpath((str(parent_real), str(child_real))) == str(parent_real)
+
+
+def _validate_root_separation(
+    app_root: Path,
+    clone_root: Path,
+    work_root: Path,
+    plan_file: Path | None,
+) -> None:
+    pairs = (
+        ("app_root", app_root, "clone_root", clone_root),
+        ("app_root", app_root, "work_root", work_root),
+        ("clone_root", clone_root, "work_root", work_root),
+    )
+    for left_name, left, right_name, right in pairs:
+        if _contains(left, right) or _contains(right, left):
+            raise FatalUpdateError(
+                f"KU-SCOPE-001: {left_name} と {right_name} は相互に包含できません: "
+                f"{left.resolve(strict=False)} / {right.resolve(strict=False)}"
+            )
+    if plan_file is not None and _contains(app_root, plan_file):
+        raise FatalUpdateError(
+            f"KU-SCOPE-001: plan file は対象アプリ外に置いてください: {plan_file}"
+        )
+
+
+def _tree_digest(root: Path) -> str:
+    if not root.is_dir() or root.is_symlink():
+        raise UpdateError(f"KU-HOST-001: updater 正本が通常ディレクトリではありません: {root}")
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if "__pycache__" in relative.parts or path.name.endswith(".pyc"):
+            continue
+        if path.is_symlink():
+            raise UpdateError(f"KU-SCOPE-001: updater 正本に symlink が含まれています: {relative}")
+        if not path.is_file():
+            continue
+        digest.update(str(relative).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(f"{_mode(path):04o}".encode("ascii"))
+        digest.update(b"\0")
+        digest.update(bytes.fromhex(_sha256(path)))
+    return digest.hexdigest()
+
+
+@contextlib.contextmanager
+def _app_apply_lock(app_root: Path):
+    lock_id = hashlib.sha256(str(app_root.resolve()).encode("utf-8")).hexdigest()[:24]
+    lock_path = Path(tempfile.gettempdir()) / f"agentic-workflow-update-{lock_id}.lock"
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise FatalUpdateError(
+            f"KU-PREIMAGE-001: apply lock を安全に開けません: {lock_path}"
+        ) from exc
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise UpdateError(
+                f"KU-PREIMAGE-001: 対象アプリに別の apply が進行中です: {app_root}"
+            ) from exc
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{os.getpid()} {app_root.resolve()}\n".encode("utf-8"))
+        os.fsync(fd)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 def _resolve_overlay_path(app_root: Path, explicit: str | None) -> Path:
     raw = Path(explicit).expanduser() if explicit else app_root / "manifest.yaml"
     if raw.is_symlink():
@@ -103,6 +210,25 @@ def _resolve_overlay_path(app_root: Path, explicit: str | None) -> Path:
     if not path.is_file():
         raise FatalUpdateError(f"KU-OVERLAY-001: root manifest がありません: {path}")
     return path
+
+
+def _assert_overlay_matches_app_manifest(app_root: Path, overlay_path: Path) -> None:
+    """overlay SoT はアプリ直下の manifest.yaml だけとする。
+
+    同一パス、または sha256 が一致するコピーだけを許可する。
+    アプリの manifest へは書き戻さない。
+    """
+    app_manifest = app_root / "manifest.yaml"
+    if app_manifest.is_symlink() or not app_manifest.is_file():
+        raise FatalUpdateError("KU-OVERLAY-001: アプリの manifest.yaml がありません")
+    if overlay_path.resolve() == app_manifest.resolve():
+        return
+    if _sha256(overlay_path) == _sha256(app_manifest):
+        return
+    raise FatalUpdateError(
+        "KU-OVERLAY-001: 外部 overlay はアプリの manifest.yaml と"
+        "同一パスまたは同一内容のときだけ使えます"
+    )
 
 
 def _preflight_overlay(path: Path) -> None:
@@ -116,9 +242,18 @@ def _preflight_overlay(path: Path) -> None:
     for raw in text.splitlines():
         if "\t" in raw:
             raise FatalUpdateError(f"KU-OVERLAY-001: tab indentation は使用できません: {path}")
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent % 2 != 0:
+            raise FatalUpdateError(
+                f"KU-OVERLAY-001: indentation は半角スペース2単位です: {path}"
+            )
         line = raw.strip()
         if not line or line.startswith("#") or line == "---":
             continue
+        if re.search(r":\s*[\[{](?![\]}]\s*(?:#.*)?$)", line):
+            raise FatalUpdateError(
+                f"KU-OVERLAY-001: 未完了または非対応のflow styleです: {path}"
+            )
         if len(raw) == len(raw.lstrip(" ")) and re.match(r"^[^:#]+:", line):
             top_level.append(line)
     if not top_level:
@@ -148,16 +283,28 @@ def _catalog_from_manifest(manifest: dict[str, Any]) -> dict[Path, dict[str, Any
     result: dict[Path, dict[str, Any]] = {}
     for output in manifest.get("outputs") or []:
         if not isinstance(output, dict) or not isinstance(output.get("path"), str):
-            raise UpdateError("KU-SCOPE-001: outputs[] の path が不正です")
+            raise FatalUpdateError("KU-SCOPE-001: outputs[] の path が不正です")
         mode = output.get("mode", "render")
         if mode not in {"render", "marker"}:
             continue
         rel = _safe_rel(output["path"])
         if any(rel == prefix or prefix in rel.parents for prefix in NON_APPLY_PREFIXES):
-            raise UpdateError(f"KU-SCOPE-001: kit source を output catalog に含められません: {rel}")
+            raise FatalUpdateError(f"KU-SCOPE-001: kit source を output catalog に含められません: {rel}")
         if rel == LOCK_PATH:
-            raise UpdateError(f"KU-SCOPE-001: lock path を output catalog に含められません: {rel}")
+            raise FatalUpdateError(f"KU-SCOPE-001: lock path を output catalog に含められません: {rel}")
         result[rel] = {"path": str(rel), "mode": mode}
+    return result
+
+
+def _seed_paths_from_manifest(manifest: dict[str, Any]) -> set[Path]:
+    result: set[Path] = set()
+    for output in manifest.get("outputs") or []:
+        if (
+            isinstance(output, dict)
+            and isinstance(output.get("path"), str)
+            and output.get("mode", "render") == "seed"
+        ):
+            result.add(_safe_rel(output["path"]))
     return result
 
 
@@ -186,9 +333,9 @@ def _prepare_work_tree(
         shutil.copy2(overlay_path, target)
 
 
-def _run(command: list[str], cwd: Path, *, allow_failure: bool = False) -> None:
+def _run(command: list[str], cwd: Path) -> None:
     result = subprocess.run(command, cwd=str(cwd), capture_output=True, text=True)
-    if result.returncode != 0 and not allow_failure:
+    if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip().splitlines()
         summary = detail[-1] if detail else "出力なし"
         raise CommandUpdateError(
@@ -309,11 +456,11 @@ def _is_protected_path(relative: Path, protected: Iterable[Path]) -> bool:
 
 
 def _protected_paths(old_outputs: dict[Path, dict[str, Any]],
-                     new_outputs: dict[Path, dict[str, Any]]) -> set[Path]:
+                     new_outputs: dict[Path, dict[str, Any]],
+                     seed_paths: Iterable[Path] = ()) -> set[Path]:
     paths = set(DENY_EXACT)
     paths.update(NON_APPLY_PREFIXES)
-    paths.update(path for path in (*old_outputs, *new_outputs)
-                 if (old_outputs.get(path) or new_outputs.get(path)).get("mode") == "seed")
+    paths.update(seed_paths)
     for prefix in DENY_PREFIXES:
         paths.add(prefix)
     return paths
@@ -492,6 +639,39 @@ def _write_plan(path: Path, plan: dict[str, Any]) -> None:
             os.unlink(temporary)
 
 
+def _orphan_delete_changes(
+    app_root: Path,
+    orphans: list[Path],
+    old_catalog: dict[Path, dict[str, Any]],
+    protected: Iterable[Path],
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    """保護対象以外の実在 orphan を削除 change にする。保護対象は削除しない。"""
+    changes: list[dict[str, Any]] = []
+    denied: list[Path] = []
+    for relative in orphans:
+        if _is_protected_path(relative, protected):
+            denied.append(relative)
+            continue
+        target = _safe_target(app_root, relative)
+        if not target.exists():
+            continue
+        if target.is_symlink() or not target.is_file():
+            raise UpdateError(f"KU-SCOPE-001: 削除対象が通常ファイルではありません: {relative}")
+        current = _current_file_state(app_root, relative)
+        changes.append({
+            "path": str(relative),
+            "kind": "generated",
+            "mode": old_catalog[relative]["mode"],
+            "action": "delete",
+            "candidate_path": "",
+            "candidate_sha256": "",
+            "candidate_mode": None,
+            "preimage_sha256": current["sha256"],
+            "preimage_mode": current["mode"],
+        })
+    return changes, denied
+
+
 def _build_plan(
     app_root: Path,
     clone_root: Path,
@@ -500,14 +680,19 @@ def _build_plan(
     *,
     validate: bool = True,
     kit_revision: str = "",
+    ephemeral_root: Path | None = None,
+    retirement: str | None = None,
 ) -> dict[str, Any]:
     app_root = app_root.resolve()
     clone_root = clone_root.resolve()
     work_root = work_root.resolve()
     overlay_path = overlay_path.resolve()
     _preflight_overlay(overlay_path)
+    _assert_overlay_matches_app_manifest(app_root, overlay_path)
     if overlay_path == (clone_root / "manifest.yaml").resolve():
         raise FatalUpdateError("KU-OVERLAY-001: kit clone の manifest.yaml は overlay に使えません")
+    if retirement not in (None, "delete", "keep"):
+        raise FatalUpdateError("KU-ORPHAN-001: retirement は delete または keep です")
     if not kit_revision:
         raise FatalUpdateError("KU-SCOPE-001: kit revision がありません")
     if validate:
@@ -523,17 +708,30 @@ def _build_plan(
         )
 
     new_catalog = _catalog_from_manifest(resolved_manifest)
+    seed_paths = _seed_paths_from_manifest(resolved_manifest)
     lock = _load_lock(app_root, clone_root)
     old_catalog = lock["catalog"] if lock is not None else {}
+    updater_source = clone_root / ".cursor/skills/agentic-workflow-update"
+    host_updater_digest = _tree_digest(updater_source)
     _write_lock_candidate(work_root, kit_revision, new_catalog)
     output_changes, output_orphans, rename_candidates = _output_change_records(
         app_root, work_root, old_catalog, new_catalog
     )
+    has_retirement_targets = bool(output_orphans or rename_candidates)
+    if retirement and not has_retirement_targets:
+        raise FatalUpdateError("KU-ORPHAN-001: 解消対象がないのに retirement が指定されています")
+    protected = _protected_paths(old_catalog, new_catalog, seed_paths)
+    retirement_denied: list[Path] = []
+    extra_deletes: list[dict[str, Any]] = []
+    if retirement == "delete" and has_retirement_targets:
+        extra_deletes, retirement_denied = _orphan_delete_changes(
+            app_root, output_orphans, old_catalog, protected
+        )
     lock_change = _lock_change_record(app_root, work_root)
     changes = list(output_changes)
+    changes.extend(extra_deletes)
     if lock_change is not None:
         changes.append(lock_change)
-    protected = _protected_paths(old_catalog, new_catalog)
     plan: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "app_root": str(app_root),
@@ -542,6 +740,8 @@ def _build_plan(
         "overlay_manifest_path": str(overlay_path),
         "overlay_manifest_sha256": _sha256(overlay_path),
         "kit_revision": kit_revision,
+        "host_updater_digest": host_updater_digest,
+        "ephemeral_root": str(ephemeral_root.resolve()) if ephemeral_root else None,
         "catalog": _lock_catalog_as_list({
             relative: {
                 **new_catalog[relative],
@@ -558,10 +758,13 @@ def _build_plan(
             for old, new in rename_candidates
         ],
         "protected": _snapshot_protected(app_root, protected),
+        "retirement": retirement,
         "blocking_issues": [],
     }
-    if plan["orphan"] or plan["rename_candidates"]:
+    if (plan["orphan"] or plan["rename_candidates"]) and retirement is None:
         plan["blocking_issues"].append("KU-ORPHAN-001")
+    if retirement_denied:
+        plan["blocking_issues"].append("KU-DENY-001")
     if any(
         _is_protected_path(_safe_rel(change["path"]), protected)
         for change in plan["changes"]
@@ -590,8 +793,10 @@ def _write_atomic(target: Path, content: bytes, mode: int) -> None:
 
 
 def _validate_plan(plan: dict[str, Any], app_root: Path, approved: str) -> None:
+    if not isinstance(plan, dict):
+        raise FatalUpdateError("KU-PREIMAGE-001: plan は mapping である必要があります")
     if plan.get("schema_version") != SCHEMA_VERSION:
-        raise UpdateError("KU-PREIMAGE-001: plan schema が不一致です")
+        raise FatalUpdateError("KU-PREIMAGE-001: plan schema が不一致です")
     expected = plan.get("plan_digest")
     if not isinstance(expected, str) or expected != approved or _plan_digest(plan) != expected:
         raise UpdateError("KU-PREIMAGE-001: plan digest が不一致です")
@@ -600,6 +805,13 @@ def _validate_plan(plan: dict[str, Any], app_root: Path, approved: str) -> None:
     overlay_path = Path(plan.get("overlay_manifest_path", "")).resolve()
     if not overlay_path.is_file() or _sha256(overlay_path) != plan.get("overlay_manifest_sha256"):
         raise UpdateError("KU-PREIMAGE-001: overlay manifest が変更されています")
+    app_manifest = app_root / "manifest.yaml"
+    if (
+        app_manifest.is_symlink()
+        or not app_manifest.is_file()
+        or _sha256(app_manifest) != plan.get("overlay_manifest_sha256")
+    ):
+        raise UpdateError("KU-PREIMAGE-001: アプリの manifest が計画と不一致です")
     kit_revision = plan.get("kit_revision")
     clone_root = Path(plan.get("clone_root", "")).resolve()
     if not isinstance(kit_revision, str) or not kit_revision:
@@ -616,8 +828,24 @@ def _validate_plan(plan: dict[str, Any], app_root: Path, approved: str) -> None:
         raise UpdateError("KU-PREIMAGE-001: kit clone の revision を検証できません") from exc
     if actual_revision != kit_revision:
         raise UpdateError("KU-PREIMAGE-001: kit clone の revision が計画と不一致です")
-    for change in plan.get("changes", []):
+    updater_source = clone_root / ".cursor/skills/agentic-workflow-update"
+    if _tree_digest(updater_source) != plan.get("host_updater_digest"):
+        raise UpdateError("KU-PREIMAGE-001: host updater の内容が計画後に変更されています")
+    changes = plan.get("changes")
+    if not isinstance(changes, list):
+        raise FatalUpdateError("KU-PREIMAGE-001: plan changes が配列ではありません")
+    for change in changes:
+        if not isinstance(change, dict):
+            raise FatalUpdateError("KU-PREIMAGE-001: plan change が mapping ではありません")
         _validate_change_scope(change)
+    retirement = plan.get("retirement", None)
+    if retirement not in (None, "delete", "keep"):
+        raise FatalUpdateError("KU-ORPHAN-001: retirement は delete または keep です")
+    needs_retirement = bool(plan.get("orphan") or plan.get("rename_candidates"))
+    if needs_retirement and retirement not in ("delete", "keep"):
+        raise UpdateError("KU-ORPHAN-001: retirement が未指定です")
+    if retirement and not needs_retirement:
+        raise FatalUpdateError("KU-ORPHAN-001: 解消対象がないのに retirement が指定されています")
     if plan.get("blocking_issues"):
         raise UpdateError(
             "KU-ORPHAN-001: 停止要因があります: "
@@ -631,17 +859,25 @@ def _validate_change_scope(change: dict[str, Any]) -> None:
     if kind == "lock":
         if relative != LOCK_PATH:
             raise UpdateError(f"KU-SCOPE-001: 不正な lock 適用先です: {relative}")
-    elif kind == "generated":
-        if any(
-            relative == prefix or prefix in relative.parents
-            for prefix in NON_APPLY_PREFIXES
-        ):
-            raise UpdateError(f"KU-SCOPE-001: kit source は適用できません: {relative}")
-    else:
+        return
+    if kind != "generated":
         raise UpdateError(f"KU-SCOPE-001: 不正な変更種別です: {kind}")
+    if any(
+        relative == prefix or prefix in relative.parents
+        for prefix in tuple(DENY_EXACT) + DENY_PREFIXES
+    ):
+        raise UpdateError(f"KU-DENY-001: 保護対象は適用できません: {relative}")
+    if any(
+        relative == prefix or prefix in relative.parents
+        for prefix in NON_APPLY_PREFIXES
+    ):
+        raise UpdateError(f"KU-SCOPE-001: kit source は適用できません: {relative}")
 
 
-def _rollback_applied(applied: list[tuple[Path, bytes | None, int | None]]) -> None:
+def _rollback_applied(
+    applied: list[tuple[Path, bytes | None, int | None]],
+) -> list[str]:
+    failures: list[str] = []
     for target, content, mode in reversed(applied):
         try:
             if content is None:
@@ -649,14 +885,45 @@ def _rollback_applied(applied: list[tuple[Path, bytes | None, int | None]]) -> N
                     target.unlink()
             else:
                 _write_atomic(target, content, int(mode or 0o644))
-        except OSError:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"{target}: {exc}")
+    return failures
+
+
+def _assert_unchanged_catalog(plan: dict[str, Any], app_root: Path) -> None:
+    """changes に無い catalog パスは、現在の内容が catalog sha256 と一致することを要求する。"""
+    catalog = plan.get("catalog")
+    if not isinstance(catalog, list):
+        raise FatalUpdateError("KU-PREIMAGE-001: plan catalog が配列ではありません")
+    changed = {
+        str(_safe_rel(change["path"]))
+        for change in plan.get("changes", [])
+        if isinstance(change, dict) and isinstance(change.get("path"), str)
+    }
+    for item in catalog:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            raise FatalUpdateError("KU-PREIMAGE-001: plan catalog item が不正です")
+        relative = _safe_rel(item["path"])
+        if str(relative) in changed:
+            continue
+        digest = item.get("sha256")
+        if not isinstance(digest, str) or not digest:
+            raise FatalUpdateError(f"KU-PREIMAGE-001: catalog sha256 がありません: {relative}")
+        current = _current_file_state(app_root, relative)
+        if current["sha256"] != digest:
+            raise UpdateError(
+                f"KU-PREIMAGE-001: 未変更の管理ファイルが計画後に変わっています: {relative}"
+            )
 
 
 def _apply_plan(plan: dict[str, Any]) -> list[tuple[Path, bytes | None, int | None]]:
     app_root = Path(plan["app_root"]).resolve()
     applied: list[tuple[Path, bytes | None, int | None]] = []
-    for relative, digest in plan.get("protected", {}).items():
+    _assert_unchanged_catalog(plan, app_root)
+    protected = plan.get("protected")
+    if not isinstance(protected, dict):
+        raise FatalUpdateError("KU-PREIMAGE-001: protected snapshot が mapping ではありません")
+    for relative, digest in protected.items():
         current = _safe_target(app_root, relative)
         if not current.is_file() or _sha256(current) != digest:
             raise UpdateError(f"KU-DENY-001: 保護対象が変更されています: {relative}")
@@ -671,11 +938,19 @@ def _apply_plan(plan: dict[str, Any]) -> list[tuple[Path, bytes | None, int | No
                 current["mode"] != change.get("preimage_mode")
             ):
                 raise UpdateError(f"KU-PREIMAGE-001: 適用前の内容が変わっています: {relative}")
+            if change.get("action") == "delete":
+                if target.is_symlink() or (target.exists() and not target.is_file()):
+                    raise UpdateError(
+                        f"KU-SCOPE-001: 削除対象が通常ファイルではありません: {relative}"
+                    )
+                old_content = target.read_bytes() if target.is_file() else None
+                old_mode = _mode(target) if target.is_file() else None
+                applied.append((target, old_content, old_mode))
+                if target.is_file():
+                    target.unlink()
+                continue
             candidate = Path(change["candidate_path"])
-            candidate_roots = (
-                Path(plan["work_root"]).resolve(),
-                Path(plan["clone_root"]).resolve(),
-            )
+            candidate_roots = (Path(plan["work_root"]).resolve(),)
             candidate_root = None
             candidate_relative = None
             for root in candidate_roots:
@@ -690,18 +965,23 @@ def _apply_plan(plan: dict[str, Any]) -> list[tuple[Path, bytes | None, int | No
                 raise UpdateError(
                     f"KU-SCOPE-001: 候補が plan の work/clone root 外です: {candidate}"
                 )
-            if (
-                not candidate.is_file()
-                or candidate.is_symlink()
-                or _sha256(candidate) != change["candidate_sha256"]
-            ):
+            if not candidate.is_file() or candidate.is_symlink():
+                raise UpdateError(f"KU-PREIMAGE-001: 候補内容が変わっています: {relative}")
+            candidate_content = candidate.read_bytes()
+            candidate_digest = hashlib.sha256(candidate_content).hexdigest()
+            if candidate_digest != change["candidate_sha256"]:
                 raise UpdateError(f"KU-PREIMAGE-001: 候補内容が変わっています: {relative}")
             old_content = target.read_bytes() if target.is_file() else None
             old_mode = _mode(target) if target.is_file() else None
             applied.append((target, old_content, old_mode))
-            _write_atomic(target, candidate.read_bytes(), int(change["candidate_mode"]))
-    except Exception:
-        _rollback_applied(applied)
+            _write_atomic(target, candidate_content, int(change["candidate_mode"]))
+    except Exception as exc:
+        rollback_failures = _rollback_applied(applied)
+        if rollback_failures:
+            raise UpdateError(
+                "KU-PREIMAGE-001: apply rollback に失敗しました: "
+                + "; ".join(rollback_failures)
+            ) from exc
         raise
     return applied
 
@@ -730,9 +1010,9 @@ def _fetch_kit(clone_root: Path) -> dict[str, Any]:
     try:
         value = json.loads(result.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError) as exc:
-        raise UpdateError("KU-SCOPE-001: fetch wrapper の結果が不正です") from exc
+        raise FatalUpdateError("KU-SCOPE-001: fetch wrapper の結果が不正です") from exc
     if not isinstance(value, dict) or not value.get("clone_root") or not value.get("sha"):
-        raise UpdateError("KU-SCOPE-001: fetch wrapper の revision がありません")
+        raise FatalUpdateError("KU-SCOPE-001: fetch wrapper の revision がありません")
     return value
 
 
@@ -741,11 +1021,8 @@ def _run_application_validation(
     kit_root: Path,
     overlay_path: Path,
 ) -> None:
+    _assert_overlay_matches_app_manifest(app_root, overlay_path)
     manifest_path = app_root / "manifest.yaml"
-    if not manifest_path.is_file():
-        manifest_path = overlay_path
-    if not manifest_path.is_file():
-        raise FatalUpdateError("KU-OVERLAY-001: 適用後の quality gate 入力がありません")
     manifest = _load_manifest(manifest_path, kit_root)
     profile = (
         manifest.get("project", {})
@@ -757,91 +1034,148 @@ def _run_application_validation(
     gate = app_root / "bin/quality-gate"
     command = [str(gate), "verify"]
     if not gate.is_file():
-        raise UpdateError(f"KU-OVERLAY-001: 適用後の quality gate がありません: {gate}")
+        raise FatalUpdateError(f"KU-OVERLAY-001: 適用後の quality gate がありません: {gate}")
     _run(command, app_root)
 
 
-def _remove_host_path(path: Path) -> None:
-    if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path)
-    elif path.exists() or path.is_symlink():
-        path.unlink()
-
-
-def _install_host_updater(clone_root: Path) -> int:
-    """適用成功後に clone の最新版 updater をホスト個人スキルへ配置する。"""
-    source = clone_root / ".cursor/skills/agentic-workflow-update"
-    if not source.is_dir() or source.is_symlink():
-        print("[KU-HOST-001] SKIP: clone に updater 正本がありません")
-        return 0
-    if any(path.is_symlink() for path in source.rglob("*")):
-        raise UpdateError("KU-SCOPE-001: updater 正本に symlink が含まれています")
-
-    base = Path(
+def _host_skill_base() -> Path:
+    return Path(
         os.path.expanduser(
             os.environ.get("AGENTIC_WORKFLOW_UPDATE_HOME", "~/.cursor/skills")
         )
-    ).resolve()
-    destination = base / "agentic-workflow-update"
+    )
+
+
+def _stage_host_updater(clone_root: Path) -> HostInstallResult:
+    """clone の updater を host へ配置し、旧ツリーの退避は成功まで残す。"""
+    source = clone_root / ".cursor/skills/agentic-workflow-update"
+    _tree_digest(source)
+    base = _host_skill_base()
     try:
-        base.mkdir(parents=True, exist_ok=True)
-        staging_parent = Path(tempfile.mkdtemp(prefix=".agentic-workflow-update.", dir=base))
-    except OSError as exc:
-        raise UpdateError(f"KU-HOST-001: 個人スキル配置先を準備できません: {exc}") from exc
-    staged = staging_parent / "agentic-workflow-update"
-    backup = base / f".agentic-workflow-update.previous.{os.getpid()}"
-    try:
-        shutil.copytree(
-            source,
-            staged,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
-        )
-        if not (staged / "SKILL.md").is_file():
-            raise UpdateError("KU-HOST-001: updater SKILL.md がありません")
-        if backup.exists() or backup.is_symlink():
-            raise UpdateError("KU-HOST-001: updater 退避先が既に存在します")
-        if destination.exists() or destination.is_symlink():
-            os.replace(destination, backup)
-        try:
-            os.replace(staged, destination)
-        except OSError:
-            if backup.exists() or backup.is_symlink():
-                os.replace(backup, destination)
-            raise
-        if backup.exists() or backup.is_symlink():
-            _remove_host_path(backup)
-        print(f"[KU-HOST-001] PASS: 個人 updater を更新しました: {destination}")
-        return 0
-    except OSError as exc:
+        result = stage_host_updater(source, base)
+    except HostInstallError as exc:
         raise UpdateError(f"KU-HOST-001: 個人 updater 更新に失敗しました: {exc}") from exc
-    finally:
-        _remove_host_path(staging_parent)
+    return result
 
 
-def _default_work_root() -> Path:
-    return DEFAULT_WORK_ROOT
+def _restore_host_after_failure(host_result: HostInstallResult | None) -> str | None:
+    if host_result is None:
+        return None
+    try:
+        restore_host_updater(host_result)
+    except HostInstallError as exc:
+        return str(exc)
+    return None
+
+
+def _apply_transaction(plan: dict[str, Any]) -> None:
+    """アプリ適用、quality gate、host 配置を一つのトランザクションとして実行する。"""
+    app_root = Path(plan["app_root"]).resolve()
+    applied = _apply_plan(plan)
+    host_result: HostInstallResult | None = None
+    commit_preserved = False
+    try:
+        _run_application_validation(
+            app_root,
+            Path(plan["clone_root"]).resolve(),
+            Path(plan["overlay_manifest_path"]).resolve(),
+        )
+        try:
+            with host_install_lock(_host_skill_base()):
+                host_result = _stage_host_updater(Path(plan["clone_root"]).resolve())
+                skill = host_result.destination / "SKILL.md"
+                if not skill.is_file() or skill.is_symlink():
+                    raise UpdateError("KU-HOST-001: 配置後の SKILL.md がありません")
+                try:
+                    commit_host_updater(host_result)
+                except OSError as exc:
+                    host_result.committed = True
+                    commit_preserved = True
+                    raise UpdateError(
+                        "KU-HOST-001: 更新は適用済みですが updater 退避の削除に失敗しました: "
+                        f"{exc}"
+                    ) from exc
+        except HostInstallError as exc:
+            raise UpdateError(
+                f"KU-HOST-001: 個人 updater の lock を取得できません: {exc}"
+            ) from exc
+    except Exception as exc:
+        if commit_preserved:
+            raise
+        rollback_failures = _rollback_applied(applied)
+        host_error = _restore_host_after_failure(host_result)
+        details = list(rollback_failures)
+        if host_error:
+            details.append(host_error)
+        if details:
+            raise UpdateError(
+                "KU-PREIMAGE-001: apply rollback に失敗しました: " + "; ".join(details)
+            ) from exc
+        raise
+    print(f"[KU-HOST-001] PASS: 個人 updater を更新しました: {host_result.destination}")
+
+
+def _cleanup_ephemeral_root(plan: dict[str, Any]) -> None:
+    raw = plan.get("ephemeral_root")
+    if not raw:
+        return
+    root = Path(raw)
+    if root.is_symlink():
+        raise UpdateError(f"KU-SCOPE-001: updater 管理tempがsymlinkです: {root}")
+    marker = root / OWNED_ROOT_MARKER
+    if not marker.is_file() or marker.is_symlink():
+        raise UpdateError(f"KU-SCOPE-001: updater 管理tempのmarkerがありません: {root}")
+    shutil.rmtree(root)
 
 
 def command_plan(args: argparse.Namespace) -> int:
     app_root = Path(args.app_root).resolve()
-    clone_root = Path(args.clone_root).resolve()
-    work_root = Path(args.work_root).resolve()
-    overlay_path = _resolve_overlay_path(app_root, args.root_manifest)
-    _preflight_overlay(overlay_path)
-    if not (app_root / ".git").exists():
-        raise UpdateError("KU-SCOPE-001: 対象アプリは Git repository ではありません")
-    fetched = _fetch_kit(clone_root)
-    plan = _build_plan(
-        app_root,
-        Path(fetched["clone_root"]),
-        work_root,
-        overlay_path,
-        kit_revision=str(fetched["sha"]),
+    plan_file = Path(args.plan_file).resolve() if args.plan_file else None
+    ephemeral_root: Path | None = None
+    if args.clone_root is None or args.work_root is None:
+        ephemeral_root = Path(
+            tempfile.mkdtemp(prefix="agentic-workflow-update-")
+        ).resolve()
+        (ephemeral_root / OWNED_ROOT_MARKER).write_text(
+            "agentic-workflow-update\n",
+            encoding="utf-8",
+        )
+    clone_root = (
+        Path(args.clone_root).resolve()
+        if args.clone_root
+        else ephemeral_root / "kit"
     )
-    if args.plan_file:
-        _write_plan(Path(args.plan_file).resolve(), plan)
+    work_root = (
+        Path(args.work_root).resolve()
+        if args.work_root
+        else ephemeral_root / "work"
+    )
+    try:
+        overlay_path = _resolve_overlay_path(app_root, args.root_manifest)
+        _preflight_overlay(overlay_path)
+        _assert_overlay_matches_app_manifest(app_root, overlay_path)
+        if not (app_root / ".git").exists():
+            raise UpdateError("KU-SCOPE-001: 対象アプリは Git repository ではありません")
+        _validate_root_separation(app_root, clone_root, work_root, plan_file)
+        fetched = _fetch_kit(clone_root)
+        plan = _build_plan(
+            app_root,
+            Path(fetched["clone_root"]),
+            work_root,
+            overlay_path,
+            kit_revision=str(fetched["sha"]),
+            ephemeral_root=ephemeral_root,
+            retirement=args.retire,
+        )
+        if plan_file:
+            _write_plan(plan_file, plan)
+    except Exception:
+        if ephemeral_root and ephemeral_root.is_dir():
+            shutil.rmtree(ephemeral_root)
+        raise
     print(json.dumps(plan, ensure_ascii=False, indent=2))
     if plan["blocking_issues"]:
+        _cleanup_ephemeral_root(plan)
         return 1
     return 0
 
@@ -851,19 +1185,17 @@ def command_apply(args: argparse.Namespace) -> int:
     if not plan_path.is_file():
         raise UpdateError("KU-PREIMAGE-001: plan file がありません")
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise FatalUpdateError("KU-PREIMAGE-001: plan は mapping である必要があります")
     app_root = Path(args.app_root).resolve()
-    _validate_plan(plan, app_root, args.approve_plan)
-    applied = _apply_plan(plan)
-    try:
-        _run_application_validation(
-            app_root,
-            Path(plan["clone_root"]).resolve(),
-            Path(plan["overlay_manifest_path"]).resolve(),
-        )
-        _install_host_updater(Path(plan["clone_root"]).resolve())
-    except Exception:
-        _rollback_applied(applied)
-        raise
+    with _app_apply_lock(app_root):
+        _validate_plan(plan, app_root, args.approve_plan)
+        try:
+            _apply_transaction(plan)
+        except Exception:
+            _cleanup_ephemeral_root(plan)
+            raise
+        _cleanup_ephemeral_root(plan)
     print(json.dumps({
         "status": "applied",
         "plan_digest": plan["plan_digest"],
@@ -878,9 +1210,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan")
     plan.add_argument("--app-root", default=".")
     plan.add_argument("--root-manifest")
-    plan.add_argument("--clone-root", default=str(DEFAULT_CLONE_ROOT))
-    plan.add_argument("--work-root", default=str(DEFAULT_WORK_ROOT))
+    plan.add_argument("--clone-root")
+    plan.add_argument("--work-root")
     plan.add_argument("--plan-file")
+    plan.add_argument("--retire", choices=["delete", "keep"])
     plan.set_defaults(handler=command_plan)
     apply = subparsers.add_parser("apply")
     apply.add_argument("--app-root", default=".")
@@ -897,7 +1230,14 @@ def main(argv: list[str] | None = None) -> int:
     except UpdateError as exc:
         print(str(exc), file=sys.stderr)
         return exc.exit_code
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"FATAL: updater 実行失敗: {exc}", file=sys.stderr)
         return 2
 

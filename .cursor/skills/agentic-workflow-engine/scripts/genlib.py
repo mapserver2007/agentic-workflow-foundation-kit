@@ -449,24 +449,39 @@ def _process_ifs(text: str, root: dict) -> str:
 
 
 def _render_scalars(text: str, root: dict, item=None, index=None) -> str:
+    def indent_multiline(value: str, match_start: int) -> str:
+        """複数行値の2行目以降を、置換位置の行インデントへ揃える。"""
+        if "\n" not in value:
+            return value
+        line_start = text.rfind("\n", 0, match_start) + 1
+        line_prefix = text[line_start:match_start]
+        indent_match = re.match(r"[ \t]*", line_prefix)
+        indent = indent_match.group(0) if indent_match else ""
+        if value.endswith("\n"):
+            return value[:-1].replace("\n", "\n" + indent) + "\n"
+        return value.replace("\n", "\n" + indent)
+
     def sub(m):
         expr = m.group(1).strip()
         if expr.startswith("#") or expr.startswith("/"):
             return m.group(0)
         if expr == "this":
-            return _shield_template_literals(_scalar_str(item))
+            value = indent_multiline(_scalar_str(item), m.start())
+            return _shield_template_literals(value)
         if expr.startswith("this."):
             cur = item
             for part in expr[5:].split("."):
                 if not isinstance(cur, dict) or part not in cur:
                     raise RenderError(f"未解決の参照: {expr}")
                 cur = cur[part]
-            return _shield_template_literals(_scalar_str(cur))
+            value = indent_multiline(_scalar_str(cur), m.start())
+            return _shield_template_literals(value)
         if expr == "@index":
             if index is None:
                 raise RenderError("@index は #each ブロック外では使用できない")
             return _shield_template_literals(str(index))
-        return _shield_template_literals(_scalar_str(_resolve_path(root, expr)))
+        value = indent_multiline(_scalar_str(_resolve_path(root, expr)), m.start())
+        return _shield_template_literals(value)
 
     return _VAR_RE.sub(sub, text)
 

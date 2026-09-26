@@ -140,6 +140,7 @@ outputs:
         denied_chmod.chmod(0o644)
 
         original_write = generate._write
+        original_chmod = os.chmod
         denied_write = root / "denied-write.txt"
 
         def injected_write(path: str, content: str, executable: bool) -> None:
@@ -150,7 +151,7 @@ outputs:
         def injected_chmod(path: str, mode: int) -> None:
             if path == str(denied_chmod):
                 raise PermissionError(errno.EIO, "chmod denied")
-            os.chmod(path, mode)
+            original_chmod(path, mode)
 
         stderr = io.StringIO()
         with (
@@ -167,11 +168,27 @@ outputs:
         _assert((root / "success.txt").is_file(), "generation did not continue after denial")
 
 
+def test_symlink_output_is_rejected_before_write() -> None:
+    with tempfile.TemporaryDirectory(prefix="generate-symlink-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir = _make_skill(root)
+        outside = Path(temp_dir) / "outside.txt"
+        outside.write_text("original\n", encoding="utf-8")
+        output = root / "generated-a.txt"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.symlink_to(outside)
+
+        _assert(generate.run(str(skill_dir), check=False) == 2, "symlink output must fail")
+        _assert(outside.read_text(encoding="utf-8") == "original\n", "symlink target was changed")
+        _assert(output.is_symlink(), "symlink was unexpectedly replaced")
+
+
 def main() -> int:
     tests = (
         ("skip unchanged and seed", test_skip_unchanged_and_seed),
         ("executable bits and check", test_executable_bits_and_check_are_non_mutating),
         ("permission error aggregation", test_permission_errors_are_aggregated),
+        ("symlink output rejection", test_symlink_output_is_rejected_before_write),
     )
     for label, test in tests:
         try:
