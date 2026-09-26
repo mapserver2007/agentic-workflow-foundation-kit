@@ -151,6 +151,92 @@ framework:
         os.unlink(tmppath)
 
 
+def _write_pair(root: str, seed_text: str, overlay_text: str) -> tuple[str, str]:
+    seed_path = os.path.join(root, "seed.yaml")
+    overlay_path = os.path.join(root, "overlay.yaml")
+    with open(seed_path, "w", encoding="utf-8") as f:
+        f.write(seed_text)
+    with open(overlay_path, "w", encoding="utf-8") as f:
+        f.write(overlay_text)
+    return seed_path, overlay_path
+
+
+def test_resolved_manifest_rederives_300k_and_ignores_threshold_overlay():
+    """300K のウィンドウから再導出し、root の閾値ブロックとファイルは変えない。"""
+    import run_resolved_engine as rre
+
+    seed = """\
+version: 1
+project:
+  name: seed
+  context_budget:
+    min_context_window_tokens: 200000
+framework:
+  budget_thresholds:
+    yellow:
+      prompt_count: 35
+    red:
+      prompt_count: 70
+"""
+    overlay = """\
+version: 1
+project:
+  name: app
+  context_budget:
+    min_context_window_tokens: 300000
+framework:
+  budget_thresholds:
+    yellow:
+      prompt_count: 1
+    red:
+      prompt_count: 1
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        seed_path, overlay_path = _write_pair(tmp, seed, overlay)
+        before = open(overlay_path, encoding="utf-8").read()
+        resolved = rre.resolved_manifest(seed_path, overlay_path)
+        after = open(overlay_path, encoding="utf-8").read()
+        thresholds = resolved["framework"]["budget_thresholds"]
+        assert after == before, "consumer root manifest が書き換わった"
+        assert thresholds["yellow"]["prompt_count"] == 45
+        assert thresholds["red"]["prompt_count"] == 90
+        assert thresholds["yellow"]["shell_bytes"] == 1048576
+        assert thresholds["compact_red_percent"] == 80
+        print("PASS: resolved 300K rederives and does not write root")
+
+
+def test_resolved_manifest_unset_window_uses_200k_tier():
+    """ウィンドウ未設定なら、root に残った閾値を無視して 200K tier にする。"""
+    import run_resolved_engine as rre
+
+    seed = """\
+version: 1
+project:
+  name: seed
+framework:
+  accd_axes: []
+"""
+    overlay = """\
+version: 1
+project:
+  name: app
+framework:
+  budget_thresholds:
+    yellow:
+      prompt_count: 45
+    red:
+      prompt_count: 90
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        seed_path, overlay_path = _write_pair(tmp, seed, overlay)
+        resolved = rre.resolved_manifest(seed_path, overlay_path)
+        thresholds = resolved["framework"]["budget_thresholds"]
+        assert thresholds["yellow"]["prompt_count"] == 35
+        assert thresholds["red"]["prompt_count"] == 70
+        assert thresholds["compact_red_percent"] == 78
+        print("PASS: unset window falls back to 200K tier")
+
+
 if __name__ == "__main__":
     test_shell_bytes_label()
     test_200k_preset()
@@ -159,4 +245,6 @@ if __name__ == "__main__":
     test_custom_1m()
     test_null_fallback()
     test_idempotent()
+    test_resolved_manifest_rederives_300k_and_ignores_threshold_overlay()
+    test_resolved_manifest_unset_window_uses_200k_tier()
     print("\nAll tests passed.")

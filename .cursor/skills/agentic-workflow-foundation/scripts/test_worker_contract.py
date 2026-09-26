@@ -20,6 +20,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -68,38 +69,25 @@ def check_artifact(*args, **kwargs):
 
 FIXTURES_DIR = HERE.parent / "fixtures" / "artifacts"
 
-STEP_DOC_OUTPUT_FIELDS = {
-    "step1": {
-        "status", "step", "gate_result", "missing",
-        "investigation_memo_path", "analysis_depth",
-        "requirement_gate", "spec_consistency_gate", "feasibility_gate",
-        "blocking_open_issues", "non_blocking_issues",
-        "acceptance_criteria_status", "resolved_issues", "reason",
-        "normalize_artifact_path", "depth_triage_artifact_path",
-        "depth_fallback_reason",
-        "requirements_digest", "campaign_slug",
-    },
-    "step2": {
-        "status", "step", "campaign_slug", "report_slug", "report_path", "report_digest",
-        "gate_result", "missing", "reason", "implementation_approval",
-    },
-    "step3": {
-        "status", "step", "changed_files", "untracked_files",
-        "base_commit_sha", "impl_summary", "adr_needed",
-        "reason", "decision_alternatives",
-    },
-    "step4": {
-        "status", "step", "gate_results", "test_summary",
-        "advisory_loop_count", "reason", "gate_id", "stderr_summary",
-    },
+STEP_DOC_PATHS = {
+    "step1": WORK_ROOT / "docs/agent-tasks/agent-workflow/01-investigation.md",
+    "step2": WORK_ROOT / "docs/agent-tasks/agent-workflow/02-report-creation.md",
+    "step3": WORK_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md",
+    "step4": WORK_ROOT / "docs/agent-tasks/agent-workflow/04-testing.md",
 }
+
+
+def _documented_fields(step: str) -> set[str]:
+    path = STEP_DOC_PATHS[step]
+    content = path.read_text(encoding="utf-8")
+    return set(re.findall(r"`([a-z][a-z0-9_]*)`", content))
 
 
 def test_step_required_fields_subset_of_doc():
     """gate-artifact STEP_REQUIRED_FIELDS ⊆ step doc 出力フィールド。"""
     for step, gate_fields in STEP_REQUIRED_FIELDS.items():
-        doc_fields = STEP_DOC_OUTPUT_FIELDS.get(step)
-        assert doc_fields is not None, f"step doc が未定義: {step}"
+        assert step in STEP_DOC_PATHS, f"step doc が未定義: {step}"
+        doc_fields = _documented_fields(step)
         gate_set = set(gate_fields)
         diff = gate_set - doc_fields
         assert not diff, (
@@ -109,9 +97,9 @@ def test_step_required_fields_subset_of_doc():
 
 def test_valid_steps_match_doc():
     """VALID_STEPS が step doc と一致する。"""
-    assert VALID_STEPS == set(STEP_DOC_OUTPUT_FIELDS.keys()), (
+    assert VALID_STEPS == set(STEP_DOC_PATHS.keys()), (
         f"VALID_STEPS={sorted(VALID_STEPS)} vs "
-        f"doc_steps={sorted(STEP_DOC_OUTPUT_FIELDS.keys())}"
+        f"doc_steps={sorted(STEP_DOC_PATHS.keys())}"
     )
 
 
@@ -989,6 +977,16 @@ def main() -> int:
             "[test_worker_contract] FATAL: "
             f"gate-artifact を読み込めません: {_gate_artifact_path}: "
             f"{_gate_artifact_load_error}",
+            file=sys.stderr,
+        )
+        return 2
+    missing_inputs = [str(path) for path in STEP_DOC_PATHS.values() if not path.is_file()]
+    if not FIXTURES_DIR.is_dir():
+        missing_inputs.append(str(FIXTURES_DIR))
+    if missing_inputs:
+        print(
+            "[test_worker_contract] FATAL: 必須入力がありません: "
+            + ", ".join(missing_inputs),
             file=sys.stderr,
         )
         return 2

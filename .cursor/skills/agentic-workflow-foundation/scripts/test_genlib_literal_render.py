@@ -48,6 +48,18 @@ def main() -> int:
         )
         return 1
 
+    multiline_rendered = genlib.render(
+        "instructions: |\n  {{item.instructions}}\n",
+        {"item": {"instructions": "first\nsecond\nthird"}},
+    )
+    expected_multiline = "instructions: |\n  first\n  second\n  third\n"
+    if multiline_rendered != expected_multiline:
+        print(
+            f"FAIL: multiline indentation mismatch: {multiline_rendered!r}",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         genlib.render("{{unknown.path}}", context)
     except genlib.RenderError:

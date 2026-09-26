@@ -175,7 +175,7 @@ agentic-workflow-foundation-kit/
 
 | スキル | 役割 |
 | --- | --- |
-| [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{session_id}.md`）の作成・更新 |
+| [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{campaign_id}.md`）の作成・更新 |
 | [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive ゲート |
 | [`workflow-orchestrator`](.cursor/skills/workflow-orchestrator/SKILL.md) | 6 段階標準タスク実行ワークフロー（①〜⑥）の制御 |
 | [`requirement-analysis`](.cursor/skills/requirement-analysis/SKILL.md) | Step ①の要求正規化、3段階ガード、分析深度判定 |
@@ -267,8 +267,11 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
 `init.yaml`、credential provider、並置 kit は参照しません。
 
 dry-run は clone の seed / templates / engine と対象アプリの root `manifest.yaml` を
-一時 overlay に渡し、`/tmp/work` で generate → check → audit → profile quality gate
-を実行します。audit 後段の静的 validator も生成済み `/tmp/work` を検査します。
+一時 overlay に渡し、plan ごとの権限限定一時ディレクトリで
+generate → check → audit → profile quality gate を実行します。audit 後段の静的
+validator も同じ一時 work root を検査します。`--root-manifest` は対象アプリの
+`manifest.yaml` 自身か、同一 sha256 のコピーだけを受け付けます。内容が違う外部ファイルは
+fetch 前に拒否し、アプリの `manifest.yaml` は上書きしません。
 候補と digest を確認し、承認した計画だけを適用します。
 
 ```bash
@@ -280,15 +283,16 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
 同期対象はアプリ overlay から再生成された render / marker 成果物と lock だけです。
 foundation / engine / upstream design docs は適用しません。`init.yaml`、root
 `manifest.yaml`、技術スタック設計書、`docs/spec/**`、ADR / GOTCHAS、reports、
-seed、アプリコードは保護されます。削除・rename・orphan、allowlist 外の差分、
-preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
-適用後の検証に失敗した場合は同期済みファイルをロールバックします。自動 commit /
-push は行いません。
+seed、アプリコードは保護されます。orphan / rename は plan の `retirement` が
+`delete` または `keep` のときだけ、計画全体の承認後に解消します。未指定、allowlist
+外の差分、preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
+ファイル適用、quality gate、host 配置は一つのトランザクションです。いずれかが例外で失敗した場合は、
+同期済みファイルと host 個人スキルを適用前へ戻します。自動 commit / push は行いません。
 
 更新時の検査 ID は `KU-OVERLAY-001`（アプリ overlay）、`KU-SCOPE-001`
 （所有範囲）、`KU-PREIMAGE-001`（承認後変更）、`KU-ORPHAN-001`
-（削除・rename・orphan）、`KU-SEED-001`（seed 保護）、`KU-DENY-001`
-（denylist 保護）、`KU-HOST-001`（ホスト個人スキル配置）です。
+（削除・rename・orphan）、`KU-DENY-001`（seed / denylist 保護）、
+`KU-LOCK-001`（lock 構造）、`KU-HOST-001`（ホスト個人スキル配置）です。
 
 ## 手動実行
 

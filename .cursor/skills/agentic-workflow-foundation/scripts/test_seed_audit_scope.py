@@ -257,6 +257,34 @@ def test_audit_passes_work_root_to_post_validators() -> None:
             assert args[1] == str(work_root)
 
 
+def test_requirement_analysis_requires_agent_workflow() -> None:
+    disabled = {
+        "agent_workflow": {"enabled": False},
+        "requirement_analysis": {"enabled": True},
+    }
+    enabled = {
+        "agent_workflow": {"enabled": True},
+        "requirement_analysis": {"enabled": True},
+    }
+    assert RUNNER._is_feature_enabled(disabled, "requirement_analysis") is False
+    assert RUNNER._is_feature_enabled(enabled, "requirement_analysis") is True
+    manifest = {
+        **disabled,
+        "outputs": [
+            {"path": "keep.md", "template": "keep.md.template", "mode": "render"},
+            {
+                "path": ".cursor/skills/requirement-analysis/SKILL.md",
+                "template": "skills/requirement-analysis/SKILL.md.template",
+                "mode": "render",
+                "feature": "requirement_analysis",
+            },
+        ],
+    }
+    filtered = RUNNER._filter_outputs_by_features(manifest)
+    assert [item["path"] for item in filtered["outputs"]] == ["keep.md"]
+    assert RUNNER._run_requirement_analysis_validator(disabled, "/tmp") == 0
+
+
 def main() -> int:
     tests = (
         ("default audit requires seed sections", test_default_audit_requires_seed_sections),
@@ -265,6 +293,7 @@ def main() -> int:
         ("foundation gate keeps default audit", test_foundation_gate_keeps_default_audit),
         ("resolved runner routes flag", test_resolved_runner_routes_flag_only_to_audit),
         ("audit validator work root", test_audit_passes_work_root_to_post_validators),
+        ("requirement analysis parent gate", test_requirement_analysis_requires_agent_workflow),
     )
     for label, test in tests:
         try:

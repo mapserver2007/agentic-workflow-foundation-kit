@@ -53,6 +53,7 @@ _run_backend() {
   esac
 }
 
+{{#if foundation.enabled}}
 _contract_status() {
   local design_doc="$ROOT_DIR/.cursor/docs/{{project.tech_stack_design_filename}}"
   python3 "$ROOT_DIR/.cursor/skills/agentic-workflow-foundation/scripts/tech_contract.py" \
@@ -68,6 +69,18 @@ _preflight() {
   fi
   "$ROOT_DIR/bin/project-setup" --preflight
 }
+{{else}}
+# foundation.enabled: false — foundation/engine を vendor しない構成。
+# contract status と provisioning preflight は foundation scripts に依存するため
+# この構成では実行せず、承認済み backend argv だけを実行する。
+_contract_status() {
+  return 0
+}
+
+_preflight() {
+  return 0
+}
+{{/if}}
 
 case "$SUBCMD" in
   gen)

@@ -28,6 +28,7 @@ CLEANUP_TRIAGE_FN = "run_resolved_engine._cleanup_legacy_workflow_triage"
 RUN_ENGINE_FN = "run_resolved_engine.run_engine"
 RESOLVED_MANIFEST_FN = "run_resolved_engine.resolved_manifest"
 PREPARE_SKILL_DIR_FN = "run_resolved_engine.prepare_skill_dir"
+INSTALL_UPDATE_SKILL_FN = "run_resolved_engine._install_update_skill"
 
 READONLY_COMMANDS = ("audit", "check")
 WRITE_COMMANDS = ("generate",)
@@ -46,6 +47,7 @@ def _run_main_with_mocks(command: str):
     mock_run_engine = MagicMock(return_value=0)
     mock_resolved = MagicMock(return_value=_make_mock_manifest())
     mock_prepare = MagicMock(return_value="/tmp/fake-resolved")
+    mock_install = MagicMock(return_value=0)
 
     with patch(MIGRATION_FN, mock_migrate), \
          patch(CLEANUP_DOCS_FN, mock_cleanup_docs), \
@@ -54,6 +56,7 @@ def _run_main_with_mocks(command: str):
          patch(RUN_ENGINE_FN, mock_run_engine), \
          patch(RESOLVED_MANIFEST_FN, mock_resolved), \
          patch(PREPARE_SKILL_DIR_FN, mock_prepare), \
+         patch(INSTALL_UPDATE_SKILL_FN, mock_install), \
          patch("tempfile.TemporaryDirectory") as mock_tmpdir:
         mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/tmp/fake-tmpdir")
         mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
@@ -125,6 +128,14 @@ def test_check_supports_fresh_work_root():
     _assert_fresh_work_root_supported("check")
 
 
+def test_foundation_runner_preserves_exit_2() -> None:
+    import run_all_foundation_tests as runner
+
+    assert runner.propagate_exit(0) == 0
+    assert runner.propagate_exit(2) == 2
+    assert runner.propagate_exit(1) == 1
+
+
 def main() -> int:
     tests = [
         test_audit_does_not_call_migration,
@@ -135,6 +146,7 @@ def main() -> int:
         test_generate_calls_cleanup,
         test_generate_supports_fresh_work_root,
         test_check_supports_fresh_work_root,
+        test_foundation_runner_preserves_exit_2,
     ]
     passed = 0
     failed = 0

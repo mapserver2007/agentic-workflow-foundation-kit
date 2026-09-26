@@ -38,11 +38,13 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 
 **G-BUILD との分離**: G-GEN は開発中の生成・差分確認を担い、G-BUILD はデプロイ直前やローカル実行直前の build を担う。両者の責務を分離する。
 
+{{#if foundation.enabled}}
 **resolved audit の検査対象**: `run_resolved_engine.py` に `--work-root` を指定した場合、
 engine の audit 後段で実行する deep-thinking / requirement-analysis / agent-kaizen /
 Worker Contract の静的検査も、生成済み作業ツリーの `work_root` を検査対象とする。
 対応 feature が無効な場合だけ検査を skip し、有効な feature の生成物・validator・loader
 が欠落した場合は exit 2（致命的エラー）、生成物の契約違反は exit 1（修正可能な失敗）で停止する。
+{{/if}}
 
 #### Step4 完了チェックゲート
 
@@ -248,7 +250,11 @@ workflow-gate.sh step6 TICKET-1234
 .cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
 ```
 
+{{#if foundation.enabled}}
 **設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。tech stack 変更時は、対話 SKILL で contract draft を起案 → `tech_contract.py validate --check` → PO 承認 → `tech_contract.py apply` で root manifest に pin → 承認済み contract を quality gate / CodeRabbit / Domain docs へ投影 → `run_resolved_engine.py generate` / `audit` の順に反映・検証する。
+{{else}}
+**設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。本リポジトリは foundation/engine を保持しない（`foundation.enabled: false`）ため、contract の検査・pin を行う foundation scripts は利用できない。tech stack 変更時は root `manifest.yaml` の `tech_contract` を更新し、kit updater（`agentic-workflow-update`）の plan → 計画全体承認 → apply で生成物へ反映する。
+{{/if}}
 
 **archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。手動削除は行わない。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
 

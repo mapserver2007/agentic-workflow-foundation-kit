@@ -39,7 +39,16 @@ export GIT_TERMINAL_PROMPT=0
 clone_parent="$(dirname "$CLONE_ROOT")"
 mkdir -p "$clone_parent"
 if [[ -e "$CLONE_ROOT" || -L "$CLONE_ROOT" ]]; then
-  stale="${CLONE_ROOT}.stale.$(date +%Y%m%d%H%M%S)"
+  if [[ -L "$CLONE_ROOT" || ! -d "$CLONE_ROOT/.git" ]]; then
+    echo "ERROR: clone root は既存の通常Git cloneではありません: $CLONE_ROOT" >&2
+    exit 2
+  fi
+  current_url=$("${git_config[@]}" -C "$CLONE_ROOT" config --get remote.origin.url 2>/dev/null || true)
+  if [[ "$current_url" != "$KIT_URL" ]]; then
+    echo "ERROR: clone root の origin が固定kit URLと一致しません: $CLONE_ROOT" >&2
+    exit 2
+  fi
+  stale="${CLONE_ROOT}.stale.$(date +%s).$$"
   [[ ! -e "$stale" && ! -L "$stale" ]] || {
     echo "ERROR: stale clone の退避先が既に存在します" >&2
     exit 1

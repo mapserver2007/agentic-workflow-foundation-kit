@@ -2,6 +2,7 @@
 """agentic-workflow-update の consumer / lock / preimage 契約を検査する。"""
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
@@ -168,20 +170,62 @@ def _worker_contract_fixture(base: Path) -> tuple[Path, Path]:
 
     work_root = base / "work"
     work_root.mkdir()
+    step_templates = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "agentic-workflow-foundation"
+        / "templates"
+        / "docs"
+        / "agent-tasks"
+        / "agent-workflow"
+    )
+    step_docs = work_root / "docs/agent-tasks/agent-workflow"
+    step_docs.mkdir(parents=True)
+    for index, name in enumerate(
+        ("investigation", "report-creation", "implementation", "testing"),
+        start=1,
+    ):
+        source = step_templates / f"{index:02d}-{name}.md.template"
+        (step_docs / f"{index:02d}-{name}.md").write_text(
+            source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     return clone_scripts, work_root
 
 
 def _install_worker_gate(work_root: Path) -> Path:
     gate = work_root / ".cursor/skills/session-handover/scripts/gate-artifact.py"
     gate.parent.mkdir(parents=True)
-    shutil.copy2(
-        ROOT / ".cursor/skills/session-handover/scripts/gate-artifact.py",
-        gate,
+    template = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "agentic-workflow-foundation"
+        / "templates"
+        / "skills"
+        / "session-handover"
+        / "scripts"
+        / "gate-artifact.py.template"
+    )
+    gate.write_text(
+        template.read_text(encoding="utf-8").replace(
+            "{{agent_workflow.artifact.envelope.parser_missing_exit}}",
+            "2",
+        ),
+        encoding="utf-8",
     )
     return gate
 
 
-def _plan(app: Path, clone: Path, work: Path, *, overlay: Path | None = None) -> dict:
+def _plan(
+    app: Path,
+    clone: Path,
+    work: Path,
+    *,
+    overlay: Path | None = None,
+    retirement: str | None = None,
+) -> dict:
     return UPDATE._build_plan(
         app,
         clone,
@@ -189,6 +233,7 @@ def _plan(app: Path, clone: Path, work: Path, *, overlay: Path | None = None) ->
         overlay or app / "manifest.yaml",
         validate=False,
         kit_revision=_revision(clone),
+        retirement=retirement,
     )
 
 
@@ -275,7 +320,116 @@ def test_lock_catalog_detects_removed_managed_output() -> None:
         )
         plan = _plan(app, clone, work)
         assert plan["orphan"] == ["removed-managed.md"]
+        assert plan["retirement"] is None
         assert "KU-ORPHAN-001" in plan["blocking_issues"]
+        try:
+            UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        except UPDATE.UpdateError as exc:
+            assert "KU-ORPHAN-001" in str(exc)
+        else:
+            raise AssertionError("未指定の orphan が apply 検証を通過した")
+        assert (app / "removed-managed.md").is_file()
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
+def _write_removed_lock(app: Path, clone: Path, relative: str = "removed-managed.md") -> None:
+    _write(
+        app,
+        "agentic-workflow-kit.lock.yaml",
+        "version: 1\n"
+        f'kit_revision: "{_revision(clone)}"\n'
+        "catalog:\n"
+        f'  - path: "{relative}"\n'
+        '    mode: "render"\n'
+        f'    sha256: "{UPDATE._sha256(app / relative)}"\n',
+    )
+
+
+def test_retire_keep_leaves_file_and_drops_lock() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("AGENTS.md", "render", None)],
+        candidate_updates={"AGENTS.md": "generated-v2\n"},
+    )
+    try:
+        _write(app, "removed-managed.md", "local-edit\n")
+        _write(app, "app-owned.md", "owned\n")
+        _write_removed_lock(app, clone)
+        plan = _plan(app, clone, work, retirement="keep")
+        assert plan["retirement"] == "keep"
+        assert "KU-ORPHAN-001" not in plan["blocking_issues"]
+        assert not any(item["path"] == "removed-managed.md" for item in plan["catalog"])
+        assert not any(
+            item["path"] == "removed-managed.md" and item.get("action") == "delete"
+            for item in plan["changes"]
+        )
+        UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        UPDATE._apply_plan(plan)
+        assert (app / "removed-managed.md").read_text(encoding="utf-8") == "local-edit\n"
+        assert (app / "app-owned.md").read_text(encoding="utf-8") == "owned\n"
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
+def test_retire_delete_removes_only_former_managed_file() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("AGENTS.md", "render", None)],
+        candidate_updates={"AGENTS.md": "generated-v2\n"},
+    )
+    try:
+        _write(app, "removed-managed.md", "local-edit\n")
+        _write(app, "app-owned.md", "owned\n")
+        _write_removed_lock(app, clone)
+        plan = _plan(app, clone, work, retirement="delete")
+        assert plan["retirement"] == "delete"
+        assert "KU-ORPHAN-001" not in plan["blocking_issues"]
+        assert any(
+            item["path"] == "removed-managed.md" and item.get("action") == "delete"
+            for item in plan["changes"]
+        )
+        UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        UPDATE._apply_plan(plan)
+        assert not (app / "removed-managed.md").exists()
+        assert (app / "app-owned.md").read_text(encoding="utf-8") == "owned\n"
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
+def test_retire_delete_renames_by_removing_old_path_only() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("docs/new-guide.md", "render", None)],
+        candidate_updates={"docs/new-guide.md": "same-bytes\n"},
+    )
+    try:
+        _write(app, "docs/old-guide.md", "same-bytes\n")
+        _write_removed_lock(app, clone, "docs/old-guide.md")
+        plan = _plan(app, clone, work, retirement="delete")
+        assert plan["rename_candidates"] == [
+            {"old": "docs/old-guide.md", "new": "docs/new-guide.md"}
+        ]
+        UPDATE._apply_plan(plan)
+        assert not (app / "docs/old-guide.md").exists()
+        assert (app / "docs/new-guide.md").read_text(encoding="utf-8") == "same-bytes\n"
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
+def test_retire_without_targets_is_fatal() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("AGENTS.md", "render", None)],
+        candidate_updates={"AGENTS.md": "generated-v2\n"},
+    )
+    try:
+        try:
+            _plan(app, clone, work, retirement="keep")
+        except UPDATE.FatalUpdateError as exc:
+            assert "KU-ORPHAN-001" in str(exc)
+        else:
+            raise AssertionError("解消対象がない retirement が受理された")
     finally:
         temp.cleanup()
 
@@ -297,17 +451,66 @@ def test_overlay_preflight_happens_before_fetch() -> None:
         assert not called
 
 
-def test_external_overlay_is_copied_to_work_tree() -> None:
+def test_malformed_overlay_stops_before_fetch() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-preflight-yaml-") as temp_dir:
+        app = Path(temp_dir) / "app"
+        (app / ".git").mkdir(parents=True)
+        (app / "manifest.yaml").write_text(
+            "project:\n  malformed: [\n",
+            encoding="utf-8",
+        )
+        with patch.object(
+            UPDATE,
+            "_fetch_kit",
+            side_effect=AssertionError("malformed overlay の後に fetch が呼ばれた"),
+        ):
+            assert UPDATE.main(["plan", "--app-root", str(app)]) == 2
+
+
+def test_divergent_external_overlay_stops_before_fetch() -> None:
     with tempfile.TemporaryDirectory(prefix="kit-update-overlay-") as temp_dir:
+        base = Path(temp_dir)
+        app = base / "app"
+        (app / ".git").mkdir(parents=True)
+        _write(app, "manifest.yaml", _root_manifest())
+        overlay = base / "overlay.yaml"
+        _write(base, "overlay.yaml", _root_manifest(code_review=True))
+        before = (app / "manifest.yaml").read_bytes()
+        with patch.object(
+            UPDATE,
+            "_fetch_kit",
+            side_effect=AssertionError("不一致 overlay の後に fetch が呼ばれた"),
+        ):
+            assert (
+                UPDATE.main(
+                    [
+                        "plan",
+                        "--app-root",
+                        str(app),
+                        "--root-manifest",
+                        str(overlay),
+                    ]
+                )
+                == 2
+            )
+        assert (app / "manifest.yaml").read_bytes() == before
+
+
+def test_same_digest_overlay_copies_work_tree_only() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-overlay-same-") as temp_dir:
         base = Path(temp_dir)
         app = base / "app"
         work = base / "work"
         overlay = base / "overlay.yaml"
         (app / ".git").mkdir(parents=True)
+        _write(app, "manifest.yaml", _root_manifest())
         _write(app, "AGENTS.md", "owned\n")
         _write(base, "overlay.yaml", _root_manifest())
+        before = (app / "manifest.yaml").read_bytes()
+        UPDATE._assert_overlay_matches_app_manifest(app, overlay)
         UPDATE._prepare_work_tree(app, overlay, work)
-        assert (work / "manifest.yaml").read_text(encoding="utf-8") == _root_manifest()
+        assert (work / "manifest.yaml").read_bytes() == before
+        assert (app / "manifest.yaml").read_bytes() == before
 
 
 def test_plan_digest_and_preimage_reject_unapproved_apply() -> None:
@@ -329,6 +532,274 @@ def test_plan_digest_and_preimage_reject_unapproved_apply() -> None:
             raise AssertionError("preimage drift が受理された")
     finally:
         temp.cleanup()
+
+
+def test_dirty_clone_updater_is_rejected_after_plan() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        plan = _plan(app, clone, work)
+        updater = clone / ".cursor/skills/agentic-workflow-update/SKILL.md"
+        updater.write_text("tampered\n", encoding="utf-8")
+        try:
+            UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        except UPDATE.UpdateError as exc:
+            assert "KU-PREIMAGE-001" in str(exc)
+        else:
+            raise AssertionError("plan 後に変更された host updater が受理された")
+    finally:
+        temp.cleanup()
+
+
+def test_root_separation_rejects_app_overlap() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-root-scope-") as temp_dir:
+        app = Path(temp_dir) / "app"
+        clone = Path(temp_dir) / "clone"
+        work = Path(temp_dir) / "work"
+        app.mkdir()
+        UPDATE._validate_root_separation(app, clone, work, None)
+        for bad_clone, bad_work, bad_plan in (
+            (app, work, None),
+            (clone, app / "candidate", None),
+            (clone, work, app / "plan.json"),
+        ):
+            try:
+                UPDATE._validate_root_separation(app, bad_clone, bad_work, bad_plan)
+            except UPDATE.FatalUpdateError as exc:
+                assert "KU-SCOPE-001" in str(exc)
+            else:
+                raise AssertionError("対象アプリと重なる updater path が受理された")
+
+
+def test_domain_path_mode_change_is_blocked() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("docs/spec.md", "render", None)],
+        candidate_updates={"docs/spec.md": "upstream-overwrite\n"},
+    )
+    try:
+        plan = _plan(app, clone, work)
+        assert "docs/spec.md" in {item["path"] for item in plan["changes"]}
+        assert "KU-DENY-001" in plan["blocking_issues"]
+    finally:
+        temp.cleanup()
+
+
+def test_malformed_plan_root_is_exit_2() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-plan-schema-") as temp_dir:
+        plan = Path(temp_dir) / "plan.json"
+        plan.write_text("[]\n", encoding="utf-8")
+        assert (
+            UPDATE.main(
+                [
+                    "apply",
+                    "--plan-file",
+                    str(plan),
+                    "--approve-plan",
+                    "invalid",
+                ]
+            )
+            == 2
+        )
+
+
+def test_apply_lock_does_not_follow_symlink() -> None:
+    app, _clone, _work, temp = _fixture()
+    lock_path = (
+        Path(tempfile.gettempdir())
+        / f"agentic-workflow-update-{hashlib.sha256(str(app.resolve()).encode()).hexdigest()[:24]}.lock"
+    )
+    try:
+        victim = Path(temp.name) / "victim"
+        victim.write_text("safe\n", encoding="utf-8")
+        if lock_path.is_symlink() or lock_path.exists():
+            lock_path.unlink()
+        lock_path.symlink_to(victim)
+        try:
+            with UPDATE._app_apply_lock(app):
+                raise AssertionError("symlink の apply lock が受理された")
+        except UPDATE.FatalUpdateError as exc:
+            assert "apply lock" in str(exc)
+        assert victim.read_text(encoding="utf-8") == "safe\n"
+    finally:
+        if lock_path.is_symlink() or lock_path.exists():
+            lock_path.unlink()
+        temp.cleanup()
+
+
+def test_unchanged_catalog_is_rechecked_at_apply() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("AGENTS.md", "render", None), ("README.md", "render", None)],
+        candidate_updates={"AGENTS.md": "generated-v2\n", "README.md": "stable\n"},
+    )
+    try:
+        _write(app, "README.md", "stable\n")
+        plan = _plan(app, clone, work)
+        assert "README.md" not in {item["path"] for item in plan["changes"]}
+        _write(app, "README.md", "tampered\n")
+        try:
+            UPDATE._apply_plan(plan)
+        except UPDATE.UpdateError as exc:
+            assert "KU-PREIMAGE-001" in str(exc)
+            assert "README.md" in str(exc)
+        else:
+            raise AssertionError("計画後の未変更ファイル改変が適用された")
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v1\n"
+    finally:
+        temp.cleanup()
+
+
+def test_tampered_plan_cannot_apply_denied_path() -> None:
+    app, clone, work, temp = _fixture(
+        outputs=[("docs/spec.md", "render", None)],
+        candidate_updates={"docs/spec.md": "upstream-overwrite\n"},
+    )
+    try:
+        plan = _plan(app, clone, work)
+        plan["blocking_issues"] = []
+        protected = plan.get("protected")
+        if isinstance(protected, dict):
+            protected.pop("docs/spec.md", None)
+        try:
+            UPDATE._apply_plan(plan)
+        except UPDATE.UpdateError as exc:
+            assert "KU-DENY-001" in str(exc)
+        else:
+            raise AssertionError("保護対象の改ざん plan が適用された")
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
+def test_schema_mismatch_and_bad_relative_path_are_fatal() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        plan = _plan(app, clone, work)
+        plan["schema_version"] = 99
+        plan["plan_digest"] = UPDATE._plan_digest(plan)
+        try:
+            UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        except UPDATE.FatalUpdateError as exc:
+            assert exc.exit_code == 2
+            assert "schema" in str(exc)
+        else:
+            raise AssertionError("schema 不一致が致命的エラーにならなかった")
+    finally:
+        temp.cleanup()
+    try:
+        UPDATE._safe_rel("../outside")
+    except UPDATE.FatalUpdateError as exc:
+        assert exc.exit_code == 2
+        assert "KU-SCOPE-001" in str(exc)
+    else:
+        raise AssertionError("不正な相対パスが致命的エラーにならなかった")
+
+
+def test_ephemeral_cleanup_rejects_symlink_root() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-ephemeral-link-") as temp_dir:
+        base = Path(temp_dir)
+        victim = base / "victim"
+        victim.mkdir()
+        (victim / "keep.txt").write_text("keep\n", encoding="utf-8")
+        (victim / UPDATE.OWNED_ROOT_MARKER).write_text("owned\n", encoding="utf-8")
+        link = base / "link"
+        link.symlink_to(victim, target_is_directory=True)
+        try:
+            UPDATE._cleanup_ephemeral_root({"ephemeral_root": str(link)})
+        except UPDATE.UpdateError as exc:
+            assert "symlink" in str(exc)
+        else:
+            raise AssertionError("symlink temp が削除された")
+        assert (victim / "keep.txt").is_file()
+
+
+def test_host_source_symlink_is_rejected() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-host-link-") as temp_dir:
+        base = Path(temp_dir)
+        source = base / "source"
+        source.mkdir()
+        (source / "SKILL.md").write_text("skill\n", encoding="utf-8")
+        link = base / "link"
+        link.symlink_to(source)
+        host = base / "host"
+        try:
+            UPDATE.stage_host_updater(link, host)
+        except UPDATE.HostInstallError as exc:
+            assert "symlink" in str(exc)
+        else:
+            raise AssertionError("symlink 正本が受理された")
+        assert not (host / "agentic-workflow-update").exists()
+
+
+def test_host_lock_rejects_symlink_and_serializes() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-host-lock-") as temp_dir:
+        base = Path(temp_dir) / "host"
+        base.mkdir()
+        victim = Path(temp_dir) / "victim"
+        victim.write_text("safe\n", encoding="utf-8")
+        lock = base / ".agentic-workflow-update.lock"
+        lock.symlink_to(victim)
+        try:
+            with UPDATE.host_install_lock(base):
+                raise AssertionError("symlink host lock が受理された")
+        except UPDATE.HostInstallError as exc:
+            assert "symlink" in str(exc)
+        assert victim.read_text(encoding="utf-8") == "safe\n"
+        lock.unlink()
+
+        held = threading.Event()
+        release = threading.Event()
+        acquired = threading.Event()
+
+        def holder() -> None:
+            with UPDATE.host_install_lock(base):
+                held.set()
+                assert release.wait(5)
+
+        def waiter() -> None:
+            with UPDATE.host_install_lock(base):
+                acquired.set()
+
+        first = threading.Thread(target=holder)
+        second = threading.Thread(target=waiter)
+        first.start()
+        assert held.wait(2)
+        second.start()
+        assert acquired.wait(0.3) is False
+        release.set()
+        second.join(2)
+        first.join(2)
+        assert acquired.is_set()
+
+
+def test_worker_contract_missing_step_docs_is_exit_2() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-missing-steps-") as temp_dir:
+        work_root = Path(temp_dir)
+        _install_worker_gate(work_root)
+        env = dict(os.environ)
+        env["AGENTIC_WORKFLOW_WORK_ROOT"] = str(work_root)
+        result = subprocess.run(
+            [sys.executable, str(HERE / "test_worker_contract.py")],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2, result.stderr
+        assert "FATAL" in result.stderr
+
+
+def test_owned_temp_cleanup_requires_marker() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-cleanup-") as temp_dir:
+        root = Path(temp_dir) / "owned"
+        root.mkdir()
+        plan = {"ephemeral_root": str(root)}
+        try:
+            UPDATE._cleanup_ephemeral_root(plan)
+        except UPDATE.UpdateError as exc:
+            assert "KU-SCOPE-001" in str(exc)
+        else:
+            raise AssertionError("marker なし temp が削除された")
+        (root / UPDATE.OWNED_ROOT_MARKER).write_text("owned\n", encoding="utf-8")
+        UPDATE._cleanup_ephemeral_root(plan)
+        assert not root.exists()
 
 
 def test_subprocess_error_keeps_exit_and_stderr() -> None:
@@ -550,6 +1021,83 @@ def test_worker_contract_uses_work_root_and_exit_boundaries() -> None:
             assert gate.is_file()
 
 
+def test_transaction_gate_failure_restores_app_and_leaves_host() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        _write(host, "agentic-workflow-update/SKILL.md", "old-host\n")
+        plan = _plan(app, clone, work)
+        with (
+            patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}),
+            patch.object(
+                UPDATE,
+                "_run_application_validation",
+                side_effect=UPDATE.UpdateError("gate failed"),
+            ),
+        ):
+            try:
+                UPDATE._apply_transaction(plan)
+            except UPDATE.UpdateError as exc:
+                assert "gate failed" in str(exc)
+            else:
+                raise AssertionError("quality gate 失敗が適用成功になった")
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v1\n"
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+        assert (host / "agentic-workflow-update/SKILL.md").read_text(encoding="utf-8") == "old-host\n"
+    finally:
+        temp.cleanup()
+
+
+def test_transaction_host_stage_failure_restores_app_and_host() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        _write(host, "agentic-workflow-update/SKILL.md", "old-host\n")
+        plan = _plan(app, clone, work)
+        real_stage = UPDATE._stage_host_updater
+
+        def stage_then_drop_skill(clone_root: Path):
+            result = real_stage(clone_root)
+            (result.destination / "SKILL.md").unlink()
+            return result
+
+        with (
+            patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}),
+            patch.object(UPDATE, "_stage_host_updater", side_effect=stage_then_drop_skill),
+        ):
+            try:
+                UPDATE._apply_transaction(plan)
+            except UPDATE.UpdateError as exc:
+                assert "KU-HOST-001" in str(exc)
+            else:
+                raise AssertionError("host 配置失敗が適用成功になった")
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v1\n"
+        assert (host / "agentic-workflow-update/SKILL.md").read_text(encoding="utf-8") == "old-host\n"
+        assert not list(host.glob(".agentic-workflow-update.previous.*"))
+    finally:
+        temp.cleanup()
+
+
+def test_transaction_success_commits_app_and_host() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        _write(host, "agentic-workflow-update/SKILL.md", "old-host\n")
+        plan = _plan(app, clone, work)
+        with patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}):
+            UPDATE._apply_transaction(plan)
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
+        installed = (host / "agentic-workflow-update/SKILL.md").read_text(encoding="utf-8")
+        assert installed == (clone / ".cursor/skills/agentic-workflow-update/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert "old-host" not in installed
+        assert not list(host.glob(".agentic-workflow-update.previous.*"))
+        assert (app / "docs/spec.md").read_text(encoding="utf-8") == "domain-owned\n"
+    finally:
+        temp.cleanup()
+
+
 def test_skill_contract_excludes_vendor_flow() -> None:
     content = SKILL_FILE.read_text(encoding="utf-8")
     assert "固定public URL" in content
@@ -557,6 +1105,8 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "foundation/engine" in content
     assert "agentic-workflow-kit.lock.yaml" in content
     assert "--root-manifest" in content
+    assert "--retire" in content
+    assert "AskQuestion" in content
     assert "bin/foundation-gate generate" not in content
     assert "--update-skill-home" in content
 
@@ -684,9 +1234,31 @@ def main() -> int:
         ("resolved catalog", test_resolved_catalog_applies_overlay_features),
         ("initial adopt", test_initial_adopt_does_not_infer_orphans),
         ("lock orphan", test_lock_catalog_detects_removed_managed_output),
+        ("retire keep", test_retire_keep_leaves_file_and_drops_lock),
+        ("retire delete", test_retire_delete_removes_only_former_managed_file),
+        ("retire rename", test_retire_delete_renames_by_removing_old_path_only),
+        ("retire without targets", test_retire_without_targets_is_fatal),
+        ("transaction gate failure", test_transaction_gate_failure_restores_app_and_leaves_host),
+        ("transaction host failure", test_transaction_host_stage_failure_restores_app_and_host),
+        ("transaction success", test_transaction_success_commits_app_and_host),
         ("overlay preflight", test_overlay_preflight_happens_before_fetch),
-        ("external overlay", test_external_overlay_is_copied_to_work_tree),
+        ("malformed overlay preflight", test_malformed_overlay_stops_before_fetch),
+        ("divergent external overlay", test_divergent_external_overlay_stops_before_fetch),
+        ("same digest overlay", test_same_digest_overlay_copies_work_tree_only),
         ("plan digest and preimage", test_plan_digest_and_preimage_reject_unapproved_apply),
+        ("dirty clone updater", test_dirty_clone_updater_is_rejected_after_plan),
+        ("root separation", test_root_separation_rejects_app_overlap),
+        ("domain mode change", test_domain_path_mode_change_is_blocked),
+        ("apply lock symlink", test_apply_lock_does_not_follow_symlink),
+        ("unchanged catalog recheck", test_unchanged_catalog_is_rechecked_at_apply),
+        ("tampered deny path", test_tampered_plan_cannot_apply_denied_path),
+        ("fatal input contract", test_schema_mismatch_and_bad_relative_path_are_fatal),
+        ("ephemeral symlink", test_ephemeral_cleanup_rejects_symlink_root),
+        ("host source symlink", test_host_source_symlink_is_rejected),
+        ("host lock", test_host_lock_rejects_symlink_and_serializes),
+        ("missing step docs", test_worker_contract_missing_step_docs_is_exit_2),
+        ("malformed plan schema", test_malformed_plan_root_is_exit_2),
+        ("owned temp cleanup", test_owned_temp_cleanup_requires_marker),
         ("subprocess diagnostics", test_subprocess_error_keeps_exit_and_stderr),
         ("candidate validation audit scope", test_candidate_validation_scopes_seed_audit),
         ("candidate validation rehearsal", test_candidate_validation_rehearses_existing_seed),

@@ -22,6 +22,7 @@ import genlib  # noqa: E402
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from yaml_emitter import dump_yaml_text  # noqa: E402
+from resolve_budget_thresholds import resolve as resolve_budget_thresholds  # noqa: E402
 
 ROOT_OVERLAY_KEYS = (
     "project",
@@ -161,10 +162,15 @@ def _is_feature_enabled(manifest: dict, feature: str) -> bool:
 
     トップレベル（code_review / agent_workflow）と dot パス
     （agent_workflow.orchestrator_skill / agent_workflow.maintenance_docs）に対応する。
+    requirement_analysis は agent_workflow.enabled が真のときだけ有効になる。
     末端が dict で enabled キーを持つ場合はその値を、それ以外は truthiness を返す。
     """
     if not feature:
         return False
+    if feature == "requirement_analysis" or feature.startswith("requirement_analysis."):
+        parent = manifest.get("agent_workflow")
+        if not isinstance(parent, dict) or not bool(parent.get("enabled")):
+            return False
     node: object = manifest
     parts = feature.split(".")
     for i, part in enumerate(parts):
@@ -457,9 +463,45 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
     return manifest
 
 
+def _apply_derived_budget_thresholds(merged: dict) -> dict:
+    """ウィンドウサイズから budget_thresholds を再導出する。
+
+    入力 SoT は project.context_budget.min_context_window_tokens のみ。
+    root の framework.budget_thresholds は読まない。未設定時は 200K tier。
+    結果は merged だけを更新し、manifest ファイルへは書き戻さない。
+    """
+    project = merged.get("project")
+    ctx = project.get("context_budget") if isinstance(project, dict) else None
+    raw = ctx.get("min_context_window_tokens") if isinstance(ctx, dict) else None
+    if raw is None:
+        min_window = 200000
+    else:
+        try:
+            min_window = int(raw)
+        except (TypeError, ValueError):
+            print(
+                "FATAL: project.context_budget.min_context_window_tokens は整数必須です: "
+                f"{raw!r}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if isinstance(raw, bool) or min_window <= 0:
+            print(
+                "FATAL: project.context_budget.min_context_window_tokens は正の整数必須です: "
+                f"{raw!r}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    framework = dict(merged.get("framework") or {})
+    framework["budget_thresholds"] = resolve_budget_thresholds(min_window)
+    merged["framework"] = framework
+    return merged
+
+
 def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     manifest = genlib.load_manifest(seed_manifest_path)
     if not os.path.isfile(root_manifest_path):
+        manifest = _apply_derived_budget_thresholds(manifest)
         _validate_project_gate_command(manifest)
         return _filter_outputs_by_features(_apply_upstream_design_inputs(manifest))
 
@@ -478,6 +520,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
         else:
             merged[key] = overlay[key]
     merged = _apply_framework_overlay(merged, overlay)
+    merged = _apply_derived_budget_thresholds(merged)
     merged = _apply_upstream_design_inputs(merged)
     _validate_project_gate_command(merged)
     merged = _inject_approved_tech_contract(merged, root_manifest_path)
@@ -702,66 +745,31 @@ def _run_worker_contract_validator(
         return 2
 
 
-def _remove_staged_update_path(path: str) -> None:
-    if os.path.isdir(path) and not os.path.islink(path):
-        shutil.rmtree(path)
-    elif os.path.lexists(path):
-        os.unlink(path)
-
-
 def _install_update_skill(destination_root: str | None = None) -> int:
     """kit 内の updater 正本を個人スキルへ原子的に配置する。"""
-    source = os.path.join(os.path.dirname(SKILL_DIR), "agentic-workflow-update")
-    if not os.path.isdir(source):
-        print("[KU-HOST-001] SKIP: updater 正本が kit にありません")
-        return 0
-
-    base = destination_root or os.environ.get(
-        "AGENTIC_WORKFLOW_UPDATE_HOME",
-        os.path.expanduser("~/.cursor/skills"),
-    )
-    base = os.path.abspath(os.path.expanduser(base))
-    destination = os.path.join(base, "agentic-workflow-update")
+    source = Path(os.path.dirname(SKILL_DIR)) / "agentic-workflow-update"
+    update_scripts = source / "scripts"
+    if str(update_scripts) not in sys.path:
+        sys.path.insert(0, str(update_scripts))
     try:
-        os.makedirs(base, exist_ok=True)
-        staging_parent = tempfile.mkdtemp(prefix=".agentic-workflow-update.", dir=base)
-    except OSError as exc:
-        print(f"[KU-HOST-001] FATAL: 個人スキル配置先を準備できません: {exc}", file=sys.stderr)
+        from host_install import HostInstallError, install_host_updater
+    except ImportError as exc:
+        print(f"[KU-HOST-001] FATAL: host installer を読めません: {exc}", file=sys.stderr)
         return 2
-    staged = os.path.join(staging_parent, "agentic-workflow-update")
-    backup = os.path.join(
-        base,
-        f".agentic-workflow-update.previous.{os.getpid()}",
+    base = Path(
+        destination_root
+        or os.environ.get(
+            "AGENTIC_WORKFLOW_UPDATE_HOME",
+            os.path.expanduser("~/.cursor/skills"),
+        )
     )
     try:
-        shutil.copytree(
-            source,
-            staged,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
-        )
-        if not os.path.isfile(os.path.join(staged, "SKILL.md")):
-            print("[KU-HOST-001] FATAL: updater SKILL.md がありません", file=sys.stderr)
-            return 2
-        if os.path.lexists(backup):
-            print("[KU-HOST-001] FATAL: updater 退避先が既に存在します", file=sys.stderr)
-            return 2
-        if os.path.lexists(destination):
-            os.replace(destination, backup)
-        try:
-            os.replace(staged, destination)
-        except OSError:
-            if os.path.lexists(backup):
-                os.replace(backup, destination)
-            raise
-        if os.path.lexists(backup):
-            _remove_staged_update_path(backup)
+        destination = install_host_updater(source, base)
         print(f"[KU-HOST-001] PASS: 個人スキルを配置しました: {destination}")
         return 0
-    except OSError as exc:
+    except HostInstallError as exc:
         print(f"[KU-HOST-001] FATAL: 個人スキル配置に失敗しました: {exc}", file=sys.stderr)
         return 2
-    finally:
-        _remove_staged_update_path(staging_parent)
 
 
 def run_engine(
