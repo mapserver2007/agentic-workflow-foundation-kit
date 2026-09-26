@@ -33,7 +33,7 @@ from host_install import (  # noqa: E402
 
 SCHEMA_VERSION = 1
 LOCK_SCHEMA_VERSION = 1
-LOCK_PATH = Path("agentic-workflow-kit.lock.yaml")
+LOCK_PATH = Path(".cursor/agentic-workflow-update.lock.yaml")
 DEFAULT_CLONE_ROOT = Path("/tmp/agentic-workflow-foundation-kit")
 DEFAULT_WORK_ROOT = Path("/tmp/work")
 OWNED_ROOT_MARKER = ".agentic-workflow-update-owned"
@@ -547,6 +547,7 @@ def _write_lock_candidate(
             f'    sha256: "{item["sha256"]}"',
         ])
     target = _safe_target(work_root, LOCK_PATH)
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

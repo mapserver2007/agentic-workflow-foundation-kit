@@ -254,7 +254,7 @@ def test_consumer_plan_and_apply_exclude_kit_sources() -> None:
         paths = {item["path"] for item in plan["changes"]}
         assert "AGENTS.md" in paths
         assert ".gitignore" in paths
-        assert "agentic-workflow-kit.lock.yaml" in paths
+        assert ".cursor/agentic-workflow-update.lock.yaml" in paths
         assert not any(path.startswith(".cursor/skills/agentic-workflow-") for path in paths)
         assert not any(path.startswith(".cursor/docs/AI_") for path in paths)
         assert plan["baseline"] == "adopt"
@@ -262,10 +262,26 @@ def test_consumer_plan_and_apply_exclude_kit_sources() -> None:
         UPDATE._validate_plan(plan, app, plan["plan_digest"])
         UPDATE._apply_plan(plan)
         assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
-        assert (app / "agentic-workflow-kit.lock.yaml").is_file()
+        assert (app / ".cursor/agentic-workflow-update.lock.yaml").is_file()
         assert not (app / ".cursor/skills/agentic-workflow-foundation").exists()
         assert not (app / ".cursor/skills/agentic-workflow-engine").exists()
         UPDATE._run_application_validation(app, clone, app / "manifest.yaml")
+    finally:
+        temp.cleanup()
+
+
+def test_plan_creates_lock_when_cursor_directory_is_absent() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        cursor = work / ".cursor"
+        if cursor.exists():
+            shutil.rmtree(cursor)
+        assert not cursor.exists()
+        plan = _plan(app, clone, work)
+        lock = ".cursor/agentic-workflow-update.lock.yaml"
+        assert (work / lock).is_file()
+        assert lock in {item["path"] for item in plan["changes"]}
+        assert not plan["blocking_issues"], plan
     finally:
         temp.cleanup()
 
@@ -310,7 +326,7 @@ def test_lock_catalog_detects_removed_managed_output() -> None:
         _write(app, "removed-managed.md", "old\n")
         _write(
             app,
-            "agentic-workflow-kit.lock.yaml",
+            ".cursor/agentic-workflow-update.lock.yaml",
             "version: 1\n"
             f'kit_revision: "{_revision(clone)}"\n'
             "catalog:\n"
@@ -337,7 +353,7 @@ def test_lock_catalog_detects_removed_managed_output() -> None:
 def _write_removed_lock(app: Path, clone: Path, relative: str = "removed-managed.md") -> None:
     _write(
         app,
-        "agentic-workflow-kit.lock.yaml",
+        ".cursor/agentic-workflow-update.lock.yaml",
         "version: 1\n"
         f'kit_revision: "{_revision(clone)}"\n'
         "catalog:\n"
@@ -1149,7 +1165,7 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "固定public URL" in content
     assert "並置 kit の `origin`" not in content
     assert "foundation/engine" in content
-    assert "agentic-workflow-kit.lock.yaml" in content
+    assert ".cursor/agentic-workflow-update.lock.yaml" in content
     assert "--root-manifest" in content
     assert "--retire" in content
     assert "AskQuestion" in content
@@ -1277,6 +1293,7 @@ def main() -> int:
     tests = (
         ("public fetch contract", test_public_fetch_contract),
         ("consumer plan and apply", test_consumer_plan_and_apply_exclude_kit_sources),
+        ("lock without cursor dir", test_plan_creates_lock_when_cursor_directory_is_absent),
         ("resolved catalog", test_resolved_catalog_applies_overlay_features),
         ("initial adopt", test_initial_adopt_does_not_infer_orphans),
         ("lock orphan", test_lock_catalog_detects_removed_managed_output),

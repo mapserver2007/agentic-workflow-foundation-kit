@@ -27,7 +27,7 @@ foundation/engineを対象アプリへ保持しないconsumerアプリへ、kit�
 - root `manifest.yaml` はfetch前に検証する。欠落・不正形式は `KU-OVERLAY-001` / exit 2で停止する。
 - 承認前に対象アプリへ書き込まない。
 - root `manifest.yaml`、Domain docs、ADR/GOTCHAS、reports、seed、アプリコード、foundation/engine、upstream design docsは適用対象外。
-- `agentic-workflow-kit.lock.yaml` はupdaterの生成状態であり、計画全体の承認後に生成成果物と同時に適用する。
+- `.cursor/agentic-workflow-update.lock.yaml` はupdaterの生成状態であり、計画全体の承認後に生成成果物と同時に適用する。
 - lockなし初回adoptではorphan、rename、削除を推測しない。
 - orphan または rename がある plan は、`retirement` が `delete` または `keep` のときだけ apply できる。未指定では apply しない。
 - preimage不一致、未承認の計画はapplyしない。
@@ -111,7 +111,7 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
 `apply` は計画digest、kit revision、overlay preimage、候補ファイル、対象アプリの
 preimage、保護対象digestを再検証する。不一致時は `KU-PREIMAGE-001` で停止し、
 対象アプリへ書かない。
-適用対象は生成されたrender/marker成果物と `agentic-workflow-kit.lock.yaml` だけである。
+適用対象は生成されたrender/marker成果物と `.cursor/agentic-workflow-update.lock.yaml` だけである。
 ファイル適用、application quality gate、host 個人スキルへの updater 配置は一つのトランザクションである。
 いずれかが例外で失敗した場合は、アプリと host を適用前へ戻す。
 
