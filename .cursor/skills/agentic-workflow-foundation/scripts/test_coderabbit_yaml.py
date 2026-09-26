@@ -10,16 +10,37 @@ ROOT = HERE.parents[3]
 
 
 def _enabled_flag(node: object) -> bool | None:
+    """契約フィールド用。bool 以外は未確定として無視する。"""
     if isinstance(node, dict) and isinstance(node.get("enabled"), bool):
         return node["enabled"]
+    return None
+
+
+def _feature_enabled_flag(node: object) -> bool | None:
+    """top-level feature 用。生成器の bool() と同じく 0 を無効にする。"""
+    if isinstance(node, dict) and "enabled" in node:
+        return bool(node["enabled"])
+    return None
+
+
+def _check_enabled_normalization() -> str | None:
+    if _feature_enabled_flag({"enabled": 0}) is not False:
+        return "top-level enabled: 0 が無効になりません"
+    if _feature_enabled_flag({"enabled": 1}) is not True:
+        return "top-level enabled: 1 が有効になりません"
+    if _enabled_flag({"enabled": 0}) is not None:
+        return "契約の enabled: 0 を無効化とみなしました"
+    if _enabled_flag({"enabled": False}) is not False:
+        return "契約の enabled: false を無視しました"
     return None
 
 
 def _coderabbit_explicitly_disabled(root: Path) -> bool:
     """生成と同じ優先順で coderabbit.enabled が false と確定しているときだけ真。
 
-    seed の top-level、root overlay、承認済み tech_contract.review.coderabbit の順。
-    契約投影は top-level を置き換える。判定できないときは false（ファイル不在を失敗のままにする）。
+    seed の top-level、root overlay は生成器と同じ bool()。
+    承認済み tech_contract.review.coderabbit は bool のときだけ上書きする。
+    判定できないときは false（ファイル不在を失敗のままにする）。
     """
     import yaml
 
@@ -32,7 +53,7 @@ def _coderabbit_explicitly_disabled(root: Path) -> bool:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             continue
-        flag = _enabled_flag(data.get("coderabbit"))
+        flag = _feature_enabled_flag(data.get("coderabbit"))
         if flag is not None:
             enabled = flag
         if path != root_manifest:
@@ -47,6 +68,10 @@ def _coderabbit_explicitly_disabled(root: Path) -> bool:
 
 
 def main() -> int:
+    normalization_error = _check_enabled_normalization()
+    if normalization_error:
+        print(f"[test_coderabbit_yaml] FAIL: {normalization_error}", file=sys.stderr)
+        return 1
     try:
         import yaml
     except ImportError:
