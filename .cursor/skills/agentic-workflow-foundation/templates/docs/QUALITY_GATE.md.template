@@ -136,7 +136,11 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 {{/if}}
 {{/if}}
 
+{{#if foundation.enabled}}
 **本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。{{#if agent_workflow.enabled}}タスク完了ゲート（G-DOC-SPEC / G-ARCHIVE）は上記 §1.2.1 で定義済み。{{/if}}Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
+{{else}}
+**本リポジトリで対象外（理由付き）**: Runbook ゲート（`docs/runbooks/RB-*.md`）と DB スキーマ整合ゲートは、Domain 層 docs を SoT とする下流プロジェクトで管理する。本リポジトリのコードゲートは §1.1 に定義する。
+{{/if}}
 
 ### 1.3 リンク衛生ゲート
 
@@ -146,7 +150,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 
 ### 1.4 検査 ID 命名規約
 
-スクリプトで実装するゲート（§1.5 / §4）の各検査には安定検査 ID を付与する。CI / ログ集計 / 失敗種別の機械特定のため。**BAS の Finding Code 79 種体系は採用せず、本リポでは必要最小限の軽量 ID 運用とする**（`framework.accd_axes[B].not_adopted` の死守）。
+スクリプトで実装するゲート（§1.5{{#if foundation.enabled}} / §4{{/if}}）の各検査には安定検査 ID を付与する。CI / ログ集計 / 失敗種別の機械特定のため。**BAS の Finding Code 79 種体系は採用せず、本リポでは必要最小限の軽量 ID 運用とする**（`framework.accd_axes[B].not_adopted` の死守）。
 
 ```
 G-{GATE}-{CATEGORY}-{NNN}
@@ -368,7 +372,11 @@ workflow-gate.sh step6 TICKET-1234
 | `git reset --hard origin/*` / `upstream/*` | deny | ローカル変更の不可逆消失 |
 | `gh pr merge` | deny | 明示指示なきマージ禁止（AGENTS.md > Never） |
 | `gh repo delete` / `gh repo archive` | deny | 不可逆 |
+{{#if github_pr.enabled}}
 | `gh pr create` | deny | 選択 provider の境界を迂回するため、wrapper `bin/github-pr-create-safe` を案内 |
+{{else}}
+| `gh pr create` | deny | このリポジトリでは PR 作成 wrapper が無効。PR 作成はユーザーが直接実行 |
+{{/if}}
 | `gh pr comment` / `gh pr review` | deny | 選択 provider の境界を迂回するため、`bin/github-pr-comment-safe` / `bin/github-pr-reply-safe` を案内 |
 | `gh issue comment` | deny | 選択 provider の境界を迂回するため禁止。Issue コメント投稿 wrapper は現在未対応 |
 | `gh api` | deny | 選択 provider の境界を迂回するため、`bin/github-*-safe` を案内 |
@@ -396,9 +404,13 @@ workflow-gate.sh step6 TICKET-1234
 **詳細・テスト手順**: [`.cursor/hooks/README.md`](../.cursor/hooks/README.md)
 
 ## 3. フェーズ境界ゲート
+{{#if foundation.enabled}}
 
 campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたげるため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 
+{{else}}
+campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたぐため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+{{/if}}
 {{#if agent_workflow.gate_scripts}}
 **統一ディスパッチャー**: フェーズ境界ゲートは `workflow-gate.sh <step>` で統一実行できる（§1.7）。個別スクリプトの直接実行も引き続き有効。
 {{/if}}

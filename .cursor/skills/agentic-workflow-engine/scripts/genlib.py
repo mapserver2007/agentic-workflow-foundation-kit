@@ -21,6 +21,7 @@
 
 テンプレート構文:
   - `{{ dotted.path }}`           : マニフェスト上のスカラを文字列展開
+  - `{{ pyrepr dotted.path }}`    : スカラを Python 文字列リテラルとして展開
   - `{{#if dotted.path}} … {{else}} … {{/if}}` : 条件分岐（ネスト可）。
         パスの値が truthy（非 None / 非 False / 非空リスト / 非空文字列）なら
         if ブロックを、そうでなければ else ブロック（省略可）を展開する
@@ -465,6 +466,14 @@ def _render_scalars(text: str, root: dict, item=None, index=None) -> str:
         expr = m.group(1).strip()
         if expr.startswith("#") or expr.startswith("/"):
             return m.group(0)
+        if expr.startswith("pyrepr "):
+            path = expr[len("pyrepr "):].strip()
+            if not path:
+                raise RenderError("pyrepr に参照パスが必要です")
+            raw = _resolve_path(root, path)
+            if isinstance(raw, (dict, list)):
+                raise RenderError(f"pyrepr の対象はスカラ必須: {path}")
+            return _shield_template_literals(repr(_scalar_str(raw)))
         if expr == "this":
             value = indent_multiline(_scalar_str(item), m.start())
             return _shield_template_literals(value)

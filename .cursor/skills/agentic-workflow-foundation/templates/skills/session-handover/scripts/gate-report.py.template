@@ -47,7 +47,7 @@ COMPLETION_ITEMS = [
 ]
 
 TICKET_SERVICE = "{{agent_workflow.ticket.service}}"
-TICKET_FORMAT = r"{{agent_workflow.ticket.format}}"
+TICKET_FORMAT = {{pyrepr agent_workflow.ticket.format}}
 WRITE_VERBS = re.compile(
     r"変更|更新|編集|追加|削除|書き込|修正|反映|置換"
     r"|\b(?:write|update|edit|modify|add|delete|replace)\b",

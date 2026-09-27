@@ -46,6 +46,60 @@
 
 技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/{{project.tech_stack_design_filename}}`](.cursor/docs/{{project.tech_stack_design_filename}})）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
 
+{{#if project.agents_optional.architecture}}
+## Architecture
+
+{{project.agents_optional.architecture}}
+{{else}}
+{{#if project.agents_optional.architecture_dirs}}
+## Architecture
+{{/if}}
+{{/if}}
+{{#if project.agents_optional.architecture_dirs}}
+### 主要ディレクトリ
+
+{{project.agents_optional.architecture_dirs}}
+{{/if}}
+
+{{#if project.agents_optional.domain_knowledge}}
+## Domain Knowledge
+
+{{project.agents_optional.domain_knowledge}}
+{{/if}}
+
+{{#if project.agents_optional.working_with_codebase}}
+## Working with This Codebase
+
+{{project.agents_optional.working_with_codebase}}
+{{else}}
+{{#if project.agents_optional.collaboration}}
+## Working with This Codebase
+{{else}}
+{{#if project.agents_optional.code_patterns}}
+## Working with This Codebase
+{{else}}
+{{#if project.agents_optional.critical_files}}
+## Working with This Codebase
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{#if project.agents_optional.collaboration}}
+### ユーザーとの協働
+
+{{project.agents_optional.collaboration}}
+{{/if}}
+{{#if project.agents_optional.code_patterns}}
+### Code Patterns
+
+{{project.agents_optional.code_patterns}}
+{{/if}}
+{{#if project.agents_optional.critical_files}}
+### Critical Files
+
+{{project.agents_optional.critical_files}}
+{{/if}}
+
 ## Key Commands
 
 ```bash

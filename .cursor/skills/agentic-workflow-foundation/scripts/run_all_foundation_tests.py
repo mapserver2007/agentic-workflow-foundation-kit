@@ -85,6 +85,9 @@ TESTS_IN_ORDER = [
     "test_campaign_cleanup.py",
     "test_campaign_session_binding.py",
     "test_session_byte_count.py",
+    "test_guard_git_write.py",
+    "test_workflow_gate_ticket_resolution.py",
+    "test_template_conditionals.py",
 ]
 TEST_HELPERS = {
     "test_contract_fixture.py",

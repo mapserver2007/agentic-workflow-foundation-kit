@@ -60,6 +60,28 @@ def main() -> int:
         )
         return 1
 
+    python_value = 'ticket-"{{literal}}"\\path\nnext'
+    python_rendered = genlib.render(
+        "value = {{pyrepr config.pattern}}",
+        {"config": {"pattern": python_value}},
+    )
+    namespace = {}
+    exec(compile(python_rendered, "<pyrepr>", "exec"), namespace)
+    if namespace["value"] != python_value:
+        print(
+            f"FAIL: pyrepr round-trip mismatch: {namespace['value']!r}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        genlib.render("{{pyrepr config.patterns}}", {"config": {"patterns": []}})
+    except genlib.RenderError:
+        pass
+    else:
+        print("FAIL: pyrepr accepted a non-scalar value", file=sys.stderr)
+        return 1
+
     try:
         genlib.render("{{unknown.path}}", context)
     except genlib.RenderError:

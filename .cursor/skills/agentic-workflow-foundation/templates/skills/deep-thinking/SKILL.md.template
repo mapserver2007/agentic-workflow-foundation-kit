@@ -26,7 +26,13 @@ disable-model-invocation: true
 
 1. [`config.yaml`](config.yaml) を実行設定の SoT とする。A/B のモデル・予算・停止方針はここから取得する。
 2. 起動前に指定モデルが利用可能であることを確認する。利用不可なら対象モデル名と config.yaml の修正を伝えて `model_unavailable` に従い中止し、暗黙フォールバックしない。
+{{#if foundation.enabled}}
+{{#if deep_thinking.static_gate.enabled}}
 3. 基盤 audit の G-DEEP-* は設定構造・異モデル要求・再審予算・停止方針を検査する。詳細は [`docs/QUALITY_GATE.md §4.1`](../../../docs/QUALITY_GATE.md) を参照する。
+{{/if}}
+{{else}}
+3. G-DEEP-* の設定構造・異モデル要求・再審予算・停止方針は、生成済み設定の静的検査で確認する。
+{{/if}}
 4. 実モデル割当、A/B の相互非参照、別プロセス実行は Cursor API から外部観測できない。検証済み・保証済みと表現しない。例外は [`references/verification-flags.md`](references/verification-flags.md) に従って記録する。
 5. **ワークフロー{{#if requirement_analysis.enabled}}deep 経路{{else}}自動起動{{/if}}時**も config.yaml の設定（モデル・予算・停止方針）に従う。深度選択（いつ deep にするか）は呼出元の `{{#if requirement_analysis.enabled}}analysis-depth.md{{else}}workflow-triage.md{{/if}}` が SoT であり、deep-thinking は呼出元の深度選択を再判定しない。A/B 実行設定・統合規約（どう deep を実行するか）は本スキルの `config.yaml` と SKILL.md が SoT とする。
 

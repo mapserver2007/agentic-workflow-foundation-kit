@@ -1924,6 +1924,15 @@ project:
   slug: "[自動導出] name から導出"
   # 固定値（本基盤が表す機能の説明。PO には問わない）。
   one_liner: "自己完結した manifest + templates を SoT とし、Agentic Workflow 基盤ファイル群を冪等・再現的に生成/メンテナンスする（技術スタックは techstack 設計書から動的取り込み）"
+  # 任意のプロジェクト固有補足。空文字の項目は AGENTS.md に出力しない。
+  agents_optional:
+    architecture: ""
+    architecture_dirs: ""
+    domain_knowledge: ""
+    working_with_codebase: ""
+    collaboration: ""
+    code_patterns: ""
+    critical_files: ""
   # 開発型固定。init.yaml / apply_kit_init.py が "開発型" を書き込む。他パターンは非対応
   workflow_pattern: "開発型"
   # init.yaml tech_stack_design.filename から apply_kit_init.py が書き込む。
