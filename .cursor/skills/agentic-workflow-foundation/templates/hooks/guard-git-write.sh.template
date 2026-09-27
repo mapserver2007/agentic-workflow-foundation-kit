@@ -23,20 +23,21 @@ emit() { # $1=permission $2=reason $3=agent_message
 normalize_git_global_options() {
   local normalized="$1"
   local match prefix spaced_option_re equal_option_re
-  spaced_option_re='(^|[^[:alnum:]_-])git[[:space:]]+(-C|-c|--git-dir|--work-tree)[[:space:]]+[^[:space:];|&]+'
-  equal_option_re='(^|[^[:alnum:]_-])git[[:space:]]+(--git-dir|--work-tree)=[^[:space:];|&]+'
+  # 引用符付きの値は空白を含んでも一つの引数として消費する。非引用の代替は後段に置く。
+  spaced_option_re="(^|[^[:alnum:]_-])git[[:space:]]+(-C|-c|--git-dir|--work-tree)[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:];|&]+)"
+  equal_option_re="(^|[^[:alnum:]_-])git[[:space:]]+(--git-dir|--work-tree)=(\"[^\"]*\"|'[^']*'|[^[:space:];|&]+)"
 
-  # スペース区切りの値を取るオプション。
-  while [[ "$normalized" =~ $spaced_option_re ]]; do
-    match="${BASH_REMATCH[0]}"
-    prefix="${BASH_REMATCH[1]}"
-    normalized="${normalized/"$match"/${prefix}git }"
-  done
-
-  # --git-dir=<path> / --work-tree=<path> 形式。
-  while [[ "$normalized" =~ $equal_option_re ]]; do
-    match="${BASH_REMATCH[0]}"
-    prefix="${BASH_REMATCH[1]}"
+  # スペース区切りと = 形式のどちらが先でも、残らなくなるまで剥がす。
+  while :; do
+    if [[ "$normalized" =~ $spaced_option_re ]]; then
+      match="${BASH_REMATCH[0]}"
+      prefix="${BASH_REMATCH[1]}"
+    elif [[ "$normalized" =~ $equal_option_re ]]; then
+      match="${BASH_REMATCH[0]}"
+      prefix="${BASH_REMATCH[1]}"
+    else
+      break
+    fi
     normalized="${normalized/"$match"/${prefix}git }"
   done
 

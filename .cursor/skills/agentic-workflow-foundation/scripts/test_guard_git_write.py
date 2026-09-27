@@ -62,6 +62,11 @@ def test_global_options_are_normalized_for_json_route() -> None:
         "git -c core.commentChar=x push --force",
         "git -C /tmp push origin main",
         "git -c core.commentChar=x push origin main",
+        'git -C "/tmp/work tree" push origin main',
+        "git -C '/tmp/work tree' push origin main",
+        "git --git-dir=/tmp -C /tmp push origin main",
+        'git --git-dir="/tmp/work tree" push origin main',
+        'git --git-dir=/tmp -C "/tmp/work tree" push --force',
     )
     for command in deny_commands:
         output = _run(command)
@@ -72,13 +77,19 @@ def test_failclose_route_asks_for_normalized_deny_classes() -> None:
     for command in (
         "git -C /tmp push origin main",
         "git -c core.commentChar=x push --force",
+        'git -C "/tmp/work tree" push origin main',
+        "git --git-dir=/tmp -C /tmp push origin main",
     ):
         output = _run(command, failclose=True)
         assert output.get("permission") == "ask", (command, output)
 
 
 def test_local_git_commands_remain_allowed() -> None:
-    for command in ("git status", "git --work-tree=/tmp status"):
+    for command in (
+        "git status",
+        "git --work-tree=/tmp status",
+        'git --work-tree="/tmp/work tree" status',
+    ):
         output = _run(command)
         assert output == {}, (command, output)
 
