@@ -2,7 +2,7 @@
 """workflow-gate.sh step4 の ticket / report-file 解決回帰。"""
 from __future__ import annotations
 
-import shutil
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -18,7 +18,7 @@ TEMPLATE = (
     / "scripts"
     / "workflow-gate.sh.template"
 )
-REAL_GATE_DIR = ROOT / ".cursor" / "skills" / "session-handover" / "scripts"
+TEMPLATE_DIR = FOUNDATION / "templates" / "skills" / "session-handover" / "scripts"
 FIXTURES = HERE.parent / "fixtures" / "artifacts"
 IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
@@ -33,18 +33,23 @@ def _stage_gate(tmp: Path, ticket_format: str) -> Path:
 
     gate_dir = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
     gate_dir.mkdir(parents=True)
+    manifest = load_manifest(str(FOUNDATION / "manifest.yaml"))
+    manifest["project"]["quality_gate"]["profile"] = "foundation"
+    manifest["project"]["quality_gate"]["gen_artifact_paths"] = []
+    manifest["agent_workflow"]["ticket"]["format"] = ticket_format
+
     for name in (
         "gate-artifact.py",
         "gate-test.py",
         "gate-domain-write-scope.py",
         "domain_doc_scope.py",
     ):
-        shutil.copy2(REAL_GATE_DIR / name, gate_dir / name)
+        template = TEMPLATE_DIR / f"{name}.template"
+        (gate_dir / name).write_text(
+            render(template.read_text(encoding="utf-8"), manifest),
+            encoding="utf-8",
+        )
 
-    manifest = load_manifest(str(FOUNDATION / "manifest.yaml"))
-    manifest["project"]["quality_gate"]["profile"] = "foundation"
-    manifest["project"]["quality_gate"]["gen_artifact_paths"] = []
-    manifest["agent_workflow"]["ticket"]["format"] = ticket_format
     gate = gate_dir / "workflow-gate.sh"
     gate.write_text(
         render(TEMPLATE.read_text(encoding="utf-8"), manifest),
@@ -136,14 +141,26 @@ def test_empty_ticket_format_skips_ticket_branch() -> None:
         assert str(report.resolve()) in result.stdout
 
 
+def test_quoted_ticket_format_is_a_valid_python_literal() -> None:
+    with tempfile.TemporaryDirectory(prefix="workflow-ticket-quoted-") as temp_dir:
+        tmp = Path(temp_dir)
+        gate = _stage_gate(tmp, r'[A-Z]+-"[0-9]+"')
+        report = _write_report(
+            tmp,
+            'custom-OPS-"130"-fixture.md',
+            in_reports=True,
+        )
+        result = _run(gate, 'OPS-"130"')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(result.stdout)["report_path"] == str(report.resolve())
+
+
 def main() -> int:
-    if not TEMPLATE.is_file() or not REAL_GATE_DIR.is_dir():
-        print("SKIP: workflow-gate prerequisites not found (pre-generate)")
-        return 0
     tests = (
         test_ticket_resolution_zero_one_multiple,
         test_nonmatching_ticket_falls_back_to_report_file,
         test_empty_ticket_format_skips_ticket_branch,
+        test_quoted_ticket_format_is_a_valid_python_literal,
     )
     for test in tests:
         test()

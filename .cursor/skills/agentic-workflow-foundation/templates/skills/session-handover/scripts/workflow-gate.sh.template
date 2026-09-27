@@ -369,7 +369,7 @@ from pathlib import Path
 root_dir = Path(sys.argv[1])
 reports_dir = Path(sys.argv[2])
 ticket_or_report = sys.argv[3]
-ticket_format = r"{{agent_workflow.ticket.format}}"
+ticket_format = {{pyrepr agent_workflow.ticket.format}}
 
 if ticket_format:
     try:

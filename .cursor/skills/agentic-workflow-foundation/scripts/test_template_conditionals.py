@@ -102,6 +102,26 @@ def test_agents_optional_sections_are_empty_or_rendered_as_configured() -> None:
     assert "### Critical Files" in rendered
     assert "NECPF" not in rendered
 
+    partial_cases = (
+        ("architecture_dirs", "主要ディレクトリ本文", "## Architecture", "### 主要ディレクトリ"),
+        ("collaboration", "協働本文", "## Working with This Codebase", "### ユーザーとの協働"),
+        ("code_patterns", "パターン本文", "## Working with This Codebase", "### Code Patterns"),
+        ("critical_files", "重要ファイル本文", "## Working with This Codebase", "### Critical Files"),
+    )
+    for field, text, parent_heading, child_heading in partial_cases:
+        partial = copy.deepcopy(manifest)
+        partial["project"]["agents_optional"] = {
+            key: "" for key in configured["project"]["agents_optional"]
+        }
+        partial["project"]["agents_optional"][field] = text
+        partial_rendered = genlib.render(
+            (SKILL_DIR / "templates" / "AGENTS.md.template").read_text(encoding="utf-8"),
+            partial,
+        )
+        assert text in partial_rendered, field
+        assert partial_rendered.count(parent_heading) == 1, field
+        assert partial_rendered.count(child_heading) == 1, field
+
 
 def main() -> int:
     tests = (

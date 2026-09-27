@@ -107,6 +107,31 @@ def test_rendered_python_templates_parse():
         ast.parse(_render(relative), filename=relative)
 
 
+def test_ticket_format_renders_as_python_string_literal():
+    manifest = load_manifest(str(SKILL / "manifest.yaml"))
+    ticket_format = r'[A-Z]+-"[0-9]+"'
+    manifest["agent_workflow"]["ticket"]["format"] = ticket_format
+    rendered = render(
+        (
+            TEMPLATES
+            / "skills/session-handover/scripts/gate-report.py.template"
+        ).read_text(encoding="utf-8"),
+        manifest,
+    )
+    tree = ast.parse(rendered, filename="gate-report.py.template")
+    assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "TICKET_FORMAT"
+            for target in node.targets
+        )
+    )
+    assert isinstance(assignment.value, ast.Constant)
+    assert assignment.value.value == ticket_format
+
+
 def test_rendered_reason_allowlist_behavior():
     namespace = {"__name__": "rendered_gate_maintenance_docs"}
     exec(compile(_render("skills/session-handover/scripts/gate-maintenance-docs.py.template"), "gate.py", "exec"), namespace)
@@ -130,6 +155,7 @@ def main() -> int:
         test_reason_allowlist_and_worker_contract,
         test_document_templates_preserve_bundling_contracts,
         test_rendered_python_templates_parse,
+        test_ticket_format_renders_as_python_string_literal,
         test_rendered_reason_allowlist_behavior,
     ]
     for test in tests:
