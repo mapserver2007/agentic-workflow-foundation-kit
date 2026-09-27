@@ -6,20 +6,7 @@
 
 ---
 
-## ゲート早見（SKILL.md「Step Gate Matrix」と同一語彙）
 
-> 各 Step の詳細チェックは下記 §0〜§8 を SoT とする。本表は「入口 / Read / 禁止 / 退出」の踏み外し防止早見。コメント本文の長期保持は前提にせず、必要時は Step 3 再取得 / レビューレポート / GitHub 状態から復元する。
-
-- [ ] **Step 2（A のみ）**: 入口=Mode A / Read=— / 禁止=タイムアウト時に Step 3 以降・Step 7 直行 / 退出=レビュー検出（タイムアウトは中断・ターン終了）
-- [ ] **Step 3**: 入口=Mode 確定 / Read=— / 禁止=`author.login` フィルタ・自動レビューツールラベル取得 / 退出=未解決・非 outdated・author 非依存で全件取得 + ID/種別記録
-- [ ] **Step 4**: 入口=Step 3 取得済み / Read=**judgment-contract.md 全文（突入時必須）**（詳細トリガー時のみ protocol / self-rebuttal）/ 禁止=`[REPO]` 出典外判定・Blind 省略・自己反論省略・challenge を反転要請と解釈 / 退出=全指摘 `judgment_final` + 必須記録
-- [ ] **Step 5-6**: 入口=Step 4.3 記録済み / **Read=approval-contract.md 全文（突入時必須）**（アクション時のみ loop / 補助 refs）/ 禁止=未読でグループ提示・分類・修正・reply 投稿・`pending`/`discuss` 記録 / 退出=全指摘分類実行 + 保留件数集計
-- [ ] **Post**: 入口=Step 5-6 完了 / Read=— / 禁止=保留 1 件以上・ゲート未 PASS で Step 6.7 へ / 退出=`apply` 有時 build/lint/test PASS + 保留 0 件
-- [ ] **Step 6.7**: 入口=保留 0 件 / **Read=review-completion.md 全文（着手前必須）** / 禁止=未読で AskQuestion・Step 7 / 退出=6.7-A は AskQuestion 提示後ターン終了
-- [ ] **Step 7**: 入口=**6.7-B 承認回答受領済み** / Read=— / 禁止=承認なし実行・Step 7 完了前の final response / 退出=承認記録更新→ヘッダ統計確定→完全性検証→レポート最終確定完了
-- [ ] **横断（全 Step）**: GitHub reply は `apply` / `reply_only` 集合のみ。`pending` / 未着地 `discuss` には reply もコード修正もしない
-
----
 
 ## 0. 前提条件チェック（スキル起動直後）
 
