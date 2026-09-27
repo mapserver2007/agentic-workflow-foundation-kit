@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -429,6 +430,55 @@ def _validate_project_gate_command(manifest: dict) -> None:
             sys.exit(2)
 
 
+def _validate_report_id_contract(manifest: dict) -> None:
+    """agent_workflow のレポート ID 契約を生成前に fail-closed で検証する。"""
+    aw = manifest.get("agent_workflow")
+    if not isinstance(aw, dict):
+        return
+    ticket = aw.get("ticket")
+    ticket_format = ticket.get("format") if isinstance(ticket, dict) else None
+    if not isinstance(ticket_format, str) or not ticket_format.strip():
+        print(
+            "FATAL: agent_workflow.ticket.format は空でない文字列の正規表現が必要です",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        ticket_re = re.compile(ticket_format)
+    except re.error as exc:
+        print(
+            f"FATAL: agent_workflow.ticket.format が不正な正規表現です: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    example = ticket.get("example") if isinstance(ticket, dict) else None
+    if not isinstance(example, str) or not example:
+        print(
+            "FATAL: agent_workflow.ticket.example は空でない文字列が必要です",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if ticket_re.fullmatch(example) is None:
+        print(
+            "FATAL: agent_workflow.ticket.example は ticket.format に完全一致する必要があります",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if ticket_re.fullmatch(f"{example}-x") is not None:
+        print(
+            "FATAL: agent_workflow.ticket.format が slug を取り込んでいます",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if aw.get("report_slug_format") != "{ticket}-{slug}":
+        print(
+            "FATAL: agent_workflow.report_slug_format は '{ticket}-{slug}' である必要があります",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
 def _filter_outputs_by_features(manifest: dict) -> dict:
     """feature フラグが無効な outputs エントリを除外する。
 
@@ -510,6 +560,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     if not os.path.isfile(root_manifest_path):
         manifest = _apply_derived_budget_thresholds(manifest)
         _validate_project_gate_command(manifest)
+        _validate_report_id_contract(manifest)
         return _filter_outputs_by_features(_apply_upstream_design_inputs(manifest))
 
     overlay = genlib.load_manifest(root_manifest_path)
@@ -530,6 +581,7 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     merged = _apply_derived_budget_thresholds(merged)
     merged = _apply_upstream_design_inputs(merged)
     _validate_project_gate_command(merged)
+    _validate_report_id_contract(merged)
     merged = _inject_approved_tech_contract(merged, root_manifest_path)
     return _filter_outputs_by_features(merged)
 

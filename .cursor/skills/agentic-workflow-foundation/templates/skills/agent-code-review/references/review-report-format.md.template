@@ -10,8 +10,8 @@
 
 - **ディレクトリ**: `{{code_review.report.output_dir}}`
 - **命名規則**: `{task-report-stem}-review.md`（タスクレポートの `.md` を `-review.md` に置換）
-  - 例: タスクレポート `TICKET-123-fix-auth-bug.md` → レビューレポート `TICKET-123-fix-auth-bug-review.md`
-- **`{task-report-stem}`**: 進行中タスクレポートの拡張子なしファイル名（= `{prefix}-{number}-{slug}`）
+  - 例: タスクレポート `{{agent_workflow.ticket.example}}-fix-auth-bug.md` → レビューレポート `{{agent_workflow.ticket.example}}-fix-auth-bug-review.md`
+- **`{task-report-stem}`**: 進行中タスクレポートの拡張子なしファイル名（= `{ticket}-{slug}`）
 - **命名の特定方法**: 対応するタスクレポートのファイル名から決定論的に導出する（`docs/agent-tasks/reports/` 直下のタスクレポート名を取得し、拡張子を `-review.md` に置換）
 - **単独実行時（タスクレポート不在）**: レビューレポートファイルは作成しない。チャットサマリのみ出力する
 

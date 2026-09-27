@@ -13,17 +13,16 @@
 **命名規約**: `{{agent_workflow.report_slug_format}}.md`（Domain 層 = kebab-case）
 
 **例**:
-- `reports/TICKET-123-fix-auth-bug.md`
-- `reports/TICKET-456-retry-logic-improvement.md`
+- `reports/{{agent_workflow.ticket.example}}-fix-auth-bug.md`
 
 ### 命名ガイドライン（AGENTS.md > Documentation Naming Convention に準拠）
 - `reports/` 配下は **Domain 層** として kebab-case で命名する
-- `TICKET-{number}`: チケット管理サービスのチケット番号。チケットがない場合は日付ベース（`TICKET-20260722`）で代替する
+- `{ticket}`: `ticket.format` に完全一致するレポート ID。チケットがない場合も、そのプロジェクトで一度だけ ID を決めて凍結する
 - `{slug}`: タスクを簡潔に要約した英語フレーズ、ハイフン区切り、英数字とハイフンのみ、小文字
 
 ### campaign_slug の凍結契約
 
-親オーケストレータは、この節の既存命名規約を**最初の worker dispatch 前に一度だけ**実行して `campaign_slug` を決定する。チケット番号がなければ日付 fallback を使い、固定例示値をテンプレートへ埋め込まない。
+親オーケストレータは、この節の既存命名規約を**最初の worker dispatch 前に一度だけ**実行して `campaign_slug` を決定する。チケットがない場合も `ticket.format` に完全一致する ID を一度だけ決めて凍結し、固定例示値をテンプレートへ埋め込まない。
 
 - `report_slug = campaign_slug`。report stem、step1/step2 envelope の `--stepN` より前の prefix、各 front matter の `campaign_slug` は同じ値に束縛する
 - 親は凍結済みの `campaign_slug` と同値の `report_slug` を Step② worker に渡す

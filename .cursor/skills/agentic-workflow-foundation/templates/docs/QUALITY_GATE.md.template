@@ -240,8 +240,8 @@ agent_workflow:
 
 ```bash
 # 実行例
-workflow-gate.sh step6 TICKET-1234
-# → gate-review.py TICKET-1234 を実行
+workflow-gate.sh step6 {{agent_workflow.ticket.example}}
+# → gate-review.py {{agent_workflow.ticket.example}} を実行
 # → 成功時のみ plan-gate.sh review を実行
 ```
 {{/if}}
@@ -250,8 +250,8 @@ workflow-gate.sh step6 TICKET-1234
 # 使用例
 .cursor/skills/session-handover/scripts/workflow-gate.sh step2
 .cursor/skills/session-handover/scripts/workflow-gate.sh step4
-.cursor/skills/session-handover/scripts/workflow-gate.sh review-start --report docs/agent-tasks/reports/TICKET-123-example.md --pr https://github.com/owner/repo/pull/123
-.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/2026-06-23-example.md
+.cursor/skills/session-handover/scripts/workflow-gate.sh review-start --report docs/agent-tasks/reports/{{agent_workflow.ticket.example}}-example.md --pr https://github.com/owner/repo/pull/123
+.cursor/skills/session-handover/scripts/workflow-gate.sh archive docs/agent-tasks/reports/{{agent_workflow.ticket.example}}-example.md
 ```
 
 {{#if foundation.enabled}}

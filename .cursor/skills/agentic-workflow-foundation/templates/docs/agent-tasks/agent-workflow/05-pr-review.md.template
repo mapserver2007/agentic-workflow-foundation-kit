@@ -53,7 +53,7 @@ PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-o
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
-  --report docs/agent-tasks/reports/TICKET-123-example.md \
+  --report docs/agent-tasks/reports/{{agent_workflow.ticket.example}}-example.md \
   --pr https://github.com/owner/repo/pull/123
 ```
 

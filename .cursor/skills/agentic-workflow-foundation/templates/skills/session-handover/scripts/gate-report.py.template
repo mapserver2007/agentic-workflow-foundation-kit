@@ -48,6 +48,9 @@ COMPLETION_ITEMS = [
 
 TICKET_SERVICE = "{{agent_workflow.ticket.service}}"
 TICKET_FORMAT = {{pyrepr agent_workflow.ticket.format}}
+GITHUB_TICKET_URL = re.compile(
+    r"https://github\.com/[^/\s]+/[^/\s]+/(?:issues|pull)/[0-9]+"
+)
 WRITE_VERBS = re.compile(
     r"変更|更新|編集|追加|削除|書き込|修正|反映|置換"
     r"|\b(?:write|update|edit|modify|add|delete|replace)\b",
@@ -386,7 +389,17 @@ def check_report(
         if ticket_section:
             if "なし" not in ticket_section:
                 ticket_re = re.compile(TICKET_FORMAT)
-                if not ticket_re.search(ticket_section):
+                labels = re.findall(r"\[([^\]]+)\]", ticket_section)
+                tokens = re.split(r"\s+", ticket_section)
+                ticket_matches = any(
+                    ticket_re.fullmatch(candidate.strip("`.,:;()")) is not None
+                    for candidate in [*labels, *tokens]
+                )
+                github_url_matches = (
+                    TICKET_SERVICE == "github"
+                    and GITHUB_TICKET_URL.search(ticket_section) is not None
+                )
+                if not ticket_matches and not github_url_matches:
                     results["checks"].append({
                         "id": "G-REPORT-TICKET-001",
                         "status": "WARN",
@@ -421,6 +434,23 @@ def main():
         else:
             args.append(arg)
             i += 1
+
+    if not isinstance(TICKET_FORMAT, str) or not TICKET_FORMAT.strip():
+        msg = "FATAL: agent_workflow.ticket.format は空でない文字列の正規表現が必要です"
+        if json_mode:
+            print(json.dumps({"fatal": True, "message": msg}, ensure_ascii=False))
+        else:
+            print(msg)
+        sys.exit(2)
+    try:
+        re.compile(TICKET_FORMAT)
+    except re.error as exc:
+        msg = f"FATAL: agent_workflow.ticket.format が不正な正規表現です: {exc}"
+        if json_mode:
+            print(json.dumps({"fatal": True, "message": msg}, ensure_ascii=False))
+        else:
+            print(msg)
+        sys.exit(2)
 
     reports_dir = os.path.join(project_dir, "docs", "agent-tasks", "reports")
 

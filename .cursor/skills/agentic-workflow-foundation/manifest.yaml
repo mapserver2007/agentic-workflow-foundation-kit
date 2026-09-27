@@ -451,7 +451,7 @@ github_issue:
 # ------------------------------------------------------------
 agent_workflow:
   enabled: true
-  report_slug_format: "TICKET-{number}-{slug}"
+  report_slug_format: "{ticket}-{slug}"
   maintenance_docs:
     enabled: true
     judgment_enum:
@@ -543,10 +543,13 @@ agent_workflow:
   # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）
   model_unavailable: "ABORT"
   # チケット管理サービスの設定。gate-report.py がレポート検証時に参照する。
-  # service: チケット管理サービス名 / format: 番号の正規表現パターン
+  # format: レポート ID 全体の正規表現。必須。未設定または空なら生成とゲートを止める。
+  # ファイル名は `{ticket}-{slug}.md`。example は format に完全一致し、example に
+  # `-x` を足した値は一致しない。
   ticket:
     service: github
-    format: "[0-9]+"
+    format: "TICKET-[0-9]+"
+    example: "TICKET-123"
 
 # ------------------------------------------------------------
 # (2k) deep_thinking — 多角評価スキル（オプション生成）
