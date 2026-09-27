@@ -358,20 +358,58 @@ PY
       esac
     done
 
-    # --- report-file の解決と Path.resolve 相当の正規化 ---
+    # --- ticket または report-file の解決と Path.resolve 相当の正規化 ---
     if [[ -n "$REPORT_ARG" ]]; then
-      REPORT_FILE="$(python3 -c '
+      REPORT_RESOLUTION="$(python3 - "$ROOT_DIR" "$REPORTS_DIR" "$REPORT_ARG" <<'PY' 2>&1
+import re
 import sys
+from glob import escape
 from pathlib import Path
 
-path = Path(sys.argv[1]).resolve()
+root_dir = Path(sys.argv[1])
+reports_dir = Path(sys.argv[2])
+ticket_or_report = sys.argv[3]
+ticket_format = r"{{agent_workflow.ticket.format}}"
+
+if ticket_format:
+    try:
+        is_ticket = re.fullmatch(ticket_format, ticket_or_report) is not None
+    except re.error as exc:
+        print(f"ticket.format が不正な正規表現です: {exc}")
+        raise SystemExit(2)
+    if is_ticket:
+        matches = sorted(
+            path.resolve()
+            for path in reports_dir.glob(
+                f"*-{escape(ticket_or_report)}-*.md"
+            )
+        )
+        if len(matches) == 0:
+            print(
+                f"ticket '{ticket_or_report}' に一致する進行中レポートが 0 件です。"
+                " report-file を明示的に指定してください。"
+            )
+            raise SystemExit(1)
+        if len(matches) > 1:
+            print(
+                f"ticket '{ticket_or_report}' に一致する進行中レポートが "
+                f"{len(matches)} 件あります。report-file を明示的に指定してください。"
+            )
+            raise SystemExit(1)
+        print(matches[0])
+        raise SystemExit(0)
+
+path = Path(ticket_or_report).resolve()
 if not path.is_file():
+    print(f"実在するレポートファイルを指定してください: {ticket_or_report}")
     raise SystemExit(1)
 print(path)
-' "$REPORT_ARG" 2>/dev/null)" || {
-        log "FATAL: 実在するレポートファイルを指定してください: $REPORT_ARG"
+PY
+)" || {
+        log "FATAL: $REPORT_RESOLUTION"
         exit 2
       }
+      REPORT_FILE="$REPORT_RESOLUTION"
     else
       # reports 直下の進行中レポートから自動解決
       REPORT_FILES=()

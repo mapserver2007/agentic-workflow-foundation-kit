@@ -17,12 +17,38 @@ emit() { # $1=permission $2=reason $3=agent_message
   fi
 }
 
+# git のグローバルオプションを除去して、サブコマンド判定を正規化する。
+# `git -C <path> push ...` のように git とサブコマンドの間へ挿入できる
+# オプションを通常経路と failclose 経路で同じ規則にかける。
+normalize_git_global_options() {
+  local normalized="$1"
+  local match prefix spaced_option_re equal_option_re
+  spaced_option_re='(^|[^[:alnum:]_-])git[[:space:]]+(-C|-c|--git-dir|--work-tree)[[:space:]]+[^[:space:];|&]+'
+  equal_option_re='(^|[^[:alnum:]_-])git[[:space:]]+(--git-dir|--work-tree)=[^[:space:];|&]+'
+
+  # スペース区切りの値を取るオプション。
+  while [[ "$normalized" =~ $spaced_option_re ]]; do
+    match="${BASH_REMATCH[0]}"
+    prefix="${BASH_REMATCH[1]}"
+    normalized="${normalized/"$match"/${prefix}git }"
+  done
+
+  # --git-dir=<path> / --work-tree=<path> 形式。
+  while [[ "$normalized" =~ $equal_option_re ]]; do
+    match="${BASH_REMATCH[0]}"
+    prefix="${BASH_REMATCH[1]}"
+    normalized="${normalized/"$match"/${prefix}git }"
+  done
+
+  printf '%s' "$normalized"
+}
+
 # deny クラス（不可逆操作）のフェイルクローズ判定。
 # 入力を正常解析できない場合（jq 不在 / JSON 破損 / command 抽出失敗）に生入力へ適用し、
 # deny クラスにマッチしたら allow（素通り）ではなく ask を返す（二段階フェイル戦略の deny 側）。
 deny_class_failclose() {
   local n empty_source_re
-  n="$(printf '%s' "$1" | tr -s '[:space:]' ' ')"
+  n="$(normalize_git_global_options "$(printf '%s' "$1" | tr -s '[:space:]' ' ')")"
   empty_source_re='git[[:space:]]+push[[:space:]].*[[:space:]][+]?:[^[:space:];|&]+'
   if [[ "$n" =~ (--force|--force-with-lease) ]] \
      || [[ "$n" =~ git[[:space:]]+push[[:space:]].*--delete ]] \
@@ -57,7 +83,7 @@ if [[ -z "$CMD" ]]; then
   exit 0
 fi
 
-CMD_N="$(echo "$CMD" | tr -s '[:space:]' ' ')"
+CMD_N="$(normalize_git_global_options "$(echo "$CMD" | tr -s '[:space:]' ' ')")"
 EMPTY_SOURCE_RE='git[[:space:]]+push[[:space:]]+([^[:space:]]+[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?:[^[:space:];|&]+'
 
 deny() {
@@ -94,7 +120,11 @@ fi
 if [[ "$CMD_N" =~ git[[:space:]]+push[[:space:]]+((-[a-zA-Z]+|--[a-zA-Z0-9-]+)[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?(main|master|develop|release/[A-Za-z0-9._/-]+)([[:space:]]|$) ]] \
    || [[ "$CMD_N" =~ git[[:space:]]+push[[:space:]]+((-[a-zA-Z]+|--[a-zA-Z0-9-]+)[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+[+]?[A-Za-z0-9._/-]+:(refs/heads/)?(main|master|develop|release/[A-Za-z0-9._/-]+)([[:space:]]|$) ]]; then
   deny "保護ブランチ (main/master/develop/release/*) への直接 push はブロック (refspec HEAD:main 形式含む)" \
+{{#if github_pr.enabled}}
        "PR 経由でマージしてください (gh pr create --base <branch>)。"
+{{else}}
+       "このリポジトリでは PR 作成 wrapper が無効です。保護ブランチへの push はユーザーが直接実行してください。"
+{{/if}}
 fi
 
 if [[ "$CMD_N" =~ git[[:space:]]+push[[:space:]]+((-[a-zA-Z]+|--[a-zA-Z0-9-]+)[[:space:]]+)*[A-Za-z0-9._/-]+[[:space:]]+:(refs/heads/)?(main|master|develop|release/[A-Za-z0-9._/-]+)([[:space:]]|$) ]] \
@@ -207,11 +237,18 @@ fi
 # gh CLI は provider 境界を迂回するため、認証状態にかかわらず deny する。
 # ============================================================
 
+{{#if github_pr.enabled}}
 # gh pr create → 対応 wrapper: bin/github-pr-create-safe
 if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
   deny "gh pr create は選択 provider の境界を迂回するため禁止。wrapper 経由で PR を作成する" \
        "PR 作成は bin/github-pr-create-safe <base-branch> <title-file> <body-file> を使用してください。"
 fi
+{{else}}
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
+  deny "gh pr create は選択 provider の境界を迂回するため禁止。PR 作成 wrapper はこのリポジトリでは無効です" \
+       "このリポジトリでは PR 作成 wrapper が無効です。PR 作成はユーザーが直接実行してください。"
+fi
+{{/if}}
 
 # gh pr comment / review → 対応 wrapper: bin/github-pr-comment-safe / bin/github-pr-reply-safe
 if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)gh[[:space:]]+pr[[:space:]]+(comment|review)([[:space:]]|$) ]]; then
