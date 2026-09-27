@@ -23,7 +23,7 @@ FIXTURES = HERE.parent / "fixtures" / "artifacts"
 IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
-def _stage_gate(tmp: Path, ticket_format: str) -> Path:
+def _stage_gate(tmp: Path, ticket_format: object, ticket_example: object) -> Path:
     import sys
 
     engine_scripts = ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"
@@ -37,6 +37,7 @@ def _stage_gate(tmp: Path, ticket_format: str) -> Path:
     manifest["project"]["quality_gate"]["profile"] = "foundation"
     manifest["project"]["quality_gate"]["gen_artifact_paths"] = []
     manifest["agent_workflow"]["ticket"]["format"] = ticket_format
+    manifest["agent_workflow"]["ticket"]["example"] = ticket_example
 
     for name in (
         "gate-artifact.py",
@@ -104,19 +105,20 @@ def _run(gate: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def test_ticket_resolution_zero_one_multiple() -> None:
     with tempfile.TemporaryDirectory(prefix="workflow-ticket-") as temp_dir:
         tmp = Path(temp_dir)
-        gate = _stage_gate(tmp, r"[0-9]+")
+        gate = _stage_gate(tmp, r"TICKET-[0-9]+", "TICKET-123")
 
-        zero = _run(gate, "123")
+        zero = _run(gate, "TICKET-123")
         assert zero.returncode == 2
         assert "0 件" in zero.stderr
 
-        report = _write_report(tmp, "custom-123-fixture.md", in_reports=True)
-        one = _run(gate, "123")
+        _write_report(tmp, "custom-TICKET-123-fixture.md", in_reports=True)
+        report = _write_report(tmp, "TICKET-123-fixture.md", in_reports=True)
+        one = _run(gate, "TICKET-123")
         assert one.returncode == 0, one.stdout + one.stderr
         assert str(report.resolve()) in one.stdout
 
-        _write_report(tmp, "another-123-fixture.md", in_reports=True)
-        multiple = _run(gate, "123")
+        _write_report(tmp, "TICKET-123-another.md", in_reports=True)
+        multiple = _run(gate, "TICKET-123")
         assert multiple.returncode == 2
         assert "2 件" in multiple.stderr
 
@@ -124,30 +126,53 @@ def test_ticket_resolution_zero_one_multiple() -> None:
 def test_nonmatching_ticket_falls_back_to_report_file() -> None:
     with tempfile.TemporaryDirectory(prefix="workflow-ticket-fallback-") as temp_dir:
         tmp = Path(temp_dir)
-        gate = _stage_gate(tmp, r"[0-9]+")
+        gate = _stage_gate(tmp, r"TICKET-[0-9]+", "TICKET-123")
         report = _write_report(tmp, "OPS-130", in_reports=False)
         result = _run(gate, "OPS-130")
         assert result.returncode == 0, result.stdout + result.stderr
         assert str(report.resolve()) in result.stdout
 
 
-def test_empty_ticket_format_skips_ticket_branch() -> None:
+def test_empty_ticket_format_stops_before_report_resolution() -> None:
     with tempfile.TemporaryDirectory(prefix="workflow-ticket-empty-") as temp_dir:
         tmp = Path(temp_dir)
-        gate = _stage_gate(tmp, "")
-        report = _write_report(tmp, "123", in_reports=False)
-        result = _run(gate, "123")
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert str(report.resolve()) in result.stdout
+        gate = _stage_gate(tmp, "", "TICKET-123")
+        explicit_report = _write_report(tmp, "TICKET-123-fixture.md", in_reports=False)
+        _write_report(tmp, "TICKET-123-fixture.md", in_reports=True)
+        explicit = _run(gate, str(explicit_report))
+        assert explicit.returncode == 2
+        assert "ticket.format" in explicit.stderr
+        automatic = _run(gate)
+        assert automatic.returncode == 2
+        assert "ticket.format" in automatic.stderr
+
+
+def test_custom_ticket_formats_are_exact_prefixes() -> None:
+    with tempfile.TemporaryDirectory(prefix="workflow-ticket-custom-") as temp_dir:
+        tmp = Path(temp_dir)
+        ops_gate = _stage_gate(tmp, r"OPS-[0-9]+", "OPS-100")
+        ops_report = _write_report(tmp, "OPS-100-summary.md", in_reports=True)
+        _write_report(tmp, "prefix-OPS-100-summary.md", in_reports=True)
+        ops = _run(ops_gate, "OPS-100")
+        assert ops.returncode == 0, ops.stdout + ops.stderr
+        assert json.loads(ops.stdout)["report_path"] == str(ops_report.resolve())
+
+    with tempfile.TemporaryDirectory(prefix="workflow-ticket-alpha-") as temp_dir:
+        tmp = Path(temp_dir)
+        alpha_gate = _stage_gate(tmp, r"[A-Z]{4}", "ABCD")
+        alpha_report = _write_report(tmp, "ABCD-note.md", in_reports=True)
+        alpha = _run(alpha_gate, "ABCD")
+        assert alpha.returncode == 0, alpha.stdout + alpha.stderr
+        assert json.loads(alpha.stdout)["report_path"] == str(alpha_report.resolve())
 
 
 def test_quoted_ticket_format_is_a_valid_python_literal() -> None:
     with tempfile.TemporaryDirectory(prefix="workflow-ticket-quoted-") as temp_dir:
         tmp = Path(temp_dir)
-        gate = _stage_gate(tmp, r'[A-Z]+-"[0-9]+"')
+        gate = _stage_gate(tmp, r'OPS-"[0-9]+"', 'OPS-"130"')
         report = _write_report(
             tmp,
-            'custom-OPS-"130"-fixture.md',
+            'OPS-"130"-fixture.md',
             in_reports=True,
         )
         result = _run(gate, 'OPS-"130"')
@@ -159,7 +184,8 @@ def main() -> int:
     tests = (
         test_ticket_resolution_zero_one_multiple,
         test_nonmatching_ticket_falls_back_to_report_file,
-        test_empty_ticket_format_skips_ticket_branch,
+        test_empty_ticket_format_stops_before_report_resolution,
+        test_custom_ticket_formats_are_exact_prefixes,
         test_quoted_ticket_format_is_a_valid_python_literal,
     )
     for test in tests:

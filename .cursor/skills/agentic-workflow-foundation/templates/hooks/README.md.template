@@ -261,7 +261,7 @@ Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は kit 側
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
-  --report docs/agent-tasks/reports/TICKET-123-example.md \
+  --report docs/agent-tasks/reports/{{agent_workflow.ticket.example}}-example.md \
   --pr https://github.com/owner/repo/pull/123
 # PASS 時だけ kind=review_start が1行存在し、同一 prompt の再実行は追記しない
 ```

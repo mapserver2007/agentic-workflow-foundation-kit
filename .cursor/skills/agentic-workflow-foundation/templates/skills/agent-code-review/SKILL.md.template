@@ -49,7 +49,7 @@ test -x bin/github-git-fetch-safe && test -x bin/github-pr-reviews-safe && test 
 
 ### 命名解決規則
 
-レビューレポートのファイル名は、進行中タスクレポートから決定論的に導出する。`{task-report-stem}` = タスクレポートの拡張子なしファイル名（例: `TICKET-123-fix-auth-bug`）。
+レビューレポートのファイル名は、進行中タスクレポートから決定論的に導出する。`{task-report-stem}` = `{ticket}-{slug}` 形式のタスクレポートの拡張子なしファイル名（例: `{{agent_workflow.ticket.example}}-fix-auth-bug`）。
 
 | 経路 | 命名 |
 |---|---|

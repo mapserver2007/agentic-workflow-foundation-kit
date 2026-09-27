@@ -6,7 +6,9 @@ import ast
 import contextlib
 import io
 import json
+import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -132,6 +134,71 @@ def test_ticket_format_renders_as_python_string_literal():
     assert assignment.value.value == ticket_format
 
 
+def _run_rendered_gate_report(ticket_format, report_text, *, json_mode=True):
+    manifest = load_manifest(str(SKILL / "manifest.yaml"))
+    manifest["agent_workflow"]["ticket"]["format"] = ticket_format
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        scripts = root / "scripts"
+        scripts.mkdir()
+        for filename in ("gate-report.py.template", "domain_doc_scope.py.template"):
+            (scripts / filename.removesuffix(".template")).write_text(
+                render(
+                    (TEMPLATES / "skills/session-handover/scripts" / filename).read_text(
+                        encoding="utf-8",
+                    ),
+                    manifest,
+                ),
+                encoding="utf-8",
+            )
+        report = root / "report.md"
+        report.write_text(report_text, encoding="utf-8")
+        args = [sys.executable, str(scripts / "gate-report.py"), str(report)]
+        if json_mode:
+            args.append("--format=json")
+        return subprocess.run(
+            args,
+            cwd=root,
+            env={**os.environ, "CURSOR_PROJECT_DIR": str(root)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
+def test_gate_report_ticket_contract_and_matching() -> None:
+    report_text = "## 1. タスクの概要\n- 関連チケット: {ticket}\n"
+    for ticket in (
+        "TICKET-123",
+        "[TICKET-123](https://example.test/issues/123)",
+        "https://github.com/owner/repo/issues/123",
+        "https://github.com/owner/repo/pull/123",
+    ):
+        result = _run_rendered_gate_report(
+            r"TICKET-[0-9]+", report_text.format(ticket=ticket),
+        )
+        assert result.returncode == 1
+        checks = json.loads(result.stdout)["results"][0]["checks"]
+        assert not any(check["id"] == "G-REPORT-TICKET-001" for check in checks)
+
+    partial = _run_rendered_gate_report(
+        r"[A-Z]{4}", report_text.format(ticket="TICKET-123"),
+    )
+    assert partial.returncode == 1
+    checks = json.loads(partial.stdout)["results"][0]["checks"]
+    assert any(check["id"] == "G-REPORT-TICKET-001" for check in checks)
+
+    for json_mode in (False, True):
+        result = _run_rendered_gate_report("", report_text.format(ticket="TICKET-123"), json_mode=json_mode)
+        assert result.returncode == 2
+        assert "G-REPORT-" not in result.stdout
+        if json_mode:
+            payload = json.loads(result.stdout)
+            assert payload["fatal"] is True
+        else:
+            assert "FATAL:" in result.stdout
+
+
 def test_rendered_reason_allowlist_behavior():
     namespace = {"__name__": "rendered_gate_maintenance_docs"}
     exec(compile(_render("skills/session-handover/scripts/gate-maintenance-docs.py.template"), "gate.py", "exec"), namespace)
@@ -156,6 +223,7 @@ def main() -> int:
         test_document_templates_preserve_bundling_contracts,
         test_rendered_python_templates_parse,
         test_ticket_format_renders_as_python_string_literal,
+        test_gate_report_ticket_contract_and_matching,
         test_rendered_reason_allowlist_behavior,
     ]
     for test in tests:
