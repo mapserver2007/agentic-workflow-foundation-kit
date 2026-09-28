@@ -1050,6 +1050,7 @@ outputs:
     required_sections:
       - "=== session-start gate ==="
       - "G-SESSION-HANDOFF-001"
+      - "G-SESSION-STALE-001"
   - path: .cursor/skills/session-handover/scripts/plan-gate.sh
     template: skills/session-handover/scripts/plan-gate.sh.template
     mode: render

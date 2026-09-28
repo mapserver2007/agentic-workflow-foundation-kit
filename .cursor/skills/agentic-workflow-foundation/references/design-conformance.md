@@ -63,7 +63,7 @@ consumer 経路でも引き続き失敗とする。
 - `リンク衛生`: 原則5 コンテキスト保護。
 - `quality gate backend contract`: 承認済み `tech_contract.quality_gate` から導出された G-* backend argv とセマンティクスを、`package.json` の有無に依存せず復元できること。
 - `検査 ID`: §1.4 スクリプト実装ゲートの安定検査 ID 命名規約（`G-{GATE}-{CATEGORY}-{NNN}`）。BAS Finding Code 79 種体系は採用せず軽量 ID 運用に留めること（`framework.accd_axes[B].not_adopted` の死守）。
-- `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / `archive/` 取り残し）の定義と検査 ID を含むこと。
+- `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / agent_workflow 有効時の reports archive 取り残し・reports 停滞）の定義と検査 ID を含むこと。
 - `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。専用 `gate-*.py` は持たず既存ゲート + Advisory ループで運用する軽量実装であること。
 
 ### docs/GOTCHAS.md（原則8）
@@ -116,7 +116,8 @@ consumer 経路でも引き続き失敗とする。
 
 ### .cursor/skills/session-handover/scripts/session-start-gate.sh
 - `=== session-start gate ===`: 実行ログでゲート実行を識別できること。
-- `G-SESSION-HANDOFF-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）と完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`verification-gate.sh` と同クラスのシェルゲート（軽量実装 / 数値判定なし）として実装すること。
+- `G-SESSION-HANDOFF-001` / `G-SESSION-STALE-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）、tracker mtime 停滞（WARN）、完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`G-SESSION-STALE-001` は全 consumer で required_sections に含める。
+- `G-SESSION-ARCH-001` / `G-SESSION-ARCH-002` / `G-SESSION-REPORT-001` は agent_workflow 有効時だけ描画する条件付き契約であり、feature 無効 consumer を壊さないため required_sections には追加しない。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
 - `name: agent-maintenance-docs`: Cursor skill としての識別子。
