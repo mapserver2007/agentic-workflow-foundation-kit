@@ -8,6 +8,7 @@
 set -u
 
 PROJECT_DIR="${CURSOR_PROJECT_DIR:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SESSION_DIR="$PROJECT_DIR/.cursor/.session"
 TRACKING="{{project.tracking_artifact}}"
 STALE_HOURS=24
@@ -113,6 +114,104 @@ fi
 if (( ${#tracked[@]} == 0 )); then
   echo "[PASS] 進行中の追跡ドキュメントなし (G-SESSION-STALE-001 / G-SESSION-DONE-001)"
 fi
+
+{{#if agent_workflow.enabled}}
+# --- reports/ の開始時検査 ---
+REPORTS_DIR="$PROJECT_DIR/docs/agent-tasks/reports"
+if [[ ! -d "$REPORTS_DIR" ]]; then
+  echo "[FATAL] reports ディレクトリが存在しません: $REPORTS_DIR"
+  exit 2
+fi
+
+# archive-gate.sh.template の COMPLETION_ITEMS と同じ、レポート完了チェックのラベル。
+COMPLETION_ITEMS=(
+  "実装完了"
+  "テスト完了"
+  "コードゲート通過"
+  "PRレビュー検証完了"
+{{#if agent_workflow.maintenance_docs.enabled}}
+  "maintenance-docs/ 起票判定"
+{{else}}
+  "docs への仕様反映"
+{{/if}}
+  "ADR 起票判定"
+)
+
+reports=()
+while IFS= read -r f; do
+  [[ -n "$f" ]] && reports+=("$f")
+done < <(find "$REPORTS_DIR" -maxdepth 1 -type f -name '*.md' ! -name '*-review.md' 2>/dev/null | sort)
+
+if (( ${#reports[@]} == 0 )); then
+  echo "[PASS] archives 対象・停滞中のレポートなし (G-SESSION-ARCH-001 / G-SESSION-REPORT-001)"
+else
+  for report in "${reports[@]}"; do
+    # G-SESSION-REPORT-001: 未追跡ファイルも含め、mtime だけで停滞を検査する。
+    report_mtime="$(date -r "$report" +%s 2>/dev/null || echo "")"
+    if [[ -n "$report_mtime" ]]; then
+      report_age_h=$(( (now - report_mtime) / 3600 ))
+      if (( report_age_h >= STALE_HOURS )); then
+        echo "[WARN] タスクレポートが ${report_age_h}h 停滞 (G-SESSION-REPORT-001): $report"
+      fi
+    fi
+
+    # 完了チェックは `## 完了チェック` / `## 10. 完了チェック` の一意な節だけを対象にする。
+    completion_headings=0
+    in_completion_section=false
+    completed=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" =~ ^##[[:space:]]+(完了チェック|10\.[[:space:]]+完了チェック)[[:space:]]*$ ]]; then
+        completion_headings=$((completion_headings + 1))
+        in_completion_section=true
+        continue
+      fi
+      if [[ "$in_completion_section" == "true" ]] && [[ "$line" =~ ^##[[:space:]]+ ]]; then
+        in_completion_section=false
+      fi
+      if [[ "$in_completion_section" == "true" ]]; then
+        for item in "${COMPLETION_ITEMS[@]}"; do
+          if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+\[x\][[:space:]]+$item([[:space:]]|$) ]]; then
+            completed=$((completed + 1))
+          fi
+        done
+      fi
+    done < "$report"
+
+    if (( completion_headings > 1 )); then
+      echo "[FATAL] 完了チェック見出しが複数あります (G-SESSION-ARCH-001): $report"
+      exit 2
+    fi
+    if (( completion_headings == 1 && completed == ${#COMPLETION_ITEMS[@]} )); then
+{{#if agent_workflow.gate_scripts}}
+      "$SCRIPT_DIR/workflow-gate.sh" archive "$report"
+{{else}}
+      "$SCRIPT_DIR/archive-gate.sh" "$report"
+{{/if}}
+      archive_rc=$?
+      case "$archive_rc" in
+        0)
+          echo "[FAIL] archive 可能な完了レポートが reports/ 直下に残存 (G-SESSION-ARCH-001): $report"
+          echo "  対象レポートの archive 検査は通過済みです。次を実行してください:"
+          printf '  git -C %q mv -- %q docs/agent-tasks/reports/archives/\n' \
+            "$PROJECT_DIR" "${report#"$PROJECT_DIR"/}"
+          fail=1
+          ;;
+        1)
+          echo "[WARN] 完了レポートの archive 検査が未通過 (G-SESSION-ARCH-002): $report"
+          ;;
+        2)
+          echo "[FATAL] archive 検査が致命的エラー (G-SESSION-ARCH-002): $report"
+          exit 2
+          ;;
+        *)
+          echo "[FATAL] archive 検査が想定外の終了コード: $archive_rc (G-SESSION-ARCH-002): $report"
+          exit 2
+          ;;
+      esac
+    fi
+  done
+fi
+{{/if}}
 
 {{#if agent_workflow.maintenance_docs.enabled}}
 # --- maintenance-docs/ 未処理ファイルの検知 (INFO) ---

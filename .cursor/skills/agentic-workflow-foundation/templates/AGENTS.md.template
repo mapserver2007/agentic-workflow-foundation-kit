@@ -130,7 +130,7 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 ### セッション開始
 
 1. `AGENTS.md`（本ファイル）を読み、Workflow Pattern / Documentation Naming Convention / Boundaries を確認
-2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞を確認（`docs/QUALITY_GATE.md §1.5`）
+2. セッション開始ゲート（[`.cursor/skills/session-handover/scripts/session-start-gate.sh`](.cursor/skills/session-handover/scripts/session-start-gate.sh)）を実行し、handoff 未消費 / 追跡ドキュメントの停滞{{#if agent_workflow.enabled}} / archive 可能な reports の取り残し（exit 1） / reports の mtime 停滞（WARN）{{/if}}を確認（`docs/QUALITY_GATE.md §1.5`）
 3. `session-bootstrap.sh` が state に設定した `campaign_id` を確認し、追跡ドキュメント（`{{project.tracking_artifact}}`）をその ID から解決して読む。tracker の欠落だけで `session_id` を使った別キャンペーン判定をしない
 4. 解決した追跡ドキュメントが無い場合は、`campaign_id` を変えず、必須 7 節（`manifest.yaml > framework.plan_required_sections`）を含む簡潔な骨格をその campaign 用に作成する
 {{#if agent_workflow.enabled}}5. `docs/agent-tasks/reports/`（archives/ 除く）を一覧し、進行中タスクレポートがあれば読む

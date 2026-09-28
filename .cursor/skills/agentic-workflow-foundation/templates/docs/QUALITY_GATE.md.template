@@ -174,8 +174,16 @@ G-{GATE}-{CATEGORY}-{NNN}
 | G-SESSION-DONE-001 | 完了チェックがすべて `[x]` の追跡ドキュメントが残存していない | WARN（exit 0）で残存ファイル列挙（整理が必要であることを通知） |
 | G-SESSION-RED-CONTINUE-001 | 前セッションの state に `last_warning_level: "red"` が残存していない | WARN（exit 0）で Red 後継続を検出し新規チャット推奨 |
 | G-SESSION-TRACKER-001 | CHECKPOINT 発火可能（prompt_count >= {{framework.budget_thresholds.checkpoint_interval_prompts}}）だが追跡ドキュメントが session 開始前から未更新でない | WARN（exit 0）で追跡ドキュメント未更新を注意喚起 |
+{{#if agent_workflow.enabled}}| G-SESSION-ARCH-001 | `reports/` 直下の完了チェック節内で6項目すべて小文字 `[x]` のレポートが、対象パス付き archive 検査で exit 0 になる | FAIL（exit 1）で対象パスを表示。archive 検査は移動しないため、exit 0 確認後に `git mv <report> docs/agent-tasks/reports/archives/` を実行する |
+| G-SESSION-ARCH-002 | 同じ完了レポートの対象パス付き archive 検査が exit 1 になる | WARN（exit 0）。archive 検査 exit 2 は session-start も exit 2。完了チェック見出しの重複も exit 2 |
+| G-SESSION-REPORT-001 | `docs/agent-tasks/reports/` 直下の通常 `.md`（`*-review.md` / archives 除外）が mtime 基準で24時間以上未更新でない | WARN（exit 0）で停滞ファイル列挙。未追跡ファイルも対象で、git log は使用しない |
+{{/if}}
 
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
+{{#if agent_workflow.enabled}}
+
+`reports/` ディレクトリの欠落は exit 2、対象レポートが0件なら ARCH / REPORT は PASS とする。archive 入口は {{#if agent_workflow.gate_scripts}}`workflow-gate.sh archive <report>`{{else}}`archive-gate.sh <report>`{{/if}} であり、引数なし実行は禁止する。
+{{/if}}
 
 **campaign / session の識別子責務**: **親 = campaign、子 = session** とする。`campaign_id` は創設 `session_id` と同値の不変 IDであり、tracker（`{{project.tracking_artifact}}`）を解決する唯一のキーである。`session_id` は現在チャットの state / handoff / turns / progress に限定し、`campaign_slug` は report / envelope の命名用として別管理する。
 
@@ -418,7 +426,7 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 {{#if agent_workflow.gate_scripts}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
-| **セッション開始** | （前セッション終了時）handoff manifest 消費済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5） |
+| **セッション開始** | （前セッション終了時）handoff manifest 消費済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5：handoff / tracker 停滞{{#if agent_workflow.enabled}} / ARCH-001・ARCH-002 / reports 停滞{{/if}}） |
 | **Step① 調査 → レポート** | Step① envelope complete + 調査結果の整理完了 | Step② worker dispatch 可 | `workflow-gate.sh step1 <step1-envelope>`（envelope 完全検査） |
 | **Step② 機械退出** | report + step2 envelope complete + `step2-report` PASS + `step2` PASS | 完成レポートを PO に提示して待機 | `workflow-gate.sh step2-report` → `workflow-gate.sh step2`。PO承認はこの機械ゲートに含めない |
 | **Step③ 親 pre-dispatch** | step2 envelope の `step=step2` + `status=complete` + CLI `report_path` と `envelope.report_path` の resolve 一致 + `implementation_approval.status: approved` + `decider: PO` + 必須payload抽出成功 + 現在reportからの digest 再計算一致 + 実装開始指示 | Step③ worker dispatch 可（exit 0 のみ） | 全文は worker-dispatch「Step②→③ 承認境界」。必須の親 pre-dispatch fail-closed 検査を実行し、exit 0 のときだけ dispatch する。 |
@@ -426,7 +434,7 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | **Step④ コード検証** | step3 境界 PASS + Step④ worker complete | コードゲート + 完了チェック3項目を実行できる状態 | `workflow-gate.sh step4`（step3/step4 envelope + defense-in-depth の SHA/実差分検査 → profile selector → `gate-test.py`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}。Step⑤の出口かつStep⑥の入口 |
-| **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+| **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive <report>`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
@@ -435,6 +443,9 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `bin/quality-gate verify`（gen 対象変更時は先に `bin/quality-gate gen` + porcelain チェック） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可能 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ runtime 残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
+{{#if agent_workflow.enabled}}
+| **完了報告 → アーカイブ** | 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `.cursor/skills/session-handover/scripts/archive-gate.sh <report>`（対象パスを必須指定） |
+{{/if}}
 {{/if}}
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。

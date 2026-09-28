@@ -19,7 +19,7 @@ Cursor 内で AI エージェントが各種タスク（バグ修正、パフォ
 ## 基本フロー
 
 ```
-（セッション開始: session-start-gate.sh で整合性確認）
+（セッション開始: session-start-gate.sh で handoff / tracker 停滞 / archive 可能な reports の取り残し / reports 停滞を確認）
  ↓
 ユーザーからタスク実行依頼
  ↓
