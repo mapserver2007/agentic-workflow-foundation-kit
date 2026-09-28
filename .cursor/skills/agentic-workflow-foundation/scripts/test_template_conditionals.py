@@ -274,6 +274,7 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
     disabled_agents = _render(agents_template, disabled)
     enabled_index = _render(index_template, enabled)
     assert "G-SESSION-ARCH-001" in enabled_quality
+    assert "workflow-gate.sh archive <report>" in enabled_quality
     assert "G-SESSION-ARCH-001" not in disabled_quality
     assert "archive 可能な reports" in enabled_agents
     assert "archive 可能な reports" not in disabled_agents
@@ -291,7 +292,11 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
     arch_fail = _run_session_start(enabled, {"TICKET-1-complete.md": complete})
     assert arch_fail.returncode == 1
     assert "G-SESSION-ARCH-001" in arch_fail.stdout
-    assert "git mv" in arch_fail.stdout
+    assert "git -C" in arch_fail.stdout
+    assert " mv -- " in arch_fail.stdout
+    assert "docs/agent-tasks/reports/TICKET-1-complete.md" in arch_fail.stdout
+    assert "docs/agent-tasks/reports/archives/" in arch_fail.stdout
+    assert "git mv " not in arch_fail.stdout
     assert arch_fail.archive_argument.endswith("TICKET-1-complete.md")  # type: ignore[attr-defined]
 
     five_of_six = _run_session_start(enabled, {"TICKET-1-incomplete.md": _report(enabled, 5)})
@@ -311,6 +316,14 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
         {"TICKET-1-uppercase.md": complete.replace("- [x]", "- [X]")},
     )
     assert uppercase.returncode == 0 and "G-SESSION-ARCH-" not in uppercase.stdout
+    for name, marker in (("star", "*"), ("plus", "+")):
+        alternate = _run_session_start(
+            enabled,
+            {f"TICKET-1-{name}.md": complete.replace("- [x]", f"{marker} [x]")},
+        )
+        assert alternate.returncode == 0
+        assert "G-SESSION-ARCH-" not in alternate.stdout
+        assert alternate.archive_argument == ""  # type: ignore[attr-defined]
     excluded = _run_session_start(
         enabled,
         {

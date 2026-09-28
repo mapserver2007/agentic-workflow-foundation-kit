@@ -170,7 +170,7 @@ else
       fi
       if [[ "$in_completion_section" == "true" ]]; then
         for item in "${COMPLETION_ITEMS[@]}"; do
-          if [[ "$line" =~ ^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+$item([[:space:]]|$) ]]; then
+          if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+\[x\][[:space:]]+$item([[:space:]]|$) ]]; then
             completed=$((completed + 1))
           fi
         done
@@ -192,7 +192,8 @@ else
         0)
           echo "[FAIL] archive 可能な完了レポートが reports/ 直下に残存 (G-SESSION-ARCH-001): $report"
           echo "  対象レポートの archive 検査は通過済みです。次を実行してください:"
-          echo "  git mv $report docs/agent-tasks/reports/archives/"
+          printf '  git -C %q mv -- %q docs/agent-tasks/reports/archives/\n' \
+            "$PROJECT_DIR" "${report#"$PROJECT_DIR"/}"
           fail=1
           ;;
         1)

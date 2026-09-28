@@ -434,7 +434,7 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | **Step④ コード検証** | step3 境界 PASS + Step④ worker complete | コードゲート + 完了チェック3項目を実行できる状態 | `workflow-gate.sh step4`（step3/step4 envelope + defense-in-depth の SHA/実差分検査 → profile selector → `gate-test.py`） |
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}。Step⑤の出口かつStep⑥の入口 |
-| **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
+| **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive <report>`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
 {{else}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
