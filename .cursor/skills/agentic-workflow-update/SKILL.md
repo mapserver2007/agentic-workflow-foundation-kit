@@ -34,6 +34,8 @@ foundation/engineを対象アプリへ保持しないconsumerアプリへ、kit�
 - updater自身を対象アプリの `.cursor/skills/` や Git履歴へ配置しない。
 - 自動 commit / push はしない。
 
+更新責務の詳細は [README.md](README.md) を参照する。
+
 ## 実行手順
 
 ### 1. dry-run

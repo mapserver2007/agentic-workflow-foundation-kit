@@ -20,6 +20,7 @@ UPDATE_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/scripts/kit_updat
 RUNNER_SCRIPT = HERE / "run_resolved_engine.py"
 FETCH_SCRIPT = ROOT / ".cursor/skills/agentic-workflow-update/bin/kit-source-fetch-safe"
 SKILL_FILE = ROOT / ".cursor/skills/agentic-workflow-update/SKILL.md"
+SKILL_README = ROOT / ".cursor/skills/agentic-workflow-update/README.md"
 README_FILE = ROOT / "README.md"
 
 
@@ -1171,6 +1172,13 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "AskQuestion" in content
     assert "bin/foundation-gate generate" not in content
     assert "--update-skill-home" in content
+    assert "README.md" in content
+
+    skill_readme = SKILL_README.read_text(encoding="utf-8")
+    assert "seed" in skill_readme
+    assert "保護" in skill_readme
+    assert "render" in skill_readme
+    assert "marker" in skill_readme
 
     readme = README_FILE.read_text(encoding="utf-8")
     update_section = readme.split("## 適用済みアプリへの kit 更新", 1)[1]
