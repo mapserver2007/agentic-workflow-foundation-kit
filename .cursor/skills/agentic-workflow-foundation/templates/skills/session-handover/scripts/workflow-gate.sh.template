@@ -515,7 +515,10 @@ print(Path(__import__("sys").argv[1]).resolve())
           log "FAIL: bin/quality-gate gen が exit $GEN_EXIT で失敗"
           exit "$GEN_EXIT"
         fi
-        GEN_STATUS=$(git status --porcelain -- "${GEN_PATHS[@]}" 2>/dev/null || true)
+        if ! GEN_STATUS=$(git -C "$ROOT_DIR" status --porcelain -- "${GEN_PATHS[@]}"); then
+          log "FATAL: G-GEN — git status --porcelain を実行できません"
+          exit 2
+        fi
         if [[ -n "$GEN_STATUS" ]]; then
           log "FAIL: G-GEN — gen 実行後に未コミットの生成物差分あり:"
           log "$GEN_STATUS"
