@@ -123,8 +123,96 @@ def main() -> int:
                     "bin/quality-gate: foundation.enabled=false の実行検証に失敗 "
                     f"(exit {result.returncode}): {result.stderr or result.stdout}"
                 )
+            syntax = subprocess.run(
+                ["bash", "-n", str(gate)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if syntax.returncode != 0:
+                failures.append(
+                    "bin/quality-gate: 展開後スクリプトの bash -n に失敗 "
+                    f"{syntax.stderr or syntax.stdout}"
+                )
     except (OSError, genlib.RenderError) as exc:
         failures.append(f"bin/quality-gate: consumer 実生成検証不能: {exc}")
+
+    def _render_quality_gate(argv: list[str]) -> str:
+        return genlib.render(
+            quality_gate,
+            {
+                "foundation": {"enabled": False},
+                "project": {"tech_stack_design_filename": "TECH.md"},
+                "tech_contract": {
+                    "quality_gate": {
+                        "gen": {"argv": argv},
+                        "build": {"argv": argv},
+                        "lint": {"argv": argv},
+                        "test": {"argv": argv},
+                    },
+                },
+            },
+        )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="consumer-quality-gate-cwd-") as temp_dir:
+            root = Path(temp_dir)
+            outside = root / "outside"
+            outside.mkdir()
+            log = root / "backend.log"
+            backend = root / "bin" / "backend-stub"
+            backend.parent.mkdir()
+            backend.write_text(
+                "#!/usr/bin/env bash\n"
+                f"pwd >> {str(log)!r}\n",
+                encoding="utf-8",
+            )
+            backend.chmod(0o755)
+            gate = root / "bin" / "quality-gate"
+            gate.write_text(
+                _render_quality_gate(["bin/backend-stub"]),
+                encoding="utf-8",
+            )
+            gate.chmod(0o755)
+            result = subprocess.run(
+                [str(gate), "verify"],
+                cwd=outside,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            observed = [
+                str(Path(line).resolve())
+                for line in (log.read_text(encoding="utf-8").splitlines() if log.exists() else [])
+            ]
+            if result.returncode != 0 or observed != [str(root.resolve())] * 3:
+                failures.append(
+                    "bin/quality-gate: 非 root cwd から root 相対 backend を実行できない "
+                    f"(exit {result.returncode}, pwd={observed}): "
+                    f"{result.stderr or result.stdout}"
+                )
+
+            missing = root / "bin" / "quality-gate-missing"
+            missing.write_text(
+                _render_quality_gate(["bin/missing-backend"]),
+                encoding="utf-8",
+            )
+            missing.chmod(0o755)
+            missing_result = subprocess.run(
+                [str(missing), "verify"],
+                cwd=outside,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if missing_result.returncode != 2 or "backend command not found" not in missing_result.stderr:
+                failures.append(
+                    "bin/quality-gate: backend 不在が exit 2 になっていない "
+                    f"(exit {missing_result.returncode}): "
+                    f"{missing_result.stderr or missing_result.stdout}"
+                )
+    except (OSError, genlib.RenderError) as exc:
+        failures.append(f"bin/quality-gate: cwd 回帰検証不能: {exc}")
 
     doc_templates = (
         TEMPLATES / "hooks" / "README.md.template",

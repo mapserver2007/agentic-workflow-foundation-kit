@@ -153,6 +153,7 @@ def _run(
     gate: Path,
     args: Tuple[str, ...],
     env: Optional[Dict[str, str]] = None,
+    cwd: Optional[Path] = None,
 ) -> subprocess.CompletedProcess:
     process_env = dict(os.environ)
     if env:
@@ -161,9 +162,43 @@ def _run(
         ["bash", str(gate), "step4", *args],
         capture_output=True,
         text=True,
-        cwd=str(gate.parents[4]),
+        cwd=str(cwd or gate.parents[4]),
         env=process_env,
     )
+
+
+def _render_application_gen_gate(tmp: Path) -> Path:
+    manifest = load_manifest(str(ROOT / "manifest.yaml"))
+    manifest["project"]["quality_gate"]["profile"] = "application"
+    manifest["project"]["quality_gate"]["gen_artifact_paths"] = ["generated/artifact.txt"]
+    template = (
+        FOUNDATION
+        / "templates"
+        / "skills"
+        / "session-handover"
+        / "scripts"
+        / "workflow-gate.sh.template"
+    )
+    rendered = render(template.read_text(encoding="utf-8"), manifest)
+    syntax = subprocess.run(
+        ["bash", "-n"],
+        input=rendered,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+    assert 'git -C "$ROOT_DIR" status --porcelain' in rendered
+    gate = tmp / ".cursor" / "skills" / "session-handover" / "scripts" / "workflow-gate.sh"
+    gate.write_text(rendered, encoding="utf-8")
+    gate.chmod(0o755)
+    return gate
+
+
+def _outside_cwd(tmp: Path) -> Path:
+    outside = tmp / "outside-cwd"
+    outside.mkdir()
+    return outside
 
 
 def test_foundation_success_runs_gate_test_once() -> None:
@@ -383,6 +418,59 @@ def test_space_json_format_is_accepted_and_forwarded() -> None:
         assert "workflow gate" in result.stderr
 
 
+def test_rendered_gen_paths_from_outside_cwd() -> None:
+    cases = (
+        ("clean", 0, False),
+        ("dirty", 1, False),
+        ("git-fail", 2, True),
+    )
+    for name, expected, fail_git in cases:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            gate, gate_test_log = _stage_gate(tmp, "application")
+            _write_stubs(tmp)
+            gate = _render_application_gen_gate(tmp)
+            report = _setup_report(tmp, f"gen-paths-{name}")
+            artifact = tmp / "generated" / "artifact.txt"
+            artifact.parent.mkdir()
+            artifact.write_text("generated\n", encoding="utf-8")
+            if name == "clean":
+                _git(tmp, "add", "generated/artifact.txt")
+                _git(tmp, "commit", "-m", "generated artifact")
+            env = None
+            if fail_git:
+                fake_bin = tmp / "fake-bin"
+                fake_bin.mkdir()
+                real_git = shutil.which("git")
+                assert real_git
+                (fake_bin / "git").write_text(
+                    "#!/usr/bin/env bash\n"
+                    'if [[ "$1" == "-C" && "$3" == "status" ]]; then\n'
+                    "  exit 9\n"
+                    "fi\n"
+                    f"exec {real_git} \"$@\"\n",
+                    encoding="utf-8",
+                )
+                (fake_bin / "git").chmod(0o755)
+                env = {"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"}
+            result = _run(gate, (str(report),), env, _outside_cwd(tmp))
+            output = result.stdout + result.stderr
+            assert result.returncode == expected, output
+            if expected == 0:
+                assert "PASS: G-GEN" in output
+                assert gate_test_log.read_text(encoding="utf-8").splitlines() == ["invoked"]
+                assert (tmp / "quality-gate.log").read_text(encoding="utf-8").splitlines() == [
+                    "gen",
+                    "verify",
+                ]
+            else:
+                assert not gate_test_log.exists()
+            if expected == 1:
+                assert "未コミットの生成物差分あり" in output
+            if expected == 2:
+                assert "git status --porcelain を実行できません" in output
+
+
 def test_json_argument_failure_keeps_stdout_empty() -> None:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -419,6 +507,7 @@ def main() -> int:
         test_multiple_auto_reports_are_fatal,
         test_json_mode_keeps_gate_result_on_stdout,
         test_space_json_format_is_accepted_and_forwarded,
+        test_rendered_gen_paths_from_outside_cwd,
         test_json_argument_failure_keeps_stdout_empty,
     ]
     passed = failed = 0

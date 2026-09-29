@@ -39,11 +39,11 @@ _run_backend() {
     echo "ERROR: approved argv is not configured. Run tech-contract status." >&2
     return 2
   fi
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "ERROR: backend command not found: $1" >&2
-    return 2
-  fi
-  "$@"
+  (
+    cd "$ROOT_DIR" || exit 2
+    command -v "$1" >/dev/null 2>&1 || exit 127
+    "$@"
+  )
   local code=$?
   case "$code" in
     0) return 0 ;;
