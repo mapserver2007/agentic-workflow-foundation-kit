@@ -400,6 +400,8 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 | `gh auth status --show-token` / `-t` | deny | 認証トークン漏洩防止 |
 | `gh auth login --with-token` | deny | 認証設定の無断変更防止 |
 | `echo`/`printf` による `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_PERSONAL_ACCESS_TOKEN` の出力 | deny | token 環境変数の漏洩防止 |
+| `cat ~/.config/gh/*` / `cat ~/.ssh/*` | deny | 認証設定ファイルの漏洩防止 |
+| `cat .env` / `cat *.pem` / `cat *.key` | deny | 秘匿ファイルの漏洩防止 |
 | `security find-generic-password` / `find-internet-password` / `dump-keychain` | deny | AI シェルからの直接アクセス防止。`bin/*-safe` wrapper 内部の provider 取得は Hook の直接入力外 |
 | `op read` / `op item get` / `aws secretsmanager` / `gcloud secrets` / `vault kv get` / `pass show` | deny | secret store への直接アクセス防止 |
 | `git credential fill` / `approve` / `reject` | deny | Git 認証情報の漏洩防止 |

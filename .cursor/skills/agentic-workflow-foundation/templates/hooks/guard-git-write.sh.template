@@ -58,6 +58,8 @@ deny_class_failclose() {
      || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
      || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
      || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]] \
+     || [[ "$n" =~ security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]] \
+     || [[ "$n" =~ git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]] \
      || [[ "$n" =~ gh[[:space:]] ]]; then
     emit "ask" "deny クラスのコマンドが疑われるが入力を正常解析できないためフェイルクローズで承認要求" \
          "Hook が入力を解析できませんでした（jq 不在 / JSON 破損の可能性）。不可逆操作でないことを確認のうえ、ユーザー承認を得てください。"
@@ -175,6 +177,16 @@ if [[ "$CMD_N" =~ (echo|printf)[[:space:]].*\$\{?(GH_TOKEN|GITHUB_TOKEN|GITHUB_P
    || [[ "$CMD_N" =~ printenv[[:space:]]+(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]]; then
   deny "token 環境変数の出力はブロック" \
        "トークンの値を表示することは許可されていません。"
+fi
+
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)cat[[:space:]]+(~|/Users/[^[:space:]]*|/home/[^[:space:]]*)/\.(config/gh|ssh)/ ]]; then
+  deny "認証設定ファイルの読み取りはブロック" \
+       "gh 設定ファイルや SSH 鍵を直接読み取らないでください。"
+fi
+
+if [[ "$CMD_N" =~ (^|[;|&][[:space:]]*)cat[[:space:]]+[^[:space:]]*\.(env|pem|key)([[:space:]]|$) ]]; then
+  deny ".env / .pem / .key ファイルの読み取りはブロック" \
+       "秘匿ファイルを直接読み取らないでください。"
 fi
 
 # macOS Keychain への直接アクセス

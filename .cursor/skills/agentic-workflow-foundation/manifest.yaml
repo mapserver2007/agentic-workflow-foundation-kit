@@ -765,6 +765,10 @@ outputs:
       - "gh auth token"
       - "secret store"
       - "git credential"
+      - "認証設定ファイルの読み取りはブロック"
+      - ".env / .pem / .key ファイルの読み取りはブロック"
+      - "security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]]"
+      - "git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]]"
   # Context Budget の source 専用 UTF-8 byte-count helper。
   # hooks.json には登録せず、各 Hook が BASH_SOURCE から source する。
   - path: .cursor/hooks/session-byte-count.sh
@@ -848,6 +852,8 @@ outputs:
       - "判定優先順位"
       - "仕組みの全体像"
       - "review_start"
+      - "find-generic-password|find-internet-password|dump-keychain"
+      - "git credential fill|approve|reject"
   - path: .cursor/hooks.json
     template: hooks.json.template
     mode: render
@@ -904,6 +910,11 @@ outputs:
       - "G-WRITE-SCOPE-DOMAIN-001"
       - "G-ARTIFACT-STEP3-UNTRACKED-001"
       - "G-MDOCS-REASON-002"
+      - "cat ~/.config/gh/*"
+      - "cat ~/.ssh/*"
+      - "cat .env"
+      - "cat *.pem"
+      - "cat *.key"
   - path: docs/CONTEXT_BUDGET.md
     template: docs/CONTEXT_BUDGET.md.template
     mode: render

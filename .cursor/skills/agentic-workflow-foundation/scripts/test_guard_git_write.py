@@ -104,6 +104,46 @@ def test_failclose_route_asks_for_normalized_deny_classes(hook: Path) -> None:
         assert output.get("permission") == "ask", (command, output)
 
 
+def test_sensitive_cat_commands_are_denied(hook: Path) -> None:
+    for command in (
+        "cat ~/.ssh/id_ed25519",
+        "cat ~/.config/gh/hosts.yml",
+        "cat /Users/alice/.ssh/id_ed25519",
+        "cat /home/alice/.config/gh/hosts.yml",
+        "cat .env",
+        "cat ./.env",
+        "cat server.pem",
+        "cat server.key",
+    ):
+        output = _run(hook, command)
+        assert output.get("permission") == "deny", (command, output)
+
+
+def test_safe_cat_commands_remain_allowed(hook: Path) -> None:
+    for command in (
+        "cat README.md",
+        "cat .env.local",
+        "echo cat .env",
+        "cat ~/projects/my.ssh/readme",
+        "command cat .env",
+    ):
+        output = _run(hook, command)
+        assert output == {}, (command, output)
+
+
+def test_failclose_route_asks_for_credential_commands(hook: Path) -> None:
+    for command in (
+        "broken security find-generic-password",
+        "broken security find-internet-password",
+        "broken security dump-keychain",
+        "broken git credential fill",
+        "broken git credential approve",
+        "broken git credential reject",
+    ):
+        output = _run(hook, command, failclose=True)
+        assert output.get("permission") == "ask", (command, output)
+
+
 def test_local_git_commands_remain_allowed(hook: Path) -> None:
     for command in (
         "git status",
@@ -119,6 +159,9 @@ def main() -> int:
         hook = _render_hook(Path(temp_dir))
         test_global_options_are_normalized_for_json_route(hook)
         test_failclose_route_asks_for_normalized_deny_classes(hook)
+        test_sensitive_cat_commands_are_denied(hook)
+        test_safe_cat_commands_remain_allowed(hook)
+        test_failclose_route_asks_for_credential_commands(hook)
         test_local_git_commands_remain_allowed(hook)
     print("[test_guard_git_write] PASS")
     return 0
