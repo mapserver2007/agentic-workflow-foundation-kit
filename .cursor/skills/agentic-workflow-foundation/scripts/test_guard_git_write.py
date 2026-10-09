@@ -33,8 +33,11 @@ def _render_hook(target: Path) -> Path:
     return hook
 
 
-def _run(hook: Path, command: str, *, failclose: bool = False) -> dict:
-    payload = json.dumps({"command": command}) if not failclose else '{"command":"' + command
+def _run(hook: Path, command: str, *, failclose: bool = False, truncate: bool = True) -> dict:
+    if failclose and truncate:
+        payload = '{"command":"' + command
+    else:
+        payload = json.dumps({"command": command})
     env = dict()
     if failclose:
         with tempfile.TemporaryDirectory(prefix="guard-git-write-path-") as temp_dir:
@@ -114,6 +117,12 @@ def test_sensitive_cat_commands_are_denied(hook: Path) -> None:
         "cat ./.env",
         "cat server.pem",
         "cat server.key",
+        "command cat .env",
+        "command cat ~/.ssh/id_ed25519",
+        "cat README.md .env",
+        "cat README.md ~/.ssh/id_ed25519",
+        "cat README.md server.pem",
+        "cat server.key README.md",
     ):
         output = _run(hook, command)
         assert output.get("permission") == "deny", (command, output)
@@ -125,9 +134,38 @@ def test_safe_cat_commands_remain_allowed(hook: Path) -> None:
         "cat .env.local",
         "echo cat .env",
         "cat ~/projects/my.ssh/readme",
-        "command cat .env",
+        "command cat README.md",
+        "command cat .env.local",
     ):
         output = _run(hook, command)
+        assert output == {}, (command, output)
+
+
+def test_failclose_route_asks_for_secret_cat(hook: Path) -> None:
+    for command in (
+        "cat ~/.ssh/id_ed25519",
+        "cat ~/.config/gh/hosts.yml",
+        "cat .env",
+        "cat server.pem",
+        "cat server.key",
+        "command cat .env",
+        "cat README.md .env",
+        "cat README.md ~/.ssh/id_ed25519",
+    ):
+        output = _run(hook, command, failclose=True)
+        assert output.get("permission") == "ask", (command, output)
+    output = _run(hook, "cat ~/.ssh/id_ed25519", failclose=True, truncate=False)
+    assert output.get("permission") == "ask", output
+
+
+def test_failclose_route_allows_non_secret_cat(hook: Path) -> None:
+    for command in (
+        "echo cat .env",
+        "cat README.md",
+        "cat .env.local",
+        "command cat README.md",
+    ):
+        output = _run(hook, command, failclose=True)
         assert output == {}, (command, output)
 
 
@@ -161,6 +199,8 @@ def main() -> int:
         test_failclose_route_asks_for_normalized_deny_classes(hook)
         test_sensitive_cat_commands_are_denied(hook)
         test_safe_cat_commands_remain_allowed(hook)
+        test_failclose_route_asks_for_secret_cat(hook)
+        test_failclose_route_allows_non_secret_cat(hook)
         test_failclose_route_asks_for_credential_commands(hook)
         test_local_git_commands_remain_allowed(hook)
     print("[test_guard_git_write] PASS")
