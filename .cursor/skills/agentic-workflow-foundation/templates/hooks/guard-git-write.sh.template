@@ -44,12 +44,35 @@ normalize_git_global_options() {
   printf '%s' "$normalized"
 }
 
+# 認証設定ファイルを cat で読むコマンドか。
+# `command cat` と、対象パスが第一引数でない形も見る。引数として現れるだけの cat は対象外。
+secret_auth_cat() {
+  local n="$1" prefix auth_re
+  prefix='(^|[;|&][[:space:]]*)(command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+)?cat[[:space:]]+'
+  auth_re="${prefix}(.*[[:space:]]+)?(~|/Users/[^[:space:]]*|/home/[^[:space:]]*)/\\.(config/gh|ssh)/"
+  [[ "$n" =~ $auth_re ]]
+}
+
+# .env / .pem / .key を cat で読むコマンドか。接尾辞の途中（.env.local 等）は対象外。
+secret_env_cat() {
+  local n="$1" prefix file_re
+  prefix='(^|[;|&][[:space:]]*)(command([[:space:]]+-[A-Za-z0-9-]+)*[[:space:]]+)?cat[[:space:]]+'
+  file_re="${prefix}(.*[[:space:]]+)?[^[:space:]]*\\.(env|pem|key)([[:space:]]|$)"
+  [[ "$n" =~ $file_re ]]
+}
+
 # deny クラス（不可逆操作）のフェイルクローズ判定。
 # 入力を正常解析できない場合（jq 不在 / JSON 破損 / command 抽出失敗）に生入力へ適用し、
 # deny クラスにマッチしたら allow（素通り）ではなく ask を返す（二段階フェイル戦略の deny 側）。
 deny_class_failclose() {
-  local n empty_source_re
+  local n empty_source_re extracted command_field_re
   n="$(normalize_git_global_options "$(printf '%s' "$1" | tr -s '[:space:]' ' ')")"
+  extracted=""
+  command_field_re='"command"[[:space:]]*:[[:space:]]*"([^"]*)'
+  if [[ "$n" =~ $command_field_re ]]; then
+    extracted="${BASH_REMATCH[1]}"
+    extracted="$(normalize_git_global_options "$(printf '%s' "$extracted" | tr -s '[:space:]' ' ')")"
+  fi
   empty_source_re='git[[:space:]]+push[[:space:]].*[[:space:]][+]?:[^[:space:];|&]+'
   if [[ "$n" =~ (--force|--force-with-lease) ]] \
      || [[ "$n" =~ git[[:space:]]+push[[:space:]].*--delete ]] \
@@ -58,7 +81,11 @@ deny_class_failclose() {
      || [[ "$n" =~ git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+(origin|upstream)/ ]] \
      || [[ "$n" =~ gh[[:space:]]+pr[[:space:]]+merge ]] \
      || [[ "$n" =~ gh[[:space:]]+repo[[:space:]]+(delete|archive) ]] \
-     || [[ "$n" =~ gh[[:space:]] ]]; then
+     || [[ "$n" =~ security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]] \
+     || [[ "$n" =~ git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]] \
+     || [[ "$n" =~ gh[[:space:]] ]] \
+     || secret_auth_cat "$extracted" \
+     || secret_env_cat "$extracted"; then
     emit "ask" "deny クラスのコマンドが疑われるが入力を正常解析できないためフェイルクローズで承認要求" \
          "Hook が入力を解析できませんでした（jq 不在 / JSON 破損の可能性）。不可逆操作でないことを確認のうえ、ユーザー承認を得てください。"
     exit 0
@@ -175,6 +202,16 @@ if [[ "$CMD_N" =~ (echo|printf)[[:space:]].*\$\{?(GH_TOKEN|GITHUB_TOKEN|GITHUB_P
    || [[ "$CMD_N" =~ printenv[[:space:]]+(GH_TOKEN|GITHUB_TOKEN|GITHUB_PERSONAL_ACCESS_TOKEN) ]]; then
   deny "token 環境変数の出力はブロック" \
        "トークンの値を表示することは許可されていません。"
+fi
+
+if secret_auth_cat "$CMD_N"; then
+  deny "認証設定ファイルの読み取りはブロック" \
+       "gh 設定ファイルや SSH 鍵を直接読み取らないでください。"
+fi
+
+if secret_env_cat "$CMD_N"; then
+  deny ".env / .pem / .key ファイルの読み取りはブロック" \
+       "秘匿ファイルを直接読み取らないでください。"
 fi
 
 # macOS Keychain への直接アクセス

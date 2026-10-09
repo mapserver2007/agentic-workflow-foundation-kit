@@ -48,9 +48,17 @@ consumer 経路でも引き続き失敗とする。
 
 ### .cursor/hooks/*.sh（unified §13.5 / ADR Context Budget）
 - `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask。`gh` CLI 全般と AI シェルからの credential store 取得を deny し、GitHub API / Git network operation は `github_access` の選択 provider を使う wrapper へ誘導する。wrapper 内 subprocess は Hook の直接入力外。raw AI SSH は論理禁止で、物理的な fail-closed 遮断はしない。
+- `認証設定ファイルの読み取りはブロック`: `AGENTS.md > Boundaries > Never` の gh 設定ファイル・SSH 鍵の直接読み取り禁止を Hook で deterministic 強制する。
+- `.env / .pem / .key ファイルの読み取りはブロック`: `AGENTS.md > Boundaries > Never` の秘匿ファイル直接読み取り禁止を Hook で deterministic 強制する。
+- `security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]]`: Keychain deny クラスを解析不能入力でも fail-close する契約に由来する。
+- `git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]]`: Git credential deny クラスを解析不能入力でも fail-close する契約に由来する。
 - `session-bootstrap.sh`: `additional_context` で handoff manifest 注入。
 - `session-budget-evaluator.sh`: `followup_message` で `[CONTEXT_BUDGET=...]` を AI に通知。
 - **二段階フェイル戦略**: `session-*` 系と `guard-git-write.sh` の deny 対象以外はフェイルオープン（`{}` 素通り）。`guard-git-write.sh` の deny クラスのみフェイルクローズ（解析不能時 `ask`）。
+
+### .cursor/hooks/README.md（Hook 運用契約）
+- `find-generic-password|find-internet-password|dump-keychain`: Keychain の3 deny サブコマンドを fail-close 対象として運用文書に固定する。
+- `git credential fill|approve|reject`: Git credential の3 deny アクションを fail-close 対象として運用文書に固定する。
 
 ### docs/DECISIONS.md（DECISIONS 運用ルール）
 - `D-BOUNDARY` 〜 `D-PATTERN`: 8 つの設計次元の定義。
@@ -65,6 +73,11 @@ consumer 経路でも引き続き失敗とする。
 - `検査 ID`: §1.4 スクリプト実装ゲートの安定検査 ID 命名規約（`G-{GATE}-{CATEGORY}-{NNN}`）。BAS Finding Code 79 種体系は採用せず軽量 ID 運用に留めること（`framework.accd_axes[B].not_adopted` の死守）。
 - `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / agent_workflow 有効時の reports archive 取り残し・reports 停滞）の定義と検査 ID を含むこと。
 - `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。専用 `gate-*.py` は持たず既存ゲート + Advisory ループで運用する軽量実装であること。
+- `cat ~/.config/gh/*`: `AGENTS.md > Boundaries > Never` の gh 認証設定ファイル直接読み取り禁止を secret 表へ投影する。
+- `cat ~/.ssh/*`: `AGENTS.md > Boundaries > Never` の SSH 認証ファイル直接読み取り禁止を secret 表へ投影する。
+- `cat .env`: `AGENTS.md > Boundaries > Never` の `.env` 直接読み取り禁止を secret 表へ投影する。
+- `cat *.pem`: `AGENTS.md > Boundaries > Never` の PEM 認証ファイル直接読み取り禁止を secret 表へ投影する。
+- `cat *.key`: `AGENTS.md > Boundaries > Never` の鍵ファイル直接読み取り禁止を secret 表へ投影する。
 
 ### docs/GOTCHAS.md（原則8）
 - `起票トリガー`: 「期待と違う / 2回以上 / 想定外」の3トリガー。
