@@ -79,6 +79,16 @@ handoff manifest はセッションごとに独立したファイル（`handoff-
 
 2+ 件は並行セッションの handoff や、放棄されたセッションの stale handoff が残存する場合に発生する。ユーザーが 1 つを選択すると、選択ファイルの検証済み `campaign_id` を現在セッションの state に bind してから選択分のみ consumed リネームし、残りは後続セッションで消費可能。sessionStart 時点では 2+ を自動 bind しない。
 
+handoff が 0 件のときだけ、pre-compact snapshot を fallback 候補として扱う。
+
+| 状況 | bootstrap の動作 |
+|---|---|
+| handoff 0 件かつ snapshot 0 件 | snapshot 文脈を注入しない |
+| handoff 0 件かつ snapshot 1 件 | その 1 件を `[CONTEXT_BUDGET_SNAPSHOT_FALLBACK]` で注入する。snapshot 内の `campaign_id` へ state を bind しない |
+| handoff 0 件かつ snapshot 2 件以上 | 最新を自動選択せず、`[CONTEXT_BUDGET_SNAPSHOT_SELECT]` で AskQuestion による選択を求める。本文は自動注入せず、state を bind しない |
+
+handoff が 1 件あるが空本文や読込・切詰め失敗で注入できなかった場合も、別 snapshot へ fallback しない。snapshot は bootstrap では消費・削除・リネームしない。他 campaign の不要な runtime は `campaign-cleanup` で整理する。
+
 ## tracker と handoff manifest の責務境界
 
 {{framework.handoff.manifest_responsibility}}。矛盾時は常に tracker が正。
@@ -141,7 +151,7 @@ cat .cursor/.session/*.json | jq .
 - compact が一度も起きないセッションでは token% の恩恵がなく、proxy fallback のみで動作する
 - 短時間でも重い議論や大量ログで劣化が進む false negative は残る
 - macOS で動作確認済み。Linux / Windows は別途検証が必要
-- session handoff の内容品質は AI が作る `handoff-{session_id}.md` の品質に依存するが、包括的構造化スナップショット（turns.jsonl + tracker + state）により、manifest が書けなかった場合でも fallback 注入が可能
+- session handoff の内容品質は AI が作る `handoff-{session_id}.md` の品質に依存する。manifest が無く snapshot が 1 件だけなら、包括的構造化スナップショット（turns.jsonl + tracker + state）から fallback 注入できる。snapshot が 2 件以上なら誤選択を避けるため自動復旧せず選択を求める
 
 > preCompact スナップショット / manifest 骨格の機械生成 / 注入サイズ上限 / スナップショット突合 /
 > compact-events.jsonl 校正 / 校正サイクル / MemPalace 共存 / 将来拡張候補の詳細は

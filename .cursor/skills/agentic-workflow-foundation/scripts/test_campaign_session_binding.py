@@ -254,6 +254,148 @@ def test_no_handoff_mints_and_does_not_guess_existing_tracker() -> None:
         assert (tracking_dir / "tracker-OTHER.md").is_file()
 
 
+def test_handoff_reconciliation_uses_matching_origin() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-session-origin-snapshot-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        (session_dir / "handoff-sess-a.md").write_text(
+            "campaign_id: C-A\n\n## 直近のユーザー依頼\nresume\n",
+            encoding="utf-8",
+        )
+        matching_snapshot = session_dir / "pre-compact-sess-a.md"
+        matching_snapshot.write_text(
+            "# MATCHING_SNAPSHOT_BODY\n- [x] complete\n",
+            encoding="utf-8",
+        )
+        other_snapshot = session_dir / "pre-compact-sess-b.md"
+        other_snapshot.write_text(
+            "# OTHER_SNAPSHOT_BODY\n- [ ] incomplete\n",
+            encoding="utf-8",
+        )
+        os.utime(matching_snapshot, (1, 1))
+        os.utime(other_snapshot, (2, 2))
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW", {"session_id": "NEW"})
+        context = output.get("additional_context", "")
+
+        assert "[CONTEXT_BUDGET_HANDOFF]" in context
+        assert "警告（スナップショット突合）" not in context, "別 session の最新 snapshot を突合した"
+        assert "MATCHING_SNAPSHOT_BODY" not in context, "一致 snapshot 本文を追加注入した"
+        assert "OTHER_SNAPSHOT_BODY" not in context, "別 session の snapshot 本文を混入した"
+
+
+def test_handoff_pointer_warning_uses_raw_manifest() -> None:
+    cases = (
+        ("without-pointer-incomplete", "## 直近のユーザー依頼\nresume\n", "- [ ] pending\n", True),
+        ("with-pointer-incomplete", "## ポインタ\ntracker-C.md\n", "- [ ] pending\n", False),
+        ("without-pointer-complete", "## 直近のユーザー依頼\nresume\n", "- [x] done\n", False),
+    )
+    for label, handoff_body, snapshot_body, expect_warning in cases:
+        with tempfile.TemporaryDirectory(prefix=f"campaign-session-pointer-{label}-") as tmp:
+            root = Path(tmp)
+            session_dir = root / ".cursor" / ".session"
+            session_dir.mkdir(parents=True)
+            (session_dir / "handoff-origin.md").write_text(
+                f"campaign_id: C\n\n{handoff_body}",
+                encoding="utf-8",
+            )
+            (session_dir / "pre-compact-origin.md").write_text(
+                f"# snapshot\n{snapshot_body}",
+                encoding="utf-8",
+            )
+
+            bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+            output = run_hook(bootstrap, root, f"NEW-{label}", {"session_id": f"NEW-{label}"})
+            context = output.get("additional_context", "")
+            has_warning = "警告（スナップショット突合）" in context
+            assert has_warning == expect_warning, f"{label}: 突合 WARN の判定が不正"
+
+
+def test_handoff_presence_blocks_snapshot_fallback() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-session-handoff-no-match-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        (session_dir / "handoff-origin.md").write_text(
+            "campaign_id: C\n\n## ポインタ\ntracker-C.md\n",
+            encoding="utf-8",
+        )
+        (session_dir / "pre-compact-other.md").write_text("OTHER_BODY", encoding="utf-8")
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-NO-MATCH", {"session_id": "NEW-NO-MATCH"})
+        context = output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_HANDOFF]" in context
+        assert "[CONTEXT_BUDGET_SNAPSHOT_FALLBACK]" not in context
+        assert "OTHER_BODY" not in context
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-empty-handoff-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        empty_handoff = session_dir / "handoff-empty.md"
+        empty_handoff.write_text("", encoding="utf-8")
+        (session_dir / "pre-compact-other.md").write_text("OTHER_BODY", encoding="utf-8")
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-EMPTY", {"session_id": "NEW-EMPTY"})
+        assert "additional_context" not in output, "空 handoff から snapshot fallback した"
+        assert empty_handoff.is_file(), "注入できなかった handoff を consume した"
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-multi-handoff-snapshot-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        (session_dir / "handoff-A.md").write_text("campaign_id: A\n", encoding="utf-8")
+        (session_dir / "handoff-B.md").write_text("campaign_id: B\n", encoding="utf-8")
+        (session_dir / "pre-compact-A.md").write_text("SNAPSHOT_BODY", encoding="utf-8")
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-MULTI", {"session_id": "NEW-MULTI"})
+        context = output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_HANDOFF_SELECT]" in context
+        assert "[CONTEXT_BUDGET_SNAPSHOT_SELECT]" not in context
+        assert "SNAPSHOT_BODY" not in context
+
+
+def test_no_handoff_snapshot_matrix() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-session-no-snapshot-") as tmp:
+        root = Path(tmp)
+        (root / ".cursor" / ".session").mkdir(parents=True)
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-ZERO", {"session_id": "NEW-ZERO"})
+        assert "additional_context" not in output
+        assert read_state(root, "NEW-ZERO")["campaign_id"] == "NEW-ZERO"
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-one-snapshot-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        (session_dir / "pre-compact-only.md").write_text("ONLY_SNAPSHOT_BODY", encoding="utf-8")
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-ONE", {"session_id": "NEW-ONE"})
+        context = output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_SNAPSHOT_FALLBACK]" in context
+        assert "ONLY_SNAPSHOT_BODY" in context
+        assert read_state(root, "NEW-ONE")["campaign_id"] == "NEW-ONE"
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-multi-snapshot-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        session_dir.mkdir(parents=True)
+        (session_dir / "pre-compact-A.md").write_text("SNAPSHOT_A_BODY", encoding="utf-8")
+        (session_dir / "pre-compact-B.md").write_text("SNAPSHOT_B_BODY", encoding="utf-8")
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-MANY", {"session_id": "NEW-MANY"})
+        context = output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_SNAPSHOT_SELECT]" in context
+        assert "pre-compact-A.md" in context and "pre-compact-B.md" in context
+        assert "SNAPSHOT_A_BODY" not in context and "SNAPSHOT_B_BODY" not in context
+        assert read_state(root, "NEW-MANY")["campaign_id"] == "NEW-MANY"
+
+
 def test_template_contracts() -> None:
     manifest = MANIFEST.read_text(encoding="utf-8")
     bootstrap = BOOTSTRAP_TEMPLATE.read_text(encoding="utf-8")
@@ -285,6 +427,10 @@ def main() -> int:
         test_runtime_mint_bind_and_tracker_lookup,
         test_multi_handoff_select_binds_campaign,
         test_no_handoff_mints_and_does_not_guess_existing_tracker,
+        test_handoff_reconciliation_uses_matching_origin,
+        test_handoff_pointer_warning_uses_raw_manifest,
+        test_handoff_presence_blocks_snapshot_fallback,
+        test_no_handoff_snapshot_matrix,
         test_template_contracts,
     )
     for test in tests:

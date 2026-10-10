@@ -123,10 +123,12 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 | サイズ制限 | {{framework.budget_thresholds.max_snapshot_bytes}} bytes（UTF-8安全に先頭から切り詰め） |
 | 失敗時 | fail-open（退避失敗でもセッションをブロックしない） |
 
-スナップショットは次セッションの bootstrap で以下の2パターンで活用される:
+スナップショットは次セッションの bootstrap で以下のように活用される:
 
-1. **handoff manifest あり**: manifest と snapshot を突合し、矛盾があれば WARN を追記
-2. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot の turns.jsonl セクションから直近のユーザー依頼を抽出し、fallback として `additional_context` に注入。campaign tracker の bind は行わない
+1. **handoff manifest 1 件・注入成功**: handoff ファイル名の origin session に一致する snapshot だけを manifest と突合する。snapshot 本文は追加注入しない
+2. **handoff manifest 1 件・注入失敗**: snapshot の突合・fallback を行わない
+3. **handoff manifest 2 件以上**: handoff の選択を優先し、snapshot を処理しない
+4. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot 0 件は非注入、1 件は turns.jsonl セクションから直近のユーザー依頼を抽出して fallback 注入、2 件以上は本文を自動注入せず `[CONTEXT_BUDGET_SNAPSHOT_SELECT]` で選択を求める。いずれも campaign tracker の bind は行わない
 
 ## manifest 骨格の機械生成
 
@@ -138,7 +140,7 @@ Yellow/Red 発火時に `session-budget-evaluator.sh` が `handoff-{session_id}.
 
 ## スナップショット突合
 
-`session-bootstrap.sh` は新セッション開始時に pre-compact スナップショットと handoff manifest を突合する。スナップショットに未完了タスクがあるが manifest にポインタがない場合は WARN を追記する（fail-open）。
+`session-bootstrap.sh` は新セッション開始時、注入に成功した handoff の origin session に一致する pre-compact スナップショットだけを突合する。スナップショットに未完了タスクがあり、切詰め前の handoff 本文に「ポインタ」がない場合は WARN を追記する（fail-open）。注入ラッパー、切詰め警告、見出し欠落警告に含まれる「ポインタ」は判定対象にしない。
 
 ## compact-events.jsonl（校正データ）
 

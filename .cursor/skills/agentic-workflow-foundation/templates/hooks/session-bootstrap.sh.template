@@ -74,6 +74,8 @@ jq -n \
 
 # ---- handoff manifest スキャン（並行セッション対応） ----
 ADDITIONAL_CONTEXT=""
+LAST_INJECTED_MANIFEST=""
+INJECTED_ORIG_SID=""
 MAX_INJECTION_BYTES={{framework.budget_thresholds.max_injection_bytes}}
 
 # handoff-*.md を収集（handoff-consumed-* を除外）
@@ -139,6 +141,7 @@ inject_handoff() {
   HANDOFF_CONTENT="$(read_file_preserving_bytes "$TARGET_FILE")" || HANDOFF_CONTENT=""
   HANDOFF_CONTENT="${HANDOFF_CONTENT%$BYTE_SENTINEL}"
   [[ -n "$HANDOFF_CONTENT" ]] || return 0
+  local ORIGINAL_HANDOFF_CONTENT="$HANDOFF_CONTENT"
 
   local HANDOFF_SIZE
   HANDOFF_SIZE="$(session_byte_count "$HANDOFF_CONTENT")" || return 0
@@ -180,6 +183,9 @@ $HANDOFF_CONTENT
 
 注意: 上記の manifest は \`$(basename "$TARGET_FILE")\` から読み込まれ、消費済みとして自動アーカイブされます。"
 
+  LAST_INJECTED_MANIFEST="$ORIGINAL_HANDOFF_CONTENT"
+  INJECTED_ORIG_SID="${TARGET_BASENAME#handoff-}"
+
   # consumed リネーム（元セッション ID + タイムスタンプでトレーサビリティ確保）
   local ORIG_SID="${TARGET_BASENAME#handoff-}"
   local CONSUMED_FILE="$SESSION_DIR/handoff-consumed-${ORIG_SID}-${NOW_UNIX}.md"
@@ -219,28 +225,26 @@ fi
 
 # ---- スナップショット突合（pre-compact snapshot と handoff manifest の整合チェック） ----
 RECONCILIATION_WARNING=""
-LATEST_SNAPSHOT=""
-for snap in "$SESSION_DIR"/pre-compact-*.md; do
-  [[ -f "$snap" ]] || continue
-  if [[ -z "$LATEST_SNAPSHOT" ]] || [[ "$snap" -nt "$LATEST_SNAPSHOT" ]]; then
-    LATEST_SNAPSHOT="$snap"
-  fi
-done
-if [[ -n "$LATEST_SNAPSHOT" ]] && [[ -n "$ADDITIONAL_CONTEXT" ]]; then
-  SNAP_CONTENT="$(read_file_preserving_bytes "$LATEST_SNAPSHOT")" || SNAP_CONTENT=""
-  SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
-  if [[ -n "$SNAP_CONTENT" ]]; then
-    SNAP_HAS_INCOMPLETE=false
-    if echo "$SNAP_CONTENT" | grep -qE '^\s*- \[ \]' 2>/dev/null; then
-      SNAP_HAS_INCOMPLETE=true
-    fi
-    MANIFEST_MENTIONS_POINTER=false
-    if echo "$ADDITIONAL_CONTEXT" | grep -q "ポインタ" 2>/dev/null; then
-      MANIFEST_MENTIONS_POINTER=true
-    fi
-    if [[ "$SNAP_HAS_INCOMPLETE" == "true" ]] && [[ "$MANIFEST_MENTIONS_POINTER" == "false" ]]; then
-      RECONCILIATION_WARNING="
+if (( HANDOFF_COUNT == 1 )) \
+  && [[ -n "$LAST_INJECTED_MANIFEST" ]] \
+  && [[ -n "$INJECTED_ORIG_SID" ]]; then
+  MATCHING_SNAPSHOT="$SESSION_DIR/pre-compact-${INJECTED_ORIG_SID}.md"
+  if [[ -f "$MATCHING_SNAPSHOT" ]]; then
+    SNAP_CONTENT="$(read_file_preserving_bytes "$MATCHING_SNAPSHOT")" || SNAP_CONTENT=""
+    SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
+    if [[ -n "$SNAP_CONTENT" ]]; then
+      SNAP_HAS_INCOMPLETE=false
+      if echo "$SNAP_CONTENT" | grep -qE '^\s*- \[ \]' 2>/dev/null; then
+        SNAP_HAS_INCOMPLETE=true
+      fi
+      MANIFEST_MENTIONS_POINTER=false
+      if echo "$LAST_INJECTED_MANIFEST" | grep -q "ポインタ" 2>/dev/null; then
+        MANIFEST_MENTIONS_POINTER=true
+      fi
+      if [[ "$SNAP_HAS_INCOMPLETE" == "true" ]] && [[ "$MANIFEST_MENTIONS_POINTER" == "false" ]]; then
+        RECONCILIATION_WARNING="
 警告（スナップショット突合）: pre-compact snapshot に未完了タスクがありますが、manifest にポインタが見つかりません。.cursor/.tracking/ 配下の tracker ファイルを正として読み直してください。"
+      fi
     fi
   fi
 fi
@@ -249,28 +253,38 @@ if [[ -n "$RECONCILIATION_WARNING" ]]; then
 fi
 
 # ---- pre-compact snapshot からの fallback 注入（handoff manifest なし時） ----
-if [[ -z "$ADDITIONAL_CONTEXT" ]] && [[ -n "$LATEST_SNAPSHOT" ]]; then
-  SNAP_CONTENT="$(read_file_preserving_bytes "$LATEST_SNAPSHOT")" || SNAP_CONTENT=""
-  SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
-  if [[ -n "$SNAP_CONTENT" ]]; then
-    SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
-    if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
-      SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
+if (( HANDOFF_COUNT == 0 )); then
+  SNAPSHOT_FILES=()
+  SNAPSHOT_COUNT=0
+  for snap in "$SESSION_DIR"/pre-compact-*.md; do
+    [[ -f "$snap" ]] || continue
+    SNAPSHOT_FILES[$SNAPSHOT_COUNT]="$snap"
+    SNAPSHOT_COUNT=$((SNAPSHOT_COUNT + 1))
+  done
+
+  if (( SNAPSHOT_COUNT == 1 )); then
+    FALLBACK_SNAPSHOT="${SNAPSHOT_FILES[0]}"
+    SNAP_CONTENT="$(read_file_preserving_bytes "$FALLBACK_SNAPSHOT")" || SNAP_CONTENT=""
+    SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
+    if [[ -n "$SNAP_CONTENT" ]]; then
+      SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
+      if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
+        SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
+      fi
     fi
-  fi
-  if [[ -n "$SNAP_CONTENT" ]]; then
-    RECENT_PROMPTS=""
-    if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
-      RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""
-    fi
-    PROMPT_SUMMARY=""
-    if [[ -n "$RECENT_PROMPTS" ]]; then
-      PROMPT_SUMMARY="
+    if [[ -n "$SNAP_CONTENT" ]]; then
+      RECENT_PROMPTS=""
+      if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
+        RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""
+      fi
+      PROMPT_SUMMARY=""
+      if [[ -n "$RECENT_PROMPTS" ]]; then
+        PROMPT_SUMMARY="
 
 直近のユーザー依頼（turns.jsonl から抽出）:
 $(echo "$RECENT_PROMPTS" | jq -r '.summary // empty' 2>/dev/null | tail -3)"
-    fi
-    ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_FALLBACK] handoff manifest が存在しないため、pre-compact snapshot から文脈を復元します。${PROMPT_SUMMARY}
+      fi
+      ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_FALLBACK] handoff manifest が存在しないため、pre-compact snapshot から文脈を復元します。${PROMPT_SUMMARY}
 
 復旧手順:
 1. .cursor/.tracking/ 配下の tracker ファイルを Read し、フェーズと制約を確認せよ
@@ -280,6 +294,25 @@ $(echo "$RECENT_PROMPTS" | jq -r '.summary // empty' 2>/dev/null | tail -3)"
 ---
 ${SNAP_CONTENT}
 ---"
+    fi
+  elif (( SNAPSHOT_COUNT >= 2 )); then
+    SNAPSHOT_LIST=""
+    for snap in "${SNAPSHOT_FILES[@]}"; do
+      SNAP_BASENAME="$(basename "$snap")"
+      SNAP_MTIME="$(date -r "$snap" -Iseconds 2>/dev/null || stat -c '%y' "$snap" 2>/dev/null || echo "unknown")"
+      SNAPSHOT_LIST="${SNAPSHOT_LIST}
+- ${SNAP_BASENAME} (最終更新: ${SNAP_MTIME})"
+    done
+    ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_SELECT] handoff manifest がなく、複数の pre-compact snapshot が検出されました（${SNAPSHOT_COUNT} 件）。ユーザーに AskQuestion でどの snapshot を読み込むか選択させてください。
+
+検出された snapshot:
+${SNAPSHOT_LIST}
+
+AI への指示:
+1. ユーザーに AskQuestion を使ってどの snapshot を読み込むか選択させよ（ファイル名と最終更新時刻を選択肢として提示）
+2. 選択された snapshot ファイルを Read し、snapshot 内の tracker セクションと実ファイルを突合せよ
+3. snapshot 本文は自動注入されていない。snapshot 内の campaign_id から現在セッションの state を bind してはならない
+4. snapshot を削除または consumed リネームしてはならない"
   fi
 fi
 
