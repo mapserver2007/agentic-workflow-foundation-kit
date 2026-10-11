@@ -24,6 +24,7 @@ bin/foundation-gate self # kit 自己検証（audit + foundation tests）
 
 - **Never**: 無断 push / commit / `--force` push / 保護ブランチ直 push / `gh pr merge` / `git reset --hard origin/*`
 - **GitHub 認証**: AI の API / Git network operation は `github_access` で選択した provider を使う `bin/*-safe` wrapper 経由の HTTPS のみ
+- **Never**: 仕様の推測（ドキュメント不明時は質問）
 {{#each project.boundaries.never_extra}}- **Never**: {{this}}
 {{/each}}{{#each project.boundaries.always}}- **Always**: {{this}}
 {{/each}}
