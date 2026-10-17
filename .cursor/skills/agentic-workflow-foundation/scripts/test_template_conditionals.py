@@ -18,6 +18,7 @@ if str(ENGINE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(ENGINE_SCRIPTS))
 
 import genlib  # noqa: E402
+import run_resolved_engine  # noqa: E402
 
 
 def _manifest() -> dict:
@@ -125,6 +126,40 @@ def test_agents_optional_sections_are_empty_or_rendered_as_configured() -> None:
         assert text in partial_rendered, field
         assert partial_rendered.count(parent_heading) == 1, field
         assert partial_rendered.count(child_heading) == 1, field
+
+
+def test_agents_and_claude_fixed_boundaries_render_from_seed_and_resolved_manifest() -> None:
+    seed = _manifest()
+    resolved = run_resolved_engine.resolved_manifest(
+        str(SKILL_DIR / "manifest.yaml"),
+        str(ROOT / "manifest.yaml"),
+    )
+    agents_template = SKILL_DIR / "templates" / "AGENTS.md.template"
+    claude_template = SKILL_DIR / "templates" / "CLAUDE.md.template"
+    official_fixed_line = (
+        "**公式固定ファイル名**（大文字維持）: "
+        "`AGENTS.md` `CLAUDE.md` `CLAUDE.local.md` `MEMORY.md`"
+    )
+    speculation = "仕様の推測（ドキュメント不明時は質問）"
+    fixed_never_line = f"- **Never**: {speculation}"
+
+    for label, manifest in (("seed", seed), ("resolved", resolved)):
+        assert speculation not in manifest["project"]["boundaries"]["never_extra"], label
+        agents = _render(agents_template, manifest)
+        claude = _render(claude_template, manifest)
+        official_lines = [
+            line for line in agents.splitlines()
+            if line.startswith("**公式固定ファイル名**")
+        ]
+        assert official_lines == [official_fixed_line], label
+        assert not official_lines[0].endswith(" "), label
+        assert agents.count(speculation) == 1, label
+        assert claude.count(fixed_never_line) == 1, label
+
+        first_extra_line = (
+            f"- **Never**: {manifest['project']['boundaries']['never_extra'][0]}"
+        )
+        assert claude.index(fixed_never_line) < claude.index(first_extra_line), label
 
 
 def _render(template: Path, manifest: dict) -> str:
@@ -369,6 +404,7 @@ def main() -> int:
         test_foundation_false_removes_self_validation_references,
         test_github_pr_false_removes_wrapper_guidance,
         test_agents_optional_sections_are_empty_or_rendered_as_configured,
+        test_agents_and_claude_fixed_boundaries_render_from_seed_and_resolved_manifest,
         test_session_start_report_conditionals_and_runtime_contract,
     )
     for test in tests:

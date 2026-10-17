@@ -48,7 +48,7 @@
 ## 完了報告段階
 
 - **反映不要の判断を怠らない**: コードから読み取れる情報は docs 反映しない
-- **archives 移動の確認**: `git mv docs/agent-tasks/reports/{report}.md docs/agent-tasks/reports/archives/` が完了したことを確認
+- **archives 移動の確認**: [06-completion.md](06-completion.md) の report archive まで完了していること
 - **Gotchas の蓄積**: 想定外の詰まりがあれば [docs/GOTCHAS.md](../../GOTCHAS.md) に記録
 
 ---

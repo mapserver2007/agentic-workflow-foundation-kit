@@ -30,7 +30,7 @@
 
 **判定基準**: 「このファイル名を他リポジトリに持っていったとき、同じ役割を期待できるか？」が Yes なら Meta、No なら Domain。
 
-**公式固定ファイル名**（大文字維持）: {{#each framework.naming.official_fixed}}`{{this}}` {{/each}}
+**公式固定ファイル名**（大文字維持）:{{#each framework.naming.official_fixed}} `{{this}}`{{/each}}
 
 `.cursor/rules/*.mdc` は kebab-case が公式推奨。
 
