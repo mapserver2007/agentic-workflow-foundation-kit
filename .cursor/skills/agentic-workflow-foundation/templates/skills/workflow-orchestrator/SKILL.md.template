@@ -157,36 +157,35 @@ AI エージェントがタスク実行依頼を受けた際の **6 段階標準
 {{else}}6. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
 {{/if}}7. ユーザーに検証結果を提示し承認後に返信・修正する
 8. **コード変更があった場合** `workflow-gate.sh step5` を再実行する
-9. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
-10. `workflow-gate.sh step6` を実行する（Step ⑤ 出口 → Step ⑥ 入口）{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲート失敗時は Step ⑥ へ進まない）{{/if}}
+9. レビュー完了承認の次ターンで{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にし、親が `workflow-gate.sh step6` を実行する{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順。失敗時は Step ⑥ へ進まない）{{/if}}
 {{else}}{{#if github_pr.enabled}}1. `agent-github-pr` スキルで PR を作成する
 {{else}}1. [05-pr-review.md](../../../docs/agent-tasks/agent-workflow/05-pr-review.md) の手順に従い PR を作成する
 {{/if}}2. ユーザーから PR URL を受領する
 {{#if code_review.enabled}}3. `agent-code-review` スキルでレビュー指摘を取得・検証する
 {{else}}3. PR コメントを取得し、ローカルコードと照合して妥当性を検証する
 {{/if}}4. ユーザーに検証結果を提示し承認後に返信・修正する
-5. レビュー完了承認をユーザーから取得する（AI は新規コメントを自律検知できない）
+5. レビュー完了承認の次ターンで{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にする。その完了後、[QUALITY_GATE.md §3](../../../docs/QUALITY_GATE.md#3-フェーズ境界ゲート) の `plan-gate.sh review` 境界と [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md) の事前確認・report archive 手順に従う
 {{/if}}
 
 Mode B（完了後の追加コメント対応）{{#if code_review.enabled}}と standalone `agent-code-review`{{/if}} は `review-start` 対象外であり、新しい `review_start` を要求・発行しない。その活動を初回 Step⑤のレビューGO証跡へ昇格してはならない。
 
 ### Step ⑥: 完了報告
 
-親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} Step ⑤ で `workflow-gate.sh step6` を通過済みであることが前提（`plan-gate.sh review` は追跡ドキュメントの `## レビュー完了承認` が `承認取得済み` であることを検査する。この更新は {{#if code_review.enabled}}`agent-code-review` Step 7{{else}}レビュー担当{{/if}} の責務）。{{/if}}
+親が直接実行する（`config.yaml` 対象外・親モデルを使用）。Step doc: [06-completion.md](../../../docs/agent-tasks/agent-workflow/06-completion.md)。{{#if agent_workflow.gate_scripts}} `workflow-gate.sh step6`（`plan-gate.sh review`）の通過が前提。{{else}} `plan-gate.sh review` の通過が前提。{{/if}}
 
 以下を実行する:
 
 {{#if agent_workflow.maintenance_docs.enabled}}1. **最終判定**: maintenance-docs/ 起票ファイルと最終実装状態の整合を確認し、`maintenance-docs-judgment` を確定する。`required` の queue は `pending` のまま残し、完了チェック第5項目を `[x]` にする
 2. 完了チェック 6 項目を確認する
 {{#if agent_workflow.gate_scripts}}3. `workflow-gate.sh archive <report-file>` を実行し、archive gate の exit 0 を確認する。archive gate は Domain docs を反映せず、pending queue の整合性だけを検査する
-4. archive gate PASS 後に report を `reports/archives/` へ移動する
-{{else}}3. report を `reports/archives/` へ移動する
+4. archive gate PASS 後は Step doc の report archive を実行する
+{{else}}3. Step doc の report archive を実行する
 {{/if}}- report archive 後、`maintenance-docs/` に `status: pending` の queue がある場合だけ独立 `maintenance-docs-workflow` を起動する。queue がなければ起動しない
 {{else}}1. **最終判定**: Domain 層 docs への仕様反映（G-DOC-SPEC）を完了し、完了チェック第5項目を `[x]` にする
 2. 完了チェック 6 項目を確認する
 {{#if agent_workflow.gate_scripts}}3. `workflow-gate.sh archive <report-file>` を実行し、exit 0 を確認する
-4. archive gate PASS 後に report を `reports/archives/` へ移動する
-{{else}}3. report を `reports/archives/` へ移動する
+4. archive gate PASS 後は Step doc の report archive を実行する
+{{else}}3. Step doc の report archive を実行する
 {{/if}}{{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- Gotchas 起票確認（Session Protocol 手順4）。修復可能なエントリがある場合は `maintenance-gotchas-workflow` での対応を案内する
 {{/if}}
 

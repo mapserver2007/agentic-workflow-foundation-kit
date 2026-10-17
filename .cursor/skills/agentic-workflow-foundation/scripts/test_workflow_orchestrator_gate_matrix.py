@@ -32,6 +32,22 @@ README_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "README.md.template"
 COMPLETION_TEMPLATE = (
     TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "06-completion.md.template"
 )
+BEST_PRACTICES_TEMPLATE = (
+    TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "best-practices.md.template"
+)
+CODE_REVIEW_SKILL_TEMPLATE = (
+    TEMPLATE_DIR / "skills" / "agent-code-review" / "SKILL.md.template"
+)
+ARCHIVE_GATE_TEMPLATE = (
+    TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "archive-gate.sh.template"
+)
+SESSION_START_GATE_TEMPLATE = (
+    TEMPLATE_DIR
+    / "skills"
+    / "session-handover"
+    / "scripts"
+    / "session-start-gate.sh.template"
+)
 sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"))
 from genlib import load_manifest, render  # noqa: E402
 
@@ -243,13 +259,150 @@ def test_step6_tracker_approval_prerequisite():
     )
 
 
-def test_05_pr_review_tracker_update_responsibility():
-    """05-pr-review.md.template が tracker 承認更新の責務を明記すること。"""
-    content = _read(PR_REVIEW_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
-    assert "追跡ドキュメント" in content and "承認取得済み" in content, (
-        "05-pr-review.md.template に tracker 承認更新の責務が記載されていない"
+def test_commit_policy_normal_procedure_and_disabled_feature_fallback():
+    """通常手順の正本と code_review 無効時の代替手順を区別する。"""
+    skill = _read(CODE_REVIEW_SKILL_TEMPLATE)
+    assert "⑤〜⑦" not in skill
+    assert "Step 5〜7 では commit しない" in skill
+    assert "`reviews/archives/` へは移さない" in skill
+    assert "CodeRabbit の `path_filters` 対象外" in skill
+
+    enabled = _render_with_features(PR_REVIEW_TEMPLATE, code_review=True)
+    enabled_report = enabled[
+        enabled.find("## 5.5 タスクレポート更新") :
+        enabled.find("## 5.6 完了条件")
+    ]
+    assert "agent-code-review" in enabled_report
+    assert "コミットポリシーに従う" in enabled_report
+    assert "Step 5〜7 では commit しない" not in enabled_report
+
+    disabled = _render_with_features(PR_REVIEW_TEMPLATE, code_review=False)
+    disabled_report = disabled[
+        disabled.find("## 5.5 タスクレポート更新") :
+        disabled.find("## 5.6 完了条件")
+    ]
+    for phrase in (
+        "Step 5〜7 では commit せず",
+        "Step ⑥ の完了コミット",
+        "`reviews/archives/` へは移さない",
+        "CodeRabbit の `path_filters` 対象外",
+    ):
+        assert phrase in disabled_report, f"機能無効時の代替手順が不足: {phrase}"
+    assert "agent-code-review" not in disabled_report
+
+
+def test_review_approval_transition_feature_matrix():
+    """code_review / gate_scripts の4分岐で承認順序と必須語句の存在を固定する。"""
+    for code_review in (True, False):
+        for gate_scripts in (True, False):
+            subject = "`agent-code-review` Step 7" if code_review else "レビュー担当"
+
+            pr_review = _render_with_features(
+                PR_REVIEW_TEMPLATE,
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+            )
+            approval_start = pr_review.find("**承認する**")
+            approval_end = pr_review.find("**新規のレビューコメントを取得して**")
+            assert approval_start >= 0, "05-pr-review の承認分岐が欠落"
+            assert approval_end >= 0, "05-pr-review の再取得分岐が欠落"
+            approval = pr_review[approval_start:approval_end]
+            subject_position = approval.find(subject)
+            approved_position = approval.find("承認取得済み")
+            assert subject_position >= 0, f"05-pr-review の更新主体が欠落: {subject}"
+            assert approved_position >= 0, "05-pr-review の承認状態が欠落"
+            assert subject_position < approved_position
+
+            orchestrator = _render_with_features(
+                SKILL_TEMPLATE,
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+            )
+            step5_start = orchestrator.find("### Step ⑤: PR レビュー検証")
+            step5_end = orchestrator.find("Mode B（完了後の追加コメント対応）")
+            assert step5_start >= 0 and step5_end >= 0, "orchestrator の Step ⑤ が欠落"
+            step5 = orchestrator[step5_start:step5_end]
+            orchestrator_subject = step5.find(subject)
+            orchestrator_approved = step5.find("承認取得済み")
+            assert orchestrator_subject >= 0, f"orchestrator の更新主体が欠落: {subject}"
+            assert orchestrator_approved >= 0, "orchestrator の承認状態が欠落"
+            assert orchestrator_subject < orchestrator_approved
+
+            if gate_scripts:
+                step6_position = approval.find("workflow-gate.sh step6")
+                completion_position = approval.find("⑥へ進む")
+                assert step6_position >= 0, "05-pr-review の step6 が欠落"
+                assert completion_position >= 0, "05-pr-review の ⑥ 遷移が欠落"
+                assert approved_position < step6_position < completion_position
+                assert "親が `workflow-gate.sh step6`" in approval
+
+                orchestrator_step6 = step5.find("workflow-gate.sh step6")
+                assert orchestrator_step6 >= 0, "orchestrator の step6 が欠落"
+                assert orchestrator_approved < orchestrator_step6
+                assert "親が `workflow-gate.sh step6`" in step5
+            else:
+                for content in (approval, step5):
+                    assert "workflow-gate.sh step6" not in content
+                    assert "⑥へ進む" not in content
+                    plan_gate_position = content.find("plan-gate.sh review")
+                    completion_doc_position = content.find("06-completion.md")
+                    report_archive_position = content.find("report archive")
+                    assert plan_gate_position >= 0, "plan-gate.sh review 参照が欠落"
+                    assert completion_doc_position >= 0, "06-completion.md 参照が欠落"
+                    assert report_archive_position >= 0, "report archive 参照が欠落"
+                    assert (
+                        approved_position < plan_gate_position
+                        if content is approval
+                        else orchestrator_approved < plan_gate_position
+                    )
+                    assert plan_gate_position < completion_doc_position < report_archive_position
+
+            if not code_review:
+                assert "Step 7" not in approval
+                assert "Step 7" not in step5
+
+
+def test_archive_normal_procedure_recovery_display_and_inspection_only_gate():
+    """通常移動・session-start 復旧表示・archive 検査を別責務として固定する。"""
+    move_command = (
+        "git mv docs/agent-tasks/reports/{report}.md "
+        "docs/agent-tasks/reports/archives/"
     )
+    recovery_command = (
+        "git -C %q mv -- %q docs/agent-tasks/reports/archives/"
+    )
+
+    archive_gate = _read(ARCHIVE_GATE_TEMPLATE)
+    assert move_command not in archive_gate
+    assert "git mv" not in archive_gate
+
+    for gate_scripts in (True, False):
+        quality = _render_with_features(
+            QUALITY_GATE_TEMPLATE,
+            gate_scripts=gate_scripts,
+        )
+        archive_action_start = quality.find("**G-ARCHIVE の動作**")
+        archive_action_end = quality.find("### 1.3 リンク衛生ゲート")
+        assert archive_action_start >= 0 and archive_action_end >= 0
+        archive_action = quality[archive_action_start:archive_action_end]
+        assert "ファイルは移動しない" in archive_action
+        assert move_command not in archive_action
+
+        completion = _render_with_features(
+            COMPLETION_TEMPLATE,
+            gate_scripts=gate_scripts,
+        )
+        assert move_command in completion
+
+        recovery = _render_with_features(
+            SESSION_START_GATE_TEMPLATE,
+            gate_scripts=gate_scripts,
+        )
+        assert recovery_command in recovery
+        assert "git add" not in recovery
+
+    for path in (QUALITY_GATE_TEMPLATE, SKILL_TEMPLATE, BEST_PRACTICES_TEMPLATE):
+        assert move_command not in _read(path), f"通常移動コマンドの重複: {path}"
 
 
 def test_step1_catalog_and_matrix_require_envelope_argument():
@@ -393,7 +546,9 @@ def main() -> int:
         test_05_pr_review_template_step6_completion,
         test_05_pr_review_generated_gate_contract,
         test_step6_tracker_approval_prerequisite,
-        test_05_pr_review_tracker_update_responsibility,
+        test_commit_policy_normal_procedure_and_disabled_feature_fallback,
+        test_review_approval_transition_feature_matrix,
+        test_archive_normal_procedure_recovery_display_and_inspection_only_gate,
         test_step1_catalog_and_matrix_require_envelope_argument,
         test_step6_archive_maintenance_docs_order_is_explicit,
         test_completion_labels_keep_maintenance_docs_feature_branches,

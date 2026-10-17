@@ -90,7 +90,11 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 レビュー完了時に、タスクレポートの「PRレビュー検証完了」チェックボックスを `[x]` に更新する。
 
 {{#if code_review.report.enabled}}
-> **レビューレポートの段階的作成**: レビューレポート（`{{code_review.report.output_dir}}/{task-report-stem}-review.md`）は Step ⑤ 中に段階的に作成・更新される。指摘取得完了時に骨格を新規作成し、判定確定・アクション実行ごとに `StrReplace` で更新する。レビュー完了承認後の Step 7 では最終確定（ヘッダ統計確定・承認記録更新）のみを行う。レビューレポートは Step ⑤〜⑦ 中は commit しない。Step ⑥ 完了コミット（タスクレポートの `reports/archives/` 移動と同梱）で `reviews/` 直下のまま `git add` して含める。単独実行時（タスクレポート不在）はレビューレポートを作成しない。
+{{#if code_review.enabled}}
+レビューレポートの作成とコミットは [agent-code-review](../../../.cursor/skills/agent-code-review/SKILL.md) の段階的作成とコミットポリシーに従う。
+{{else}}
+レビューレポートは Step 5〜7 では commit せず、Step ⑥ の完了コミットで `reviews/` のまま `git add` する（`reviews/archives/` へは移さない）。CodeRabbit の `path_filters` 対象外。
+{{/if}}
 {{/if}}
 
 ```markdown
@@ -116,11 +120,11 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 指摘対応が完了し保留が 0 件になったら、ユーザーに完了承認を求める。AI は GitHub の新規コメントを自律検知できないため、フェーズ完了は人間承認で担保する。
 
 1. 保留（pending / discuss 未着地）が **0 件**になったときのみ本ゲートに到達する
-2. ユーザーに完了承認を求める:
-   - **承認する** → ⑥ 完了報告へ進む
-   - **新規のレビューコメントを取得して** → 指摘取得ステップへ戻る
-3. AI はポーリングできないため、承認待ちでターンを終了する
-4. 承認取得後、{{#if code_review.enabled}}`agent-code-review` Step 7 が{{else}}レビュー担当が{{/if}}追跡ドキュメントの `## レビュー完了承認` を `承認状態: 承認取得済み` に更新する（{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step6` / `plan-gate.sh review`{{else}}完了確認{{/if}} の通過に必要）
+2. 承認を求め、提示後はターンを終了する
+{{#if agent_workflow.gate_scripts}}   - **承認する** → 次ターンで{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にし、親が `workflow-gate.sh step6` を通して⑥へ進む
+{{else}}   - **承認する** → 次ターン先頭で{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にする。完了後は [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の `plan-gate.sh review` 境界と [06-completion.md](06-completion.md) の事前確認・report archive 手順に従う
+{{/if}}
+   - **新規のレビューコメントを取得して** → 指摘取得へ戻る
 
 ---
 
