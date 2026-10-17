@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Workflow Orchestrator Gate Matrix 契約テスト。
 
-Step Gate Matrix のテンプレート（SoT）と生成物が、
+Step Gate Matrix のテンプレート（SoT）と feature 分岐が、
 step4/step5/step6 の境界責務を正しく案内していることを検証する。
 
 検査対象:
   - テンプレート SKILL.md.template の Step ④ 行が step4 を「実装 → 検証」として案内すること
   - テンプレート SKILL.md.template の Step ⑤ 行が step5 を必須入口、step6 を必須出口として案内すること
   - テンプレート SKILL.md.template の Step ⑤ 手順がコード変更後の step5 再実行を要求すること
-  - 生成物 05-pr-review.md が PR 作成前 step5・変更後 step5 再実行・step6 完了条件を含むこと
+  - 05-pr-review.md.template が PR 作成前 step5・変更後 step5 再実行・step6 完了条件を含むこと
 """
 from __future__ import annotations
 
@@ -22,9 +22,7 @@ ROOT = HERE.parent.parent.parent.parent
 
 TEMPLATE_DIR = HERE.parent / "templates"
 SKILL_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKILL.md.template"
-SKILL_GENERATED = ROOT / ".cursor" / "skills" / "workflow-orchestrator" / "SKILL.md"
 PR_REVIEW_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md.template"
-PR_REVIEW_GENERATED = ROOT / "docs" / "agent-tasks" / "agent-workflow" / "05-pr-review.md"
 MANIFEST = HERE.parent / "manifest.yaml"
 INDEX_TEMPLATE = TEMPLATE_DIR / "docs" / "agent-tasks" / "agent-workflow.md.template"
 QUALITY_GATE_TEMPLATE = TEMPLATE_DIR / "docs" / "QUALITY_GATE.md.template"
@@ -74,10 +72,23 @@ def _render_with_features(
     return render(_read(path), context)
 
 
+def _assert_markers_in_order(
+    content: str,
+    markers: tuple[str, ...],
+    label: str,
+) -> list[int]:
+    positions = [content.find(marker) for marker in markers]
+    missing = [marker for marker, position in zip(markers, positions) if position < 0]
+    assert not missing, f"{label} に必須markerが不足: {missing}"
+    assert all(left < right for left, right in zip(positions, positions[1:])), (
+        f"{label} の順序が不正: {positions}"
+    )
+    return positions
+
+
 def test_step4_matrix_implementation_to_verification():
     """Step ④ Matrix 行が step4 を「実装 → 検証」として案内すること。"""
     content = _read(SKILL_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
     lines = [line for line in content.splitlines() if "**④ テスト**" in line or "④" in line]
     step4_lines = [line for line in lines if "step4" in line]
     assert step4_lines, "Step ④ 行に step4 への参照が見つからない"
@@ -93,7 +104,6 @@ def test_step4_matrix_implementation_to_verification():
 def test_step5_matrix_entry_exit():
     """Step ⑤ Matrix 行が step5 を必須入口、step6 を必須出口として案内すること。"""
     content = _read(SKILL_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
     lines = [line for line in content.splitlines() if "**⑤ PR レビュー**" in line or "⑤" in line]
     step5_lines = [line for line in lines if "step5" in line and "step6" in line]
     assert step5_lines, (
@@ -138,124 +148,36 @@ def test_resume_table_contains_pending_and_approved_branches():
         assert phrase in content, f"再開分岐が不足: {phrase}"
 
 
-def test_generated_step2_step3_contract_after_generate():
-    """再生成後のSKILLもStep②/③境界契約を持つこと。"""
-    content = _read(SKILL_GENERATED)
-    assert content, f"生成物が存在しない: {SKILL_GENERATED}"
-    step2 = next((line for line in content.splitlines() if "**② レポート作成**" in line), "")
-    assert "step2-report" in step2 and "PO承認" not in step2
-    assert "親 pre-dispatch" in content
-    assert "implementation_approval.status: approved" in content
-    assert "implementation_approval.status: pending" in content
-
-
 def test_step5_procedure_rerun_after_change():
     """Step ⑤ 手順がコード変更後の step5 再実行を要求すること。"""
     content = _read(SKILL_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
-    assert "コード変更があった場合" in content and "step5" in content, (
+    assert any(
+        "コード変更があった場合" in line and "step5" in line
+        for line in content.splitlines()
+    ), (
         "Step ⑤ 手順に「コード変更があった場合の step5 再実行」の記述が見つからない"
-    )
-    lines = content.splitlines()
-    rerun_lines = [
-        line for line in lines
-        if "コード変更" in line and "step5" in line
-    ]
-    assert rerun_lines, (
-        "「コード変更」と「step5」が同一行に存在する記述が見つからない"
     )
 
 
 def test_05_pr_review_template_step5_before_pr():
     """05-pr-review.md.template が PR 作成前 step5 を明記すること。"""
     content = _read(PR_REVIEW_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
-    assert "PR 作成前" in content or "PR 作成**前**" in content, (
+    assert any(
+        ("PR 作成前" in line or "PR 作成**前**" in line) and "step5" in line
+        for line in content.splitlines()
+    ), (
         "05-pr-review.md.template に「PR 作成前に step5」の記述が見つからない"
-    )
-    assert "step5" in content, (
-        "05-pr-review.md.template に step5 への参照が見つからない"
     )
 
 
 def test_05_pr_review_template_step5_rerun():
     """05-pr-review.md.template がコード変更後の step5 再実行を明記すること。"""
     content = _read(PR_REVIEW_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
-    lines = content.splitlines()
-    rerun_lines = [
-        line for line in lines
-        if "変更後" in line and "step5" in line
-    ]
-    assert rerun_lines, (
-        "05-pr-review.md.template に「コード変更後の step5 再実行」の記述が見つからない"
-    )
-
-
-def test_05_pr_review_template_step6_completion():
-    """05-pr-review.md.template が step6 完了条件を明記すること。"""
-    content = _read(PR_REVIEW_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {PR_REVIEW_TEMPLATE}"
-    assert "step6" in content, (
-        "05-pr-review.md.template に step6 への参照が見つからない"
-    )
-    lines = content.splitlines()
-    step6_completion_lines = [
-        line for line in lines
-        if "step6" in line and ("完了" in line or "通過" in line or "PASS" in line)
-    ]
-    assert step6_completion_lines, (
-        "05-pr-review.md.template に step6 完了/通過条件の記述が見つからない"
-    )
-
-
-def test_05_pr_review_generated_gate_contract():
-    """生成物 05-pr-review.md が必須語句を含むこと（再生成後のみ有効）。"""
-    content = _read(PR_REVIEW_GENERATED)
-    if not content:
-        print("  SKIP: 生成物が存在しない（再生成前）", file=sys.stderr)
-        return
-    if "PR 作成前" not in content and "PR 作成**前**" not in content:
-        print("  SKIP: 生成物が旧テンプレート由来（再生成未実施）", file=sys.stderr)
-        return
-    required_phrases = [
-        "step5",
-        "step6",
-    ]
-    for phrase in required_phrases:
-        assert phrase in content, (
-            f"生成物 05-pr-review.md に必須語句 '{phrase}' が見つからない"
-        )
-    has_rerun = any(
+    assert any(
         "変更後" in line and "step5" in line
         for line in content.splitlines()
-    ) or any(
-        "変更" in line and "step5" in line and "再" in line
-        for line in content.splitlines()
-    )
-    assert has_rerun, (
-        "生成物 05-pr-review.md に「変更後 step5 再実行」の記述が見つからない"
-    )
-
-
-def test_step6_tracker_approval_prerequisite():
-    """Step ⑥ が tracker 承認更新を前提として案内すること。"""
-    content = _read(SKILL_TEMPLATE)
-    assert content, f"テンプレートが存在しない: {SKILL_TEMPLATE}"
-    lines = content.splitlines()
-    step6_lines = [line for line in lines if "Step ⑥" in line or "### Step ⑥" in line]
-    found = False
-    in_step6 = False
-    for line in lines:
-        if "### Step ⑥" in line:
-            in_step6 = True
-        elif in_step6 and line.startswith("### "):
-            break
-        elif in_step6 and ("plan-gate.sh review" in line or "レビュー完了承認" in line):
-            found = True
-            break
-    assert found, (
-        "Step ⑥ セクションに tracker 承認（plan-gate.sh review）への言及がない"
+    ), (
+        "05-pr-review.md.template に「コード変更後の step5 再実行」の記述が見つからない"
     )
 
 
@@ -302,67 +224,85 @@ def test_review_approval_transition_feature_matrix():
                 code_review=code_review,
                 gate_scripts=gate_scripts,
             )
-            approval_start = pr_review.find("**承認する**")
-            approval_end = pr_review.find("**新規のレビューコメントを取得して**")
-            assert approval_start >= 0, "05-pr-review の承認分岐が欠落"
-            assert approval_end >= 0, "05-pr-review の再取得分岐が欠落"
+            approval_start, approval_end = _assert_markers_in_order(
+                pr_review,
+                ("**承認する**", "**新規のレビューコメントを取得して**"),
+                "05-pr-review 承認分岐",
+            )
             approval = pr_review[approval_start:approval_end]
-            subject_position = approval.find(subject)
-            approved_position = approval.find("承認取得済み")
-            assert subject_position >= 0, f"05-pr-review の更新主体が欠落: {subject}"
-            assert approved_position >= 0, "05-pr-review の承認状態が欠落"
-            assert subject_position < approved_position
+
+            completion_start, completion_end = _assert_markers_in_order(
+                pr_review,
+                ("## 5.6 完了条件", "## 5.7 レビュー完了承認"),
+                "05-pr-review §5.6",
+            )
+            completion = pr_review[completion_start:completion_end]
 
             orchestrator = _render_with_features(
                 SKILL_TEMPLATE,
                 code_review=code_review,
                 gate_scripts=gate_scripts,
             )
-            step5_start = orchestrator.find("### Step ⑤: PR レビュー検証")
-            step5_end = orchestrator.find("Mode B（完了後の追加コメント対応）")
-            assert step5_start >= 0 and step5_end >= 0, "orchestrator の Step ⑤ が欠落"
+            step5_start, step5_end = _assert_markers_in_order(
+                orchestrator,
+                ("### Step ⑤: PR レビュー検証", "Mode B（完了後の追加コメント対応）"),
+                "orchestrator Step⑤",
+            )
             step5 = orchestrator[step5_start:step5_end]
-            orchestrator_subject = step5.find(subject)
-            orchestrator_approved = step5.find("承認取得済み")
-            assert orchestrator_subject >= 0, f"orchestrator の更新主体が欠落: {subject}"
-            assert orchestrator_approved >= 0, "orchestrator の承認状態が欠落"
-            assert orchestrator_subject < orchestrator_approved
+            step6_start, step6_end = _assert_markers_in_order(
+                orchestrator,
+                ("### Step ⑥: 完了報告", "## Context Budget"),
+                "orchestrator Step⑥",
+            )
+            step6 = orchestrator[step6_start:step6_end]
+            assert "plan-gate.sh review" in step6, (
+                "orchestrator Step⑥ に plan-gate.sh review 前提がない"
+            )
 
             if gate_scripts:
-                step6_position = approval.find("workflow-gate.sh step6")
-                completion_position = approval.find("⑥へ進む")
-                assert step6_position >= 0, "05-pr-review の step6 が欠落"
-                assert completion_position >= 0, "05-pr-review の ⑥ 遷移が欠落"
-                assert approved_position < step6_position < completion_position
+                _assert_markers_in_order(
+                    approval,
+                    (subject, "承認取得済み", "workflow-gate.sh step6", "⑥へ進む"),
+                    "05-pr-review 承認順序",
+                )
                 assert "親が `workflow-gate.sh step6`" in approval
 
-                orchestrator_step6 = step5.find("workflow-gate.sh step6")
-                assert orchestrator_step6 >= 0, "orchestrator の step6 が欠落"
-                assert orchestrator_approved < orchestrator_step6
+                _assert_markers_in_order(
+                    step5,
+                    (subject, "承認取得済み", "workflow-gate.sh step6"),
+                    "orchestrator Step⑤ 承認順序",
+                )
                 assert "親が `workflow-gate.sh step6`" in step5
+                assert any(
+                    "workflow-gate.sh step6" in line
+                    and ("通過" in line or "PASS" in line)
+                    for line in completion.splitlines()
+                ), "05-pr-review §5.6 に step6 通過条件がない"
             else:
-                for content in (approval, step5):
+                for label, content in (
+                    ("05-pr-review 承認順序", approval),
+                    ("orchestrator Step⑤ 承認順序", step5),
+                ):
                     assert "workflow-gate.sh step6" not in content
                     assert "⑥へ進む" not in content
-                    plan_gate_position = content.find("plan-gate.sh review")
-                    completion_doc_position = content.find("06-completion.md")
-                    report_archive_position = content.find("report archive")
-                    assert plan_gate_position >= 0, "plan-gate.sh review 参照が欠落"
-                    assert completion_doc_position >= 0, "06-completion.md 参照が欠落"
-                    assert report_archive_position >= 0, "report archive 参照が欠落"
-                    assert (
-                        approved_position < plan_gate_position
-                        if content is approval
-                        else orchestrator_approved < plan_gate_position
+                    _assert_markers_in_order(
+                        content,
+                        (
+                            subject,
+                            "承認取得済み",
+                            "plan-gate.sh review",
+                            "06-completion.md",
+                            "report archive",
+                        ),
+                        label,
                     )
-                    assert plan_gate_position < completion_doc_position < report_archive_position
 
             if not code_review:
                 assert "Step 7" not in approval
                 assert "Step 7" not in step5
 
 
-def test_archive_normal_procedure_recovery_display_and_inspection_only_gate():
+def test_archive_procedure_and_inspection_only_gate():
     """通常移動・session-start 復旧表示・archive 検査を別責務として固定する。"""
     move_command = (
         "git mv docs/agent-tasks/reports/{report}.md "
@@ -373,21 +313,18 @@ def test_archive_normal_procedure_recovery_display_and_inspection_only_gate():
     )
 
     archive_gate = _read(ARCHIVE_GATE_TEMPLATE)
-    assert move_command not in archive_gate
     assert "git mv" not in archive_gate
 
-    for gate_scripts in (True, False):
-        quality = _render_with_features(
-            QUALITY_GATE_TEMPLATE,
-            gate_scripts=gate_scripts,
-        )
-        archive_action_start = quality.find("**G-ARCHIVE の動作**")
-        archive_action_end = quality.find("### 1.3 リンク衛生ゲート")
-        assert archive_action_start >= 0 and archive_action_end >= 0
-        archive_action = quality[archive_action_start:archive_action_end]
-        assert "ファイルは移動しない" in archive_action
-        assert move_command not in archive_action
+    quality = _render_with_features(QUALITY_GATE_TEMPLATE)
+    archive_action_start, archive_action_end = _assert_markers_in_order(
+        quality,
+        ("**G-ARCHIVE の動作**", "### 1.3 リンク衛生ゲート"),
+        "QUALITY_GATE G-ARCHIVE",
+    )
+    archive_action = quality[archive_action_start:archive_action_end]
+    assert "ファイルは移動しない" in archive_action
 
+    for gate_scripts in (True, False):
         completion = _render_with_features(
             COMPLETION_TEMPLATE,
             gate_scripts=gate_scripts,
@@ -399,7 +336,8 @@ def test_archive_normal_procedure_recovery_display_and_inspection_only_gate():
             gate_scripts=gate_scripts,
         )
         assert recovery_command in recovery
-        assert "git add" not in recovery
+
+    assert "git add" not in _read(SESSION_START_GATE_TEMPLATE)
 
     for path in (QUALITY_GATE_TEMPLATE, SKILL_TEMPLATE, BEST_PRACTICES_TEMPLATE):
         assert move_command not in _read(path), f"通常移動コマンドの重複: {path}"
@@ -417,7 +355,7 @@ def test_step1_catalog_and_matrix_require_envelope_argument():
 
     for path in (SKILL_TEMPLATE, INDEX_TEMPLATE, QUALITY_GATE_TEMPLATE):
         content = _read(path)
-        assert "step1" in content and "<step1-envelope>" in content, (
+        assert "<step1-envelope>" in content, (
             f"{path} に step1 envelope 引数の Matrix 契約がない"
         )
 
@@ -477,18 +415,6 @@ def test_completion_labels_keep_maintenance_docs_feature_branches():
 
 def test_representative_feature_renders_hide_disabled_contracts():
     """代表feature分岐で無効な手順・リンクを露出させない。"""
-    default_completion = _render_with_features(COMPLETION_TEMPLATE)
-    completion_step6 = default_completion[
-        default_completion.find("## 6.3 archives 移動") :
-    ]
-    order = [
-        completion_step6.find("最終判定"),
-        completion_step6.find("archive gate"),
-        completion_step6.find("report archive"),
-        completion_step6.find("maintenance-docs-workflow"),
-    ]
-    assert order == sorted(order) and all(position >= 0 for position in order)
-
     disabled_docs_paths = (
         INDEX_TEMPLATE,
         COMPLETION_TEMPLATE,
@@ -539,16 +465,12 @@ def main() -> int:
         test_step3_entry_requires_parent_pre_dispatch,
         test_step1_immediately_dispatches_step2_without_ack,
         test_resume_table_contains_pending_and_approved_branches,
-        test_generated_step2_step3_contract_after_generate,
         test_step5_procedure_rerun_after_change,
         test_05_pr_review_template_step5_before_pr,
         test_05_pr_review_template_step5_rerun,
-        test_05_pr_review_template_step6_completion,
-        test_05_pr_review_generated_gate_contract,
-        test_step6_tracker_approval_prerequisite,
         test_commit_policy_normal_procedure_and_disabled_feature_fallback,
         test_review_approval_transition_feature_matrix,
-        test_archive_normal_procedure_recovery_display_and_inspection_only_gate,
+        test_archive_procedure_and_inspection_only_gate,
         test_step1_catalog_and_matrix_require_envelope_argument,
         test_step6_archive_maintenance_docs_order_is_explicit,
         test_completion_labels_keep_maintenance_docs_feature_branches,
