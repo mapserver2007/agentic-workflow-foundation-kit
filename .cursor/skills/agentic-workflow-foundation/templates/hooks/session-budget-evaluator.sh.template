@@ -215,37 +215,15 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
     MSG="[CONTEXT_BUDGET=RED] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）— 強制ハンドオフ発火。
 
 AI への指示:
-1. コンパクションにより会話コンテキストが要約されました。
-   序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（${TRACKER_FILE}）を Read し、現在のフェーズ・制約を再確認せよ。
-3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
-   未反映の判断があれば追記せよ。
-4. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
-   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
-   ## ポインタ（追跡ドキュメントの現在位置）
-   ## 直近のユーザー依頼
-   ## セッション判断ログ
-   ### 採用した判断と根拠
-   ### 却下した案と却下理由
-   ## 制約・ブロッカー・未完了の検証
-   ## 次セッションの推奨アクション
-   ## 復旧メモ
-5. 書き出し後、Read で manifest を読み返し上記見出しが全て存在することを確認せよ。
-6. ユーザーに「コンパクションが発生しました（使用率 ${COMPACT_PCT}%）。Red しきい値に到達したため、新規チャット (Cmd+N) を開いて会話を継続してください。」と短く伝える。
-7. 新規実装の受理は停止し、次セッションに委譲する。"
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。
+3. 新規実装を停止し、新規チャットへ移るようユーザーに短く伝える。"
   else
     MSG="[CONTEXT_BUDGET=YELLOW] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）。
 
 AI への指示:
-1. コンパクションにより会話コンテキストが要約されました。
-   序盤の制約・判断が失われている可能性があります。
-2. 追跡ドキュメント（${TRACKER_FILE}）を Read し、現在のフェーズ・制約を再確認せよ。
-3. 追跡ドキュメントの「セッション判断ログ」が最新であることを確認し、
-   未反映の判断があれば追記せよ。
-4. .cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す準備をする。
-   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
-5. ユーザーに「コンパクションが発生しました（使用率 ${COMPACT_PCT}%）。区切りの良いタイミングで
-   新規チャット (Cmd+N) を開くことをお勧めします。」と短く伝える。"
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。"
   fi
 
   jq -n --arg m "$MSG" '{ followup_message: $m }'
@@ -294,31 +272,15 @@ if [[ "$LEVEL" == "red" ]]; then
   MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（${TRACKER_FILE}）の「次セッションTODO」「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。
-2. .cursor/.session/handoff-\${SESSION_ID}.md に以下の見出し順で manifest を書き出す:
-   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` を先頭に保持する
-   ## ポインタ（追跡ドキュメントの現在位置）
-   ## 直近のユーザー依頼
-   ## セッション判断ログ
-   ### 採用した判断と根拠
-   ### 却下した案と却下理由
-   ## 制約・ブロッカー・未完了の検証
-   ## 次セッションの推奨アクション
-   ## 復旧メモ
-3. 書き出し後、Read で manifest を読み返し上記見出しが全て存在することを確認せよ。欠落があれば追記してから完了とする。
-4. manifest には追跡ドキュメントと重複する詳細を書かない。ポインタ（ファイルパス + フェーズ名）で参照し、揮発情報（追跡ドキュメント未反映の判断・直近の依頼）のみ記載する。
-5. ユーザーへの応答は次の趣旨だけ短く伝える: 「Red しきい値に到達しました。新規チャット (Cmd+N) を開いて会話を継続してください。前回の作業状態は自動的に引き継がれます。」
-6. 新規実装の受理は停止し、次セッションに委譲する。"
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。
+3. 新規実装を停止し、新規チャットへ移るようユーザーに短く伝える。"
 else
   MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
 
 AI への指示:
-1. 追跡ドキュメント（${TRACKER_FILE}）の「セッション判断ログ」を最新化する（追跡ドキュメントが SoT）。CHECKPOINT で既に書き出した判断ログがあればそれを確認・補完するだけでよい。
-2. 追跡ドキュメントの「次セッションTODO」を最新化する。
-3. 1-2 ターン以内に作業を区切り、.cursor/.session/handoff-\${SESSION_ID}.md に manifest を書き出す。manifest には追跡ドキュメントと重複する詳細を書かない。ポインタで参照し、追跡ドキュメント未反映の揮発情報のみ追記する。
-   \`campaign_id: ${CAMPAIGN_ID}\` と \`tracker_path: ${TRACKER_FILE}\` は変更しない。
-4. ユーザーへの応答は次の趣旨だけ短く伝える: 「セッションが長くなってきました。区切りの良いタイミングで新規チャット (Cmd+N) を開いて作業を継続することをお勧めします。」
-5. Red 到達時は強制ハンドオフが発火する。"
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。"
 fi
 
 jq -n --arg m "$MSG" '{ followup_message: $m }'

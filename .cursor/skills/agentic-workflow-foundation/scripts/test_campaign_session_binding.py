@@ -128,14 +128,14 @@ def test_runtime_mint_bind_and_tracker_lookup() -> None:
         evaluator_output = run_hook(evaluator, root, "S1", {})
         assert "followup_message" in evaluator_output, "Red followup が発火しない"
         followup = evaluator_output["followup_message"]
-        assert "`campaign_id: S1`" in followup, "followup の campaign_id がコマンド置換で失われた"
+        assert "[CONTEXT_BUDGET=RED]" in followup, "followup の Red レベルがない"
+        assert ".cursor/.session/handoff-S1.md" in followup, "followup の handoff パスが不正"
         expected_tracker_path = str(tracking_dir / "tracker-S1.md")
-        assert f"`tracker_path: {expected_tracker_path}`" in followup, "followup の tracker_path が不正"
         handoff_s1 = session_dir / "handoff-S1.md"
         assert handoff_s1.is_file(), "Red が handoff manifest を作成しない"
         handoff_text = handoff_s1.read_text(encoding="utf-8")
         assert "campaign_id: S1" in handoff_text, "handoff に campaign_id が転記されない"
-        assert "tracker_path:" in handoff_text, "handoff に tracker_path が転記されない"
+        assert f"tracker_path: {expected_tracker_path}" in handoff_text, "handoff の tracker_path が不正"
 
         (tracking_dir / "tracker-S1.md").write_text(
             "# campaign S1\n## 完了チェック\n- [ ] keep\n",
