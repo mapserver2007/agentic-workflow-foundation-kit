@@ -66,7 +66,7 @@ Gate B 通過後、分析深度判定 Subagent（`config.yaml > models.depth_tri
 {{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は Investigation Memo に `[cross-repo]` 行として 1 行追記する
 {{/if}}
 
-**重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
+**重要**: `AGENTS.md > Boundaries` に従い、関連コード、処理フロー、データモデル・スキーマ、直接の呼び出し元と呼び出し先、関連テスト、設定、永続化形式、公開シグネチャと境界、同種の既存実装、該当する契約の定義のうち、存在・該当するものを確認する。編集対象ファイルが特定できた時点で、そのファイルを全文読む。
 
 ## 1.7 実現可能性チェック（Gate C）
 
@@ -183,7 +183,7 @@ docs-first 完了後、[`references/workflow-triage.md`](../../../.cursor/skills
 {{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（②）に `[cross-repo]` 行として 1 行追記する
 {{/if}}
 
-**重要**: `AGENTS.md > Boundaries` に従い、関連ファイルは**全体を読み込む**（部分読み込みは禁止）。
+**重要**: `AGENTS.md > Boundaries` に従い、関連コード、処理フロー、データモデル・スキーマ、直接の呼び出し元と呼び出し先、関連テスト、設定、永続化形式、公開シグネチャと境界、同種の既存実装、該当する契約の定義のうち、存在・該当するものを確認する。編集対象ファイルが特定できた時点で、そのファイルを全文読む。
 
 ## 1.{{#if deep_thinking.enabled}}5{{else}}4{{/if}} 根本原因・実装方針の特定
 
