@@ -16,15 +16,15 @@
 | 情報ナビゲーション | 単一の `## 目次`、実本文へ対応する §1〜§24 リンク、単独行 `---` の境界 |
 | Part / 節の構造 | `PART_SECTIONS`、欠落・重複・順序・所属、Part role labels |
 | Appendix・証跡台帳を持たない | `## Appendix` / `### Appendix` 見出し、目次の Appendix リンク、`[E<n>]` 参照のいずれかがあれば FAIL |
-| 各節の根拠 | 空本文でないこと、節内に `evidence:` / `[要確認]:` / `該当なし:` のいずれか、placeholder の拒否 |
-| 本文品質の床（B 水準） | `document_quality.py`: 節ごとの分量・evidence 数・構造要素（表・図・ツリー・フロー・小見出し）、`[要確認]`（§24 を除く）/ `該当なし` の上限、§9 の行数、evidence の総数と種類 |
+| 各節の本文 | 空本文でないこと。`[要確認]:` / `該当なし:` を置くとき placeholder を拒否。`evidence:` があれば FAIL |
+| 本文品質の床（B 水準） | `document_quality.py`: 節ごとの分量・構造要素（表・図・ツリー・フロー・小見出し）、`[要確認]`（§24 を除く）/ `該当なし` の上限、§9 の行数 |
 | 全量読解の到達 | `調査範囲:` 行が survey の再計算値と逐語一致、全 shard note の完全性（`survey_repository.py check`） |
 | fenced code / HTML comment の除外 | `_mask_markdown`。ただし§9はingest互換のraw line検査 |
 | §9入力互換 | `_validate_section9` |
-| evidence字句・実在性・安全性 | `EVIDENCE_TOKEN_RE`、`lstat`、全量 `git ls-files -z` set、除外リスト、品質検査での `#L` 行範囲の実在 |
+| `evidence:` を書かない | 設計書の raw 行に `evidence:` があれば FAIL。パス実在や行範囲は検査しない |
 | 来歴・非混入 | `inspect_repository` 再実行、`_validate_provenance`、`_validate_non_inclusion` |
 
-`--structure-only` は本文品質・調査範囲を検査しない旧契約（構造・来歴・証跡の存在だけ）で、**publish には使えない**。
+`--structure-only` は本文品質・調査範囲を検査しない旧契約（構造・来歴だけ）で、**publish には使えない**。`evidence:` の拒否は構造検査に含まれる。
 
 ## stack slug 契約
 
@@ -56,7 +56,7 @@ Part 見出しには括弧で上表の role label（`なぜ` / `何を` / `具�
 
 目次→Part 1、Part間、同一Part内の後続節の各境界には、後続見出しの直前に単独行 `---` を置く（MUST）。Part見出し直後の先頭節には余分な separator を置かない。§9表の直後の `---` は §10 への境界であり、§9本文には含めない。
 
-導入部（`#` タイトルと目次の間）には、対象・読み方（`§N` と `evidence:` の意味）・位置づけ（reverse-draft であり SoT ではない）と、survey が出力した **`調査範囲:` 行を逐語で**置く（MUST）。
+導入部（`#` タイトルと目次の間）には、対象・読み方（`§N` の意味）・位置づけ（reverse-draft であり SoT ではない）と、survey が出力した **`調査範囲:` 行を逐語で**置く（MUST）。`evidence:` の説明は置かない。
 
 各 § は番号と Part 所属で次の役割に対応する。validator はこの対応と構造を検査するが、本文が役割を意味的に充足することは保証しない。
 
@@ -70,25 +70,23 @@ Part 見出しには括弧で上表の role label（`なぜ` / `何を` / `具�
 
 ## 各節の根拠と宣言
 
-各§の本文には、次のいずれか1つ以上を置く（MUST）。品質の床（`quality-bar.md` §4）は別に検査される。
+各§の本文は空にしない（MUST）。品質の床（`quality-bar.md` §4）は別に検査される。`evidence:` は置かない（MUST。置くと FAIL）。
 
-- 観測できる事実: `evidence: path/to/file#L1-L10`。主張を書いた文の末尾か表のセルに添える。`evidence:` だけの行は §9 を除いて置かない（品質の床）
-- 実装だけでは判断できない: `[要確認]: 判断に必要な情報と未確定理由`（§24 を除き 1 節 2 件まで、§24 を除く本文合計の上限あり）
+- 観測できる事実は、開いたファイルの内容を観測文として書く。ファイル名を文中に挙げてよい。根拠トークンは付けない。
+- 実装だけでは判断できず、かつ [`confirmation-scope.md`](confirmation-scope.md) に残るもの: `[要確認]: 判断に必要な情報と、止まる Step`（§24 を除き 1 節 2 件まで、§24 を除く本文合計の上限あり）。除外対象はトークンを置かない
 - 該当実装がない: `該当なし: 探した対象と、存在しないと判断した根拠`（20 文字以上、4 節まで）
 
-理由を空にしたり、`<理由>`、`TODO`、`TBD`、`...` だけにしたりしない（MUST）。fenced code block と HTML comment 内は見出し・宣言・evidence として数えない（MUST）。§9だけは foundation ingest との互換のため raw line 規則も適用する。
+理由を空にしたり、`<理由>`、`TODO`、`TBD`、`...` だけにしたりしない（MUST）。fenced code block と HTML comment 内は見出し・宣言として数えない（MUST）。`evidence:` は fenced code と HTML comment の中でも raw 行として拒否する。§9だけは foundation ingest との互換のため raw line 規則も適用する。
 
 ### 未確定事項の集約先
 
-実装だけでは確定できない事項のうち、節ごとの `[要確認]` の上限に収まらないものは §24 に集約する。§24 の `[要確認]` は件数の上限に数えない。優先度の高い順（設計書の正確性に関わるもの、早期に決める不整合、中長期の順）に並べる（SHOULD。validator は検査しない）。
+[`confirmation-scope.md`](confirmation-scope.md) に残る未確定のうち、節ごとの `[要確認]` の上限に収まらないものは §24 に集約する。除外した未確定は §24 に置かない。§24 の `[要確認]` は件数の上限に数えない。優先度の高い順（手順が止まるもの、早期に決める不整合、中長期の順）に並べる（SHOULD。validator は採否を検査しない）。
 
-## evidence 契約
+## 根拠トークンを書かない契約
 
-書式は `evidence: <相対パス>[#L<開始>[-L<終了>]]`。1件ごとに `evidence:` を繰り返す（MUST）。全体をバッククォートで囲める。token終端は空白、バッククォート、`;`、`,`、`|`、`)`。空白や区切り文字を含むpathはv1では表現できないため `[要確認]` とする。
+設計書の raw 行に `evidence:` を置かない（MUST）。§9 の備考セルは `ingest_tech_stack.py` が `tech_stack.items.note` へそのまま写す。根拠リンクは kit の入力ではない。
 
-evidence は source root 内の tracked な通常ファイルで、経路上を含めsymlinkでなく、`references/evidence-signals.md` の除外対象でないこと（MUST）。品質検査（既定）では `#L` の **行範囲が実ファイルの範囲内**であることも検査する（`--syntax-only` / `--structure-only` では書式のみ）。
-
-validator が検査するのは、パスの実在・安全性と行範囲の実在までである。**引用した行の内容が主張を裏付けるか**は検査しない（ユーザーレビューで確認する）。主張に使う数値・version・名前・環境変数名・ポート・テーブル名は、書く前に対象行を開いて確かめる（SHOULD）。
+主張に使う数値・version・名前・環境変数名・ポート・テーブル名は、書く前に対象行を開いて確かめる（SHOULD）。確かめた結果は観測文にし、行番号トークンは残さない。
 
 ## §9 契約
 
@@ -96,7 +94,7 @@ validator が検査するのは、パスの実在・安全性と行範囲の実�
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |
-| 対象内の役割 | 観測した技術名 | 宣言: 明示constraint | 観測: 値; evidence: path/to/file#L1 |
+| 対象内の役割 | 観測した技術名 | 宣言: 明示constraint | 観測: 値 |
 
 - データ行を1件以上置く（品質検査では standard で 12 行以上）。1・2列目は非空、1列目に `レイヤ` を含めない（MUST）。
 - 方針列は `宣言: <値>`、`[要確認]`、`—` のいずれか。`観測` は方針列に置かない（MUST）。
@@ -105,7 +103,7 @@ validator が検査するのは、パスの実在・安全性と行範囲の実�
 - 文書中の fenced code 内に番号付き `### 9.` 等を置かない（MUST）。
 - §9の問いはblockquoteにしない。`>` 行を使うなら、foundationの `tech_stack.note` に取り込まれてよい観測事実を1行だけ書く（SHOULD）。
 - 明示constraint / channel / pinだけを `宣言:` とし、lockfileの解決値は備考へ `観測:` として書く（SHOULD）。
-- 備考の根拠は `evidence: path#L` で示す（SHOULD）。
+- 備考に `evidence:` を書かない（MUST）。観測の短文だけにする。
 
 validator が保証するのは構文と `ingest_tech_stack.py` への入力互換だけである。分類・系列一般化・証跡の十分性など意味の正しさはユーザーがレビューする。
 
@@ -128,7 +126,7 @@ stack_slug: "runtime-framework-storage"
 
 * 対象: <この実装が何をするシステムか 1 行>
 * スコープ: <設計書が扱う範囲>
-* 読み方: `§N` は本書の節、`evidence: path#L行` は根拠にしたファイルと行を指す
+* 読み方: `§N` は本書の節である。根拠トークンは置かない
 * 位置づけ: reverse-draft。仕様の SoT ではなく、ユーザーレビュー前の下書きである
 
 調査範囲: tracked=0; skipped=0; generated=0; read=0 (full=0, card=0); shards=0; revision=0000000
@@ -224,7 +222,7 @@ stack_slug: "runtime-framework-storage"
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |
-| 役割 | 技術名 | 宣言: 値 | 観測: 根拠; evidence: path/to/file#L1 |
+| 役割 | 技術名 | 宣言: 値 | 観測: 値 |
 
 ---
 
@@ -307,5 +305,5 @@ stack_slug: "runtime-framework-storage"
 ## Part 5: 意思決定編（意思決定）
 
 ### 24. 結論
-<!-- 要約の図 + 判断。実装だけでは確定できないこと（未確定事項）を優先度の高い順にここへ集約する。ここでの [要確認] は件数上限に数えない -->
+<!-- 要約の図 + 判断。confirmation-scope に残る未確定だけを、止まる Step 付きで優先度の高い順に集約する。デプロイと CI の成否は置かない。ここでの [要確認] は件数上限に数えない -->
 ~~~

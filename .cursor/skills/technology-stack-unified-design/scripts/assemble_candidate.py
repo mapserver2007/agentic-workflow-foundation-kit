@@ -5,7 +5,7 @@
   00-*.md   導入部。`# タイトル` と導入の箇条書き。調査範囲行は `{{COVERAGE}}` と書く（survey check の値で置換する）
   以降      `## Part N: ...` / `### N. ...` を含む本文。境界の `---` は部品側に書く。Appendix は置かない
 frontmatter・調査範囲行・`## 目次`（番号付きリンク）はこのスクリプトが自動生成する。
-根拠は本文中の `evidence: path#L行` で示す（証跡台帳 `[E<n>]` は持たない）。
+設計書に `evidence:` トークンは書かない（証跡台帳 `[E<n>]` も持たない）。
 """
 from __future__ import annotations
 

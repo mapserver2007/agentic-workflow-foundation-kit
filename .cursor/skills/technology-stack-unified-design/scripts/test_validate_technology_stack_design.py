@@ -105,7 +105,7 @@ def make_document(
                                 "観測された技術を列挙する。",
                                 "| レイヤ | 技術 | バージョン方針 | 備考 |",
                                 "| --- | --- | --- | --- |",
-                                "| Runtime | UnknownTech | [要確認] | evidence: tracked.txt |",
+                                "| Runtime | UnknownTech | [要確認] | 観測: fixture |",
                             ]
                         )
                     ).splitlines()
@@ -157,7 +157,7 @@ class StructureAndDeclarationTests(FixtureCase):
         result = self.validate()
         self.assertEqual(result.frontmatter.source_repository, self.source_repository)
         self.assertEqual(result.frontmatter.stack_slug, "runtime-unknowntech")
-        self.assertEqual(result.evidence_count, 1)
+        self.assertEqual(result.evidence_count, 0)
 
     def test_navigation_metadata_roles_responsibilities_and_separators_are_required(self) -> None:
         original = self.candidate.read_text(encoding="utf-8")
@@ -223,7 +223,7 @@ class StructureAndDeclarationTests(FixtureCase):
 
     def test_declaration_forms_and_placeholders(self) -> None:
         accepted = (
-            "evidence: tracked.txt",
+            "説明だけ",
             "[要確認]: 実装から意図を確定できない",
             "該当なし: CI設定を探索したが存在しない",
         )
@@ -231,7 +231,7 @@ class StructureAndDeclarationTests(FixtureCase):
             with self.subTest(declaration=declaration):
                 self.write_document(make_document(self.inspection, declarations={1: declaration}))
                 self.validate()
-        rejected = ("", "説明だけ", "[要確認]:", "[要確認]: TODO", "該当なし: <根拠>", "該当なし: ...")
+        rejected = ("", "[要確認]:", "[要確認]: TODO", "該当なし: <根拠>", "該当なし: ...")
         for declaration in rejected:
             with self.subTest(declaration=declaration):
                 text = make_document(self.inspection, declarations={1: declaration})
@@ -239,16 +239,18 @@ class StructureAndDeclarationTests(FixtureCase):
 
     def test_fenced_and_html_comment_declarations_are_ignored(self) -> None:
         declarations = {
-            1: "```\nevidence: tracked.txt\n```\n説明だけ",
+            1: "```\n根拠トークンではない\n```\n説明だけ",
             2: "<!-- [要確認]: コメントだけ -->\n説明だけ",
         }
-        self.assert_invalid(make_document(self.inspection, declarations=declarations))
+        self.write_document(make_document(self.inspection, declarations=declarations))
+        self.validate()
+        self.assert_invalid(make_document(self.inspection, declarations={1: "```\nevidence: tracked.txt\n```\n説明だけ"}))
 
     def test_fence_closes_only_with_plain_same_marker(self) -> None:
         declaration = (
             "```\n"
             "```not-a-close\n"
-            "evidence: missing.txt\n"
+            "fence の内側\n"
             "```\n"
             "[要確認]: 正しい終端後の宣言"
         )
@@ -264,7 +266,7 @@ class Section9CompatibilityTests(FixtureCase):
         base = [
             "| レイヤ | 技術 | バージョン方針 | 備考 |",
             "| --- | --- | --- | --- |",
-            "| Runtime | Mystery | — | evidence: tracked.txt |",
+            "| Runtime | Mystery | — | 観測: fixture |",
         ]
         for notes in ([], ["> 観測できた事実"]):
             self.write_document(make_document(self.inspection, section9_body="\n".join(notes + base)))
@@ -278,7 +280,7 @@ class Section9CompatibilityTests(FixtureCase):
                     [
                         "| レイヤ | 技術 | バージョン方針 | 備考 |",
                         "| --- | --- | --- | --- |",
-                        "| Runtime | Mystery | — | evidence: tracked.txt |",
+                        "| Runtime | Mystery | — | 観測: fixture |",
                     ]
                 ),
             )
@@ -317,7 +319,7 @@ class EvidenceContractTests(FixtureCase):
         return make_document(self.inspection, declarations={1: declaration})
 
     def test_token_terminators_and_fragments(self) -> None:
-        accepted = (
+        rejected = (
             "evidence: tracked.txt 説明",
             "evidence: tracked.txt; 説明",
             "evidence: tracked.txt, 説明",
@@ -326,12 +328,6 @@ class EvidenceContractTests(FixtureCase):
             "evidence: `tracked.txt` 説明",
             "evidence: tracked.txt#L1",
             "evidence: tracked.txt#L1-L99",
-        )
-        for declaration in accepted:
-            with self.subTest(declaration=declaration):
-                self.write_document(self.document_with_section1(declaration))
-                self.validate()
-        rejected = (
             "evidence: tracked.txt#anchor",
             "evidence: tracked.txt#Lx",
             "evidence: `tracked.txt",
@@ -349,8 +345,7 @@ class EvidenceContractTests(FixtureCase):
         self.inspection = inspect_mod.inspect_repository(os.fspath(self.repo))
         for name in ("*", "証跡.txt"):
             with self.subTest(name=name):
-                self.write_document(self.document_with_section1(f"evidence: `{name}`"))
-                self.validate()
+                self.assert_invalid(self.document_with_section1(f"evidence: `{name}`"))
         # `)` は v1 token の終端なので文書には書けないが、tracked 判定自体が
         # pathspec を渡さない完全一致 set であることは内部契約を直接固定する。
         tracked = validate_mod._tracked_files(self.repo)
@@ -793,7 +788,7 @@ class PublishTests(FixtureCase):
             "```\n宣言: 無効\n[要確認]\n該当なし: 無効\nevidence: ignored.txt\n```\n"
             "<!-- 宣言: 無効 [要確認] 該当なし: 無効 evidence: ignored.txt -->\n"
         )
-        self.assertEqual(publish_mod.review_counts(text), (2, 24, 0, 1))
+        self.assertEqual(publish_mod.review_counts(text), (2, 24, 0, 0))
 
 
 class RuntimeContractTests(unittest.TestCase):

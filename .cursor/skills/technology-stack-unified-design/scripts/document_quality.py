@@ -2,8 +2,7 @@
 """統一設計書の本文品質（B 水準）を機械検査する。validate_design_doc.py から呼ばれる。
 
 検査するのは「構造的な品質の床」であり、記述の意味的な正しさは保証しない。
-ただし evidence の行範囲は対象 worktree の実ファイルに実在することを検査する（存在しない行の引用を防ぐ）。
-引用文が主張を裏付けるか、行の内容が主張と一致するかは検査しない。
+設計書に evidence: トークンは置かない。数値と名前の裏取りは書く前の調査で行い、本文へは転記しない。
 """
 from __future__ import annotations
 
@@ -40,8 +39,8 @@ class Profile:
     min_section9_rows: int
 
 
-STANDARD = Profile("standard", 1.0, 18000, 40, 25, 99, True, 4, 14, 12)
-COMPACT = Profile("compact", 0.4, 5000, 8, 5, 1, False, 8, 24, 3)
+STANDARD = Profile("standard", 1.0, 18000, 0, 0, 99, True, 4, 14, 12)
+COMPACT = Profile("compact", 0.4, 5000, 0, 0, 1, False, 8, 24, 3)
 
 # 未確定事項の集約先。ここでの `[要確認]` は 1 節あたり・本文合計の上限に数えない。
 CONFIRM_AGGREGATION_SECTION = 24
@@ -49,30 +48,30 @@ CONFIRM_AGGREGATION_SECTION = 24
 # 節ごとの最小分量。elements の "a|b" は any-of、複数要素は all-of。
 # (min_chars, min_refs, elements) — chars は空白を除いた文字数。
 SECTION_RULES: Dict[int, Tuple[int, int, Tuple[str, ...]]] = {
-    1: (500, 2, ("list|table",)),
-    2: (450, 2, ("list|table",)),
-    3: (450, 2, ("list|table",)),
-    4: (450, 2, ("fence|table",)),
-    5: (500, 4, ("table",)),
-    6: (600, 3, ("fence", "table")),
-    7: (400, 2, ("fence",)),
-    8: (500, 3, ("table",)),
+    1: (500, 0, ("list|table",)),
+    2: (450, 0, ("list|table",)),
+    3: (450, 0, ("list|table",)),
+    4: (450, 0, ("fence|table",)),
+    5: (500, 0, ("table",)),
+    6: (600, 0, ("fence", "table")),
+    7: (400, 0, ("fence",)),
+    8: (500, 0, ("table",)),
     9: (250, 0, ()),
-    10: (400, 3, ("table|list|fence",)),
-    11: (400, 3, ("table|list|fence",)),
-    12: (400, 3, ("table|list|fence",)),
-    13: (400, 3, ("table|list|fence",)),
-    14: (400, 3, ("table|list|fence",)),
-    15: (400, 3, ("table|list|fence",)),
-    16: (450, 2, ("fence|numbered",)),
-    17: (400, 2, ("fence|numbered",)),
-    18: (450, 3, ("list|fence|table",)),
-    19: (450, 3, ("table|list",)),
-    20: (400, 2, ("table|list",)),
-    21: (600, 3, ("subheading",)),
-    22: (400, 2, ("list|table",)),
-    23: (250, 1, ()),
-    24: (600, 2, ("fence",)),
+    10: (400, 0, ("table|list|fence",)),
+    11: (400, 0, ("table|list|fence",)),
+    12: (400, 0, ("table|list|fence",)),
+    13: (400, 0, ("table|list|fence",)),
+    14: (400, 0, ("table|list|fence",)),
+    15: (400, 0, ("table|list|fence",)),
+    16: (450, 0, ("fence|numbered",)),
+    17: (400, 0, ("fence|numbered",)),
+    18: (450, 0, ("list|fence|table",)),
+    19: (450, 0, ("table|list",)),
+    20: (400, 0, ("table|list",)),
+    21: (600, 0, ("subheading",)),
+    22: (400, 0, ("list|table",)),
+    23: (250, 0, ()),
+    24: (600, 0, ("fence",)),
 }
 
 ELEMENT_LABELS = {
@@ -212,17 +211,11 @@ def validate_text_quality(
 ) -> None:
     """text だけで決まる品質の床を検査する。
 
-    evidence は本文中の `evidence:` トークンの (path, 0 始まりの行 index)。
+    evidence は互換のため受け取る。非空なら設計書にトークンが残っている。
     """
-    if len(evidence) < profile.min_evidence:
+    if evidence:
         raise QualityError(
-            f"evidence が {len(evidence)} 件です（{profile.name} 水準は {profile.min_evidence} 件以上。"
-            "主張ごとに evidence: path#L行 を添えてください）"
-        )
-    distinct = {path for path, _line in evidence}
-    if len(distinct) < profile.min_distinct_paths:
-        raise QualityError(
-            f"evidence の証跡ファイルが {len(distinct)} 種類です（{profile.name} 水準は {profile.min_distinct_paths} 種類以上。広く裏取りしてください）"
+            "設計書に evidence: は書けません。根拠トークンは置かず、観測した事実を本文に書く"
         )
 
     not_applicable = 0
@@ -232,13 +225,6 @@ def validate_text_quality(
         start, end = section_ranges[section]
         body = _section_body(masked, (start, end))
         total_chars += _nonspace(body)
-        for line in body:
-            if section != 9 and line.strip().startswith("evidence:"):
-                raise QualityError(
-                    f"§{section} に evidence: だけの行があります。根拠は主張を書いた文の末尾か表のセルに添え、"
-                    "evidence: だけの行を置かないでください"
-                )
-        refs = sum(1 for _path, line_index in evidence if start <= line_index < end)
         text = "\n".join(body)
         n_a = [m.group("reason") for m in N_A_RE.finditer(text)]
         if section not in (9, CONFIRM_AGGREGATION_SECTION):
@@ -249,7 +235,7 @@ def validate_text_quality(
                     f"§{section} の [要確認] が {confirm} 件です（1 節 2 件まで。"
                     f"未確定事項は §{CONFIRM_AGGREGATION_SECTION} に優先度の高い順で集約してください）"
                 )
-        min_chars, min_refs, elements = SECTION_RULES[section]
+        min_chars, _min_refs, elements = SECTION_RULES[section]
         if n_a:
             if any(len(reason) < MIN_N_A_REASON_CHARS for reason in n_a):
                 raise QualityError(f"§{section} の 該当なし の根拠は {MIN_N_A_REASON_CHARS} 文字以上で、探した対象を具体的に書いてください")
@@ -264,9 +250,6 @@ def validate_text_quality(
                 f"§{section} の分量が不足しています（{_nonspace(body)} 文字 < {int(min_chars * profile.scale)} 文字）。"
                 "事実の列挙ではなく、設計としての構造・理由・境界を書いてください"
             )
-        need_refs = min(min_refs, profile.ref_cap)
-        if refs < need_refs:
-            raise QualityError(f"§{section} の evidence が {refs} 件です（{need_refs} 件以上。主張に evidence: path#L行 を添えてください）")
         if profile.require_elements:
             for requirement in elements:
                 if not any(_has_element(kind, body, raw, start, end, fenced) for kind in requirement.split("|")):

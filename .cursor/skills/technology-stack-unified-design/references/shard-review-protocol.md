@@ -44,4 +44,4 @@
 
 - shard 数が多い場合は、**1 メッセージで複数 sub-agent を並列起動**する。sub-agent の最終返信は要約だけで、本体は note に残る。
 - 全 shard 完了後、`survey_repository.py check --survey-dir <dir> --source-root <root>` が PASS することを確認する。PASS しない場合は、列挙された shard だけを再依頼する。
-- 親は全 note の `## 所見` を読み、設計書の本文に統合する。本文の根拠は、親が対象ファイルの該当行を開いて確かめ、`evidence: path#L行` で示す。
+- 親は全 note の `## 所見` を読み、設計書の本文に統合する。本文の数値・名前は、親が対象ファイルの該当行を開いて確かめてから観測文として書く。`evidence:` は書かない。

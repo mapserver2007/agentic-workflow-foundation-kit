@@ -1513,7 +1513,7 @@ def run_survey(source_root: str, out_dir: str, max_files: int = DEFAULT_SHARD_FI
     for kind in ("dep", "script", "runtime", "container", "tool", "compose", "ci", "make", "proto", "sql", "openapi", "iac", "entry", "route", "generate", "di", "doc"):
         lines = _fact_lines(state, kind)
         if lines:
-            _write(out / "facts" / f"{kind}.md", f"# facts: {kind}（形式: path#L行 | 逐語テキスト ⟨注記⟩。evidence: の path#L行 はこの形式の行番号に合わせる）\n\n" + "\n".join(lines) + "\n")
+            _write(out / "facts" / f"{kind}.md", f"# facts: {kind}（形式: path#L行 | 逐語テキスト ⟨注記⟩。調査メモであり、設計書へ evidence トークンとして転記しない）\n\n" + "\n".join(lines) + "\n")
     env_lines = [f"{name} | uses={data[2]} | first {data[0]}#L{data[1]}" for name, data in sorted(state.env_vars.items())]
     _write(out / "facts" / "env.md", "# facts: 環境変数名（値は出力しない）\n\n" + "\n".join(env_lines) + "\n")
     generated_lines = [

@@ -26,16 +26,16 @@
 ## 値の分類（SHOULD）
 
 - **明示方針 / 宣言値**: dependency constraint、runtime constraint、CI matrix、設定channel、exact pinなど、将来の解決を制約する記述。§9の方針列へ `宣言: <値>` と書ける。
-- **解決値**: lockfileや生成metadataが示す、あるsnapshotで実際に解決された値。方針へ一般化せず、備考へ `観測: <値>; evidence: <path>` と書く。
+- **解決値**: lockfileや生成metadataが示す、あるsnapshotで実際に解決された値。方針へ一般化せず、備考へ `観測: <値>` と短く書く。`evidence:` は付けない。
 - **単なる観測値**: 実行例、badge、comment、生成物内のversion等。宣言とは扱わず、必要なら備考に限定する。
-- **不明**: 明示方針を確認できないもの。`[要確認]` とし、exact versionから「同一majorを採用」等を推測しない。
-- **version概念なし**: `—` とする。
+- **不明**: 明示方針を確認できないもの。exact version から「同一 major を採用」等を推測しない。Step ①〜⑥ の手順が分かれるときだけ `[要確認]` とし、それ以外は [`confirmation-scope.md`](confirmation-scope.md) に従って除外する。
+- **version概念なし、またはステップが単一 pin を要しない併存**: `—` とする。観測した pin は備考へ書く。
 
-コード・manifest・CIから事実として言える範囲だけを記述する。採用理由、非採用理由、長期方針、設計原則など実装から確定できない判断は `[要確認]: <理由>` とする。
+コード・manifest・CI から事実として言える範囲だけを記述する。採用理由、非採用理由、長期方針、設計原則のうち、Step ①〜⑥ の手順が一つに決まらないものだけを `[要確認]: <理由>` とする。デプロイと CI の成否は観測に留め、トークンにしない。
 
-## evidence の安全境界（MUST）
+## 調査時に読まないパス（MUST）
 
-evidence は `validate_design_doc.py` が次を検査する。
+設計書には `evidence:` を書かない。次の除外は、survey が読まないパスと、誤って根拠パスを本文へ写すときに避ける対象である。`validate_design_doc.py` の除外リストと一致させる。
 
 - source rootからの相対POSIX path
 - root内のtracked通常ファイル
@@ -138,11 +138,11 @@ id_ed25519
 .zip
 ```
 
-除外対象は、trackedであっても読まず、evidenceにも使わない（MUST）。`.git/**`、secret / credential候補、binary、dependency、build生成物、cacheを二重防御で排除する。
+除外対象は、trackedであっても調査で読まない（MUST）。`.git/**`、secret / credential候補、binary、dependency、build生成物、cacheを二重防御で排除する。設計書へ根拠トークンとしても写さない。
 
 ## Submodule / LFS / symlink
 
 - inspect が返す `uninitialized_submodules` が1以上なら取得せず、対象範囲を分析制限として記録する。
-- evidence候補の先頭行が `version https://git-lfs.github.com/spec/v1` ならLFS pointerであり、実体を取得せず分析制限として記録する。validatorは内容を読まないため検出しない。
-- worktree内のsymlinkは追跡しない。必要な証跡がsymlink先だけにある場合は `[要確認]` とする。
+- ファイルの先頭行が `version https://git-lfs.github.com/spec/v1` ならLFS pointerであり、実体を取得せず分析制限として記録する。validatorは内容を読まないため検出しない。
+- worktree内のsymlinkは追跡しない。必要な証跡がsymlink先だけにあり、Step ①〜⑥ の手順が分かれるときだけ [`confirmation-scope.md`](confirmation-scope.md) に従って `[要確認]` とする。手順が分かれないときは分析制限として §22 に観測する。
 - 対象worktreeでbuild / test / installを行わず、生成物を作って証跡にしない。

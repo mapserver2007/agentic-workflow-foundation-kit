@@ -343,7 +343,7 @@ def _validate_structure(masked: Sequence[str], frontmatter_end: int) -> Dict[int
         if APPENDIX_HEADING_RE.match(line):
             raise ValidationError(
                 "Appendix は置けません（本契約は Appendix A〜E を持たない。"
-                "根拠は本文の evidence:、未確定事項は §24 に集約する）"
+                "evidence: は書かず、未確定事項は §24 に集約する）"
             )
     part_lines: Dict[int, int] = {}
     section_lines: Dict[int, int] = {}
@@ -420,6 +420,17 @@ def _valid_reason(value: str) -> bool:
     return bool(stripped) and not PLACEHOLDER_RE.fullmatch(stripped)
 
 
+def _reject_evidence_tokens(lines: Sequence[str]) -> None:
+    """設計書本文に evidence: を置かせない。§9 備考は tech_stack.items.note へそのまま入る。"""
+    for line_number, line in enumerate(lines, start=1):
+        if "evidence:" in line:
+            raise ValidationError(
+                f"設計書に evidence: は書けません（line {line_number}）。"
+                "§9 の備考は kit の tech_stack.items.note にそのまま入る。"
+                "根拠トークンは置かず、観測した事実を本文に書く"
+            )
+
+
 def _extract_evidence(masked: Sequence[str]) -> List[Evidence]:
     evidence: List[Evidence] = []
     for line_number, line in enumerate(masked, start=1):
@@ -438,40 +449,27 @@ def _extract_evidence(masked: Sequence[str]) -> List[Evidence]:
     return evidence
 
 
-def _section_has_declaration(body: str, evidence_lines: Set[int], start_line: int) -> bool:
-    for line_number in evidence_lines:
-        if start_line <= line_number:
-            relative = line_number - start_line
-            if relative < len(body.splitlines()):
-                return True
-    return any(_valid_reason(match.group("reason")) for match in DECLARATION_RE.finditer(body))
-
-
 def _reject_legacy_ledger_references(masked: Sequence[str]) -> None:
     for line_number, line in enumerate(masked, start=1):
         if LEGACY_LEDGER_REF_RE.search(line):
             raise ValidationError(
                 f"台帳参照 [E<n>] は使えません（line {line_number}。本契約は証跡台帳を持たない）。"
-                "根拠は evidence: path#L行 で示してください"
+                "evidence: も書かず、観測した事実を本文に書く"
             )
 
 
 def _validate_bodies(
     masked: Sequence[str],
     section_ranges: Dict[int, Tuple[int, int]],
-    evidence: Sequence[Evidence],
 ) -> None:
-    evidence_zero_based = {item.line_number - 1 for item in evidence}
     for section in range(1, 25):
         start, end = section_ranges[section]
-        body_lines = masked[start:end]
-        body = "\n".join(body_lines)
+        body = "\n".join(masked[start:end])
         if not body.strip():
             raise ValidationError(f"§{section} の本文が空です")
-        local_evidence = any(start <= line < end for line in evidence_zero_based)
-        valid_reason = any(_valid_reason(match.group("reason")) for match in DECLARATION_RE.finditer(body))
-        if not local_evidence and not valid_reason:
-            raise ValidationError(f"§{section} に有効な宣言がありません")
+        for match in DECLARATION_RE.finditer(body):
+            if not _valid_reason(match.group("reason")):
+                raise ValidationError(f"§{section} の宣言の理由が空または placeholder です")
 
 
 def _split_table_row(line: str) -> List[str]:
@@ -661,6 +659,7 @@ def validate_text(
     profile: str = "auto",
 ) -> ValidationResult:
     lines = text.splitlines()
+    _reject_evidence_tokens(lines)
     frontmatter = _parse_frontmatter(lines)
     masked, fenced_lines = _mask_markdown(lines)
     section_lines = _validate_structure(masked, frontmatter.end_line)
@@ -668,7 +667,7 @@ def validate_text(
     _reject_legacy_ledger_references(masked)
     evidence = _extract_evidence(masked)
     _validate_evidence_path_syntax(evidence)
-    _validate_bodies(masked, section_ranges, evidence)
+    _validate_bodies(masked, section_ranges)
     _validate_section9(lines, section_ranges, fenced_lines)
 
     evidence_positions = [(item.path, item.line_number - 1) for item in evidence]
