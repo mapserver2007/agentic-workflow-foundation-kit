@@ -32,7 +32,7 @@
 
 - frontmatter に JSON 文字列リテラルとして1件だけ置く（MUST）。
 - 1〜63文字の lowercase kebab-case `[a-z0-9]+(?:-[a-z0-9]+)*` とする（MUST）。
-- publisher は `stack_slug` をディレクトリ名に使わない。出力先は `docs/gen/<repository>-<yyyyMMddHHmmss>/` で、`<repository>` は canonical URL の repo 名、時刻は publish 時のローカル時刻（24時間制）である（MUST）。
+- publisher は `stack_slug` をディレクトリ名に使わない。出力先は `gen/<repository>-<yyyyMMddHHmmss>/` で、`<repository>` は canonical URL の repo 名、時刻は publish 時のローカル時刻（24時間制）である（MUST）。
 - §9 を適切に要約しているかは validator では判定せず、ユーザーレビューで確認する（SHOULD）。
 - 同じ stack を再調査するときは既存 `stack_slug` を維持する（SHOULD）。再 publish は新しい時刻のディレクトリを作り、過去の世代は残す。
 

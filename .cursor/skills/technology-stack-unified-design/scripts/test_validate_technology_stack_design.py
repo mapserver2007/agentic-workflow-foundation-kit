@@ -594,7 +594,6 @@ class PublishTests(FixtureCase):
         self.workspace.mkdir()
         self.output = (
             self.workspace
-            / "docs"
             / "gen"
             / self.output_dir_name
             / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
@@ -649,17 +648,16 @@ class PublishTests(FixtureCase):
         self.assertEqual(moved.exception.code, 1)
         self.assertEqual(self.output.read_bytes(), b"existing")
 
-    def test_symlink_output_path_and_candidate_under_docs_gen_are_rejected(self) -> None:
+    def test_symlink_output_path_and_candidate_under_gen_are_rejected(self) -> None:
         external = self.base / "external"
         external.mkdir()
-        (self.workspace / "docs").mkdir()
-        (self.workspace / "docs" / "gen").symlink_to(external, target_is_directory=True)
+        (self.workspace / "gen").symlink_to(external, target_is_directory=True)
         with self.assertRaises(publish_mod.PublishError) as symlink:
             self.publish()
         self.assertEqual(symlink.exception.code, 2)
 
-        (self.workspace / "docs" / "gen").unlink()
-        under_gen = self.workspace / "docs" / "gen" / "candidate.md"
+        (self.workspace / "gen").unlink()
+        under_gen = self.workspace / "gen" / "candidate.md"
         under_gen.parent.mkdir()
         under_gen.write_bytes(self.candidate.read_bytes())
         with self.assertRaises(publish_mod.PublishError) as nested:
@@ -671,20 +669,13 @@ class PublishTests(FixtureCase):
             )
         self.assertEqual(nested.exception.code, 2)
 
-    def test_docs_output_directory_and_output_file_symlinks_are_rejected(self) -> None:
+    def test_output_directory_and_output_file_symlinks_are_rejected(self) -> None:
         external = self.base / "external"
         external.mkdir()
 
-        docs_workspace = self.base / "docs-link-workspace"
-        docs_workspace.mkdir()
-        (docs_workspace / "docs").symlink_to(external, target_is_directory=True)
-        with self.assertRaises(publish_mod.PublishError) as docs_link:
-            self.publish(workspace=docs_workspace)
-        self.assertEqual(docs_link.exception.code, 2)
-
         directory_workspace = self.base / "directory-link-workspace"
-        (directory_workspace / "docs" / "gen").mkdir(parents=True)
-        (directory_workspace / "docs" / "gen" / self.output_dir_name).symlink_to(
+        (directory_workspace / "gen").mkdir(parents=True)
+        (directory_workspace / "gen" / self.output_dir_name).symlink_to(
             external,
             target_is_directory=True,
         )
@@ -693,7 +684,7 @@ class PublishTests(FixtureCase):
         self.assertEqual(directory_link.exception.code, 2)
 
         file_workspace = self.base / "file-link-workspace"
-        output_dir = file_workspace / "docs" / "gen" / self.output_dir_name
+        output_dir = file_workspace / "gen" / self.output_dir_name
         output_dir.mkdir(parents=True)
         target = external / "existing.md"
         target.write_bytes(b"protected")
@@ -776,7 +767,7 @@ class PublishTests(FixtureCase):
         pass_line = next(line for line in output.getvalue().splitlines() if " PASS: " in line)
         self.assertRegex(
             pass_line,
-            r"^\[publish_design_doc\] PASS: docs/gen/Repo-\d{14}/TECHNOLOGY_STACK_UNIFIED_DESIGN\.md$",
+            r"^\[publish_design_doc\] PASS: gen/Repo-\d{14}/TECHNOLOGY_STACK_UNIFIED_DESIGN\.md$",
         )
         self.assertNotIn(os.fspath(self.workspace), pass_line)
 
@@ -802,7 +793,7 @@ class RuntimeContractTests(unittest.TestCase):
         for path in paths:
             self.assertNotIn("--expected-url", path.read_text(encoding="utf-8"), path.name)
         skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("docs/gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md", skill)
+        self.assertIn("gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md", skill)
 
     def test_document_skeleton_has_questions_for_sections_10_through_23(self) -> None:
         skeleton = (SKILL_DIR / "references" / "document-skeleton.md").read_text(encoding="utf-8")

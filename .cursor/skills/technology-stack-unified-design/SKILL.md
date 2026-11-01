@@ -4,7 +4,7 @@ description: >-
   ユーザーが手動 clone / update した clean なローカル Git worktree の既存実装を、
   ネットワーク通信と対象への書き込みなしで全可読ファイルまで読み、kit 正本 B と同水準
   （原則表・責務表・構成図・ツリー・フロー。Appendix は生成しない）の
-  TECHNOLOGY_STACK_UNIFIED_DESIGN.md reverse-draft を docs/gen/ に作る。
+  TECHNOLOGY_STACK_UNIFIED_DESIGN.md reverse-draft を gen/ に作る。
   「既存リポジトリから技術スタック設計書をリバース」「tech stack unified design を
   生成」等で使う。Do NOT use for: repository の clone/update、foundation の生成物化、
   正本設計書の自動置換。
@@ -86,9 +86,9 @@ exit code は `0=通過`、`1=状態または候補を直して再実行`、`2=�
      [--approve-overwrite]
    ```
 
-8. 出力 `docs/gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` をユーザーとレビューする。`<repository>` は canonical URL の repo 名、時刻は publish 実行時のローカル時刻（24時間制）である。再生成は新しいディレクトリを作り、既存世代は残す。同じ秒のディレクトリが既にあるときだけ上書き承認が必要になる。`stack_slug` は文書内の技術要約であり、出力パスには使わない。保管・Git・正本への昇格は [`draft-lifecycle.md`](references/draft-lifecycle.md) に従う。スキルは commit も正本昇格も行わない。
+8. 出力 `gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` をユーザーとレビューする。`<repository>` は canonical URL の repo 名、時刻は publish 実行時のローカル時刻（24時間制）である。再生成は新しいディレクトリを作り、既存世代は残す。同じ秒のディレクトリが既にあるときだけ上書き承認が必要になる。`stack_slug` は文書内の技術要約であり、出力パスには使わない。保管・Git・正本への昇格は [`draft-lifecycle.md`](references/draft-lifecycle.md) に従う。スキルは commit も正本昇格も行わない。
 
-MUST の詳細な単一入口は `validate_design_doc.py` と [`document-skeleton.md`](references/document-skeleton.md)、品質の床は [`quality-bar.md`](references/quality-bar.md) §4（`document_quality.py` と 1 対 1）。構文だけを確認する場合に限り `--syntax-only`、本文品質を除く旧契約だけを確認する場合に限り `--structure-only` を使えるが、いずれも publish には使えない。publish 先は常に `docs/gen/<repository>-<yyyyMMddHHmmss>/` であり、`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を上書きしない。
+MUST の詳細な単一入口は `validate_design_doc.py` と [`document-skeleton.md`](references/document-skeleton.md)、品質の床は [`quality-bar.md`](references/quality-bar.md) §4（`document_quality.py` と 1 対 1）。構文だけを確認する場合に限り `--syntax-only`、本文品質を除く旧契約だけを確認する場合に限り `--structure-only` を使えるが、いずれも publish には使えない。publish 先は常に `gen/<repository>-<yyyyMMddHHmmss>/` であり、`.cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` を上書きしない。
 
 ## 同梱ファイル
 
@@ -105,7 +105,7 @@ MUST の詳細な単一入口は `validate_design_doc.py` と [`document-skeleto
 | `references/shard-review-protocol.md` | 全量読解（shard / note）の手順 |
 | `references/document-skeleton.md` | 構造・§9 の契約とコピー用骨格。`evidence:` は書かない |
 | `references/evidence-signals.md` | 読むファイルの優先順・値の分類・除外リスト |
-| `references/draft-lifecycle.md` | `docs/gen/` の保管・昇格 |
+| `references/draft-lifecycle.md` | `gen/` の保管・昇格 |
 
 ## 既知の制限
 

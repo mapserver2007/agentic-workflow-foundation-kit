@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""検証済み候補を docs/gen の規約パスへ symlink-safe に原子的公開する。"""
+"""検証済み候補を workspace 直下 gen の規約パスへ symlink-safe に原子的公開する。"""
 from __future__ import annotations
 
 import argparse
@@ -74,8 +74,7 @@ def _validate_output_chain(workspace: Path, output_dir: Path, output: Path) -> N
         raise PublishError("workspace root が存在しません", 2)
     current = workspace
     for name, label in (
-        ("docs", "workspace/docs"),
-        ("gen", "docs/gen"),
+        ("gen", "workspace/gen"),
         (output_dir.name, "出力ディレクトリ"),
     ):
         current = current / name
@@ -180,9 +179,7 @@ def _publish_snapshot(
     descriptors = [workspace_fd]
     temporary_name = ""
     try:
-        docs_fd = _open_directory(workspace_fd, "docs", "workspace/docs")
-        descriptors.append(docs_fd)
-        gen_fd = _open_directory(docs_fd, "gen", "docs/gen")
+        gen_fd = _open_directory(workspace_fd, "gen", "workspace/gen")
         descriptors.append(gen_fd)
         output_fd = _open_directory(gen_fd, output_dir_name, "出力ディレクトリ")
         descriptors.append(output_fd)
@@ -237,7 +234,7 @@ def _publish_snapshot(
         except OSError as exc:
             raise PublishError("atomic publish に失敗しました", 2) from exc
     finally:
-        if temporary_name and len(descriptors) == 4:
+        if temporary_name and len(descriptors) == 3:
             try:
                 os.unlink(temporary_name, dir_fd=descriptors[-1])
             except OSError:
@@ -265,14 +262,14 @@ def publish_document(
     workspace = Path(os.path.abspath(workspace_input))
     candidate = Path(candidate_path)
 
-    docs_gen = workspace / "docs" / "gen"
+    gen_root = workspace / "gen"
     if not _inspect_existing_path(workspace, "workspace root", require_directory=True):
         raise PublishError("workspace root が存在しません", 2)
     workspace_real = Path(os.path.realpath(workspace))
     candidate_real = Path(os.path.realpath(candidate))
-    docs_gen_real = Path(os.path.realpath(docs_gen))
-    if _is_relative_to(candidate_real, docs_gen_real):
-        raise PublishError("docs/gen 配下の候補は公開できません", 2)
+    gen_root_real = Path(os.path.realpath(gen_root))
+    if _is_relative_to(candidate_real, gen_root_real):
+        raise PublishError("gen 配下の候補は公開できません", 2)
 
     data = _snapshot_candidate(candidate)
     try:
@@ -288,7 +285,7 @@ def publish_document(
     if validation.inspection is None:
         raise PublishError("publish では来歴再検証が必須です", 2)
 
-    output_dir = docs_gen / output_directory_name(
+    output_dir = gen_root / output_directory_name(
         validation.inspection.source_repository,
         published_at or datetime.datetime.now(),
     )
