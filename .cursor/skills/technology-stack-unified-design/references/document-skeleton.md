@@ -13,18 +13,18 @@
 | MUST | validator の検査 |
 | --- | --- |
 | JSON文字列の候補 identity・来歴 frontmatter | `title`、`generated_at`、既存来歴5キー、重複、JSON decode、revision、`stack_slug` 形式、現在のworktreeとの一致 |
-| 情報ナビゲーション | 単一の `## 目次`、実本文へ対応する §1〜§24 / Appendix A〜E リンク、単独行 `---` の境界 |
-| Part / 節 / Appendix 構造 | `PART_SECTIONS` / `APPENDIX_IDS`、欠落・重複・順序・所属、Part role labels、Appendix責務トークン |
-| 各節の根拠 | 空本文でないこと、節内に `[E<n>]` / `evidence:` / `[要確認]:` / `該当なし:` のいずれか、placeholder の拒否 |
-| 本文品質の床（B 水準） | `document_quality.py`: 節ごとの分量・参照数・構造要素（表・図・ツリー・フロー・小見出し）、`[要確認]` / `該当なし` の上限、§9 の行数、Appendix A〜E の床 |
-| 証跡台帳 | Appendix B の台帳表（`ID \| 証跡 \| 引用 \| 裏付け`）、ID 重複・未参照・未定義参照、**引用の逐語実在**、全 evidence の行範囲の実在 |
+| 情報ナビゲーション | 単一の `## 目次`、実本文へ対応する §1〜§24 リンク、単独行 `---` の境界 |
+| Part / 節の構造 | `PART_SECTIONS`、欠落・重複・順序・所属、Part role labels |
+| Appendix・証跡台帳を持たない | `## Appendix` / `### Appendix` 見出し、目次の Appendix リンク、`[E<n>]` 参照のいずれかがあれば FAIL |
+| 各節の根拠 | 空本文でないこと、節内に `evidence:` / `[要確認]:` / `該当なし:` のいずれか、placeholder の拒否 |
+| 本文品質の床（B 水準） | `document_quality.py`: 節ごとの分量・evidence 数・構造要素（表・図・ツリー・フロー・小見出し）、`[要確認]`（§24 を除く）/ `該当なし` の上限、§9 の行数、evidence の総数と種類 |
 | 全量読解の到達 | `調査範囲:` 行が survey の再計算値と逐語一致、全 shard note の完全性（`survey_repository.py check`） |
 | fenced code / HTML comment の除外 | `_mask_markdown`。ただし§9はingest互換のraw line検査 |
 | §9入力互換 | `_validate_section9` |
-| evidence字句・実在性・安全性 | `EVIDENCE_TOKEN_RE`、`lstat`、全量 `git ls-files -z` set、除外リスト |
+| evidence字句・実在性・安全性 | `EVIDENCE_TOKEN_RE`、`lstat`、全量 `git ls-files -z` set、除外リスト、品質検査での `#L` 行範囲の実在 |
 | 来歴・非混入 | `inspect_repository` 再実行、`_validate_provenance`、`_validate_non_inclusion` |
 
-`--structure-only` は本文品質・台帳・調査範囲を検査しない旧契約（構造・来歴・証跡の存在だけ）で、**publish には使えない**。
+`--structure-only` は本文品質・調査範囲を検査しない旧契約（構造・来歴・証跡の存在だけ）で、**publish には使えない**。
 
 ## stack slug 契約
 
@@ -32,9 +32,9 @@
 
 - frontmatter に JSON 文字列リテラルとして1件だけ置く（MUST）。
 - 1〜63文字の lowercase kebab-case `[a-z0-9]+(?:-[a-z0-9]+)*` とする（MUST）。
-- publisher は検証済みの値だけを `docs/gen/<stack_slug>/` のディレクトリ名に使う（MUST）。
+- publisher は `stack_slug` をディレクトリ名に使わない。出力先は `docs/gen/<repository>-<yyyyMMddHHmmss>/` で、`<repository>` は canonical URL の repo 名、時刻は publish 時のローカル時刻（24時間制）である（MUST）。
 - §9 を適切に要約しているかは validator では判定せず、ユーザーレビューで確認する（SHOULD）。
-- 同じ stack を再調査するときは既存 slug を維持する（SHOULD）。異なる対象が同じ slug になった場合も暗黙に区別子を足さず、既存成果物の上書き承認で衝突を顕在化する。
+- 同じ stack を再調査するときは既存 `stack_slug` を維持する（SHOULD）。再 publish は新しい時刻のディレクトリを作り、過去の世代は残す。
 
 ## 構造契約
 
@@ -47,17 +47,16 @@
 | Part 3 | 技術スタック編（具体） | §9〜§15 |
 | Part 4 | 開発・運用と横断ルール編（どう動かす） | §16〜§23 |
 | Part 5 | 意思決定編（意思決定） | §24 |
-| Appendix | Partの外の付録 | Appendix A〜E |
+
+本契約は Appendix を持たない。Part 5（§24）が文書の最後の節で、§24 の本文は文書の末尾まで続く。`## Appendix` / `### Appendix` 見出しと、目次の Appendix リンクは置かない（MUST）。
 
 Part 見出しには括弧で上表の role label（`なぜ` / `何を` / `具体` / `どう動かす` / `意思決定`）を含める（MUST）。章題のそれ以外の文言は MAY。
 
-Appendix A〜E は順に、`比較`、`根拠`、`用語`、`参照`、`チェックリスト` の責務トークンを見出しに含める（MUST）。技術固有の題名・本文は MAY。
+`#` のタイトルまたは導入の後に単独行 `---` を置き `## 目次` を置く。目次には実際の本文見出しへ一致する §1〜§24 の番号付きリンクを置く（MUST）。TOC内の見出し風テキストは本文見出しにならない。
 
-`#` のタイトルまたは導入の後に単独行 `---` を置き `## 目次` を置く。目次には実際の本文見出しへ一致する §1〜§24 の番号付きリンクと Appendix A〜E のリンクを置く（MUST）。TOC内の見出し風テキストは本文見出しにならない。
+目次→Part 1、Part間、同一Part内の後続節の各境界には、後続見出しの直前に単独行 `---` を置く（MUST）。Part見出し直後の先頭節には余分な separator を置かない。§9表の直後の `---` は §10 への境界であり、§9本文には含めない。
 
-目次→Part 1、Part間、同一Part内の後続節、Appendix開始、Appendix B〜E の各境界には、後続見出しの直前に単独行 `---` を置く（MUST）。Part見出し直後の先頭節、および `## Appendix` 直後の Appendix A の前には余分な separator を置かない。§9表の直後の `---` は §10 への境界であり、§9本文には含めない。
-
-導入部（`#` タイトルと目次の間）には、対象・読み方（`§N` と `[E<n>]` の意味）・位置づけ（reverse-draft であり SoT ではない）と、survey が出力した **`調査範囲:` 行を逐語で**置く（MUST）。
+導入部（`#` タイトルと目次の間）には、対象・読み方（`§N` と `evidence:` の意味）・位置づけ（reverse-draft であり SoT ではない）と、survey が出力した **`調査範囲:` 行を逐語で**置く（MUST）。
 
 各 § は番号と Part 所属で次の役割に対応する。validator はこの対応と構造を検査するが、本文が役割を意味的に充足することは保証しない。
 
@@ -67,17 +66,21 @@ Appendix A〜E は順に、`比較`、`根拠`、`用語`、`参照`、`チェ�
 | §6〜§8 | 全体構成・リポジトリ構成・レイヤ境界 |
 | §9〜§15 | 技術一覧・契約・生成・interface・backend・data・test |
 | §16〜§23 | 開発・実装順序・CI・デプロイ・API・認可・制約・利用フロー |
-| §24 | reverse-draftとしての結論とレビュー判断 |
+| §24 | reverse-draftとしての結論とレビュー判断。確定できないこと（未確定事項）の集約先 |
 
 ## 各節の根拠と宣言
 
 各§の本文には、次のいずれか1つ以上を置く（MUST）。品質の床（`quality-bar.md` §4）は別に検査される。
 
-- 観測できる事実: `[E<n>]`（Appendix B 台帳への参照。推奨）または `evidence: path/to/file#L1-L10`
-- 実装だけでは判断できない: `[要確認]: 判断に必要な情報と未確定理由`（1 節 2 件まで、本文合計の上限あり）
+- 観測できる事実: `evidence: path/to/file#L1-L10`。主張を書いた文の末尾か表のセルに添える。`evidence:` だけの行は §9 を除いて置かない（品質の床）
+- 実装だけでは判断できない: `[要確認]: 判断に必要な情報と未確定理由`（§24 を除き 1 節 2 件まで、§24 を除く本文合計の上限あり）
 - 該当実装がない: `該当なし: 探した対象と、存在しないと判断した根拠`（20 文字以上、4 節まで）
 
 理由を空にしたり、`<理由>`、`TODO`、`TBD`、`...` だけにしたりしない（MUST）。fenced code block と HTML comment 内は見出し・宣言・evidence として数えない（MUST）。§9だけは foundation ingest との互換のため raw line 規則も適用する。
+
+### 未確定事項の集約先
+
+実装だけでは確定できない事項のうち、節ごとの `[要確認]` の上限に収まらないものは §24 に集約する。§24 の `[要確認]` は件数の上限に数えない。優先度の高い順（設計書の正確性に関わるもの、早期に決める不整合、中長期の順）に並べる（SHOULD。validator は検査しない）。
 
 ## evidence 契約
 
@@ -85,17 +88,7 @@ Appendix A〜E は順に、`比較`、`根拠`、`用語`、`参照`、`チェ�
 
 evidence は source root 内の tracked な通常ファイルで、経路上を含めsymlinkでなく、`references/evidence-signals.md` の除外対象でないこと（MUST）。品質検査（既定）では `#L` の **行範囲が実ファイルの範囲内**であることも検査する（`--syntax-only` / `--structure-only` では書式のみ）。
 
-### 台帳（Appendix B）の契約
-
-```text
-| ID | 証跡 | 引用 | 裏付け |
-| --- | --- | --- | --- |
-| E1 | evidence: path/to/file#L3-L5 | `ファイルに実在する文字列の一部` | 何を裏付けるか |
-```
-
-- ヘッダは上記 4 列に完全一致。全行ちょうど 4 セル（引用に `|` を含めない）。ID は `E<数字>` で一意（MUST）。
-- 各行の証跡セルは `evidence:` を 1 件だけ持つ。引用は 3〜120 文字で、**指定した行範囲に逐語で実在**する（空白の連続は 1 つに正規化して比較）（MUST）。
-- 台帳 ID は本文から `[E<n>]` で必ず参照される。台帳に無い `[E<n>]` は不可（MUST）。
+validator が検査するのは、パスの実在・安全性と行範囲の実在までである。**引用した行の内容が主張を裏付けるか**は検査しない（ユーザーレビューで確認する）。主張に使う数値・version・名前・環境変数名・ポート・テーブル名は、書く前に対象行を開いて確かめる（SHOULD）。
 
 ## §9 契約
 
@@ -103,7 +96,7 @@ evidence は source root 内の tracked な通常ファイルで、経路上を�
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |
-| 対象内の役割 | 観測した技術名 | 宣言: 明示constraint | 観測: 値 [E<n>] |
+| 対象内の役割 | 観測した技術名 | 宣言: 明示constraint | 観測: 値; evidence: path/to/file#L1 |
 
 - データ行を1件以上置く（品質検査では standard で 12 行以上）。1・2列目は非空、1列目に `レイヤ` を含めない（MUST）。
 - 方針列は `宣言: <値>`、`[要確認]`、`—` のいずれか。`観測` は方針列に置かない（MUST）。
@@ -112,7 +105,7 @@ evidence は source root 内の tracked な通常ファイルで、経路上を�
 - 文書中の fenced code 内に番号付き `### 9.` 等を置かない（MUST）。
 - §9の問いはblockquoteにしない。`>` 行を使うなら、foundationの `tech_stack.note` に取り込まれてよい観測事実を1行だけ書く（SHOULD）。
 - 明示constraint / channel / pinだけを `宣言:` とし、lockfileの解決値は備考へ `観測:` として書く（SHOULD）。
-- 備考の根拠は `[E<n>]`（または `evidence: path#L`）で示す（SHOULD）。
+- 備考の根拠は `evidence: path#L` で示す（SHOULD）。
 
 validator が保証するのは構文と `ingest_tech_stack.py` への入力互換だけである。分類・系列一般化・証跡の十分性など意味の正しさはユーザーがレビューする。
 
@@ -135,7 +128,7 @@ stack_slug: "runtime-framework-storage"
 
 * 対象: <この実装が何をするシステムか 1 行>
 * スコープ: <設計書が扱う範囲>
-* 読み方: `§N` は本書の節、`[E<n>]` は Appendix B の証跡台帳（ファイル・行・逐語引用）を指す
+* 読み方: `§N` は本書の節、`evidence: path#L行` は根拠にしたファイルと行を指す
 * 位置づけ: reverse-draft。仕様の SoT ではなく、ユーザーレビュー前の下書きである
 
 調査範囲: tracked=0; skipped=0; generated=0; read=0 (full=0, card=0); shards=0; revision=0000000
@@ -177,13 +170,6 @@ stack_slug: "runtime-framework-storage"
 
 ### Part 5
 24. [結論](#24-結論)
-
-### Appendix
-* [Appendix A: 比較](#appendix-a-比較)
-* [Appendix B: 根拠](#appendix-b-根拠)
-* [Appendix C: 用語](#appendix-c-用語)
-* [Appendix D: 参照](#appendix-d-参照)
-* [Appendix E: チェックリスト](#appendix-e-チェックリスト)
 
 ---
 
@@ -238,7 +224,7 @@ stack_slug: "runtime-framework-storage"
 
 | レイヤ | 技術 | バージョン方針 | 備考 |
 | --- | --- | --- | --- |
-| 役割 | 技術名 | 宣言: 値 | 観測: 根拠 [E1] |
+| 役割 | 技術名 | 宣言: 値 | 観測: 根拠; evidence: path/to/file#L1 |
 
 ---
 
@@ -321,34 +307,5 @@ stack_slug: "runtime-framework-storage"
 ## Part 5: 意思決定編（意思決定）
 
 ### 24. 結論
-<!-- 要約の図 + 判断。確定できないことは Appendix E へ -->
-
----
-
-## Appendix
-
-### Appendix A: 比較
-<!-- 観点 × 選択肢の表と判断 -->
-
----
-
-### Appendix B: 根拠
-| ID | 証跡 | 引用 | 裏付け |
-| --- | --- | --- | --- |
-| E1 | evidence: path/to/tracked-file#L1-L3 | `ファイルに実在する文字列` | 何を裏付けるか |
-
----
-
-### Appendix C: 用語
-<!-- 用語表（8 行以上） -->
-
----
-
-### Appendix D: 参照
-<!-- リポジトリ内の主要ファイル（8 件以上） -->
-
----
-
-### Appendix E: チェックリスト
-<!-- 優先度 | 項目 | 理由 の表（P0〜P3、8 行以上）。未確定事項の集約先 -->
+<!-- 要約の図 + 判断。実装だけでは確定できないこと（未確定事項）を優先度の高い順にここへ集約する。ここでの [要確認] は件数上限に数えない -->
 ~~~

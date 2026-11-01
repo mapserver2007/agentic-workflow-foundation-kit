@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
+import re
 import secrets
 import stat
 import sys
@@ -15,6 +17,20 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from validate_design_doc import ValidationError, review_counts, validate_bytes  # noqa: E402
+
+
+OUTPUT_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+-\d{14}$")
+
+
+def output_directory_name(source_repository: str, published_at: datetime.datetime) -> str:
+    """出力ディレクトリ名 `<repository>-<yyyyMMddHHmmss>` を作る。時刻は24時間制。"""
+    repository = source_repository.rstrip("/").rsplit("/", 1)[-1]
+    if repository.endswith(".git"):
+        repository = repository[:-4]
+    name = f"{repository}-{published_at.strftime('%Y%m%d%H%M%S')}"
+    if not OUTPUT_NAME_RE.fullmatch(name):
+        raise PublishError("repository 名から安全な出力ディレクトリを作れません", 2)
+    return name
 
 
 class PublishError(Exception):
@@ -241,6 +257,7 @@ def publish_document(
     approve_overwrite: bool = False,
     survey_dir: str | None = None,
     quality: bool = True,
+    published_at: datetime.datetime | None = None,
 ) -> Path:
     workspace_input = Path(workspace_root) if workspace_root is not None else _default_workspace_root()
     if not workspace_input.is_absolute() or ".." in workspace_input.parts:
@@ -271,7 +288,10 @@ def publish_document(
     if validation.inspection is None:
         raise PublishError("publish では来歴再検証が必須です", 2)
 
-    output_dir = docs_gen / validation.frontmatter.stack_slug
+    output_dir = docs_gen / output_directory_name(
+        validation.inspection.source_repository,
+        published_at or datetime.datetime.now(),
+    )
     output = output_dir / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
     if os.path.commonpath((os.fspath(workspace), os.fspath(output))) != os.fspath(workspace):
         raise PublishError("出力先が workspace 外です", 2)

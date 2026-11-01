@@ -21,7 +21,7 @@
 
 生成物（`Code generated` 等の header、`*.pb.go` 等の filename、`gen/` 配下）は shard 読解の対象外とし、**入力（IDL・schema）と生成器**を読んで設計に反映する。生成物の件数・生成器は `facts/generated.md` に出る。
 
-分析できなかった範囲（未初期化 submodule・LFS pointer・oversize・symlink）は、設計書の §22 または Appendix E に分析制限として記録する（SHOULD）。
+分析できなかった範囲（未初期化 submodule・LFS pointer・oversize・symlink）は、設計書の §22 または §24 に分析制限として記録する（SHOULD）。
 
 ## 値の分類（SHOULD）
 

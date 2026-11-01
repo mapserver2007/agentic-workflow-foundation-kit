@@ -3,7 +3,7 @@
 | 項目 | 定義 |
 | --- | --- |
 | 位置づけ | `docs/gen/` は生成ドラフトの保管場所。仕様のSoTではなく、G-DOC-SPEC・foundation Phase 1.6の入力のどちらにもならない |
-| 配置・世代 | `docs/gen/<stack_slug>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md` の1ファイルだけ。`stack_slug` は§9の代表的な技術・役割から推論し、owner / repo 名には依存させない。世代管理せず、再生成は承認付きatomic replace、履歴はGitに任せる |
+| 配置・世代 | `docs/gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md`。`<repository>` は canonical URL の repo 名、時刻は publish 時のローカル時刻（24時間制）。再生成は新しいディレクトリを作り、過去の世代は残す。同じ秒のディレクトリだけ承認付き atomic replace |
 | 候補 identity | `status: reverse-draft`、JSON文字列の `title` / `generated_at`（`YYYY-MM-DD`）、`source_repository` / `source_ref` / `source_revision` / `stack_slug` を保持する。`title` / `generated_at` は候補の識別用であり、正本固有のメタデータを強制しない |
 | Git管理 | `docs/gen/` は現状ignore対象外。スキルは `.gitignore` を変更せずcommitもしない。reverse-draftのままcommitするかはユーザー判断 |
 | 保存期間 | 自動削除しない。不要時はユーザーが削除する。`status: reverse-draft` の間は正本でない |

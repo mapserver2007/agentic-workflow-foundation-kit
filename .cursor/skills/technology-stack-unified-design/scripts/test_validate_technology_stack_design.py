@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import datetime
 import io
 import json
 import os
@@ -86,10 +87,7 @@ def make_document(
             title = titles.get(section, f"任意の節題{section}")
             lines.append(f"{section}. [{title}](#{section}-{title})")
         lines.append("")
-    lines.append("### Appendix")
-    for appendix_id, token in validate_mod.APPENDIX_RESPONSIBILITY_TOKENS.items():
-        lines.append(f"* [Appendix {appendix_id}: {token}](#appendix-{appendix_id.lower()}-{token})")
-    lines.extend(["", "---", ""])
+    lines.extend(["---", ""])
     for part, bounds in validate_mod.PART_SECTIONS.items():
         if part != 1:
             lines.extend(["---", ""])
@@ -115,17 +113,6 @@ def make_document(
             else:
                 lines.append(declarations.get(section, "[要確認]: fixtureで未確定"))
             lines.append("")
-    lines.extend(["---", "", "## Appendix", ""])
-    for appendix_id in validate_mod.APPENDIX_IDS:
-        if appendix_id != "A":
-            lines.extend(["---", ""])
-        lines.extend(
-            [
-                f"### Appendix {appendix_id}: {validate_mod.APPENDIX_RESPONSIBILITY_TOKENS[appendix_id]}",
-                f"Appendix {appendix_id} の本文。",
-                "",
-            ]
-        )
     return "\n".join(lines)
 
 
@@ -178,7 +165,6 @@ class StructureAndDeclarationTests(FixtureCase):
             ("toc", original.replace("## 目次\n", "", 1)),
             ("fake-heading", original.replace("### Part 1\n", "### 1. 目次内の偽見出し\n### Part 1\n", 1)),
             ("role", original.replace("（どう動かす）", "", 1)),
-            ("appendix-role", original.replace("### Appendix E: チェックリスト", "### Appendix E: 任意", 1)),
             ("separator", original.replace("\n---\n\n### 2.", "\n\n### 2.", 1)),
             ("title", original.replace('title: "Fixture design"\n', "", 1)),
             ("date", original.replace('generated_at: "2026-10-30"\n', "", 1)),
@@ -189,7 +175,7 @@ class StructureAndDeclarationTests(FixtureCase):
             with self.subTest(label=label):
                 self.assert_invalid(text)
 
-    def test_part_section_appendix_missing_duplicate_and_order(self) -> None:
+    def test_part_and_section_missing_duplicate_and_order(self) -> None:
         original = self.candidate.read_text(encoding="utf-8")
         variants = (
             original.replace("## Part 2: 任意の章題（何を）\n", "", 1),
@@ -198,13 +184,31 @@ class StructureAndDeclarationTests(FixtureCase):
             original.replace("### 6. 任意の節題6\n", "", 1),
             original.replace("### 6. 任意の節題6", "### 5. 重複", 1),
             original.replace("### 1. 任意の節題1", "### 2. 順序不正", 1),
-            original.replace("## Appendix\n", "", 1),
-            original.replace("### Appendix C: 用語\n", "", 1),
-            original.replace("### Appendix C: 用語", "### Appendix B: 根拠", 1),
         )
         for text in variants:
             with self.subTest(sample=text[:80]):
                 self.assert_invalid(text)
+
+    def test_appendix_is_rejected_in_every_form(self) -> None:
+        original = self.candidate.read_text(encoding="utf-8")
+        variants = (
+            ("h2", original + "\n---\n\n## Appendix\n\nAppendix の本文。\n"),
+            ("h3", original + "\n---\n\n### Appendix A: 比較\n\nAppendix A の本文。\n"),
+            ("toc-link", original.replace("## 目次\n", "## 目次\n\n* [Appendix A: 比較](#appendix-a-比較)\n", 1)),
+            ("toc-heading", original.replace("### Part 1\n", "### Appendix\n### Part 1\n", 1)),
+        )
+        for label, text in variants:
+            with self.subTest(label=label):
+                self.assert_invalid(text)
+
+    def test_ledger_references_are_rejected(self) -> None:
+        text = make_document(self.inspection, declarations={1: "evidence: tracked.txt を [E1] で参照する"})
+        self.assert_invalid(text)
+
+    def test_last_section_extends_to_end_of_document(self) -> None:
+        text = self.candidate.read_text(encoding="utf-8") + "\n§24 の末尾に続く本文。\n"
+        self.write_document(text)
+        self.validate()
 
     def test_section_in_wrong_part_is_rejected(self) -> None:
         text = self.candidate.read_text(encoding="utf-8")
@@ -250,13 +254,6 @@ class StructureAndDeclarationTests(FixtureCase):
         )
         self.write_document(make_document(self.inspection, declarations={1: declaration}))
         self.validate()
-
-    def test_appendix_empty_is_rejected(self) -> None:
-        text = self.candidate.read_text(encoding="utf-8").replace(
-            "### Appendix C: 用語\nAppendix C の本文。",
-            "### Appendix C: 任意\n<!-- empty -->",
-        )
-        self.assert_invalid(text)
 
 
 class Section9CompatibilityTests(FixtureCase):
@@ -593,6 +590,9 @@ class ProvenanceFrontmatterAndLeakTests(FixtureCase):
 
 
 class PublishTests(FixtureCase):
+    published_at = datetime.datetime(2026, 11, 1, 11, 44, 30)
+    output_dir_name = "Repo-20261101114430"
+
     def setUp(self) -> None:
         super().setUp()
         self.workspace = self.base / "workspace"
@@ -601,7 +601,7 @@ class PublishTests(FixtureCase):
             self.workspace
             / "docs"
             / "gen"
-            / "runtime-unknowntech"
+            / self.output_dir_name
             / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
         )
 
@@ -612,6 +612,7 @@ class PublishTests(FixtureCase):
             workspace_root=os.fspath(workspace or self.workspace),
             approve_overwrite=approve,
             quality=False,
+            published_at=self.published_at,
         )
 
     def test_atomic_publish_and_approved_replace(self) -> None:
@@ -631,15 +632,12 @@ class PublishTests(FixtureCase):
         self.publish(approve=True)
         self.assertNotEqual(output.read_bytes(), first)
 
-    def test_publish_uses_validated_stack_slug(self) -> None:
-        slug = "python-fastapi-postgresql"
-        self.write_document(make_document(self.inspection, stack_slug=slug))
+    def test_publish_uses_repository_and_timestamp_not_stack_slug(self) -> None:
+        self.write_document(make_document(self.inspection, stack_slug="python-fastapi-postgresql"))
         output = self.publish()
-        self.assertEqual(
-            output,
-            self.workspace / "docs" / "gen" / slug / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md",
-        )
+        self.assertEqual(output, self.output)
         self.assertTrue(output.is_file())
+        self.assertNotIn("python-fastapi-postgresql", output.parts)
 
     def test_invalid_candidate_and_head_move_preserve_existing(self) -> None:
         self.output.parent.mkdir(parents=True)
@@ -691,7 +689,7 @@ class PublishTests(FixtureCase):
 
         directory_workspace = self.base / "directory-link-workspace"
         (directory_workspace / "docs" / "gen").mkdir(parents=True)
-        (directory_workspace / "docs" / "gen" / "runtime-unknowntech").symlink_to(
+        (directory_workspace / "docs" / "gen" / self.output_dir_name).symlink_to(
             external,
             target_is_directory=True,
         )
@@ -700,7 +698,7 @@ class PublishTests(FixtureCase):
         self.assertEqual(directory_link.exception.code, 2)
 
         file_workspace = self.base / "file-link-workspace"
-        output_dir = file_workspace / "docs" / "gen" / "runtime-unknowntech"
+        output_dir = file_workspace / "docs" / "gen" / self.output_dir_name
         output_dir.mkdir(parents=True)
         target = external / "existing.md"
         target.write_bytes(b"protected")
@@ -781,10 +779,9 @@ class PublishTests(FixtureCase):
             )
         self.assertEqual(exit_code, 0)
         pass_line = next(line for line in output.getvalue().splitlines() if " PASS: " in line)
-        self.assertEqual(
+        self.assertRegex(
             pass_line,
-            "[publish_design_doc] PASS: "
-            "docs/gen/runtime-unknowntech/TECHNOLOGY_STACK_UNIFIED_DESIGN.md",
+            r"^\[publish_design_doc\] PASS: docs/gen/Repo-\d{14}/TECHNOLOGY_STACK_UNIFIED_DESIGN\.md$",
         )
         self.assertNotIn(os.fspath(self.workspace), pass_line)
 
@@ -810,7 +807,7 @@ class RuntimeContractTests(unittest.TestCase):
         for path in paths:
             self.assertNotIn("--expected-url", path.read_text(encoding="utf-8"), path.name)
         skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("docs/gen/<stack_slug>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md", skill)
+        self.assertIn("docs/gen/<repository>-<yyyyMMddHHmmss>/TECHNOLOGY_STACK_UNIFIED_DESIGN.md", skill)
 
     def test_document_skeleton_has_questions_for_sections_10_through_23(self) -> None:
         skeleton = (SKILL_DIR / "references" / "document-skeleton.md").read_text(encoding="utf-8")
@@ -829,7 +826,6 @@ class RuntimeContractTests(unittest.TestCase):
             {path.name for path in scripts},
             {
                 "assemble_candidate.py",
-                "collect_ledger.py",
                 "document_quality.py",
                 "inspect_local_repository.py",
                 "publish_design_doc.py",

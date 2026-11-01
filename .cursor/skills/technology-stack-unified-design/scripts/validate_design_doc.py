@@ -32,7 +32,6 @@ PART_SECTIONS: Dict[int, Tuple[int, int]] = {
     4: (16, 23),
     5: (24, 24),
 }
-APPENDIX_IDS = ("A", "B", "C", "D", "E")
 REQUIRED_FRONTMATTER = (
     "status",
     "title",
@@ -45,13 +44,6 @@ REQUIRED_FRONTMATTER = (
 STACK_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 PART_ROLE_LABELS = {1: "なぜ", 2: "何を", 3: "具体", 4: "どう動かす", 5: "意思決定"}
-APPENDIX_RESPONSIBILITY_TOKENS = {
-    "A": "比較",
-    "B": "根拠",
-    "C": "用語",
-    "D": "参照",
-    "E": "チェックリスト",
-}
 
 # reference/evidence-signals.md の同名リストと同期し、fixture test で一致を検査する。
 EXCLUDED_DIR_NAMES = frozenset(
@@ -136,14 +128,14 @@ EVIDENCE_TOKEN_RE = re.compile(
 )
 DECLARATION_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:\[要確認\]|該当なし):[ \t]*(?P<reason>[^\r\n]*)$")
 PART_RE = re.compile(r"^##\s+Part\s+([1-5])(?:\s*[:：].*)?\s*$")
-APPENDIX_H2_RE = re.compile(r"^##\s+Appendix(?:\s*[:：].*)?\s*$")
 SECTION_RE = re.compile(r"^###\s+(\d+)\.\s*(.*)$")
-APPENDIX_H3_RE = re.compile(r"^###\s+Appendix\s+([A-E])(?:\s*[:：].*)?\s*$")
 TOC_H2_RE = re.compile(r"^##\s+目次\s*$")
 TOC_SECTION_RE = re.compile(r"^\s*(?:[-*]\s*)?(\d+)\.\s+\[[^\]]+\]\((#[^)]+)\)\s*$")
-TOC_APPENDIX_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?\[\s*Appendix\s+([A-E])(?:\s*[:：][^\]]*)?\]\((#[^)]+)\)\s*$"
-)
+# 本契約は Appendix を持たない。置かれていると §24 の本文に混入して黙って通るため、見出しと目次リンクを拒否する。
+APPENDIX_HEADING_RE = re.compile(r"^#{2,3}\s+Appendix\b")
+TOC_APPENDIX_RE = re.compile(r"^\s*(?:[-*]\s*)?\[\s*Appendix\b[^\]]*\]\(#[^)]*\)")
+# 旧契約の証跡台帳（Appendix B）への参照。台帳は持たないため、残っていると参照先がない。
+LEGACY_LEDGER_REF_RE = re.compile(r"\[E\d+\]")
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 PLACEHOLDER_RE = re.compile(r"^(?:<[^>]*>|TODO|TBD|\.\.\.)$", re.IGNORECASE)
 
@@ -326,45 +318,36 @@ def _validate_toc(
     start: int,
     end: int,
     section_lines: Dict[int, int],
-    appendix_lines: Dict[str, int],
 ) -> None:
     section_links: Dict[int, str] = {}
-    appendix_links: Dict[str, str] = {}
     for line in masked[start + 1 : end]:
-        if SECTION_RE.match(line) or APPENDIX_H3_RE.match(line):
+        if SECTION_RE.match(line):
             raise ValidationError("目次内に本文構造として見える見出しを置けません")
+        if TOC_APPENDIX_RE.match(line):
+            raise ValidationError("目次に Appendix のリンクを置けません（本契約は Appendix を持たない）")
         section_match = TOC_SECTION_RE.match(line)
         if section_match:
             number = int(section_match.group(1))
             if number in section_links:
                 raise ValidationError("目次の節リンクが重複しています")
             section_links[number] = section_match.group(2)
-            continue
-        appendix_match = TOC_APPENDIX_RE.match(line)
-        if appendix_match:
-            appendix_id = appendix_match.group(1)
-            if appendix_id in appendix_links:
-                raise ValidationError("目次の Appendix リンクが重複しています")
-            appendix_links[appendix_id] = appendix_match.group(2)
     if sorted(section_links) != list(range(1, 25)):
         raise ValidationError("目次には §1〜§24 の番号付きリンクが必要です")
-    if tuple(appendix_links) != APPENDIX_IDS:
-        raise ValidationError("目次には Appendix A〜E のリンクが必要です")
     for section, line in section_lines.items():
         if section_links[section] != _heading_anchor(masked[line][4:]):
             raise ValidationError(f"目次の §{section} リンクが本文見出しと一致しません")
-    for appendix_id, line in appendix_lines.items():
-        if appendix_links[appendix_id] != _heading_anchor(masked[line][4:]):
-            raise ValidationError(f"目次の Appendix {appendix_id} リンクが本文見出しと一致しません")
 
 
-def _validate_structure(masked: Sequence[str], frontmatter_end: int) -> Tuple[Dict[int, int], Dict[str, int]]:
+def _validate_structure(masked: Sequence[str], frontmatter_end: int) -> Dict[int, int]:
+    for line in masked[frontmatter_end + 1 :]:
+        if APPENDIX_HEADING_RE.match(line):
+            raise ValidationError(
+                "Appendix は置けません（本契約は Appendix A〜E を持たない。"
+                "根拠は本文の evidence:、未確定事項は §24 に集約する）"
+            )
     part_lines: Dict[int, int] = {}
     section_lines: Dict[int, int] = {}
-    appendix_lines: Dict[str, int] = {}
-    appendix_h2: List[int] = []
     current_part: int | None = None
-    seen_appendix = False
     toc_start, toc_end = _toc_span(masked, frontmatter_end)
     for index, line in enumerate(masked[frontmatter_end + 1 :], start=frontmatter_end + 1):
         if toc_start < index < toc_end:
@@ -374,18 +357,11 @@ def _validate_structure(masked: Sequence[str], frontmatter_end: int) -> Tuple[Di
             part = int(part_match.group(1))
             if part in part_lines:
                 raise ValidationError("Part 見出しが重複しています")
-            if seen_appendix:
-                raise ValidationError("Part は Appendix より前に置いてください")
             label = PART_ROLE_LABELS[part]
             if f"({label})" not in line and f"（{label}）" not in line:
                 raise ValidationError(f"Part {part} には役割ラベル {label} が必要です")
             part_lines[part] = index
             current_part = part
-            continue
-        if APPENDIX_H2_RE.match(line):
-            appendix_h2.append(index)
-            current_part = None
-            seen_appendix = True
             continue
         section_match = SECTION_RE.match(line)
         if section_match:
@@ -403,71 +379,40 @@ def _validate_structure(masked: Sequence[str], frontmatter_end: int) -> Tuple[Di
                 raise ValidationError(f"§{section} の所属 Part が対応表と一致しません")
             section_lines[section] = index
             continue
-        appendix_match = APPENDIX_H3_RE.match(line)
-        if appendix_match:
-            appendix_id = appendix_match.group(1)
-            if appendix_id in appendix_lines:
-                raise ValidationError("Appendix 節が重複しています")
-            if not seen_appendix or current_part is not None:
-                raise ValidationError("Appendix A〜E は Part の外に置いてください")
-            appendix_lines[appendix_id] = index
-            if APPENDIX_RESPONSIBILITY_TOKENS[appendix_id] not in line:
-                raise ValidationError(
-                    f"Appendix {appendix_id} には責務トークン "
-                    f"{APPENDIX_RESPONSIBILITY_TOKENS[appendix_id]} が必要です"
-                )
 
     if sorted(part_lines) != [1, 2, 3, 4, 5] or [part_lines[p] for p in range(1, 6)] != sorted(part_lines.values()):
         raise ValidationError("Part 1〜5 は欠落なく昇順に置いてください")
-    if len(appendix_h2) != 1 or appendix_h2[0] <= part_lines[5]:
-        raise ValidationError("単一の ## Appendix を Part 5 の後に置いてください")
     if sorted(section_lines) != list(range(1, 25)):
         raise ValidationError("§1〜§24 が不足しています")
     if [section_lines[s] for s in range(1, 25)] != sorted(section_lines.values()):
         raise ValidationError("§1〜§24 は昇順に置いてください")
-    if tuple(appendix_lines) != APPENDIX_IDS:
-        raise ValidationError("Appendix A〜E は欠落なく昇順に置いてください")
-    if [appendix_lines[a] for a in APPENDIX_IDS] != sorted(appendix_lines.values()):
-        raise ValidationError("Appendix A〜E は昇順に置いてください")
-    if appendix_lines["A"] <= appendix_h2[0]:
-        raise ValidationError("Appendix A〜E は ## Appendix 配下に置いてください")
     for part in range(2, 6):
         _require_separator_before(masked, part_lines[part], f"Part {part}")
     for section in range(1, 25):
         if section not in {1, 6, 9, 16, 24}:
             _require_separator_before(masked, section_lines[section], f"§{section}")
-    _require_separator_before(masked, appendix_h2[0], "Appendix")
-    for appendix_id in APPENDIX_IDS[1:]:
-        _require_separator_before(masked, appendix_lines[appendix_id], f"Appendix {appendix_id}")
-    _validate_toc(masked, toc_start, toc_end, section_lines, appendix_lines)
-    return section_lines, appendix_lines
+    _validate_toc(masked, toc_start, toc_end, section_lines)
+    return section_lines
 
 
 def _body_ranges(
     masked: Sequence[str],
     section_lines: Dict[int, int],
-    appendix_lines: Dict[str, int],
-) -> Tuple[Dict[int, Tuple[int, int]], Dict[str, Tuple[int, int]]]:
-    headings: List[Tuple[int, str, str]] = []
-    headings.extend((line, "section", str(section)) for section, line in section_lines.items())
-    headings.extend((line, "appendix", appendix_id) for appendix_id, line in appendix_lines.items())
+) -> Dict[int, Tuple[int, int]]:
+    headings: List[Tuple[int, str, int]] = [(line, "section", section) for section, line in section_lines.items()]
     for index, line in enumerate(masked):
-        if PART_RE.match(line) or APPENDIX_H2_RE.match(line):
-            headings.append((index, "boundary", ""))
+        if PART_RE.match(line):
+            headings.append((index, "boundary", 0))
     headings.sort()
     section_ranges: Dict[int, Tuple[int, int]] = {}
-    appendix_ranges: Dict[str, Tuple[int, int]] = {}
     for position, (line, kind, identifier) in enumerate(headings):
         if kind == "boundary":
             continue
         end = headings[position + 1][0] if position + 1 < len(headings) else len(masked)
         while end > line + 1 and masked[end - 1].strip() in {"", "---"}:
             end -= 1
-        if kind == "section":
-            section_ranges[int(identifier)] = (line + 1, end)
-        else:
-            appendix_ranges[identifier] = (line + 1, end)
-    return section_ranges, appendix_ranges
+        section_ranges[identifier] = (line + 1, end)
+    return section_ranges
 
 
 def _valid_reason(value: str) -> bool:
@@ -502,28 +447,31 @@ def _section_has_declaration(body: str, evidence_lines: Set[int], start_line: in
     return any(_valid_reason(match.group("reason")) for match in DECLARATION_RE.finditer(body))
 
 
+def _reject_legacy_ledger_references(masked: Sequence[str]) -> None:
+    for line_number, line in enumerate(masked, start=1):
+        if LEGACY_LEDGER_REF_RE.search(line):
+            raise ValidationError(
+                f"台帳参照 [E<n>] は使えません（line {line_number}。本契約は証跡台帳を持たない）。"
+                "根拠は evidence: path#L行 で示してください"
+            )
+
+
 def _validate_bodies(
     masked: Sequence[str],
     section_ranges: Dict[int, Tuple[int, int]],
-    appendix_ranges: Dict[str, Tuple[int, int]],
     evidence: Sequence[Evidence],
 ) -> None:
     evidence_zero_based = {item.line_number - 1 for item in evidence}
-    ref_lines = {index for index, line in enumerate(masked) if dq.REF_RE.search(line)}
     for section in range(1, 25):
         start, end = section_ranges[section]
         body_lines = masked[start:end]
         body = "\n".join(body_lines)
         if not body.strip():
             raise ValidationError(f"§{section} の本文が空です")
-        local_evidence = any(start <= line < end for line in evidence_zero_based | ref_lines)
+        local_evidence = any(start <= line < end for line in evidence_zero_based)
         valid_reason = any(_valid_reason(match.group("reason")) for match in DECLARATION_RE.finditer(body))
         if not local_evidence and not valid_reason:
             raise ValidationError(f"§{section} に有効な宣言がありません")
-    for appendix_id in APPENDIX_IDS:
-        start, end = appendix_ranges[appendix_id]
-        if not "\n".join(masked[start:end]).strip():
-            raise ValidationError(f"Appendix {appendix_id} の本文が空です")
 
 
 def _split_table_row(line: str) -> List[str]:
@@ -715,21 +663,19 @@ def validate_text(
     lines = text.splitlines()
     frontmatter = _parse_frontmatter(lines)
     masked, fenced_lines = _mask_markdown(lines)
-    section_lines, appendix_lines = _validate_structure(masked, frontmatter.end_line)
-    section_ranges, appendix_ranges = _body_ranges(masked, section_lines, appendix_lines)
+    section_lines = _validate_structure(masked, frontmatter.end_line)
+    section_ranges = _body_ranges(masked, section_lines)
+    _reject_legacy_ledger_references(masked)
     evidence = _extract_evidence(masked)
     _validate_evidence_path_syntax(evidence)
-    _validate_bodies(masked, section_ranges, appendix_ranges, evidence)
+    _validate_bodies(masked, section_ranges, evidence)
     _validate_section9(lines, section_ranges, fenced_lines)
 
-    ledger: List[dq.LedgerRow] = []
+    evidence_positions = [(item.path, item.line_number - 1) for item in evidence]
     if quality and syntax_only:
         selected = dq.select_profile("standard" if profile == "auto" else profile, None)
         try:
-            ledger = dq.validate_text_quality(
-                masked, lines, fenced_lines, section_ranges, appendix_ranges,
-                {item.line_number - 1 for item in evidence}, selected, EVIDENCE_TOKEN_RE,
-            )
+            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, evidence_positions, selected)
         except dq.QualityError as exc:
             raise ValidationError(str(exc)) from exc
     if syntax_only:
@@ -756,13 +702,8 @@ def validate_text(
             raise ValidationError("survey の inventory.json を読み取れません（survey を先に実行してください）", 2) from exc
         selected = dq.select_profile(profile, stats["readable"])
         try:
-            ledger = dq.validate_text_quality(
-                masked, lines, fenced_lines, section_ranges, appendix_ranges,
-                {item.line_number - 1 for item in evidence}, selected, EVIDENCE_TOKEN_RE,
-            )
-            dq.verify_evidence_ranges_and_quotes(
-                Path(source_root), ledger, [(item.path, item.fragment) for item in evidence]
-            )
+            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, evidence_positions, selected)
+            dq.verify_evidence_ranges(Path(source_root), [(item.path, item.fragment) for item in evidence])
             dq.validate_coverage_line(masked, survey_dir, source_root)
         except dq.QualityError as exc:
             raise ValidationError(str(exc)) from exc

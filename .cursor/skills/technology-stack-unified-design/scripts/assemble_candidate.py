@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""部品ディレクトリの *.md を結合し、候補文書を組み立てて台帳同期と検証まで行う。
+"""部品ディレクトリの *.md を結合し、候補文書を組み立てて検証まで行う。
 
 部品の規約（ファイル名の昇順に結合する）:
   00-*.md   導入部。`# タイトル` と導入の箇条書き。調査範囲行は `{{COVERAGE}}` と書く（survey check の値で置換する）
-  以降      `## Part N: ...` / `### N. ...` / `## Appendix` / `### Appendix X: ...` を含む本文。境界の `---` は部品側に書く
+  以降      `## Part N: ...` / `### N. ...` を含む本文。境界の `---` は部品側に書く。Appendix は置かない
 frontmatter・調査範囲行・`## 目次`（番号付きリンク）はこのスクリプトが自動生成する。
-Appendix B には空の台帳表（ヘッダ行と区切り行）を置く。`[[path#L行 :: 主張]]` マーカーと `[E<n>]` は
-collect_ledger.py sync で台帳へ解決される（ledger-candidates.json がある場合に実行）。
+根拠は本文中の `evidence: path#L行` で示す（証跡台帳 `[E<n>]` は持たない）。
 """
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-import collect_ledger as ledger_mod  # noqa: E402
 import inspect_local_repository as inspect_mod  # noqa: E402
 import survey_repository as survey_mod  # noqa: E402
 import validate_design_doc as validate_mod  # noqa: E402
@@ -45,16 +43,9 @@ def build_toc(body: str) -> str:
         if part:
             toc.extend(["", f"### Part {part.group(1)}"])
             continue
-        if re.match(r"^##\s+Appendix\s*$", line):
-            toc.extend(["", "### Appendix"])
-            continue
         section = re.match(r"^###\s+(\d+)\.\s*(.*)$", line)
         if section:
             toc.append(f"{section.group(1)}. [{section.group(2)}]({validate_mod._heading_anchor(line[4:])})")
-            continue
-        appendix = re.match(r"^###\s+(Appendix\s+([A-E])(?:\s*[:：].*)?)\s*$", line)
-        if appendix:
-            toc.append(f"* [{appendix.group(1)}]({validate_mod._heading_anchor(line[4:])})")
     text = "\n".join(toc)
     return text.replace("## 目次\n\n\n### Part 1", "## 目次\n\n### Part 1")
 
@@ -101,11 +92,6 @@ def assemble(
     out_path = Path(out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(text, encoding="utf-8")
-    if (Path(survey_dir) / "ledger-candidates.json").is_file() or ledger_mod.MARKER_RE.search(text):
-        try:
-            ledger_mod.sync(os.fspath(out_path), survey_dir, source_root)
-        except ledger_mod.LedgerError as exc:
-            raise AssembleError(str(exc)) from exc
     if validate:
         try:
             validate_mod.validate_document(os.fspath(out_path), source_root=source_root, survey_dir=survey_dir)

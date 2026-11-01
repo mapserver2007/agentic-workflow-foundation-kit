@@ -2,7 +2,8 @@
 """統一設計書の本文品質（B 水準）を機械検査する。validate_design_doc.py から呼ばれる。
 
 検査するのは「構造的な品質の床」であり、記述の意味的な正しさは保証しない。
-ただし証跡台帳の引用は対象 worktree の実ファイルに逐語で実在することを検査する（幻覚防止）。
+ただし evidence の行範囲は対象 worktree の実ファイルに実在することを検査する（存在しない行の引用を防ぐ）。
+引用文が主張を裏付けるか、行の内容が主張と一致するかは検査しない。
 """
 from __future__ import annotations
 
@@ -13,15 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-LEDGER_HEADER = ["ID", "証跡", "引用", "裏付け"]
-REF_RE = re.compile(r"\[E(\d+)\]")
-LEDGER_ID_RE = re.compile(r"^E(\d+)$")
 N_A_RE = re.compile(r"^\s*(?:[-*]\s*)?該当なし:[ \t]*(?P<reason>.+?)\s*$", re.MULTILINE)
 FRAGMENT_RE = re.compile(r"#L(\d+)(?:-L(\d+))?$")
 PIPE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
-MIN_QUOTE_CHARS = 3
-MAX_QUOTE_CHARS = 120
 MIN_N_A_REASON_CHARS = 20
 MAX_READ_BYTES = 4 * 1024 * 1024
 
@@ -35,21 +31,20 @@ class Profile:
     name: str
     scale: float
     total_chars: int
-    min_ledger_rows: int
+    min_evidence: int
     min_distinct_paths: int
     ref_cap: int
     require_elements: bool
     max_not_applicable: int
     max_confirm_total: int
-    min_comparison_rows: int
-    min_glossary_rows: int
-    min_reference_items: int
-    min_checklist_rows: int
     min_section9_rows: int
 
 
-STANDARD = Profile("standard", 1.0, 18000, 40, 25, 99, True, 4, 14, 3, 8, 8, 8, 12)
-COMPACT = Profile("compact", 0.4, 5000, 8, 5, 1, False, 8, 24, 2, 3, 3, 3, 3)
+STANDARD = Profile("standard", 1.0, 18000, 40, 25, 99, True, 4, 14, 12)
+COMPACT = Profile("compact", 0.4, 5000, 8, 5, 1, False, 8, 24, 3)
+
+# 未確定事項の集約先。ここでの `[要確認]` は 1 節あたり・本文合計の上限に数えない。
+CONFIRM_AGGREGATION_SECTION = 24
 
 # 節ごとの最小分量。elements の "a|b" は any-of、複数要素は all-of。
 # (min_chars, min_refs, elements) — chars は空白を除いた文字数。
@@ -166,79 +161,11 @@ def _has_element(kind: str, masked_body: Sequence[str], raw: Sequence[str], star
     return False
 
 
-@dataclass(frozen=True)
-class LedgerRow:
-    entry_id: int
-    path: str
-    fragment: Optional[str]
-    quote: str
-    claim: str
-    line_index: int
-
-
-def _strip_quote(cell: str) -> str:
-    value = cell.strip()
-    if len(value) >= 2 and value[0] == "`" and value[-1] == "`":
-        value = value[1:-1]
-    return value.strip()
-
-
-def parse_ledger(
-    masked: Sequence[str],
-    appendix_b: Tuple[int, int],
-    evidence_token_re: "re.Pattern[str]",
-) -> List[LedgerRow]:
-    start, end = appendix_b
-    rows: List[LedgerRow] = []
-    seen_header = False
-    for index in range(start, end):
-        line = masked[index]
-        if not PIPE_ROW_RE.match(line):
-            continue
-        cells = _split_row(line)
-        if cells == LEDGER_HEADER:
-            seen_header = True
-            continue
-        if _is_separator(cells):
-            continue
-        if not seen_header:
-            continue
-        if len(cells) != 4:
-            raise QualityError(f"Appendix B の台帳行は 4 セル必要です（引用に | を含めないでください）: {line.strip()[:60]}")
-        id_match = LEDGER_ID_RE.match(cells[0])
-        if id_match is None:
-            raise QualityError(f"Appendix B の台帳 ID は E<数字> 形式にしてください: {cells[0]}")
-        tokens = list(evidence_token_re.finditer(cells[1]))
-        if len(tokens) != 1 or "evidence:" not in cells[1]:
-            raise QualityError(f"台帳 {cells[0]} の証跡セルには evidence: を 1 件だけ置いてください")
-        token = tokens[0]
-        path = token.group("quoted_path") or token.group("plain_path")
-        fragment = token.group("quoted_fragment") or token.group("plain_fragment")
-        quote = _strip_quote(cells[2])
-        claim = cells[3].strip()
-        if not (MIN_QUOTE_CHARS <= len(quote) <= MAX_QUOTE_CHARS):
-            raise QualityError(f"台帳 {cells[0]} の引用は {MIN_QUOTE_CHARS}〜{MAX_QUOTE_CHARS} 文字にしてください")
-        if not claim:
-            raise QualityError(f"台帳 {cells[0]} の裏付け（主張）が空です")
-        rows.append(LedgerRow(int(id_match.group(1)), path, fragment, quote, claim, index))
-    if not seen_header:
-        raise QualityError("Appendix B に台帳表（ヘッダ: ID | 証跡 | 引用 | 裏付け）がありません")
-    ids = [row.entry_id for row in rows]
-    if len(ids) != len(set(ids)):
-        raise QualityError("Appendix B の台帳 ID が重複しています")
-    return rows
-
-
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def verify_evidence_ranges_and_quotes(
+def verify_evidence_ranges(
     source_root: Path,
-    ledger: Sequence[LedgerRow],
     all_evidence: Sequence[Tuple[str, Optional[str]]],
 ) -> None:
-    """全 evidence の行範囲の実在と、台帳引用の逐語実在を検査する。"""
+    """全 evidence の行範囲が実ファイルの範囲内にあることを検査する（引用文の内容は検査しない）。"""
     cache: Dict[str, List[str]] = {}
 
     def lines_of(path: str) -> List[str]:
@@ -269,14 +196,6 @@ def verify_evidence_ranges_and_quotes(
 
     for path, fragment in all_evidence:
         bounds(path, fragment)
-    for row in ledger:
-        first, last = bounds(row.path, row.fragment)
-        window = _normalize("\n".join(lines_of(row.path)[first - 1 : last]))
-        if _normalize(row.quote) not in window:
-            raise QualityError(
-                f"台帳 E{row.entry_id} の引用が {row.path}"
-                f"{row.fragment or ''} の本文に逐語で存在しません（ファイルを開いてコピーしてください）"
-            )
 
 
 def _section_body(masked: Sequence[str], bounds: Tuple[int, int]) -> List[str]:
@@ -288,37 +207,22 @@ def validate_text_quality(
     raw: Sequence[str],
     fenced: Set[int],
     section_ranges: Dict[int, Tuple[int, int]],
-    appendix_ranges: Dict[str, Tuple[int, int]],
-    evidence_lines: Set[int],
+    evidence: Sequence[Tuple[str, int]],
     profile: Profile,
-    evidence_token_re: "re.Pattern[str]",
-) -> List[LedgerRow]:
-    """text だけで決まる品質の床を検査し、台帳行を返す。"""
-    ledger = parse_ledger(masked, appendix_ranges["B"], evidence_token_re)
-    ledger_lines = {row.line_index for row in ledger}
-    ids = {row.entry_id for row in ledger}
-    referenced: Set[int] = set()
-    undefined: Set[int] = set()
-    section_ref_counts: Dict[int, int] = {}
-    for index, line in enumerate(masked):
-        if index in ledger_lines:
-            continue
-        for match in REF_RE.finditer(line):
-            number = int(match.group(1))
-            referenced.add(number)
-            if number not in ids:
-                undefined.add(number)
-    if undefined:
-        raise QualityError("台帳に無い証跡参照があります: " + ", ".join(f"[E{n}]" for n in sorted(undefined)[:8]))
-    unused = sorted(ids - referenced)
-    if unused:
-        raise QualityError("本文から参照されていない台帳行があります: " + ", ".join(f"E{n}" for n in unused[:8]))
-    if len(ledger) < profile.min_ledger_rows:
-        raise QualityError(f"Appendix B の台帳が {len(ledger)} 件です（{profile.name} 水準は {profile.min_ledger_rows} 件以上）")
-    distinct = {row.path for row in ledger}
+) -> None:
+    """text だけで決まる品質の床を検査する。
+
+    evidence は本文中の `evidence:` トークンの (path, 0 始まりの行 index)。
+    """
+    if len(evidence) < profile.min_evidence:
+        raise QualityError(
+            f"evidence が {len(evidence)} 件です（{profile.name} 水準は {profile.min_evidence} 件以上。"
+            "主張ごとに evidence: path#L行 を添えてください）"
+        )
+    distinct = {path for path, _line in evidence}
     if len(distinct) < profile.min_distinct_paths:
         raise QualityError(
-            f"台帳の証跡ファイルが {len(distinct)} 種類です（{profile.name} 水準は {profile.min_distinct_paths} 種類以上。広く裏取りしてください）"
+            f"evidence の証跡ファイルが {len(distinct)} 種類です（{profile.name} 水準は {profile.min_distinct_paths} 種類以上。広く裏取りしてください）"
         )
 
     not_applicable = 0
@@ -328,21 +232,23 @@ def validate_text_quality(
         start, end = section_ranges[section]
         body = _section_body(masked, (start, end))
         total_chars += _nonspace(body)
-        for offset, line in enumerate(body):
+        for line in body:
             if section != 9 and line.strip().startswith("evidence:"):
                 raise QualityError(
-                    f"§{section} に evidence: だけの行があります。本文は [E<n>] 参照にし、根拠は Appendix B 台帳へ集約してください"
+                    f"§{section} に evidence: だけの行があります。根拠は主張を書いた文の末尾か表のセルに添え、"
+                    "evidence: だけの行を置かないでください"
                 )
-        refs = sum(len(REF_RE.findall(line)) for line in body)
-        refs += sum(1 for number in evidence_lines if start <= number < end)
-        section_ref_counts[section] = refs
+        refs = sum(1 for _path, line_index in evidence if start <= line_index < end)
         text = "\n".join(body)
         n_a = [m.group("reason") for m in N_A_RE.finditer(text)]
-        if section != 9:
+        if section not in (9, CONFIRM_AGGREGATION_SECTION):
             confirm = text.count("[要確認]")
             confirm_total += confirm
             if confirm > 2:
-                raise QualityError(f"§{section} の [要確認] が {confirm} 件です（1 節 2 件まで。未確定事項は Appendix E へ集約してください）")
+                raise QualityError(
+                    f"§{section} の [要確認] が {confirm} 件です（1 節 2 件まで。"
+                    f"未確定事項は §{CONFIRM_AGGREGATION_SECTION} に優先度の高い順で集約してください）"
+                )
         min_chars, min_refs, elements = SECTION_RULES[section]
         if n_a:
             if any(len(reason) < MIN_N_A_REASON_CHARS for reason in n_a):
@@ -360,7 +266,7 @@ def validate_text_quality(
             )
         need_refs = min(min_refs, profile.ref_cap)
         if refs < need_refs:
-            raise QualityError(f"§{section} の証跡参照が {refs} 件です（{need_refs} 件以上。[E<n>] で台帳へ紐付けてください）")
+            raise QualityError(f"§{section} の evidence が {refs} 件です（{need_refs} 件以上。主張に evidence: path#L行 を添えてください）")
         if profile.require_elements:
             for requirement in elements:
                 if not any(_has_element(kind, body, raw, start, end, fenced) for kind in requirement.split("|")):
@@ -369,37 +275,16 @@ def validate_text_quality(
     if not_applicable > profile.max_not_applicable:
         raise QualityError(f"該当なし の節が {not_applicable} 節です（上限 {profile.max_not_applicable}）。実装から読み取れる設計を書いてください")
     if confirm_total > profile.max_confirm_total:
-        raise QualityError(f"[要確認] が本文で {confirm_total} 件です（上限 {profile.max_confirm_total}）。未確定事項は Appendix E に優先度付きで集約してください")
+        raise QualityError(
+            f"[要確認] が本文で {confirm_total} 件です（§{CONFIRM_AGGREGATION_SECTION} を除き上限 {profile.max_confirm_total}）。"
+            f"未確定事項は §{CONFIRM_AGGREGATION_SECTION} に優先度の高い順で集約してください"
+        )
     section9_body = _section_body(masked, section_ranges[9])
     rows9 = max(data_row_count(section9_body), 1)
     if "\n".join(section9_body).count("[要確認]") * 4 > rows9:
         raise QualityError("§9 の方針列で [要確認] が行数の 25% を超えています。manifest・CI・Dockerfile を読み直して宣言値を拾ってください")
     if total_chars < profile.total_chars:
         raise QualityError(f"本文の分量が不足しています（§1〜§24 で {total_chars} 文字 < {profile.total_chars} 文字）")
-    _validate_appendices(masked, appendix_ranges, profile)
-    return ledger
-
-
-def _validate_appendices(masked: Sequence[str], appendix_ranges: Dict[str, Tuple[int, int]], profile: Profile) -> None:
-    body_a = _section_body(masked, appendix_ranges["A"])
-    if data_row_count(body_a) < profile.min_comparison_rows:
-        raise QualityError(f"Appendix A の比較表が {profile.min_comparison_rows} 行未満です（観点 × 選択肢の表で比較してください）")
-    body_c = _section_body(masked, appendix_ranges["C"])
-    if data_row_count(body_c) < profile.min_glossary_rows:
-        raise QualityError(f"Appendix C の用語表が {profile.min_glossary_rows} 行未満です")
-    body_d = _section_body(masked, appendix_ranges["D"])
-    if _list_items(body_d) + data_row_count(body_d) < profile.min_reference_items:
-        raise QualityError(f"Appendix D の参照が {profile.min_reference_items} 件未満です")
-    body_e = _section_body(masked, appendix_ranges["E"])
-    blocks = table_blocks(body_e)
-    rows = [row for block in blocks for row in block[2:]]
-    if len(rows) < profile.min_checklist_rows:
-        raise QualityError(f"Appendix E のチェックリスト表が {profile.min_checklist_rows} 行未満です")
-    if not any("優先度" in cell for block in blocks for cell in block[0]):
-        raise QualityError("Appendix E の表には 優先度 列が必要です")
-    bad = [row for row in rows if not re.match(r"^P[0-3]\b", row[0])]
-    if bad:
-        raise QualityError("Appendix E の各行の先頭列は優先度（P0〜P3）で始めてください")
 
 
 def validate_coverage_line(masked: Sequence[str], survey_dir: str, source_root: str) -> None:
