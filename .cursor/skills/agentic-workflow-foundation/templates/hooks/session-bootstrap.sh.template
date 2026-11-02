@@ -121,6 +121,90 @@ bind_campaign_from_handoff() {
   write_campaign_state
 }
 
+extract_snapshot_compact_field() {
+  local snapshot_file="$1"
+  local field_name="$2"
+  awk -v field_name="$field_name" '
+    $0 == "## compact 情報" {
+      in_compact=1
+      next
+    }
+    in_compact && /^## / {
+      in_compact=0
+      next
+    }
+    in_compact && index($0, "- " field_name ": ") == 1 {
+      count++
+      value=substr($0, length("- " field_name ": ") + 1)
+    }
+    END {
+      if (count == 1 && value != "") {
+        print value
+        exit 0
+      }
+      exit 1
+    }
+  ' "$snapshot_file" 2>/dev/null
+}
+
+try_bind_campaign_from_snapshot() {
+  local snapshot_file="$1"
+  local snapshot_campaign_id
+  local snapshot_tracker_path
+  local tracker_path_pattern="{{project.tracking_artifact}}"
+  local expected_tracker_rel
+  local expected_tracker
+
+  if [[ -L "$snapshot_file" ]]; then
+    SNAPSHOT_BIND_REASON="snapshot が symlink"
+    return 1
+  fi
+  if [[ ! -f "$snapshot_file" ]]; then
+    SNAPSHOT_BIND_REASON="snapshot が regular file ではない"
+    return 1
+  fi
+
+  snapshot_campaign_id="$(extract_snapshot_compact_field "$snapshot_file" "campaign_id")" || {
+    SNAPSHOT_BIND_REASON="compact 情報の campaign_id が一意に読めない"
+    return 1
+  }
+  snapshot_tracker_path="$(extract_snapshot_compact_field "$snapshot_file" "tracker_path")" || {
+    SNAPSHOT_BIND_REASON="compact 情報の tracker_path が一意に読めない"
+    return 1
+  }
+
+  if [[ "$snapshot_campaign_id" == "unbound" ]] ||
+    ! [[ "$snapshot_campaign_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    SNAPSHOT_BIND_REASON="campaign_id の形式が不正"
+    return 1
+  fi
+  if [[ "$snapshot_tracker_path" == "unavailable" ]]; then
+    SNAPSHOT_BIND_REASON="tracker_path が unavailable"
+    return 1
+  fi
+
+  expected_tracker_rel="${tracker_path_pattern//\{campaign_id\}/$snapshot_campaign_id}"
+  expected_tracker="$PROJECT_DIR/$expected_tracker_rel"
+  if [[ "$snapshot_tracker_path" != "$expected_tracker" ]]; then
+    SNAPSHOT_BIND_REASON="tracker_path が campaign_id の規定パスと一致しない"
+    return 1
+  fi
+  if [[ -L "$expected_tracker" ]]; then
+    SNAPSHOT_BIND_REASON="tracker が symlink"
+    return 1
+  fi
+  if [[ ! -f "$expected_tracker" ]]; then
+    SNAPSHOT_BIND_REASON="tracker が存在しない"
+    return 1
+  fi
+
+  CAMPAIGN_ID="$snapshot_campaign_id"
+  CAMPAIGN_ID_SOURCE="snapshot"
+  SNAPSHOT_BIND_TRACKER="$expected_tracker"
+  write_campaign_state
+  return 0
+}
+
 CAMPAIGN_ID="$SESSION_ID"
 CAMPAIGN_ID_SOURCE="session_start"
 # state は sessionStart で必ず campaign_id を持つ。2+ handoff はユーザー選択前に
@@ -264,36 +348,47 @@ if (( HANDOFF_COUNT == 0 )); then
 
   if (( SNAPSHOT_COUNT == 1 )); then
     FALLBACK_SNAPSHOT="${SNAPSHOT_FILES[0]}"
-    SNAP_CONTENT="$(read_file_preserving_bytes "$FALLBACK_SNAPSHOT")" || SNAP_CONTENT=""
-    SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
-    if [[ -n "$SNAP_CONTENT" ]]; then
-      SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
-      if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
-        SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
-      fi
+    SNAPSHOT_BIND_OK=false
+    SNAPSHOT_BIND_REASON=""
+    SNAPSHOT_BIND_TRACKER=""
+    if try_bind_campaign_from_snapshot "$FALLBACK_SNAPSHOT"; then
+      SNAPSHOT_BIND_OK=true
     fi
-    if [[ -n "$SNAP_CONTENT" ]]; then
-      RECENT_PROMPTS=""
-      if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
-        RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""
+
+    if [[ "$SNAPSHOT_BIND_OK" == "true" ]]; then
+      SNAP_CONTENT="$(read_file_preserving_bytes "$FALLBACK_SNAPSHOT")" || SNAP_CONTENT=""
+      SNAP_CONTENT="${SNAP_CONTENT%$BYTE_SENTINEL}"
+      if [[ -n "$SNAP_CONTENT" ]]; then
+        SNAP_SIZE="$(session_byte_count "$SNAP_CONTENT")" || SNAP_CONTENT=""
+        if [[ -n "$SNAP_CONTENT" ]] && (( SNAP_SIZE > MAX_INJECTION_BYTES )); then
+          SNAP_CONTENT="$(session_byte_prefix "$MAX_INJECTION_BYTES" "$SNAP_CONTENT")" || SNAP_CONTENT=""
+        fi
       fi
-      PROMPT_SUMMARY=""
-      if [[ -n "$RECENT_PROMPTS" ]]; then
-        PROMPT_SUMMARY="
+      if [[ -n "$SNAP_CONTENT" ]]; then
+        RECENT_PROMPTS=""
+        if echo "$SNAP_CONTENT" | grep -q "直近のターンログ" 2>/dev/null; then
+          RECENT_PROMPTS="$(echo "$SNAP_CONTENT" | sed -n '/## 直近のターンログ/,/## /p' 2>/dev/null | grep '"turn_type":"prompt"' 2>/dev/null | tail -5)" || RECENT_PROMPTS=""
+        fi
+        PROMPT_SUMMARY=""
+        if [[ -n "$RECENT_PROMPTS" ]]; then
+          PROMPT_SUMMARY="
 
 直近のユーザー依頼（turns.jsonl から抽出）:
 $(echo "$RECENT_PROMPTS" | jq -r '.summary // empty' 2>/dev/null | tail -3)"
-      fi
-      ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_FALLBACK] handoff manifest が存在しないため、pre-compact snapshot から文脈を復元します。${PROMPT_SUMMARY}
+        fi
+        ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_FALLBACK] 検証済みの pre-compact snapshot から campaign を復元しました。${PROMPT_SUMMARY}
 
 復旧手順:
-1. .cursor/.tracking/ 配下の tracker ファイルを Read し、フェーズと制約を確認せよ
+1. bind 済み tracker（${SNAPSHOT_BIND_TRACKER}）を Read し、フェーズと制約を確認せよ
 2. snapshot 内の tracker セクションと実ファイルを突合し、差分があれば実ファイルを正とせよ
 3. 追跡ドキュメントの指示に従って作業を再開せよ
 
 ---
 ${SNAP_CONTENT}
 ---"
+      fi
+    else
+      ADDITIONAL_CONTEXT="[CONTEXT_BUDGET_SNAPSHOT_REJECTED] pre-compact snapshot の campaign bind 検証に失敗したため、snapshot 本文は注入しません（${SNAPSHOT_BIND_REASON}）。handoff を作成するか、ユーザーが tracker を明示して再開してください。"
     fi
   elif (( SNAPSHOT_COUNT >= 2 )); then
     SNAPSHOT_LIST=""
