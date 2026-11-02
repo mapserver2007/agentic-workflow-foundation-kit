@@ -25,6 +25,7 @@ PLAN_GATE_TEMPLATE = (
     TEMPLATE_DIR / "skills" / "session-handover" / "scripts" / "plan-gate.sh.template"
 )
 ORCHESTRATOR_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKILL.md.template"
+CLEANUP_TEMPLATE = TEMPLATE_DIR / "skills" / "campaign-cleanup" / "scripts" / "campaign-cleanup.sh.template"
 MANIFEST = SKILL_DIR / "manifest.yaml"
 
 RENDER_VALUES = {
@@ -69,6 +70,13 @@ def write_script(template: Path, root: Path, name: str) -> Path:
     return script
 
 
+def write_cleanup_script(root: Path) -> Path:
+    script = root / "campaign-cleanup.sh"
+    script.write_text(CLEANUP_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+    script.chmod(0o700)
+    return script
+
+
 def run_hook(script: Path, root: Path, session_id: str, payload: dict) -> dict:
     env = dict(os.environ)
     env.update({
@@ -105,6 +113,20 @@ def write_state(root: Path, session_id: str, **updates: object) -> None:
     state = read_state(root, session_id)
     state.update(updates)
     path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def snapshot_text(root: Path, campaign_id: str = "C1", tracker_path: str | None = None) -> str:
+    expected_tracker = tracker_path or str(
+        root / ".cursor" / ".tracking" / f"tracker-{campaign_id}.md"
+    )
+    return (
+        "## compact 情報\n"
+        f"- campaign_id: {campaign_id}\n"
+        f"- tracker_path: {expected_tracker}\n"
+        "## state\n"
+        "- campaign_id: SNAPSHOT_STATE_SHOULD_BE_IGNORED\n"
+        "SNAPSHOT_BODY\n"
+    )
 
 
 def test_runtime_mint_bind_and_tracker_lookup() -> None:
@@ -360,6 +382,178 @@ def test_handoff_presence_blocks_snapshot_fallback() -> None:
         assert "SNAPSHOT_BODY" not in context
 
 
+def test_snapshot_campaign_binding_strict_validation() -> None:
+    invalid_cases = (
+        (
+            "missing-campaign-id",
+            lambda root, tracker: (
+                "## compact 情報\n"
+                f"- tracker_path: {tracker}\n"
+                "## state\nSNAPSHOT_BODY\n"
+            ),
+        ),
+        (
+            "duplicate-campaign-id",
+            lambda root, tracker: (
+                "## compact 情報\n"
+                "- campaign_id: C1\n"
+                "- campaign_id: C2\n"
+                f"- tracker_path: {tracker}\n"
+                "## state\nSNAPSHOT_BODY\n"
+            ),
+        ),
+        (
+            "unbound-campaign-id",
+            lambda root, tracker: snapshot_text(root, "unbound", tracker),
+        ),
+        (
+            "invalid-campaign-id",
+            lambda root, tracker: snapshot_text(root, "C1/escape", tracker),
+        ),
+        (
+            "missing-tracker-path",
+            lambda root, tracker: (
+                "## compact 情報\n"
+                "- campaign_id: C1\n"
+                "## state\nSNAPSHOT_BODY\n"
+            ),
+        ),
+        (
+            "unavailable-tracker-path",
+            lambda root, tracker: snapshot_text(root, "C1", "unavailable"),
+        ),
+        (
+            "relative-tracker-path",
+            lambda root, tracker: snapshot_text(root, "C1", ".cursor/.tracking/tracker-C1.md"),
+        ),
+        (
+            "mismatched-tracker-path",
+            lambda root, tracker: snapshot_text(
+                root,
+                "C1",
+                str(root / ".cursor" / ".tracking" / "tracker-OTHER.md"),
+            ),
+        ),
+        (
+            "duplicate-tracker-path",
+            lambda root, tracker: (
+                "## compact 情報\n"
+                "- campaign_id: C1\n"
+                f"- tracker_path: {tracker}\n"
+                f"- tracker_path: {tracker}\n"
+                "## state\nSNAPSHOT_BODY\n"
+            ),
+        ),
+    )
+
+    for label, build_snapshot in invalid_cases:
+        with tempfile.TemporaryDirectory(prefix=f"campaign-session-snapshot-{label}-") as tmp:
+            root = Path(tmp)
+            session_dir = root / ".cursor" / ".session"
+            tracking_dir = root / ".cursor" / ".tracking"
+            session_dir.mkdir(parents=True)
+            tracking_dir.mkdir(parents=True)
+            tracker = tracking_dir / "tracker-C1.md"
+            tracker.write_text("# C1\n", encoding="utf-8")
+            snapshot = session_dir / "pre-compact-only.md"
+            snapshot.write_text(build_snapshot(root, str(tracker)), encoding="utf-8")
+
+            bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+            output = run_hook(bootstrap, root, f"NEW-{label}", {"session_id": f"NEW-{label}"})
+            state = read_state(root, f"NEW-{label}")
+            context = output.get("additional_context", "")
+
+            assert state["campaign_id"] == f"NEW-{label}", f"{label}: 不正 snapshot を bind した"
+            assert state["campaign_id_source"] == "session_start", f"{label}: source が不正"
+            assert "[CONTEXT_BUDGET_SNAPSHOT_REJECTED]" in context, f"{label}: 拒否通知がない"
+            assert "SNAPSHOT_BODY" not in context, f"{label}: 拒否 snapshot 本文を注入した"
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-snapshot-missing-tracker-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
+        session_dir.mkdir(parents=True)
+        tracking_dir.mkdir(parents=True)
+        snapshot = session_dir / "pre-compact-only.md"
+        snapshot.write_text(snapshot_text(root), encoding="utf-8")
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-MISSING-TRACKER", {"session_id": "NEW-MISSING-TRACKER"})
+        state = read_state(root, "NEW-MISSING-TRACKER")
+        assert state["campaign_id"] == "NEW-MISSING-TRACKER"
+        assert "[CONTEXT_BUDGET_SNAPSHOT_REJECTED]" in output.get("additional_context", "")
+        assert "SNAPSHOT_BODY" not in output.get("additional_context", "")
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-snapshot-symlink-tracker-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
+        session_dir.mkdir(parents=True)
+        tracking_dir.mkdir(parents=True)
+        target = tracking_dir / "tracker-target.md"
+        target.write_text("# target\n", encoding="utf-8")
+        (tracking_dir / "tracker-C1.md").symlink_to(target)
+        snapshot = session_dir / "pre-compact-only.md"
+        snapshot.write_text(snapshot_text(root), encoding="utf-8")
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-SYMLINK-TRACKER", {"session_id": "NEW-SYMLINK-TRACKER"})
+        state = read_state(root, "NEW-SYMLINK-TRACKER")
+        assert state["campaign_id"] == "NEW-SYMLINK-TRACKER"
+        assert "[CONTEXT_BUDGET_SNAPSHOT_REJECTED]" in output.get("additional_context", "")
+
+    with tempfile.TemporaryDirectory(prefix="campaign-session-snapshot-symlink-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
+        session_dir.mkdir(parents=True)
+        tracking_dir.mkdir(parents=True)
+        (tracking_dir / "tracker-C1.md").write_text("# C1\n", encoding="utf-8")
+        target = session_dir / "snapshot-target.md"
+        target.write_text(snapshot_text(root), encoding="utf-8")
+        (session_dir / "pre-compact-only.md").symlink_to(target)
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        output = run_hook(bootstrap, root, "NEW-SYMLINK-SNAPSHOT", {"session_id": "NEW-SYMLINK-SNAPSHOT"})
+        state = read_state(root, "NEW-SYMLINK-SNAPSHOT")
+        assert state["campaign_id"] == "NEW-SYMLINK-SNAPSHOT"
+        assert "[CONTEXT_BUDGET_SNAPSHOT_REJECTED]" in output.get("additional_context", "")
+        assert "SNAPSHOT_BODY" not in output.get("additional_context", "")
+
+
+def test_snapshot_bind_campaign_is_used_by_cleanup_inventory() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-session-cleanup-inventory-") as tmp:
+        root = Path(tmp)
+        session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
+        artifacts_dir = root / ".cursor" / ".artifacts"
+        session_dir.mkdir(parents=True)
+        tracking_dir.mkdir(parents=True)
+        artifacts_dir.mkdir(parents=True)
+        (tracking_dir / "tracker-C1.md").write_text("campaign_slug: C1\n", encoding="utf-8")
+        (tracking_dir / "tracker-OLD.md").write_text("campaign_slug: OLD\n", encoding="utf-8")
+        (artifacts_dir / "OLD--step1.md").write_text("old\n", encoding="utf-8")
+        (session_dir / "pre-compact-only.md").write_text(snapshot_text(root), encoding="utf-8")
+
+        bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
+        run_hook(bootstrap, root, "NEW-CLEANUP", {"session_id": "NEW-CLEANUP"})
+        state = read_state(root, "NEW-CLEANUP")
+        assert state["campaign_id"] == "C1"
+        assert state["campaign_id_source"] == "snapshot"
+
+        cleanup = write_cleanup_script(root)
+        result = subprocess.run(
+            [BASH_EXECUTABLE, str(cleanup), "inventory", "--current-session-id", "NEW-CLEANUP"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "CURSOR_PROJECT_DIR": str(root)},
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        protected, delete_candidates = result.stdout.split("--- delete candidates ---", 1)
+        assert "current-campaign-id: C1" in result.stdout
+        assert ".cursor/.tracking/tracker-C1.md" in protected
+        assert ".cursor/.tracking/tracker-OLD.md" in delete_candidates
+        assert ".cursor/.artifacts/OLD--step1.md" in delete_candidates
+
+
 def test_no_handoff_snapshot_matrix() -> None:
     with tempfile.TemporaryDirectory(prefix="campaign-session-no-snapshot-") as tmp:
         root = Path(tmp)
@@ -372,14 +566,18 @@ def test_no_handoff_snapshot_matrix() -> None:
     with tempfile.TemporaryDirectory(prefix="campaign-session-one-snapshot-") as tmp:
         root = Path(tmp)
         session_dir = root / ".cursor" / ".session"
+        tracking_dir = root / ".cursor" / ".tracking"
         session_dir.mkdir(parents=True)
-        (session_dir / "pre-compact-only.md").write_text("ONLY_SNAPSHOT_BODY", encoding="utf-8")
+        tracking_dir.mkdir(parents=True)
+        (tracking_dir / "tracker-C1.md").write_text("# C1\n", encoding="utf-8")
+        (session_dir / "pre-compact-only.md").write_text(snapshot_text(root), encoding="utf-8")
         bootstrap = write_script(BOOTSTRAP_TEMPLATE, root, "session-bootstrap.sh")
         output = run_hook(bootstrap, root, "NEW-ONE", {"session_id": "NEW-ONE"})
         context = output.get("additional_context", "")
         assert "[CONTEXT_BUDGET_SNAPSHOT_FALLBACK]" in context
-        assert "ONLY_SNAPSHOT_BODY" in context
-        assert read_state(root, "NEW-ONE")["campaign_id"] == "NEW-ONE"
+        assert "SNAPSHOT_BODY" in context
+        assert read_state(root, "NEW-ONE")["campaign_id"] == "C1"
+        assert read_state(root, "NEW-ONE")["campaign_id_source"] == "snapshot"
 
     with tempfile.TemporaryDirectory(prefix="campaign-session-multi-snapshot-") as tmp:
         root = Path(tmp)
@@ -430,6 +628,8 @@ def main() -> int:
         test_handoff_reconciliation_uses_matching_origin,
         test_handoff_pointer_warning_uses_raw_manifest,
         test_handoff_presence_blocks_snapshot_fallback,
+        test_snapshot_campaign_binding_strict_validation,
+        test_snapshot_bind_campaign_is_used_by_cleanup_inventory,
         test_no_handoff_snapshot_matrix,
         test_template_contracts,
     )

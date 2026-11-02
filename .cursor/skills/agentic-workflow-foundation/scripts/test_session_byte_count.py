@@ -353,7 +353,13 @@ def test_bootstrap_injection_and_snapshot_limits() -> None:
             "bootstrap-invalid",
             "invalid snapshot bootstrap session env",
         )
-        assert "additional_context" not in invalid_output, "invalid snapshot was injected"
+        invalid_context = invalid_output.get("additional_context", "")
+        assert "[CONTEXT_BUDGET_SNAPSHOT_REJECTED]" in invalid_context, (
+            "invalid snapshot rejection warning is missing"
+        )
+        assert "snapshot 本文は注入しません" in invalid_context, (
+            "invalid snapshot body was injected"
+        )
 
         tracker = ("# tracker\n" + ("あ" * 2000) + "TRACKER_TAIL_MARKER\n")
         (tracking_dir / "tracker-C1.md").write_text(tracker, encoding="utf-8")

@@ -150,8 +150,10 @@ framework:
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
     # campaign_id は親 campaign の安定 ID。創設 session_id と同値で、再開時も変えない。
     # campaign_slug（report / envelope 用）とは別の識別子である。
+    # handoff がない場合でも、snapshot 1 件だけなら compact 情報の campaign_id と
+    # tracker_path を厳格に検証して bind し、artifact だけが残る孤児化を防ぐ。
     campaign_id_field: "campaign_id"
-    campaign_id_source: "sessionStart の session-bootstrap.sh が handoff から bind、なければ創設 session_id を mint"
+    campaign_id_source: "sessionStart の session-bootstrap.sh が handoff から bind、handoff なし・snapshot 1 件は検証済み snapshot から bind、それ以外は創設 session_id を mint"
     state_campaign_id_field: "campaign_id"
     tracker_path_pattern: ".cursor/.tracking/tracker-{campaign_id}.md"
     active_manifest_path: ".cursor/.session/handoff-{session_id}.md"

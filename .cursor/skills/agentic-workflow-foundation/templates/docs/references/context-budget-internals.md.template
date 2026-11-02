@@ -69,7 +69,7 @@ summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運
 
 ## tracker と handoff manifest の責務境界（詳細）
 
-campaign と session は別の責務を持つ。`campaign_id` は sessionStart で mint / handoff bind されるキャンペーンの安定 IDで、handoff が無い場合は創設 `session_id` と同値になる。`session_id` は現在チャットの runtime ID、`campaign_slug` は report / envelope の命名用であり、いずれも tracker の親 IDとして推測しない。
+campaign と session は別の責務を持つ。`campaign_id` は sessionStart で mint / handoff bind されるキャンペーンの安定 IDで、handoff が無くても snapshot 1 件の厳格な検証に成功した場合は snapshot から bind され、それ以外では創設 `session_id` と同値になる。`session_id` は現在チャットの runtime ID、`campaign_slug` は report / envelope の命名用であり、いずれも tracker の親 IDとして推測しない。
 
 | | tracker-{campaign_id}.md（追跡ドキュメント） | handoff-{session_id}.md（manifest） |
 |---|---|---|
@@ -128,7 +128,7 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 1. **handoff manifest 1 件・注入成功**: handoff ファイル名の origin session に一致する snapshot だけを manifest と突合する。snapshot 本文は追加注入しない
 2. **handoff manifest 1 件・注入失敗**: snapshot の突合・fallback を行わない
 3. **handoff manifest 2 件以上**: handoff の選択を優先し、snapshot を処理しない
-4. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot 0 件は非注入、1 件は turns.jsonl セクションから直近のユーザー依頼を抽出して fallback 注入、2 件以上は本文を自動注入せず `[CONTEXT_BUDGET_SNAPSHOT_SELECT]` で選択を求める。いずれも campaign tracker の bind は行わない
+4. **handoff manifest なし**（compact 後の劣化 AI が manifest を書けなかった場合）: snapshot 0 件は非注入、1 件は regular file であること、compact 情報内の `campaign_id` / `tracker_path` が各 1 件であること、ID 形式、規定 tracker パスとの完全一致、tracker の regular file を検証する。すべて成功した場合だけ campaign tracker を bind して turns.jsonl セクションから直近のユーザー依頼を抽出し fallback 注入する。検証に失敗した場合は本文を自動注入せず短い警告を返し、2 件以上は本文を自動注入せず `[CONTEXT_BUDGET_SNAPSHOT_SELECT]` で選択を求める
 
 ## manifest 骨格の機械生成
 
