@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from typing import Callable, Dict, List
 
 HERE = Path(__file__).resolve().parent
@@ -41,15 +42,33 @@ FILLER = (
 )
 
 
+def _git_env() -> dict:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in inspect_mod.SANITIZED_GIT_ENV_KEYS
+        and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+    }
+
+
 def git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", os.fspath(root), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    subprocess.run(
+        ["git", "-C", os.fspath(root), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        env=_git_env(),
+    )
 
 
 def commit(root: Path) -> None:
     git(root, "add", "-A")
     subprocess.run(
         ["git", "-C", os.fspath(root), "-c", "user.name=F", "-c", "user.email=f@example.invalid", "commit", "-q", "-m", "x"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        env=_git_env(),
     )
 
 
@@ -169,6 +188,16 @@ class SurveyTests(SurveyBase):
         ci = (self.survey / "facts" / "ci.md").read_text(encoding="utf-8")
         self.assertIn("job test", ci)
 
+    def test_fixture_git_ignores_parent_repository_env(self) -> None:
+        missing = os.fspath(self.base / "missing-git-dir")
+        (self.repo / "another.txt").write_text("x\n", encoding="utf-8")
+        with mock.patch.dict(
+            os.environ,
+            {"GIT_DIR": missing, "GIT_WORK_TREE": missing, "GIT_INDEX_FILE": missing},
+        ):
+            commit(self.repo)
+            git(self.repo, "rev-parse", "HEAD")
+
     def test_generated_files_are_not_in_shards(self) -> None:
         shard_text = "".join(p.read_text(encoding="utf-8") for p in (self.survey / "shards").glob("*.md"))
         self.assertNotIn("gen/api.pb.go", shard_text)
@@ -184,6 +213,21 @@ class SurveyTests(SurveyBase):
         survey_mod.run_survey(os.fspath(self.repo), os.fspath(self.survey))
         coverage = survey_mod.check_survey(os.fspath(self.survey), os.fspath(self.repo))
         self.assertGreater(coverage.full, 0)
+
+    def test_rerun_drops_stale_facts_and_extra_shards(self) -> None:
+        complete_notes(self.survey)
+        note = next((self.survey / "notes").glob("*.note.md"))
+        note_text = note.read_text(encoding="utf-8")
+        (self.survey / "facts" / "proto.md").write_text("# stale proto\n", encoding="utf-8")
+        (self.survey / "shards" / "shard-99.md").write_text("# stale shard\n", encoding="utf-8")
+        survey_mod.run_survey(os.fspath(self.repo), os.fspath(self.survey))
+        self.assertFalse((self.survey / "facts" / "proto.md").exists())
+        self.assertFalse((self.survey / "shards" / "shard-99.md").exists())
+        self.assertTrue((self.survey / "facts" / "dep.md").is_file())
+        self.assertTrue((self.survey / "facts" / "sql.md").is_file())
+        self.assertTrue((self.survey / "facts" / "layout.md").is_file())
+        self.assertTrue(any((self.survey / "shards").glob("shard-*.md")))
+        self.assertEqual(note.read_text(encoding="utf-8"), note_text)
 
 
 class CoverageCheckTests(SurveyBase):

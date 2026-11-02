@@ -22,12 +22,22 @@ if os.fspath(HERE) not in sys.path:
 import inspect_local_repository as inspect_mod  # noqa: E402
 
 
+def _git_env() -> dict:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in inspect_mod.SANITIZED_GIT_ENV_KEYS
+        and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+    }
+
+
 def run_git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         ["git", "-C", os.fspath(root), *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
+        env=_git_env(),
     )
 
 
@@ -175,6 +185,7 @@ class InspectRepositoryTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
+            env=_git_env(),
         )
         self.assertEqual(self.inspect().uninitialized_submodules, 1)
 
@@ -232,6 +243,23 @@ else: sys.exit(9)
         self.assertIn("core.hooksPath=/dev/null", commands)
         for forbidden in ("clone", "fetch", "pull", "push", "checkout", "reset", "clean", "stash", "submodule update"):
             self.assertNotIn(forbidden, commands)
+
+    def test_fixture_git_ignores_parent_repository_env(self) -> None:
+        missing = os.fspath(self.base / "missing-git-dir")
+        (self.fixture.root / "another.txt").write_text("x\n", encoding="utf-8")
+        with mock.patch.dict(
+            os.environ,
+            {
+                "GIT_DIR": missing,
+                "GIT_WORK_TREE": missing,
+                "GIT_INDEX_FILE": missing,
+                "GIT_CONFIG_KEY_0": "core.fsmonitor",
+                "GIT_CONFIG_VALUE_0": missing,
+            },
+        ):
+            commit_all(self.fixture.root, "under redirected env")
+            revision = run_git(self.fixture.root, "rev-parse", "HEAD").stdout.decode().strip()
+        self.assertRegex(revision, r"^[0-9a-f]{40}$")
 
     def test_malicious_fsmonitor_and_git_environment_are_neutralized(self) -> None:
         marker = self.base / "fsmonitor-ran"

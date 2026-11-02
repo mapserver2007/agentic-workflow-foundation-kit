@@ -1293,6 +1293,20 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _remove_previous_generated_files(out: Path) -> None:
+    """再 survey で今回書き出さない facts と shard 作業指示を残さない。notes は触らない。"""
+    facts_dir = out / "facts"
+    if facts_dir.is_dir():
+        for stale in facts_dir.glob("*.md"):
+            if stale.name != "layout.md" and stale.is_file():
+                stale.unlink()
+    shards_dir = out / "shards"
+    if shards_dir.is_dir():
+        for stale in shards_dir.glob("shard-*.md"):
+            if stale.is_file():
+                stale.unlink()
+
+
 def _fact_lines(state: SurveyState, kind: str, limit: int = 100000) -> List[str]:
     rows = state.facts.get(kind, [])
     out = []
@@ -1510,6 +1524,7 @@ def run_survey(source_root: str, out_dir: str, max_files: int = DEFAULT_SHARD_FI
     _write(out / "inventory.json", json.dumps(inventory, ensure_ascii=False, indent=0))
     _write(out / "overview.md", render_overview(state, shards, inspection))
     _write(out / "facts" / "layout.md", render_layout(state.records))
+    _remove_previous_generated_files(out)
     for kind in ("dep", "script", "runtime", "container", "tool", "compose", "ci", "make", "proto", "sql", "openapi", "iac", "entry", "route", "generate", "di", "doc"):
         lines = _fact_lines(state, kind)
         if lines:

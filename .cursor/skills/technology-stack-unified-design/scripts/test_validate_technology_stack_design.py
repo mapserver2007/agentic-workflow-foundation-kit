@@ -27,12 +27,22 @@ import publish_design_doc as publish_mod  # noqa: E402
 import validate_design_doc as validate_mod  # noqa: E402
 
 
+def _git_env() -> dict:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in inspect_mod.SANITIZED_GIT_ENV_KEYS
+        and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+    }
+
+
 def git(root: Path, *args: str) -> bytes:
     return subprocess.run(
         ["git", "-C", os.fspath(root), *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
+        env=_git_env(),
     ).stdout
 
 
@@ -54,6 +64,7 @@ def commit(root: Path, message: str) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
+        env=_git_env(),
     )
 
 
@@ -150,6 +161,19 @@ class FixtureCase(unittest.TestCase):
         with self.assertRaises(validate_mod.ValidationError) as caught:
             self.validate(syntax_only=syntax_only)
         self.assertEqual(caught.exception.code, code)
+
+
+class FixtureGitEnvTests(FixtureCase):
+    def test_fixture_git_ignores_parent_repository_env(self) -> None:
+        missing = os.fspath(self.base / "missing-git-dir")
+        (self.repo / "another.txt").write_text("x\n", encoding="utf-8")
+        with mock.patch.dict(
+            os.environ,
+            {"GIT_DIR": missing, "GIT_WORK_TREE": missing, "GIT_INDEX_FILE": missing},
+        ):
+            commit(self.repo, "under redirected env")
+            revision = git(self.repo, "rev-parse", "HEAD").decode().strip()
+        self.assertRegex(revision, r"^[0-9a-f]{40}$")
 
 
 class StructureAndDeclarationTests(FixtureCase):
