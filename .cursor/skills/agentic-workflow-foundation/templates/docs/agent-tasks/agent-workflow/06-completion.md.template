@@ -81,9 +81,9 @@ Domain docs への反映完了後、タスクレポートの「docs への仕様
 ## 6.3 archives 移動
 
 {{#if agent_workflow.maintenance_docs.enabled}}{{#if agent_workflow.gate_scripts}}
-Step ⑥の順序は **最終判定 → archive gate → report archive → 独立 maintenance-docs workflow** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
+Step ⑥の順序は **最終判定<!-- contract: step6-order-final-judgment --> → archive gate<!-- contract: step6-order-archive-gate --> → report archive<!-- contract: step6-order-report-archive --> → 独立 maintenance-docs workflow<!-- contract: step6-order-maintenance-docs -->** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
 {{else}}
-Step ⑥の順序は **最終判定 → report archive → 独立 maintenance-docs workflow** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
+Step ⑥の順序は **最終判定<!-- contract: step6-order-final-judgment --> → report archive<!-- contract: step6-order-report-archive --> → 独立 maintenance-docs workflow<!-- contract: step6-order-maintenance-docs -->** とする。完了チェック6項目が全て `[x]` であること、および `required` queue が `pending` のままであることを確認してから進む。
 {{/if}}{{else}}
 完了チェック 6 項目が全て `[x]` であることを確認した後、以下を実行する。
 {{/if}}

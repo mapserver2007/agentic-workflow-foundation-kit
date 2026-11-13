@@ -9,9 +9,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 ROOT = SKILL_DIR.parent.parent.parent
 TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-append.sh.template"
@@ -346,36 +349,59 @@ def test_generation_catalog_and_hooks_json() -> None:
 
     readme = README_TEMPLATE.read_text(encoding="utf-8")
     assert "review_start" in readme, "README missing review_start"
-    assert "helper 検証チェックリスト" in readme, "README missing helper checklist"
-    assert "Step⑤ Mode A" in readme and "review-start gate" in readme, "README missing review-start boundary"
-    assert "`session-*` 観測 Hook は全イベントで fail_open" in readme
-    assert "`session-progress-append.sh` は Hook ではなく fail_closed" in readme
+    cm.require(readme, "hooks-readme-helper-checklist", label="README helper 検証チェックリスト")
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-review-start-extra",
+        ("review_start", "Mode A", "review-start gate"),
+        label="README review-start 境界",
+    )
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-fail-open-vs-append-fail-closed",
+        ("session-*", "fail_open", "session-progress-append.sh", "fail_closed"),
+        ordered=True,
+        label="README fail_open / fail_closed の区別",
+    )
 
 
 def test_workflow_boundary_contract() -> None:
-    pr_review = PR_REVIEW_TEMPLATE.read_text(encoding="utf-8")
+    pr_review = cm.render_template(PR_REVIEW_TEMPLATE)
     for needle in (
         "workflow-gate.sh review-start",
         "kind=review_start",
-        "PR URL 受領後",
         "workflow-orchestrator",
         "standalone `agent-code-review`",
         "maintenance-docs-workflow",
         "maintenance-gotchas-workflow",
     ):
         assert needle in pr_review, f"05-pr-review template missing {needle}"
+    cm.require_tokens_on_line(
+        pr_review,
+        "pr-review-review-start-runs-after-pr-url",
+        ("workflow-orchestrator",),
+        label="05-pr-review: PR URL 受領後の review-start",
+    )
 
-    orchestrator = ORCHESTRATOR_TEMPLATE.read_text(encoding="utf-8")
+    orchestrator = cm.render_template(ORCHESTRATOR_TEMPLATE)
     assert "workflow-gate.sh review-start" in orchestrator, "orchestrator missing review-start gate"
     assert "review-pr-url" in orchestrator, "orchestrator missing report PR binding"
     assert "canonical PR URL" in orchestrator, "orchestrator missing PR URL order"
-    step5 = orchestrator.split("### Step ⑤: PR レビュー検証", 1)[1].split("### Step ⑥", 1)[0]
-    helper_at = step5.find("workflow-gate.sh review-start")
-    review_at = step5.find("レビュー指摘を取得")
-    assert helper_at != -1 and review_at != -1 and helper_at < review_at, (
-        "orchestrator Step ⑤ must pass review-start before review delegation"
+    step5 = cm.span(
+        orchestrator, "orchestrator-step5", "orchestrator-step6", label="orchestrator Step⑤"
     )
-    assert "親が `session-progress-append.sh` を直接実行してはならない" in step5
+    # review-start gate が、レビュー委譲より先に通ること（マーカー順で固定）
+    cm.require_order(
+        step5,
+        ("step5-review-start-gate", "step5-review-delegation"),
+        label="orchestrator Step⑤ review-start → 委譲",
+    )
+    cm.require_tokens_on_line(
+        step5,
+        "step5-parent-must-not-run-append-helper",
+        ("session-progress-append.sh",),
+        label="orchestrator Step⑤: 親は append helper を直接実行しない",
+    )
 
     for path, label in (
         (CODE_REVIEW_TEMPLATE, "agent-code-review"),

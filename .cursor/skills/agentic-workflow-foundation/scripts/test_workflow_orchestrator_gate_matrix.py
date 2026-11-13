@@ -9,6 +9,12 @@ step4/step5/step6 の境界責務を正しく案内していることを検証�
   - テンプレート SKILL.md.template の Step ⑤ 行が step5 を必須入口、step6 を必須出口として案内すること
   - テンプレート SKILL.md.template の Step ⑤ 手順がコード変更後の step5 再実行を要求すること
   - 05-pr-review.md.template が PR 作成前 step5・変更後 step5 再実行・step6 完了条件を含むこと
+
+検査方式:
+  生成物の日本語文言そのものではなく、契約マーカー（`<!-- contract: <id> -->`）の
+  存在・個数・順序・範囲と、同一行の安定トークン（コマンド名・ファイル名・状態値）を検査する。
+  文言を推敲してもテストは落ちない。マーカー検査は `_contract_markers.py` に集約する。
+  マーカーを使わないのは、機械が解釈する契約値（完了チェック項目名・コマンド文字列・ID）のみ。
 """
 from __future__ import annotations
 
@@ -49,6 +55,9 @@ SESSION_START_GATE_TEMPLATE = (
 sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"))
 from genlib import load_manifest, render  # noqa: E402
 
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
+
 
 def _read(path: Path) -> str:
     if not path.exists():
@@ -63,8 +72,10 @@ def _render_with_features(
     gate_scripts: bool = True,
     code_review: bool = True,
     github_pr: bool = True,
+    requirement_analysis: bool = True,
 ) -> str:
     context = copy.deepcopy(load_manifest(str(MANIFEST)))
+    context["requirement_analysis"]["enabled"] = requirement_analysis
     context["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_docs
     context["agent_workflow"]["gate_scripts"] = gate_scripts
     context["code_review"]["enabled"] = code_review
@@ -72,234 +83,349 @@ def _render_with_features(
     return render(_read(path), context)
 
 
-def _assert_markers_in_order(
-    content: str,
-    markers: tuple[str, ...],
-    label: str,
-) -> list[int]:
-    positions = [content.find(marker) for marker in markers]
-    missing = [marker for marker, position in zip(markers, positions) if position < 0]
-    assert not missing, f"{label} に必須markerが不足: {missing}"
-    assert all(left < right for left, right in zip(positions, positions[1:])), (
-        f"{label} の順序が不正: {positions}"
-    )
-    return positions
-
-
 def test_step4_matrix_implementation_to_verification():
     """Step ④ Matrix 行が step4 を「実装 → 検証」として案内すること。"""
-    content = _read(SKILL_TEMPLATE)
-    lines = [line for line in content.splitlines() if "**④ テスト**" in line or "④" in line]
-    step4_lines = [line for line in lines if "step4" in line]
-    assert step4_lines, "Step ④ 行に step4 への参照が見つからない"
-    step4_line = step4_lines[0]
-    assert "実装 → 検証" in step4_line, (
-        f"Step ④ 行が「実装 → 検証」を含まない: {step4_line!r}"
-    )
-    assert "実装 → PR" not in step4_line, (
-        f"Step ④ 行に誤った「実装 → PR」が残っている: {step4_line!r}"
-    )
+    marker = "matrix-step4-impl-then-verify"
+    for gate_scripts in (True, False):
+        for path in (SKILL_TEMPLATE, INDEX_TEMPLATE):
+            rendered = _render_with_features(path, gate_scripts=gate_scripts)
+            tokens = ["04-testing.md"]
+            if gate_scripts:
+                tokens.append("workflow-gate.sh step4")
+            cm.require_tokens_on_line(
+                rendered,
+                marker,
+                tokens,
+                forbidden=("実装 → PR",),  # 旧契約（検証前に PR へ進む）の再混入防止
+                label=f"{path.name} gate_scripts={gate_scripts}",
+            )
 
 
 def test_step5_matrix_entry_exit():
     """Step ⑤ Matrix 行が step5 を必須入口、step6 を必須出口として案内すること。"""
-    content = _read(SKILL_TEMPLATE)
-    lines = [line for line in content.splitlines() if "**⑤ PR レビュー**" in line or "⑤" in line]
-    step5_lines = [line for line in lines if "step5" in line and "step6" in line]
-    assert step5_lines, (
-        "Step ⑤ Matrix 行に step5 と step6 の両方への参照が見つからない"
+    gated = _render_with_features(SKILL_TEMPLATE, gate_scripts=True)
+    cm.require_tokens_on_line(
+        gated,
+        "matrix-step5-gate-chain",
+        ("05-pr-review.md", "workflow-gate.sh step5", "review-start", "step6"),
+        ordered=True,
+        label="orchestrator Matrix Step⑤ (gate_scripts)",
+    )
+    plain = _render_with_features(SKILL_TEMPLATE, gate_scripts=False)
+    cm.require_tokens_on_line(
+        plain,
+        "matrix-step5-gate-chain",
+        ("05-pr-review.md",),
+        forbidden=("workflow-gate.sh",),
+        label="orchestrator Matrix Step⑤ (no gate_scripts)",
     )
 
 
 def test_step2_matrix_excludes_po_approval_from_exit():
     """Step②退出は機械ゲートであり、PO承認を含めない。"""
-    content = _read(SKILL_TEMPLATE)
-    line = next(
-        (line for line in content.splitlines() if "**② レポート作成**" in line),
-        "",
+    content = _render_with_features(SKILL_TEMPLATE)
+    cm.require_tokens_on_line(
+        content,
+        "matrix-step2-machine-exit",
+        ("02-report-creation.md", "`step2-report` PASS", "`step2` PASS"),
+        forbidden=("PO承認", "ユーザー承認"),  # 退出条件に人間承認を混ぜない
+        label="orchestrator Matrix Step②",
     )
-    assert "step2-report" in line and "`step2` PASS" in line
-    assert "PO承認" not in line and "ユーザー承認" not in line
 
 
 def test_step3_entry_requires_parent_pre_dispatch():
     """Step③入口が親 pre-dispatch・approved・digest一致を要求する。"""
-    content = _read(SKILL_TEMPLATE)
-    line = next((line for line in content.splitlines() if "**③ 実装**" in line), "")
-    assert "親 pre-dispatch" in line and "digest" in line
+    content = _render_with_features(SKILL_TEMPLATE)
+    cm.require_tokens_on_line(
+        content,
+        "matrix-step3-entry-pre-dispatch",
+        ("03-implementation.md", "digest"),
+        label="orchestrator Matrix Step③",
+    )
     assert "implementation_approval.status: approved" in content
 
 
 def test_step1_immediately_dispatches_step2_without_ack():
-    """Step① PASS は4分類通知後に同一ターンでStep②へ遷移し、旧ackを要求しない。"""
-    content = _read(SKILL_TEMPLATE)
-    assert "同一ターンで凍結済み `campaign_slug` / 同値の `report_slug` を Step② worker へ dispatch" in content
-    assert "requirements ack や進行可否質問を待たず" in content
+    """Step① PASS は4分類通知後に同一ターンでStep②へ遷移し、旧ackを要求しない。
+
+    「旧 ack を要求しない」側は test_step2_approval_boundary.py の旧契約語リスト
+    （再ack 等）が検査する。ここでは即時遷移の契約マーカーとその主要トークンを確認する。
+    """
+    content = _render_with_features(SKILL_TEMPLATE, requirement_analysis=True)
+    cm.require_tokens_on_line(
+        content,
+        "step1-pass-dispatches-step2-immediately",
+        ("campaign_slug", "report_slug", "dispatch"),
+        label="orchestrator Step①",
+    )
+    disabled = _render_with_features(SKILL_TEMPLATE, requirement_analysis=False)
+    cm.require_absent(
+        disabled,
+        "step1-pass-dispatches-step2-immediately",
+        reference=content,
+        label="requirement_analysis 無効",
+    )
 
 
 def test_resume_table_contains_pending_and_approved_branches():
     """再開表がPO待ち・承認済み未着手・digest不一致を分岐する。"""
-    content = _read(SKILL_TEMPLATE)
-    for phrase in (
-        "implementation_approval.status: pending",
-        "`approved` だが digest 不一致",
-        "`approved` + digest一致 + Step③ envelopeなし",
-    ):
-        assert phrase in content, f"再開分岐が不足: {phrase}"
+    content = _render_with_features(SKILL_TEMPLATE)
+    cm.require_tokens_on_line(
+        content,
+        "resume-pending-approval",
+        ("implementation_approval.status: pending",),
+        label="再開表: PO待ち",
+    )
+    cm.require_tokens_on_line(
+        content,
+        "resume-approved-digest-mismatch",
+        ("approved", "digest"),
+        label="再開表: digest 不一致",
+    )
+    cm.require_tokens_on_line(
+        content,
+        "resume-approved-digest-match-no-step3-envelope",
+        ("approved", "digest", "Step③"),
+        label="再開表: 承認済み未着手",
+    )
+    cm.require_order(
+        content,
+        (
+            "resume-pending-approval",
+            "resume-approved-digest-mismatch",
+            "resume-approved-digest-match-no-step3-envelope",
+        ),
+        label="再開表の分岐順",
+    )
 
 
 def test_step5_procedure_rerun_after_change():
     """Step ⑤ 手順がコード変更後の step5 再実行を要求すること。"""
-    content = _read(SKILL_TEMPLATE)
-    assert any(
-        "コード変更があった場合" in line and "step5" in line
-        for line in content.splitlines()
-    ), (
-        "Step ⑤ 手順に「コード変更があった場合の step5 再実行」の記述が見つからない"
+    content = _render_with_features(SKILL_TEMPLATE, gate_scripts=True)
+    cm.require_in_span(
+        content,
+        "orchestrator-step5",
+        "step5-rerun-after-code-change",
+        end_outer="orchestrator-step6",
+        label="orchestrator Step⑤",
+    )
+    cm.require_tokens_on_line(
+        content,
+        "step5-rerun-after-code-change",
+        ("workflow-gate.sh step5",),
+        label="orchestrator Step⑤ 再実行",
+    )
+    plain = _render_with_features(SKILL_TEMPLATE, gate_scripts=False)
+    cm.require_absent(
+        plain,
+        "step5-rerun-after-code-change",
+        reference=content,
+        label="gate_scripts 無効",
     )
 
 
 def test_05_pr_review_template_step5_before_pr():
     """05-pr-review.md.template が PR 作成前 step5 を明記すること。"""
-    content = _read(PR_REVIEW_TEMPLATE)
-    assert any(
-        ("PR 作成前" in line or "PR 作成**前**" in line) and "step5" in line
-        for line in content.splitlines()
-    ), (
-        "05-pr-review.md.template に「PR 作成前に step5」の記述が見つからない"
+    content = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
+    cm.require_in_span(
+        content,
+        "pr-review-completion-conditions",
+        "pr-review-completion-step5-before-pr",
+        end_outer="pr-review-approval-gate",
+        label="05-pr-review §完了条件",
+    )
+    cm.require_tokens_on_line(
+        content,
+        "pr-review-completion-step5-before-pr",
+        ("workflow-gate.sh step5",),
+        label="05-pr-review PR 作成前 step5",
     )
 
 
 def test_05_pr_review_template_step5_rerun():
     """05-pr-review.md.template がコード変更後の step5 再実行を明記すること。"""
-    content = _read(PR_REVIEW_TEMPLATE)
-    assert any(
-        "変更後" in line and "step5" in line
-        for line in content.splitlines()
-    ), (
-        "05-pr-review.md.template に「コード変更後の step5 再実行」の記述が見つからない"
+    content = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
+    cm.require_in_span(
+        content,
+        "pr-review-completion-conditions",
+        "pr-review-completion-step5-rerun-after-change",
+        end_outer="pr-review-approval-gate",
+        label="05-pr-review §完了条件",
+    )
+    cm.require_tokens_on_line(
+        content,
+        "pr-review-completion-step5-rerun-after-change",
+        ("workflow-gate.sh step5",),
+        label="05-pr-review 変更後 step5 再実行",
     )
 
 
 def test_commit_policy_normal_procedure_and_disabled_feature_fallback():
     """通常手順の正本と code_review 無効時の代替手順を区別する。"""
-    skill = _read(CODE_REVIEW_SKILL_TEMPLATE)
-    assert "⑤〜⑦" not in skill
-    assert "Step 5〜7 では commit しない" in skill
-    assert "`reviews/archives/` へは移さない" in skill
-    assert "CodeRabbit の `path_filters` 対象外" in skill
+    skill = _render_with_features(CODE_REVIEW_SKILL_TEMPLATE)
+    assert "⑤〜⑦" not in skill  # 旧表記（Step 範囲）の再混入防止
+    cm.require_tokens_on_line(
+        skill,
+        "code-review-commit-policy",
+        ("reviews/archives/", "path_filters"),
+        label="agent-code-review コミットポリシー",
+    )
 
     enabled = _render_with_features(PR_REVIEW_TEMPLATE, code_review=True)
-    enabled_report = enabled[
-        enabled.find("## 5.5 タスクレポート更新") :
-        enabled.find("## 5.6 完了条件")
-    ]
-    assert "agent-code-review" in enabled_report
-    assert "コミットポリシーに従う" in enabled_report
-    assert "Step 5〜7 では commit しない" not in enabled_report
-
     disabled = _render_with_features(PR_REVIEW_TEMPLATE, code_review=False)
-    disabled_report = disabled[
-        disabled.find("## 5.5 タスクレポート更新") :
-        disabled.find("## 5.6 完了条件")
-    ]
-    for phrase in (
-        "Step 5〜7 では commit せず",
-        "Step ⑥ の完了コミット",
-        "`reviews/archives/` へは移さない",
-        "CodeRabbit の `path_filters` 対象外",
-    ):
-        assert phrase in disabled_report, f"機能無効時の代替手順が不足: {phrase}"
+    reference = enabled + "\n" + disabled
+    delegated = "pr-review-report-commit-policy-delegated"
+    inline = "pr-review-report-commit-policy-inline"
+
+    enabled_report = cm.span(
+        enabled, "pr-review-report-update", "pr-review-report-update-end", label="code_review 有効"
+    )
+    cm.require(enabled_report, delegated, label="code_review 有効")
+    cm.require_absent(enabled_report, inline, reference=reference, label="code_review 有効")
+    cm.require_tokens_on_line(
+        enabled,
+        delegated,
+        ("agent-code-review",),
+        label="code_review 有効: 正本への委譲",
+    )
+
+    disabled_report = cm.span(
+        disabled, "pr-review-report-update", "pr-review-report-update-end", label="code_review 無効"
+    )
+    cm.require(disabled_report, inline, label="code_review 無効")
+    cm.require_absent(disabled_report, delegated, reference=reference, label="code_review 無効")
+    cm.require_tokens_on_line(
+        disabled,
+        inline,
+        ("reviews/archives/", "path_filters"),
+        forbidden=("agent-code-review",),
+        label="code_review 無効: 代替手順",
+    )
     assert "agent-code-review" not in disabled_report
 
 
+def _assert_approval_transition_line(
+    rendered: str,
+    marker: str,
+    *,
+    code_review: bool,
+    gate_scripts: bool,
+    label: str,
+) -> str:
+    """承認 → 追跡ドキュメント更新 → 次工程 の遷移行を、安定トークンの順序で検査する。"""
+    if gate_scripts:
+        tokens = ["承認取得済み", "workflow-gate.sh step6"]
+        forbidden = []
+    else:
+        tokens = ["承認取得済み", "plan-gate.sh review", "06-completion.md", "report archive"]
+        forbidden = ["workflow-gate.sh"]
+    if code_review:
+        tokens.insert(0, "agent-code-review")
+    else:
+        forbidden.append("agent-code-review")
+        forbidden.append("Step 7")
+    return cm.require_tokens_on_line(
+        rendered,
+        marker,
+        tokens,
+        forbidden=forbidden,
+        ordered=True,
+        label=label,
+    )
+
+
 def test_review_approval_transition_feature_matrix():
-    """code_review / gate_scripts の4分岐で承認順序と必須語句の存在を固定する。"""
+    """code_review / gate_scripts の4分岐で承認順序と必須契約の存在を固定する。"""
     for code_review in (True, False):
         for gate_scripts in (True, False):
-            subject = "`agent-code-review` Step 7" if code_review else "レビュー担当"
+            variant = f"code_review={code_review} gate_scripts={gate_scripts}"
 
             pr_review = _render_with_features(
                 PR_REVIEW_TEMPLATE,
                 code_review=code_review,
                 gate_scripts=gate_scripts,
             )
-            approval_start, approval_end = _assert_markers_in_order(
+            approval = cm.span(
                 pr_review,
-                ("**承認する**", "**新規のレビューコメントを取得して**"),
-                "05-pr-review 承認分岐",
+                "pr-review-approval-gate",
+                "pr-review-approval-fetch-new-comments",
+                label=f"05-pr-review 承認分岐 ({variant})",
             )
-            approval = pr_review[approval_start:approval_end]
+            cm.require(approval, "pr-review-approval-transition", label=f"05-pr-review ({variant})")
+            _assert_approval_transition_line(
+                pr_review,
+                "pr-review-approval-transition",
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+                label=f"05-pr-review 承認順序 ({variant})",
+            )
 
-            completion_start, completion_end = _assert_markers_in_order(
+            completion = cm.span(
                 pr_review,
-                ("## 5.6 完了条件", "## 5.7 レビュー完了承認"),
-                "05-pr-review §5.6",
+                "pr-review-completion-conditions",
+                "pr-review-approval-gate",
+                label=f"05-pr-review 完了条件 ({variant})",
             )
-            completion = pr_review[completion_start:completion_end]
+            step6_marker = "pr-review-completion-step6-after-approval"
+            if gate_scripts:
+                cm.require_tokens_on_line(
+                    pr_review,
+                    step6_marker,
+                    ("workflow-gate.sh step6",),
+                    label=f"05-pr-review step6 通過条件 ({variant})",
+                )
+                cm.require_in_span(
+                    pr_review,
+                    "pr-review-completion-conditions",
+                    step6_marker,
+                    end_outer="pr-review-approval-gate",
+                    label=f"05-pr-review step6 通過条件の位置 ({variant})",
+                )
+            else:
+                reference = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
+                cm.require_absent(
+                    completion, step6_marker, reference=reference, label=f"05-pr-review ({variant})"
+                )
 
             orchestrator = _render_with_features(
                 SKILL_TEMPLATE,
                 code_review=code_review,
                 gate_scripts=gate_scripts,
             )
-            step5_start, step5_end = _assert_markers_in_order(
+            step5 = cm.span(
                 orchestrator,
-                ("### Step ⑤: PR レビュー検証", "Mode B（完了後の追加コメント対応）"),
-                "orchestrator Step⑤",
+                "orchestrator-step5",
+                "step5-mode-b-excluded",
+                label=f"orchestrator Step⑤ ({variant})",
             )
-            step5 = orchestrator[step5_start:step5_end]
-            step6_start, step6_end = _assert_markers_in_order(
+            step6 = cm.span(
                 orchestrator,
-                ("### Step ⑥: 完了報告", "## Context Budget"),
-                "orchestrator Step⑥",
+                "orchestrator-step6",
+                "orchestrator-context-budget",
+                label=f"orchestrator Step⑥ ({variant})",
             )
-            step6 = orchestrator[step6_start:step6_end]
-            assert "plan-gate.sh review" in step6, (
-                "orchestrator Step⑥ に plan-gate.sh review 前提がない"
+            cm.require(step5, "step5-approval-transition", label=f"orchestrator Step⑤ ({variant})")
+            _assert_approval_transition_line(
+                orchestrator,
+                "step5-approval-transition",
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+                label=f"orchestrator Step⑤ 承認順序 ({variant})",
             )
-
+            cm.require_tokens_on_line(
+                orchestrator,
+                "orchestrator-step6-precondition",
+                ("plan-gate.sh review",),
+                label=f"orchestrator Step⑥ 前提 ({variant})",
+            )
+            cm.require(step6, "orchestrator-step6-precondition", label=f"orchestrator Step⑥ ({variant})")
             if gate_scripts:
-                _assert_markers_in_order(
-                    approval,
-                    (subject, "承認取得済み", "workflow-gate.sh step6", "⑥へ進む"),
-                    "05-pr-review 承認順序",
+                cm.require_tokens_on_line(
+                    orchestrator,
+                    "orchestrator-step6-precondition",
+                    ("workflow-gate.sh step6",),
+                    label=f"orchestrator Step⑥ 前提 ({variant})",
                 )
-                assert "親が `workflow-gate.sh step6`" in approval
-
-                _assert_markers_in_order(
-                    step5,
-                    (subject, "承認取得済み", "workflow-gate.sh step6"),
-                    "orchestrator Step⑤ 承認順序",
-                )
-                assert "親が `workflow-gate.sh step6`" in step5
-                assert any(
-                    "workflow-gate.sh step6" in line
-                    and ("通過" in line or "PASS" in line)
-                    for line in completion.splitlines()
-                ), "05-pr-review §5.6 に step6 通過条件がない"
-            else:
-                for label, content in (
-                    ("05-pr-review 承認順序", approval),
-                    ("orchestrator Step⑤ 承認順序", step5),
-                ):
-                    assert "workflow-gate.sh step6" not in content
-                    assert "⑥へ進む" not in content
-                    _assert_markers_in_order(
-                        content,
-                        (
-                            subject,
-                            "承認取得済み",
-                            "plan-gate.sh review",
-                            "06-completion.md",
-                            "report archive",
-                        ),
-                        label,
-                    )
-
-            if not code_review:
-                assert "Step 7" not in approval
-                assert "Step 7" not in step5
 
 
 def test_archive_procedure_and_inspection_only_gate():
@@ -316,13 +442,13 @@ def test_archive_procedure_and_inspection_only_gate():
     assert "git mv" not in archive_gate
 
     quality = _render_with_features(QUALITY_GATE_TEMPLATE)
-    archive_action_start, archive_action_end = _assert_markers_in_order(
+    cm.require_tokens_on_line(
         quality,
-        ("**G-ARCHIVE の動作**", "### 1.3 リンク衛生ゲート"),
-        "QUALITY_GATE G-ARCHIVE",
+        "quality-gate-archive-inspection-only",
+        ("archive-gate.sh", "06-completion.md"),
+        forbidden=("git mv",),  # archive gate は検査専用。移動コマンドを持たない
+        label="QUALITY_GATE G-ARCHIVE",
     )
-    archive_action = quality[archive_action_start:archive_action_end]
-    assert "ファイルは移動しない" in archive_action
 
     for gate_scripts in (True, False):
         completion = _render_with_features(
@@ -343,15 +469,30 @@ def test_archive_procedure_and_inspection_only_gate():
         assert move_command not in _read(path), f"通常移動コマンドの重複: {path}"
 
 
+def _find_step_gate(node, gate_id: str):
+    """manifest 内の step_gates catalog から id 一致のエントリを再帰的に探す。"""
+    if isinstance(node, dict):
+        if node.get("id") == gate_id and "cmd" in node:
+            return node
+        for value in node.values():
+            found = _find_step_gate(value, gate_id)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for value in node:
+            found = _find_step_gate(value, gate_id)
+            if found is not None:
+                return found
+    return None
+
+
 def test_step1_catalog_and_matrix_require_envelope_argument():
     """Step①のcatalogと各Matrixが実行可能なenvelope引数を案内すること。"""
-    manifest = _read(MANIFEST)
-    assert re.search(
-        r"- id: step1\s+desc: \"調査→レポート境界（Step① envelope 完全検査）\"\s+"
-        r"cmd: \"gate-artifact\.py <step1-envelope>\"",
-        manifest,
-        re.MULTILINE,
-    ), "seed manifest の step1 catalog が不足している"
+    manifest = load_manifest(str(MANIFEST))
+    entry = _find_step_gate(manifest, "step1")
+    assert entry is not None, "seed manifest の step1 catalog が不足している"
+    # desc は説明文のため検査しない。cmd は実行可能な契約値として検査する。
+    assert entry["cmd"] == "gate-artifact.py <step1-envelope>", entry
 
     for path in (SKILL_TEMPLATE, INDEX_TEMPLATE, QUALITY_GATE_TEMPLATE):
         content = _read(path)
@@ -368,39 +509,42 @@ def test_step6_archive_maintenance_docs_order_is_explicit():
         COMPLETION_TEMPLATE,
         SKILL_TEMPLATE,
     )
-    for path in sources:
-        content = _read(path)
-        if path == README_TEMPLATE:
-            content = content[content.find("7. レビュー完了後") :]
-        elif path == INDEX_TEMPLATE:
-            content = content[content.find("## 基本フロー") :]
-        if path == COMPLETION_TEMPLATE:
-            content = content[content.find("## 6.3 archives 移動") :]
-        elif path == SKILL_TEMPLATE:
-            content = content[content.find("### Step ⑥: 完了報告") :]
-        positions = [
-            content.find("最終判定"),
-            content.find("archive gate"),
-            content.find("report archive"),
-            content.find("maintenance-docs-workflow"),
-        ]
-        if path == README_TEMPLATE:
-            positions = [
-                content.find("起票判定を確定"),
-                content.find("archive gate"),
-                content.find("reports/archives/"),
-                content.find("maintenance-docs-workflow"),
-            ]
-        assert all(position >= 0 for position in positions), (
-            f"{path} にStep⑥の順序要素が不足している"
-        )
-        assert positions == sorted(positions), (
-            f"{path} のStep⑥順序が不正: {positions}"
-        )
+    judgment = "step6-order-final-judgment"
+    archive_gate = "step6-order-archive-gate"
+    report_archive = "step6-order-report-archive"
+    maintenance = "step6-order-maintenance-docs"
+    for gate_scripts in (True, False):
+        expected = [judgment]
+        if gate_scripts:
+            expected.append(archive_gate)
+        expected += [report_archive, maintenance]
+        for path in sources:
+            rendered = _render_with_features(
+                path, maintenance_docs=True, gate_scripts=gate_scripts
+            )
+            cm.require_order(
+                rendered,
+                expected,
+                label=f"{path.name} Step⑥順序 (gate_scripts={gate_scripts})",
+            )
+            if not gate_scripts:
+                reference = _render_with_features(
+                    path, maintenance_docs=True, gate_scripts=True
+                )
+                cm.require_absent(
+                    rendered,
+                    archive_gate,
+                    reference=reference,
+                    label=f"{path.name} gate_scripts 無効",
+                )
 
 
 def test_completion_labels_keep_maintenance_docs_feature_branches():
-    """完了チェック第5項目の表示名を enabled/disabled で分岐する。"""
+    """完了チェック第5項目の表示名を enabled/disabled で分岐する。
+
+    表示名は gate-report.py / archive-gate.sh がレポートの完了チェック行を機械照合する
+    契約値であり、文章ではないためマーカー化せず固定文字列で検査する。
+    """
     for path in (
         INDEX_TEMPLATE,
         COMPLETION_TEMPLATE,
@@ -453,8 +597,18 @@ def test_representative_feature_renders_hide_disabled_contracts():
     pr_review_disabled = _render_with_features(
         PR_REVIEW_TEMPLATE, code_review=False, github_pr=False
     )
-    assert "## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界" in pr_review_disabled
-    assert "レビュー担当へ委譲する" in pr_review_disabled
+    cm.require(
+        pr_review_disabled,
+        "pr-review-review-start-boundary",
+        label="05-pr-review (code_review/github_pr 無効)",
+    )
+    cm.require_tokens_on_line(
+        pr_review_disabled,
+        "pr-review-delegate-only-after-review-start-exit0",
+        ("exit 0",),
+        forbidden=("agent-code-review",),
+        label="05-pr-review review-start 後の委譲 (code_review 無効)",
+    )
 
 
 def main() -> int:
