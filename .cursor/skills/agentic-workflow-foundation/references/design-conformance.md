@@ -155,7 +155,7 @@ consumer 経路でも引き続き失敗とする。
 Phase 1.68 で `provision_runtime --apply` が materialize する `package.json` / `tsconfig.json` / `pnpm-workspace.yaml` は **`outputs[]` / audit の対象外**。`materialize_runtime.py` は `--check` のみ（write 禁止）。
 
 - **理由**: runtime file の所有権と更新方式は、承認済み `tech_contract.runtime_materialization.actions` が決定する。`json-key-merge` は宣言した owned keys を更新し、`owned-text-render` は契約で指定した完全内容を materialize する。いずれも `outputs[]` の byte-for-byte audit から分離する。
-- **整合性の担保**: Phase 1.7（`check_tech_stack_conformance.py`）が承認済み `tech_contract.provisioning.preflight_checks` を generic に評価する（subprocess 禁止）。`json-value-pattern` は `re.fullmatch`（exact regex）のみ。`installed-marker` は closed `validation` object（`json-field` / `executable-file`）で marker 内容を意味検証し、`covers_packages` は schema で `required_packages` を exact cover する。`forbidden_packages` は `absent-marker` + `covers_packages` で exact cover する。
+- **整合性の担保**: Phase 1.7（`check_tech_stack_conformance.py`）が承認済み `tech_contract.provisioning.preflight_checks` を generic に評価する（subprocess 禁止）。`json-value-pattern` は契約が宣言した形式 pattern への `re.fullmatch` のみ（版の数値は持たない）。`installed-marker` は closed `validation` object（`json-field` / `executable-file`）で marker 内容を意味検証し、`covers_packages` は schema で `required_packages` を exact cover する。`forbidden_packages` は `absent-marker` + `covers_packages` で exact cover する。
 - **postcondition ordering**: command 直後は postcondition が生成する marker を除いた command-owned `writes` のみ存在検査。postcondition 実行（atomic marker write）後に全 `writes` を再検査し、`changed_targets` を digest 差分で再収集する。
 - **postcondition plan 境界**: postcondition の全 payload は親 command の `payload_digest` と承認 plan に含める。`capture-toolchain-version` の subprocess は PATH 上の executable 名 + closed version-query 引数1個だけを許可し、任意 path / script / eval 引数を schema と runtime の双方で拒否する。marker write は plan の `effects` / `writes` に明示する。version query 前後の project tree metadata snapshot に差分があれば exit 2 とし、未宣言変更 path を部分適用レポートへ含める。
 - **state-digests**: apply 後に記録した manifest/lockfile digest を preflight の `state-digests` check が marker 記録値と比較する。全対象 path の存在が必須で、`absent` digest の記録・比較は拒否する。
@@ -196,6 +196,17 @@ fallback を持たない。
 - **Provisioning**: `bin/project-setup --plan` は read-only、`--apply --plan-file` は
   contract digest と各 target preimage が一致する場合だけ実行する。品質ゲートは
   `--preflight` と同等の read-only 検査以外の install/network/write を行わない。
+
+## 設計判断: 契約に版の数値を持たない（D-QUALITY / D-DEPENDENCY）
+
+`tech_contract` の file action の `content`、preflight、postcondition、command の `argv` に、版の数値（exact・範囲・pattern 内の数字）を書かない。版の正本はプロジェクト自身の宣言ファイル（契約が宣言する path）だけとし、契約の検査は存在と形式に限る。
+
+- **決定**: preflight / postcondition の `pattern` は数字クラスで書く形式 pattern にし、`installed-marker` は `name` など版以外のフィールドで識別する。command の `argv` には版を渡さず、依存は名前だけを command で追加する。版の解決と充足は、command が起動する各エコシステムのツール（install / build）が担保し、lockfile が記録する。
+- **理由**: 版が契約内の複数箇所（file action、preflight、postcondition、command の `argv`）に重なると、プロジェクトが版を更新したときに preflight が不一致になり、契約の再起案と再承認が要る。契約に宣言の写しがあると、版の正本が二つになる。設計書 §9 のバージョン方針セルは `宣言:` / `[要確認]` / `—` でエコシステムごとの記法になり、範囲 pattern への変換は言語別の解釈を要する。
+- **対象外**: `tech_stack.items[].version_policy` の Domain 要約表示（`docs/tech-stack.md`）。設計書から写すだけで、検査には使わない。
+- **戻さないもの**: registry からの版取得は、ADR-0002 の consumer 境界により戻さない。
+- **移行**: 既存の封印済み契約は kit の更新では自動で直らない。版の数値を持つ契約は、再起案（`tech_contract.py validate --check` → 承認 → `apply`）で置き換える。`load_approved` は読み込みのたびに `validate` を実行するため、この方針は schema の拒否条件にはしない（既存契約を壊さない）。
+- **非採用**: 設計書のバージョン方針セルから範囲を導く案（記法が言語ごとに違う）、言語・ツールごとの記述表を kit に持つ案（新しい言語に対応できない）。
 
 ## 設計判断: root manifest の `outputs` 非保持（D-SOT）
 
