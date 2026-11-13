@@ -41,41 +41,31 @@ SOURCE_MAPPING = HERE.parent / "references" / "source-mapping.md"
 
 
 def version_fullmatch() -> bool:
-    manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-    if not manifest.is_file():
-        return True
-    contract = tc.load_approved(manifest, design)
-    if contract.get("classification", {}).get("profile") == "foundation":
-        print("SKIP: foundation profile has no pnpm version preflight", file=sys.stderr)
-        return True
-    pattern_checks = [
-        check
-        for check in contract["provisioning"]["preflight_checks"]
-        if check.get("kind") == "json-value-pattern"
-    ]
-    if not pattern_checks:
-        print("FAIL: json-value-pattern preflight is missing", file=sys.stderr)
-        return False
-    toolchain_check = next(
-        (check for check in pattern_checks if check.get("pointer") == "pnpm.version"),
-        None,
-    )
-    if toolchain_check is None:
-        print("FAIL: pnpm.version json-value-pattern preflight is missing", file=sys.stderr)
-        return False
-    isolated = copy.deepcopy(contract)
-    isolated["provisioning"]["preflight_checks"] = [copy.deepcopy(toolchain_check)]
-    isolated["provisioning"]["preflight_checks"][0]["target"] = ".state/toolchain-state.json"
+    # 形式 pattern は search ではなく fullmatch で評価される。pattern は数字クラスだけで、版の数値は持たない。
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "package.json").write_text('{"packageManager":"pnpm@11.17.0"}\n', encoding="utf-8")
+        design = root / "docs" / "TECH.md"
+        design.parent.mkdir(parents=True, exist_ok=True)
+        design.write_text("# x\n", encoding="utf-8")
+        fp = tc.source_fingerprint(design)
+        contract = base_contract(fp, with_file_action=True)
+        contract["provisioning"]["command_actions"] = []
+        contract["provisioning"]["preflight_checks"] = [{
+            "kind": "json-value-pattern",
+            "target": ".state/toolchain-state.json",
+            "pointer": "tool.version",
+            "pattern": r"\d+\.\d+\.\d+",
+            "evidence_ref": "x",
+            "guidance": "version marker",
+        }]
+        manifest, design = write_sealed_manifest(root, contract, "# x\n")
+        approved = tc.load_approved(manifest, design)
         marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('{"pnpm":{"version":"11.17.0-suffix"}}\n', encoding="utf-8")
-        errors = rp.run_preflight(isolated, root)
-        if not any("11.17.0-suffix" in error for error in errors):
-            print("FAIL: suffix value should fail pnpm.version fullmatch", errors, file=sys.stderr)
+        marker.write_text('{"tool":{"version":"2.0.0-rc1"}}\n', encoding="utf-8")
+        errors = rp.run_preflight(approved, root)
+        if not any("2.0.0-rc1" in error for error in errors):
+            print("FAIL: suffix value should fail fullmatch", errors, file=sys.stderr)
             return False
     with tempfile.TemporaryDirectory() as tmp:
         doc = Path(tmp) / "TECH.md"
@@ -309,16 +299,25 @@ def malformed_state_runtime_no_traceback_all_clis() -> bool:
 
 
 def docs_contract_only_precise() -> bool:
+    # 行番号ではなく内容で検査する: check_tech_stack_conformance.py を説明する行を探す。
     skill_lines = SKILL.read_text(encoding="utf-8").splitlines()
-    if len(skill_lines) < 79:
-        print("FAIL: SKILL too short", file=sys.stderr)
+    conformance_lines = [line for line in skill_lines if "check_tech_stack_conformance.py" in line]
+    if not conformance_lines:
+        print("FAIL: SKILL has no line describing check_tech_stack_conformance.py", file=sys.stderr)
         return False
-    line79 = skill_lines[78]
-    if re.search(r"package\.json.*意味的整合", line79):
-        print("FAIL: SKILL line79 still claims package.json semantic conformance", line79, file=sys.stderr)
+    if any(re.search(r"package\.json.*意味的整合", line) for line in conformance_lines):
+        print(
+            "FAIL: SKILL still claims package.json semantic conformance",
+            conformance_lines,
+            file=sys.stderr,
+        )
         return False
-    if not re.search(r"preflight_checks|declarative contract", line79):
-        print("FAIL: SKILL line79 missing declarative contract wording", line79, file=sys.stderr)
+    if not any(re.search(r"preflight_checks|declarative contract", line) for line in conformance_lines):
+        print(
+            "FAIL: SKILL conformance description missing declarative contract wording",
+            conformance_lines,
+            file=sys.stderr,
+        )
         return False
     handover_lines = SESSION_HANDOVER.read_text(encoding="utf-8").splitlines()
     if len(handover_lines) < 42:

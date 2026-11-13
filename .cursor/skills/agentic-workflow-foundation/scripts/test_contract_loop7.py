@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[3]
 sys.path.insert(0, str(HERE))
 import check_tech_stack_conformance as conf  # noqa: E402
 import materialize_runtime as mat  # noqa: E402
@@ -103,147 +102,106 @@ def postcondition_marker_created_after_command() -> bool:
     return True
 
 
-def production_root_command_postcondition_flow() -> bool:
-    manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-    if not manifest.is_file():
-        print("SKIP: no root manifest", file=sys.stderr)
-        return True
-    contract = tc.load_approved(manifest, design)
-    if contract.get("classification", {}).get("profile") == "foundation":
-        print("SKIP: foundation profile has no pnpm command flow", file=sys.stderr)
-        return True
-    pnpm_action = next(
-        (a for a in rp.collect_command_actions(contract) if (a.get("argv") or [])[:2] == ["pnpm", "install"]),
-        None,
-    )
-    if pnpm_action is None:
-        print("FAIL: root pnpm install action missing", file=sys.stderr)
-        return False
-    post_generated = rp._postcondition_generated_paths(pnpm_action)
-    writes = set(pnpm_action.get("writes") or [])
+def command_postcondition_flow() -> bool:
+    """lockfile_write command の postcondition marker が writes に宣言され、apply が通って digest を記録する。
+
+    root 契約には依存せず、言語に依存しない fixture 名だけを使う。
+    """
+    lockfile = "fixture.lock"
+    tool = "vendor/bin/tool"
+    marker_rel = ".state/provision-state.json"
+    action = {
+        "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", ".", "--writes", lockfile, tool],
+        "cwd": ".",
+        "effects": ["project_write", "lockfile_write"],
+        "writes": [lockfile, tool, marker_rel],
+        "postconditions": [{
+            "kind": "record-state-digest",
+            "marker": marker_rel,
+            "paths": [lockfile],
+            "evidence_ref": "fixture",
+        }],
+        "evidence_ref": "fixture",
+    }
+    post_generated = rp._postcondition_generated_paths(action)
+    writes = set(action["writes"])
     if not post_generated.issubset(writes):
         print("FAIL: postcondition markers not declared in writes", file=sys.stderr)
         return False
     command_owned = [w for w in writes if w not in post_generated]
-    if "pnpm-lock.yaml" not in command_owned:
+    if lockfile not in command_owned:
         print("FAIL: expected command-owned lockfile write", file=sys.stderr)
         return False
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        design_path = root / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-        design_path.parent.mkdir(parents=True, exist_ok=True)
-        design_path.write_text(design.read_text(encoding="utf-8"), encoding="utf-8")
-        draft = copy.deepcopy(contract)
-        for key in ("contract_digest", "projection_digest", "approval"):
-            draft.pop(key, None)
-        draft["provisioning"]["command_actions"] = [{
-            "argv": [sys.executable, str(FIXTURE_RUNNER), "touch", "--root", ".",
-                     "--writes", "pnpm-lock.yaml", "node_modules/.bin/turbo"],
-            "cwd": ".",
-            "effects": ["project_write", "lockfile_write"],
-            "writes": [
-                "pnpm-lock.yaml",
-                "node_modules/.bin/turbo",
-                ".state/provision-state.json",
-            ],
-            "postconditions": [{
-                "kind": "record-state-digest",
-                "marker": ".state/provision-state.json",
-                "paths": ["pnpm-lock.yaml"],
-                "evidence_ref": "fixture",
-            }],
-            "evidence_ref": "fixture",
-        }]
-        manifest_copy = root / "manifest.yaml"
-        manifest_copy.write_text(
-            "version: 1\nproject:\n  tech_stack_design_filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md\n",
-            encoding="utf-8",
-        )
-        tc.seal_contract(manifest_copy, draft, tc.file_digest(manifest_copy))
-        approved = tc.load_approved(manifest_copy, design_path)
+        design = root / "docs" / "TECH.md"
+        design.parent.mkdir(parents=True, exist_ok=True)
+        design.write_text("# x\nGo\n", encoding="utf-8")
+        fp = tc.source_fingerprint(design)
+        contract = base_contract(fp, with_file_action=False)
+        contract["provisioning"]["policy"] = "explicit"
+        contract["runtime_materialization"]["actions"] = []
+        contract["provisioning"]["preflight_checks"] = []
+        contract["provisioning"]["command_actions"] = [action]
+        manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
+        approved = tc.load_approved(manifest, design)
         plan = rp.build_plan(approved, root)
         code, report = rp.apply_plan(plan, approved, root)
         if code != 0:
-            print("FAIL: fixture root flow", report, file=sys.stderr)
+            print("FAIL: fixture command flow", report, file=sys.stderr)
+            return False
+        marker = root / marker_rel
+        if not marker.is_file():
+            print("FAIL: state marker not created", file=sys.stderr)
+            return False
+        digests = json.loads(marker.read_text(encoding="utf-8")).get("digests", {})
+        if lockfile not in digests:
+            print("FAIL: lockfile digest not recorded", digests, file=sys.stderr)
             return False
     return True
 
 
-def production_root_toolchain_order() -> bool:
-    manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-    if not manifest.is_file():
-        print("SKIP: no root manifest", file=sys.stderr)
-        return True
-    contract = tc.load_approved(manifest, design)
-    if contract.get("classification", {}).get("profile") == "foundation":
-        print("SKIP: foundation profile has no pnpm toolchain", file=sys.stderr)
-        return True
-    actual = [
-        action.get("argv")
-        for action in rp.collect_command_actions(contract)
-    ]
-    expected = [
-        ["corepack", "enable"],
-        ["corepack", "prepare", "pnpm@9.15.0", "--activate"],
-        ["pnpm", "install", "--config.confirm-modules-purge=false", "--frozen-lockfile=false"],
-    ]
-    if actual != expected:
-        print("FAIL: root host toolchain command order", actual, file=sys.stderr)
-        return False
-    package_action = next(
-        action
-        for action in contract["runtime_materialization"]["actions"]
-        if action.get("target") == "package.json"
-    )
-    if package_action.get("kind") != "owned-text-render":
-        print("FAIL: root package action must own the complete package JSON", file=sys.stderr)
-        return False
-    try:
-        package_data = json.loads(package_action["content"])
-    except (KeyError, TypeError, json.JSONDecodeError) as exc:
-        print("FAIL: root package action content is invalid JSON", exc, file=sys.stderr)
-        return False
-    if package_data.get("packageManager") != "pnpm@9.15.0":
-        print("FAIL: corepack pin differs from packageManager", file=sys.stderr)
-        return False
-    return True
-
-
 def marker_version_mismatch_fails() -> bool:
-    manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-    if not manifest.is_file():
-        return True
-    contract = tc.load_approved(manifest, design)
-    if contract.get("classification", {}).get("profile") == "foundation":
-        print("SKIP: foundation profile has no pnpm version marker", file=sys.stderr)
-        return True
-    pattern_checks = [
-        check
-        for check in contract["provisioning"]["preflight_checks"]
-        if check.get("kind") == "json-value-pattern"
-    ]
-    if not pattern_checks:
-        print("FAIL: production root missing json-value-pattern preflight", file=sys.stderr)
-        return False
-    isolated = copy.deepcopy(contract)
-    isolated["provisioning"]["preflight_checks"] = copy.deepcopy(pattern_checks)
-    isolated["provisioning"]["preflight_checks"][0]["target"] = ".state/toolchain-state.json"
+    """形式 pattern への fullmatch は、suffix 付きの値を不一致として検出し、素の形式の値は受け入れる。
+
+    pattern は数字クラスで書いた形式 pattern で、版の数値は持たない。値は入力にすぎない。
+    """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
+        design = root / "docs" / "TECH.md"
+        design.parent.mkdir(parents=True, exist_ok=True)
+        design.write_text("# x\n", encoding="utf-8")
+        fp = tc.source_fingerprint(design)
+        contract = base_contract(fp, with_file_action=True)
+        contract["provisioning"]["command_actions"] = []
+        contract["provisioning"]["preflight_checks"] = [{
+            "kind": "json-value-pattern",
+            "target": ".state/toolchain-state.json",
+            "pointer": "tool.version",
+            "pattern": r"\d+\.\d+\.\d+",
+            "evidence_ref": "x",
+            "guidance": "version marker",
+        }]
+        manifest, design = write_sealed_manifest(root, contract, "# x\n")
+        approved = tc.load_approved(manifest, design)
         marker = root / ".state" / "toolchain-state.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
-        # production pattern は semver fullmatch。suffix 付き値で json-value-pattern 不一致を検証する。
-        bad_version = "9.15.0-suffix"
+        bad_version = "1.2.3-suffix"
         marker.write_text(
-            json.dumps({"pnpm": {"version": bad_version}}, ensure_ascii=False) + "\n",
+            json.dumps({"tool": {"version": bad_version}}, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        errors = rp.run_preflight(isolated, root)
+        errors = rp.run_preflight(approved, root)
         if not any("json-value-pattern" in e and bad_version in e for e in errors):
             print("FAIL: version mismatch not detected", errors, file=sys.stderr)
+            return False
+        marker.write_text(
+            json.dumps({"tool": {"version": "1.2.3"}}, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        errors = rp.run_preflight(approved, root)
+        if any("json-value-pattern" in e for e in errors):
+            print("FAIL: well-formed version rejected", errors, file=sys.stderr)
             return False
     return True
 
@@ -378,8 +336,7 @@ def main() -> int:
     checks = {
         "generic_covers_packages_no_node_inference": generic_covers_packages_no_node_inference,
         "postcondition_marker_created_after_command": postcondition_marker_created_after_command,
-        "production_root_command_postcondition_flow": production_root_command_postcondition_flow,
-        "production_root_toolchain_order": production_root_toolchain_order,
+        "command_postcondition_flow": command_postcondition_flow,
         "marker_version_mismatch_fails": marker_version_mismatch_fails,
         "required_package_marker_missing_fails": required_package_marker_missing_fails,
         "state_digest_mismatch_fails": state_digest_mismatch_fails,

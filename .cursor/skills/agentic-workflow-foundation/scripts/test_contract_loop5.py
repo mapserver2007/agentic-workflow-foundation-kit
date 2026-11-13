@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -50,37 +51,24 @@ def _invoke_prov(args: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
-def root_multiline_exact_bytes() -> bool:
-    manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
-    if not manifest.is_file():
-        print("SKIP root_multiline_exact_bytes: no root manifest", file=sys.stderr)
-        return True
-    contract = tc.load_approved(manifest, design)
-    if contract.get("classification", {}).get("profile") == "foundation":
-        print("SKIP root_multiline_exact_bytes: foundation profile", file=sys.stderr)
-        return True
-    package_action = next(
-        (action for action in rp.collect_file_actions(contract) if action["target"] == "package.json"),
-        None,
+def multiline_owned_text_exact_bytes() -> bool:
+    """owned-text-render の複数行 content が、封印・読込・apply を経てもバイト単位で保たれる。
+
+    content は版の数値を持たない fixture であり、root 契約には依存しない。
+    """
+    expected_content = (
+        "{\n"
+        '  "name": "fixture-web",\n'
+        '  "private": true,\n'
+        '  "scripts": {\n'
+        '    "test": "echo ok"\n'
+        "  }\n"
+        "}\n"
     )
-    if package_action is None:
-        print("FAIL: root package.json action missing", file=sys.stderr)
-        return False
-    if package_action.get("kind") != "owned-text-render":
-        print("FAIL: root package action must be owned-text-render", file=sys.stderr)
-        return False
-    expected_content = package_action["content"]
-    if "\\n" in manifest.read_text(encoding="utf-8").split("package.json", 1)[-1][:400]:
-        print("FAIL: manifest still has literal \\\\n", file=sys.stderr)
-        return False
     try:
         package_data = json.loads(expected_content)
     except json.JSONDecodeError as exc:
         print("FAIL: package action content is invalid JSON", exc, file=sys.stderr)
-        return False
-    if package_data.get("packageManager") != "pnpm@9.15.0":
-        print("FAIL: packageManager pin mismatch", file=sys.stderr)
         return False
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -89,11 +77,32 @@ def root_multiline_exact_bytes() -> bool:
         design_path.write_text("# Web\nTypeScript\n", encoding="utf-8")
         fp = tc.source_fingerprint(design_path)
         draft = web_lifecycle_contract(fp)
-        draft["runtime_materialization"]["actions"] = contract["runtime_materialization"]["actions"]
+        draft["runtime_materialization"]["actions"] = [{
+            "kind": "owned-text-render",
+            "target": "package.json",
+            "ownership": "project",
+            "conflict_policy": "fail",
+            "evidence_ref": "design §9",
+            "content": expected_content,
+        }]
         draft["provisioning"]["preflight_checks"] = []
         draft["provisioning"]["command_actions"] = []
         write_sealed_manifest(root, draft, "# Web\nTypeScript\n")
+        manifest_text = (root / "manifest.yaml").read_text(encoding="utf-8")
+        if not re.search(r'^\s+"private": true,$', manifest_text, re.MULTILINE):
+            print("FAIL: sealed manifest lost real line breaks (literal \\n)", file=sys.stderr)
+            return False
         approved = tc.load_approved(root / "manifest.yaml", design_path)
+        package_action = next(
+            (action for action in rp.collect_file_actions(approved) if action["target"] == "package.json"),
+            None,
+        )
+        if package_action is None or package_action.get("kind") != "owned-text-render":
+            print("FAIL: package action must round-trip as owned-text-render", file=sys.stderr)
+            return False
+        if package_action["content"] != expected_content:
+            print("FAIL: sealed content differs from the declared content", file=sys.stderr)
+            return False
         plan = rp.build_plan(approved, root)
         plan_path = root / "plan.json"
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
@@ -109,8 +118,8 @@ def root_multiline_exact_bytes() -> bool:
             print("FAIL: package.json exact bytes", file=sys.stderr)
             return False
         rendered = json.loads(package_path.read_text(encoding="utf-8"))
-        if rendered.get("packageManager") != "pnpm@9.15.0":
-            print("FAIL: rendered packageManager pin mismatch", file=sys.stderr)
+        if rendered != package_data:
+            print("FAIL: rendered package.json differs from the declared content", file=sys.stderr)
             return False
     return True
 
@@ -532,7 +541,7 @@ def gen_paths_missing_empty_nonempty() -> bool:
 
 def main() -> int:
     checks = {
-        "root_multiline_exact_bytes": root_multiline_exact_bytes,
+        "multiline_owned_text_exact_bytes": multiline_owned_text_exact_bytes,
         "mixed_newline_existing_block_sealed": mixed_newline_existing_block_sealed,
         "nested_schema_rejection": nested_schema_rejection,
         "symlink_escape_rejection": symlink_escape_rejection,

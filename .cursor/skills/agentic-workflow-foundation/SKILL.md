@@ -258,6 +258,18 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 - **provisioning**（`bin/project-setup --apply`）の計画承認には使わない。契約 pin 専用であり、Provisioning は `project.provisioning_auto_approve` で別に制御する。
 - sealed `tech_contract` スキーマに `auto_approve` を混ぜない（`project.tech_contract_auto_approve` が投影先）。
 
+#### tech_contract 起案時のバージョンの扱い
+
+起案する draft には、バージョンの数値を書かない。版の正本はプロジェクト自身の宣言ファイル（契約が宣言する path）だけであり、契約に写すと、プロジェクトが宣言を変えたときに食い違う。
+
+- **書かない**: file action の `content`、preflight、postcondition、command の `argv` に、版の数値（exact・範囲・pattern 内の数字）を書かない。設計書にない具体値を補わない。
+- **写さない**: 設計書 §9 の「バージョン方針」セルは不透明な宣言として扱い、数値として解釈しない。`宣言:` / `[要確認]` / `—` の別を問わず、そこから範囲 pattern を導かない。
+- **検査は存在と形式だけ**: `json-value-pattern` と `capture-toolchain-version` の `pattern` は、数字クラス（`\d+` など）で書く形式 pattern にする。版の充足は、command が起動する各エコシステムのツール（install / build）が担保する。
+- **識別は版以外のフィールドで行う**: `installed-marker` の `json-field` は、`name` など版以外のフィールドで識別する。
+- **初回の content にも版を書かない**: 依存は名前だけを command で追加し、版の解決はエコシステムのツールが行い、lockfile が記録する。宣言ファイルが既にある既存 repo 由来の設計書では、kit は宣言ファイルを書かない。
+- **言語固有の記述表を持たない**: 言語・ツールごとの違いは、per-project の契約（executable 名、版照会、宣言ファイルの path）に入れる。この手順に言語名や版数を書かない。
+- 既存の封印済み契約は kit の更新では自動で直らない。版の数値を持つ契約は、再起案（`tech_contract.py validate --check` → 承認 → `apply`）で置き換える。
+
 ### Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
 
 Phase 1.5 で確定した `project.context_budget.min_context_window_tokens` から `framework.budget_thresholds` を決定論的に算出し、root `manifest.yaml` に書き込む。
@@ -382,7 +394,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/check_tech_stack_conf
 ```
 
 - `installed-marker` は marker path の存在に加え、closed `validation`（`json-field` / `executable-file`）で内容を意味検証する。`covers_packages` は schema が `required_packages` と exact cover することを検証する。
-- `state-digests` は apply 後記録 digest と現 digest の比較。`json-value-pattern` は contract 固定 pattern で version 不一致を検出する。
+- `state-digests` は apply 後記録 digest と現 digest の比較。`json-value-pattern` は契約が宣言した形式 pattern への `re.fullmatch` で値の形式を検査する（版の数値は持たない。版の充足は install / build のツールが担保する）。
 - exit 0 → PASS。exit 1 → preflight 違反。exit 2 → manifest 破損 / schema 不正。
 
 ### Phase 2: 生成
