@@ -13,6 +13,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent.parent
 GATE = ROOT / ".cursor" / "skills" / "session-handover" / "scripts" / "gate-artifact.py"
 TEMPLATE_ROOT = HERE.parent / "templates"
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 GENERATED_PATHS = [
     ROOT / ".cursor/skills/workflow-orchestrator/SKILL.md",
     ROOT / ".cursor/skills/workflow-orchestrator/references/worker-dispatch.md",
@@ -230,6 +232,80 @@ def test_validated_report_snapshot_binds_worker_input() -> None:
         assert gate.compute_approved_plan_digest(payload["validated_report_snapshot"]) == digest
 
 
+def _contract_sources() -> list:
+    """(label, template_path, generated_path) を返す。契約マーカーは両方に存在する。"""
+    pairs = [
+        ("skills/workflow-orchestrator/SKILL.md", ".cursor/skills/workflow-orchestrator/SKILL.md"),
+        (
+            "skills/workflow-orchestrator/references/worker-dispatch.md",
+            ".cursor/skills/workflow-orchestrator/references/worker-dispatch.md",
+        ),
+        ("skills/requirement-analysis/SKILL.md", ".cursor/skills/requirement-analysis/SKILL.md"),
+        (
+            "skills/requirement-analysis/references/requirement-contract.md",
+            ".cursor/skills/requirement-analysis/references/requirement-contract.md",
+        ),
+        (
+            "docs/agent-tasks/agent-workflow/02-report-creation.md",
+            "docs/agent-tasks/agent-workflow/02-report-creation.md",
+        ),
+        (
+            "docs/agent-tasks/agent-workflow/03-implementation.md",
+            "docs/agent-tasks/agent-workflow/03-implementation.md",
+        ),
+    ]
+    return [
+        (label, TEMPLATE_ROOT / f"{label}.template", ROOT / generated)
+        for label, generated in pairs
+    ]
+
+
+# 契約マーカー: (対象 label, marker id, 同一行に存在すべき安定トークン)
+# 文言ではなく「その契約が、その文書に1箇所だけ存在すること」を固定する。
+BOUNDARY_MARKERS = (
+    (
+        "skills/workflow-orchestrator/SKILL.md",
+        "step3-parent-pre-dispatch-fail-closed",
+        ("implementation_approval.status: approved", "digest", "pending", "R1/R2"),
+    ),
+    (
+        "skills/workflow-orchestrator/SKILL.md",
+        "resume-pending-approval",
+        ("implementation_approval.status: pending",),
+    ),
+    (
+        "skills/workflow-orchestrator/SKILL.md",
+        "step1-pass-dispatches-step2-immediately",
+        ("campaign_slug", "dispatch"),
+    ),
+    (
+        "skills/workflow-orchestrator/references/worker-dispatch.md",
+        "step1-artifact-retention-exception",
+        ("implementation_approval.status: approved", "digest"),
+    ),
+    (
+        "skills/workflow-orchestrator/references/worker-dispatch.md",
+        "step1-pass-dispatches-step2-immediately",
+        ("dispatch",),
+    ),
+    (
+        "skills/requirement-analysis/SKILL.md",
+        "step1-pass-dispatches-step2-immediately",
+        ("dispatch",),
+    ),
+    (
+        "skills/requirement-analysis/references/requirement-contract.md",
+        "step1-pass-dispatches-step2-immediately",
+        ("dispatch",),
+    ),
+    (
+        "docs/agent-tasks/agent-workflow/02-report-creation.md",
+        "step3-checker-does-not-mutate-state",
+        ("--check-implementation-approval", "pending", "R1/R2"),
+    ),
+)
+
+
 def test_template_and_generated_boundary_contract() -> None:
     template_paths = [
         TEMPLATE_ROOT / "skills/workflow-orchestrator/SKILL.md.template",
@@ -241,6 +317,7 @@ def test_template_and_generated_boundary_contract() -> None:
         TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md.template",
         TEMPLATE_ROOT / "docs/QUALITY_GATE.md.template",
     ]
+    # 旧契約の再混入防止（旧文言そのものを禁止するため固定文字列で検査する）
     legacy = (
         "Step②内承認",
         "この内容で実装を進めてよろしいですか？",
@@ -252,25 +329,33 @@ def test_template_and_generated_boundary_contract() -> None:
         "再ack",
         "Step ② レポート作成に進んでよろしいですか？",
     )
-    required = (
-        "必須の親 pre-dispatch fail-closed 検査",
-        "例外（Step①系）",
-        "dispatch 前の強制削除義務はない",
-        "状態を書き換えず",
+    # 状態値・識別子（機械が解釈するトークン）は固定文字列で検査する。
+    required_tokens = (
         "R1/R2",
         "pending",
         "approved_plan_digest",
         "validated_report_snapshot",
-        "POレビュー待ち",
         "implementation_approval.status: approved",
-        "同一ターンで Step②",
     )
     for paths in (template_paths, GENERATED_PATHS):
         text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
-        for phrase in required:
-            assert phrase in text, f"契約文言が欠落: {phrase}"
+        for token in required_tokens:
+            assert token in text, f"契約トークンが欠落: {token}"
         for phrase in legacy:
             assert phrase not in text, f"旧契約が残存: {phrase}"
+
+    for label, template_path, generated_path in _contract_sources():
+        for kind, path in (("template", template_path), ("generated", generated_path)):
+            text = path.read_text(encoding="utf-8")
+            for marker_label, marker, tokens in BOUNDARY_MARKERS:
+                if marker_label != label:
+                    continue
+                cm.require_tokens_on_line(
+                    text,
+                    marker,
+                    tokens,
+                    label=f"{kind}:{label}",
+                )
 
     impl_template = (
         TEMPLATE_ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md.template"
@@ -278,12 +363,22 @@ def test_template_and_generated_boundary_contract() -> None:
     impl_generated = (
         ROOT / "docs/agent-tasks/agent-workflow/03-implementation.md"
     ).read_text(encoding="utf-8")
-    for content in (impl_template, impl_generated):
-        assert "| `approved_plan` |" not in content
+    for kind, content in (("template", impl_template), ("generated", impl_generated)):
+        assert "| `approved_plan` |" not in content  # 旧 payload 名の再混入防止
         assert "| `approved_plan_digest` |" in content
         assert "| `validated_report_snapshot` |" in content
-        assert "実装方針の唯一入力" in content
-        assert "実装方針の入力として再読込しない" in content
+        cm.require_tokens_on_line(
+            content,
+            "payload-snapshot-sole-input",
+            ("validated_report_snapshot",),
+            label=f"{kind}:03-implementation snapshot",
+        )
+        cm.require_tokens_on_line(
+            content,
+            "payload-report-path-no-reread",
+            ("report_path",),
+            label=f"{kind}:03-implementation report_path",
+        )
 
 
 def test_approval_copy_remains_within_ten_required_sections() -> None:
@@ -294,10 +389,13 @@ def test_approval_copy_remains_within_ten_required_sections() -> None:
     )
     for path in paths:
         content = path.read_text(encoding="utf-8")
+        # 旧形式（独立した第11必須節）の再混入防止
         assert "11. **実装開始承認**" not in content
         assert "## 11. 実装開始承認" not in content
-        assert "### 実装開始承認（人間可読同期コピー）" in content
+        # 完了チェック節（## 10.）の後ろに、承認コピー subsection が1個だけ存在する
+        marker = cm.require(content, "approval-copy-subsection", label=str(path.name))
         assert content.count("## 10. 完了チェック") == 1
+        assert content.index("## 10. 完了チェック") < marker.start
 
 
 def main() -> int:

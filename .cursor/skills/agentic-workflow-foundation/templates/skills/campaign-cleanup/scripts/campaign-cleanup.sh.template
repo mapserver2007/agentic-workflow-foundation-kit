@@ -3,6 +3,8 @@
 # 現在の campaign を保護し、それ以外の runtime を承認なしで削除する。
 # 対象: .cursor/.tracking / .cursor/.artifacts / .cursor/.session の直下 regular file
 # exit: 0 = PASS / 1 = current state 不備 / 2 = 引数・allowlist・tracked・symlink 不備
+# artifact の所属は current tracker と他 tracker の明示参照で判定する。どの tracker にも参照されず、
+# current tracker から所有キーも得られない artifact は削除せず undetermined として保持する。
 set -u
 shopt -s nullglob dotglob
 
@@ -22,8 +24,10 @@ declare -a CANDIDATE_PATHS=()
 declare -a CANDIDATE_KINDS=()
 declare -a PROTECTED_PATHS=()
 declare -a DELETE_PATHS=()
+declare -a UNDETERMINED_PATHS=()
 declare -a PROTECTED_SESSIONS=()
 declare -a CURRENT_ARTIFACT_KEYS=()
+declare -a OTHER_ARTIFACT_KEYS=()
 
 usage() {
   cat >&2 <<'EOF'
@@ -275,35 +279,10 @@ collect_campaign_sessions() {
   done
 }
 
-collect_artifact_keys() {
-  local key
-  local tracker="$CURRENT_TRACKER_PATH"
-  local key_output
-  local has_artifacts=0
-  local i
-
-  for i in "${!CANDIDATE_KINDS[@]}"; do
-    if [[ "${CANDIDATE_KINDS[$i]}" == "artifacts" ]]; then
-      has_artifacts=1
-      break
-    fi
-  done
-
-  if [[ -L "$tracker" ]]; then
-    fatal "current tracker が symlink です: $(display_path "$tracker")"
-  fi
-  if [[ -e "$tracker" && ! -f "$tracker" ]]; then
-    fatal "current tracker が regular file ではありません: $(display_path "$tracker")"
-  fi
-  if [[ ! -e "$tracker" ]]; then
-    (( has_artifacts == 0 )) ||
-      fatal "artifact が存在するのに current tracker がありません: $(display_path "$tracker")"
-    return 0
-  fi
-
-  command -v python3 >/dev/null 2>&1 || fatal "tracker の所有キー判定に python3 が必要です"
-  key_output="$(
-    python3 - "$tracker" <<'PY'
+# tracker 1 件から artifact 所有キー（campaign_slug / .cursor/.artifacts/{slug}--）を 1 行 1 件で出力する。
+# 読み取りに失敗した場合は非0を返す（呼び出し側が fatal にするか無視するかを決める）。
+extract_tracker_keys() {
+  python3 - "$1" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -330,30 +309,76 @@ for match in re.finditer(rf"\.cursor/\.artifacts/({identifier})--", tracker_text
 for value in sorted(keys):
     print(value)
 PY
-  )" || fatal "current tracker を読み取れないため中止します: $(display_path "$tracker")"
+}
 
-  while IFS= read -r key; do
-    [[ -n "$key" ]] || continue
-    local existing
-    if (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 )); then
-      for existing in "${CURRENT_ARTIFACT_KEYS[@]}"; do
-        [[ "$existing" == "$key" ]] && key=""
-      done
-    fi
-    [[ -n "$key" ]] && CURRENT_ARTIFACT_KEYS+=("$key")
-  done <<< "$key_output"
+# current tracker の所有キーを CURRENT_ARTIFACT_KEYS、current 以外の tracker の所有キーを
+# OTHER_ARTIFACT_KEYS に集める。キーが得られないこと自体は停止理由にしない。
+# 所属を判定できない artifact は build_plan が undetermined として保持する。
+collect_artifact_keys() {
+  local key
+  local tracker="$CURRENT_TRACKER_PATH"
+  local key_output
+  local i
+  local path
 
-  (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 || has_artifacts == 0 )) ||
-    fatal "artifact が存在するのに current tracker に所有キーがありません: $(display_path "$tracker")"
+  if [[ -L "$tracker" ]]; then
+    fatal "current tracker が symlink です: $(display_path "$tracker")"
+  fi
+  if [[ -e "$tracker" && ! -f "$tracker" ]]; then
+    fatal "current tracker が regular file ではありません: $(display_path "$tracker")"
+  fi
+
+  if [[ -e "$tracker" || ${#CANDIDATE_PATHS[@]} -gt 0 ]]; then
+    command -v python3 >/dev/null 2>&1 || fatal "tracker の所有キー判定に python3 が必要です"
+  fi
+
+  if [[ -e "$tracker" ]]; then
+    key_output="$(extract_tracker_keys "$tracker")" ||
+      fatal "current tracker を読み取れないため中止します: $(display_path "$tracker")"
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      CURRENT_ARTIFACT_KEYS+=("$key")
+    done <<< "$key_output"
+  fi
+
+  (( ${#CANDIDATE_PATHS[@]} > 0 )) || return 0
+  for i in "${!CANDIDATE_PATHS[@]}"; do
+    [[ "${CANDIDATE_KINDS[$i]}" == "tracking" ]] || continue
+    path="${CANDIDATE_PATHS[$i]}"
+    [[ "$path" == "$tracker" ]] && continue
+    # 他 tracker の読み取り失敗は停止させず、キー 0 件（所属不明側）として扱う。
+    key_output="$(extract_tracker_keys "$path" 2>/dev/null)" || continue
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      OTHER_ARTIFACT_KEYS+=("$key")
+    done <<< "$key_output"
+  done
+}
+
+artifact_prefix() {
+  local prefix
+  prefix="$(basename "$1")"
+  printf '%s' "${prefix%%--*}"
 }
 
 artifact_belongs_to_current() {
-  local artifact_path="$1"
   local prefix
   local key
-  prefix="$(basename "$artifact_path")"
-  prefix="${prefix%%--*}"
+  (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 )) || return 1
+  prefix="$(artifact_prefix "$1")"
   for key in "${CURRENT_ARTIFACT_KEYS[@]}"; do
+    [[ "$prefix" == "$key" ]] && return 0
+  done
+  return 1
+}
+
+# current より先に判定しないこと。同じ slug を current も参照する場合は current を優先して保護する。
+artifact_claimed_by_other() {
+  local prefix
+  local key
+  (( ${#OTHER_ARTIFACT_KEYS[@]} > 0 )) || return 1
+  prefix="$(artifact_prefix "$1")"
+  for key in "${OTHER_ARTIFACT_KEYS[@]}"; do
     [[ "$prefix" == "$key" ]] && return 0
   done
   return 1
@@ -410,8 +435,14 @@ build_plan() {
       artifacts)
         if artifact_belongs_to_current "$path"; then
           PROTECTED_PATHS+=("$path")
-        else
+        elif artifact_claimed_by_other "$path"; then
           DELETE_PATHS+=("$path")
+        elif (( ${#CURRENT_ARTIFACT_KEYS[@]} > 0 )); then
+          # current の所有キーがあり、どれにも一致しない未参照 artifact は従来どおり削除する。
+          DELETE_PATHS+=("$path")
+        else
+          # current から所有キーを得られず他 tracker にも参照されない artifact は所属を判定できない。
+          UNDETERMINED_PATHS+=("$path")
         fi
         ;;
       session)
@@ -445,6 +476,13 @@ print_plan() {
     echo "  (none)"
   else
     for path in "${DELETE_PATHS[@]}"; do
+      printf '  - %s\n' "$(display_path "$path")"
+    done
+  fi
+  if (( ${#UNDETERMINED_PATHS[@]} > 0 )); then
+    echo "--- undetermined (retained) ---"
+    echo "  所属を判定できないため削除しません（current tracker に campaign_slug が無く、他 tracker からも参照されていません）"
+    for path in "${UNDETERMINED_PATHS[@]}"; do
       printf '  - %s\n' "$(display_path "$path")"
     done
   fi

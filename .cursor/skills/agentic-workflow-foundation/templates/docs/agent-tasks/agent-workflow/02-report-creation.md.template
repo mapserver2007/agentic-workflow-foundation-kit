@@ -135,6 +135,7 @@
 - judgment_reason:
 {{/if}}
 
+<!-- contract: approval-copy-subsection -->
 ### 実装開始承認（人間可読同期コピー）
 
 以下は step2 envelope の `implementation_approval` を人間可読に転記する同期コピーであり、digest payload には含めない。
@@ -146,7 +147,7 @@ implementation_approval:
   decider: PO
 ```
 
-PO が完成レポートのレビューと実装開始を承認したとき、親オーケストレータが envelope とこの転記を同時に `status: approved` へ更新する。Step③ dispatch 前の `--check-implementation-approval`（checker）は状態を書き換えず exit 非0で停止する。親は非0時に承認を `pending` に戻し R1/R2 に分類する。
+PO が完成レポートのレビューと実装開始を承認したとき、親オーケストレータが envelope とこの転記を同時に `status: approved` へ更新する。Step③ dispatch 前の `--check-implementation-approval`（checker）は状態を書き換えず exit 非0で停止する。親は非0時に承認を `pending` に戻し R1/R2 に分類する。 <!-- contract: step3-checker-does-not-mutate-state -->
 
 `implementation-base-commit:` は R3 の payload 外記録である。親は Step③ worker を dispatch する直前に pre-dispatch で得た `base_commit_sha` をここへ保存し、Step④・Step⑤再検査・archive 前の実差分ゲートが同じ基準を使う。
 ````
