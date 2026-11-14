@@ -86,9 +86,6 @@ RESOLVED_KEYS = frozenset({
     "spec_sections", "architecture_sections", "api_sections",
     "data_model_sections", "coding_standards_sections", "workflow_sections",
 })
-# どのテンプレートにも描画されない旧必須項目（ADR-0007）。封印済みの既存契約を拒否しないよう許可のまま残し、
-# 必須から外す。root manifest の domain_docs へは投影しない。
-DEPRECATED_RESOLVED_KEYS = frozenset({"spec_sections", "architecture_sections"})
 PROVISIONING_KEYS = frozenset({"policy", "evidence_ref", "preflight_checks", "command_actions"})
 APPROVAL_KEYS = frozenset({"status", "digest", "schema_version"})
 
@@ -352,6 +349,7 @@ def _validate_command_action(action: dict, index: int) -> None:
     for rel in post_generated:
         if rel not in write_set:
             raise SchemaError(f"{label}.writes に postcondition marker {rel!r} が含まれていません")
+    project_effects = {e for e in effects if e in ("project_write", "lockfile_write")}
     host_only = set(effects) == {"host_write"}
     if host_only and not postconditions:
         raise SchemaError(f"{label}.postconditions は host_write-only 時に必須です")
@@ -528,8 +526,6 @@ def _validate_domain_docs(contract: dict) -> None:
     _reject_unknown(resolved, RESOLVED_KEYS, "domain_docs.resolved")
     for key in RESOLVED_KEYS:
         if key not in resolved:
-            if key in DEPRECATED_RESOLVED_KEYS:
-                continue
             raise SchemaError(f"domain_docs.resolved.{key} が欠落しています")
         if key.endswith("_sections"):
             sections = resolved[key]
@@ -543,6 +539,19 @@ def _validate_domain_docs(contract: dict) -> None:
                 )
         else:
             _require_str(resolved.get(key), f"domain_docs.resolved.{key}")
+
+
+def dedupe_preflight_checks(checks: list[dict]) -> list[dict]:
+    """canonical payload で preflight_checks を決定論的に dedupe する。"""
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for check in checks:
+        digest = rp.preflight_payload_digest(check)
+        if digest in seen:
+            continue
+        seen.add(digest)
+        deduped.append(check)
+    return deduped
 
 
 def _validate_provisioning(contract: dict) -> None:
@@ -594,31 +603,32 @@ def _validate_provisioning(contract: dict) -> None:
             "provisioning.policy=explicit では runtime_materialization.actions または "
             "provisioning.command_actions が1件以上必要です"
         )
-    _validate_preflight_package_coverage(contract, "required_packages", "installed-marker")
-    _validate_preflight_package_coverage(contract, "forbidden_packages", "absent-marker")
+    _validate_reality_preflight_coverage(contract)
+    _validate_forbidden_preflight_coverage(contract)
 
 
-def _validate_preflight_package_coverage(contract: dict, packages_key: str, marker_kind: str) -> None:
-    """reality.<packages_key> の全 package を、marker_kind の preflight が重複なく exact cover することを検査する。"""
-    reality = (contract.get("runtime_materialization") or {}).get("reality")
+def _validate_forbidden_preflight_coverage(contract: dict) -> None:
+    runtime = contract.get("runtime_materialization") or {}
+    reality = runtime.get("reality")
     if not isinstance(reality, dict):
         return
-    declared_list = reality.get(packages_key) or []
-    if not declared_list:
+    forbidden_list = reality.get("forbidden_packages") or []
+    if not forbidden_list:
         return
-    declared = set(declared_list)
+    forbidden = set(forbidden_list)
     checks = (contract.get("provisioning") or {}).get("preflight_checks") or []
     covered: set[str] = set()
     for index, check in enumerate(checks):
-        if check.get("kind") != marker_kind:
+        if check.get("kind") != "absent-marker":
             continue
-        for pkg in check.get("covers_packages") or []:
+        covers = check.get("covers_packages") or []
+        for pkg in covers:
             if not isinstance(pkg, str):
                 continue
-            if pkg not in declared:
+            if pkg not in forbidden:
                 raise SchemaError(
                     f"provisioning.preflight_checks[{index}].covers_packages に "
-                    f"{packages_key} 外の package があります: {pkg}"
+                    f"forbidden_packages 外の package があります: {pkg}"
                 )
             if pkg in covered:
                 raise SchemaError(
@@ -626,10 +636,46 @@ def _validate_preflight_package_coverage(contract: dict, packages_key: str, mark
                     f"重複カバーがあります: {pkg}"
                 )
             covered.add(pkg)
-    missing = sorted(declared - covered)
+    missing = sorted(forbidden - covered)
     if missing:
         raise SchemaError(
-            f"runtime_materialization.reality.{packages_key} に preflight 未カバーがあります: {missing}"
+            f"runtime_materialization.reality.forbidden_packages に preflight 未カバーがあります: {missing}"
+        )
+
+
+def _validate_reality_preflight_coverage(contract: dict) -> None:
+    runtime = contract.get("runtime_materialization") or {}
+    reality = runtime.get("reality")
+    if not isinstance(reality, dict):
+        return
+    required_list = reality.get("required_packages") or []
+    if not required_list:
+        return
+    required = set(required_list)
+    checks = (contract.get("provisioning") or {}).get("preflight_checks") or []
+    covered: set[str] = set()
+    for index, check in enumerate(checks):
+        if check.get("kind") != "installed-marker":
+            continue
+        covers = check.get("covers_packages") or []
+        for pkg in covers:
+            if not isinstance(pkg, str):
+                continue
+            if pkg not in required:
+                raise SchemaError(
+                    f"provisioning.preflight_checks[{index}].covers_packages に "
+                    f"required_packages 外の package があります: {pkg}"
+                )
+            if pkg in covered:
+                raise SchemaError(
+                    f"provisioning.preflight_checks[{index}].covers_packages に "
+                    f"重複カバーがあります: {pkg}"
+                )
+            covered.add(pkg)
+    missing = sorted(required - covered)
+    if missing:
+        raise SchemaError(
+            f"runtime_materialization.reality.required_packages に preflight 未カバーがあります: {missing}"
         )
 
 
@@ -806,6 +852,7 @@ def _validate_renderability(contract: dict, root: Path) -> None:
             rp.render_file_bytes(action, root)
         except Exception as exc:
             raise SchemaError(f"runtime_materialization.actions[{index}] は render 不可: {exc}") from exc
+    _ = projection_digest(contract)
 
 
 def _validate_coderabbit_template_renderability(contract: dict) -> None:
@@ -889,6 +936,8 @@ def _verify_pin_roundtrip(new_raw: bytes, finalized: dict) -> None:
     loaded = parsed.get("tech_contract")
     if not isinstance(loaded, dict):
         raise SchemaError("pin 後 tech_contract が見つかりません")
+    bare = _bare_contract(finalized)
+    loaded_bare = _bare_contract(loaded)
     if canonical_json(_normalize_contract_data(finalized)) != canonical_json(_normalize_contract_data(loaded)):
         raise SchemaError("pin round-trip: contract data 不一致")
     for key in ("contract_digest", "projection_digest", "approval"):

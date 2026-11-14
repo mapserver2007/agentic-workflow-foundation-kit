@@ -25,9 +25,6 @@ if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
 
 import genlib  # noqa: E402
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-from yaml_blocks import indent_of as _indent_of  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 
@@ -139,6 +136,10 @@ def resolve(min_window: int) -> dict:
         },
         "checkpoint_interval_prompts": FIXED["checkpoint_interval_prompts"],
     }
+
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
 
 
 def _find_nested_block(lines: list[str], parent: str, child: str):

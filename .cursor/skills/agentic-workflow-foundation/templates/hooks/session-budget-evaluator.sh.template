@@ -45,10 +45,10 @@ if [[ ! -f "$STATE_FILE" ]]; then
 fi
 
 # ---- しきい値（generate 時に resolve() で再導出して焼き込み） ----
-Y_PROMPT={{framework.budget_thresholds.yellow.prompt_count}}
-Y_BYTES={{framework.budget_thresholds.yellow.shell_bytes}}
-R_PROMPT={{framework.budget_thresholds.red.prompt_count}}
-R_BYTES={{framework.budget_thresholds.red.shell_bytes}}
+THRESHOLDS='{
+  "yellow": { "prompt_count": {{framework.budget_thresholds.yellow.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.yellow.shell_bytes}} },
+  "red":    { "prompt_count": {{framework.budget_thresholds.red.prompt_count}}, "shell_bytes": {{framework.budget_thresholds.red.shell_bytes}} }
+}'
 COMPACT_YELLOW_PCT={{framework.budget_thresholds.compact_yellow_percent}}
 COMPACT_RED_PCT={{framework.budget_thresholds.compact_red_percent}}
 COMPACT_FRESHNESS_SEC={{framework.budget_thresholds.compact_freshness_sec}}
@@ -140,32 +140,6 @@ SKEL
   fi
 }
 
-# ---- state の last_warning_level を flock 下で更新する ----
-record_warning_level() {
-  local lock_file="$SESSION_DIR/${SESSION_ID}.lock"
-  (
-    if command -v flock >/dev/null 2>&1; then
-      flock -x 9 || exit 0
-    fi
-    UPDATED="$(jq --arg lvl "$LEVEL" '.last_warning_level = $lvl' "$STATE_FILE" 2>/dev/null)" || exit 0
-    [[ -n "$UPDATED" ]] || exit 0
-    TMP_FILE="$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || exit 0
-    printf '%s' "$UPDATED" > "$TMP_FILE" 2>/dev/null && mv "$TMP_FILE" "$STATE_FILE" 2>/dev/null
-  ) 9>"$lock_file" 2>/dev/null || true
-}
-
-# ---- Yellow/Red の followup_message を出力する（$1 = 見出し行）----
-emit_followup() {
-  local instructions
-  instructions="AI への指示:
-1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
-2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。"
-  if [[ "$LEVEL" == "red" ]]; then
-    instructions+=$'\n'"3. 新規実装を停止し、新規チャットへ移るようユーザーに短く伝える。"
-  fi
-  jq -n --arg m "$1"$'\n\n'"$instructions" '{ followup_message: $m }'
-}
-
 # ---- 判定ロジック ----
 LEVEL="none"
 LEVEL_SOURCE="proxy"
@@ -197,6 +171,11 @@ fi
 
 # 判定優先順位 3: token% で判定されなかった場合は proxy OR 判定にフォールバック
 if [[ "$LEVEL_SOURCE" == "proxy" ]]; then
+  Y_PROMPT="$(jq -r '.yellow.prompt_count // 35' <<<"$THRESHOLDS")"
+  Y_BYTES="$(jq -r '.yellow.shell_bytes // 768000' <<<"$THRESHOLDS")"
+  R_PROMPT="$(jq -r '.red.prompt_count // 70' <<<"$THRESHOLDS")"
+  R_BYTES="$(jq -r '.red.shell_bytes // 4194304' <<<"$THRESHOLDS")"
+
   if (( PROMPTS >= R_PROMPT )) || (( SHELL_BYTES >= R_BYTES )); then
     LEVEL="red"
   elif (( PROMPTS >= Y_PROMPT )) || (( SHELL_BYTES >= Y_BYTES )); then
@@ -218,16 +197,36 @@ if [[ "$PENDING_HANDOFF" == "true" ]] && [[ "$LEVEL" != "none" ]]; then
   rm -f "$SESSION_DIR/${SESSION_ID}.checkpoint" 2>/dev/null || true
 
   # state に last_warning_level を書き込む
-  record_warning_level
+  LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
+  (
+    if command -v flock >/dev/null 2>&1; then
+      flock -x 9 || exit 0
+    fi
+    UPDATED="$(jq --arg lvl "$LEVEL" '.last_warning_level = $lvl' "$STATE_FILE" 2>/dev/null)" || exit 0
+    [[ -n "$UPDATED" ]] || exit 0
+    TMP_FILE="$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || exit 0
+    printf '%s' "$UPDATED" > "$TMP_FILE" 2>/dev/null && mv "$TMP_FILE" "$STATE_FILE" 2>/dev/null
+  ) 9>"$LOCK_FILE" 2>/dev/null || true
 
   generate_manifest_skeleton
 
   COMPACT_PCT="${PENDING_PCT:-${LAST_COMPACT_PCT:-?}}"
   if [[ "$LEVEL" == "red" ]]; then
-    emit_followup "[CONTEXT_BUDGET=RED] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）— 強制ハンドオフ発火。"
+    MSG="[CONTEXT_BUDGET=RED] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）— 強制ハンドオフ発火。
+
+AI への指示:
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。
+3. 新規実装を停止し、新規チャットへ移るようユーザーに短く伝える。"
   else
-    emit_followup "[CONTEXT_BUDGET=YELLOW] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）。"
+    MSG="[CONTEXT_BUDGET=YELLOW] コンパクション検出（${COMPACT_TRIGGER}、使用率 ${COMPACT_PCT}%）。
+
+AI への指示:
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。"
   fi
+
+  jq -n --arg m "$MSG" '{ followup_message: $m }'
   exit 0
 fi
 
@@ -250,7 +249,17 @@ fi
 rm -f "$CHECKPOINT_MARKER" 2>/dev/null || true
 
 generate_manifest_skeleton
-record_warning_level
+
+LOCK_FILE="$SESSION_DIR/${SESSION_ID}.lock"
+(
+  if command -v flock >/dev/null 2>&1; then
+    flock -x 9 || exit 0
+  fi
+  UPDATED="$(jq --arg lvl "$LEVEL" '.last_warning_level = $lvl' "$STATE_FILE" 2>/dev/null)" || exit 0
+  [[ -n "$UPDATED" ]] || exit 0
+  TMP_FILE="$(mktemp "${STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || exit 0
+  printf '%s' "$UPDATED" > "$TMP_FILE" 2>/dev/null && mv "$TMP_FILE" "$STATE_FILE" 2>/dev/null
+) 9>"$LOCK_FILE" 2>/dev/null || true
 
 # ---- followup メッセージの判定根拠テキスト ----
 if [[ "$LEVEL_SOURCE" == "compact" ]]; then
@@ -260,8 +269,19 @@ else
 fi
 
 if [[ "$LEVEL" == "red" ]]; then
-  emit_followup "[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。"
+  MSG="[CONTEXT_BUDGET=RED] 強制ハンドオフ発火（${TRIGGER_TEXT}）。
+
+AI への指示:
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。
+3. 新規実装を停止し、新規チャットへ移るようユーザーに短く伝える。"
 else
-  emit_followup "[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。"
+  MSG="[CONTEXT_BUDGET=YELLOW] ハンドオフ準備推奨（${TRIGGER_TEXT}）。
+
+AI への指示:
+1. 追跡ドキュメント（${TRACKER_FILE}）を読み直し、判断ログと次セッション TODO を更新してから、.cursor/.session/handoff-${SESSION_ID}.md の TODO を埋める。
+2. handoff 先頭の \`campaign_id\` と \`tracker_path\` は変更しない。"
 fi
+
+jq -n --arg m "$MSG" '{ followup_message: $m }'
 exit 0

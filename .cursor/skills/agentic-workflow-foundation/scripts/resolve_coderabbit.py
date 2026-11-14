@@ -25,10 +25,6 @@ if HERE not in sys.path:
 import genlib  # noqa: E402
 import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
-from yaml_blocks import (  # noqa: E402
-    find_top_block as _find_top_block,
-    indent_of as _indent_of,
-)
 from yaml_emitter import dump_yaml  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
@@ -50,6 +46,32 @@ def resolve(manifest_path: str) -> dict:
 
 
 # ── manifest 書き込み ────────────────────────────────────────
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _find_top_block(lines, key: str):
+    start = None
+    for idx, line in enumerate(lines):
+        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
+            start = idx
+            break
+    if start is None:
+        return None, None
+    last = start
+    j = start + 1
+    while j < len(lines):
+        if lines[j].strip() == "":
+            j += 1
+            continue
+        if _indent_of(lines[j]) > 0:
+            last = j
+            j += 1
+            continue
+        break
+    return start, last
+
 
 def _build_coderabbit_block(resolved: dict) -> list[str]:
     return dump_yaml({"coderabbit": resolved})
@@ -87,7 +109,7 @@ def main(argv=None) -> int:
         _out("ERROR", f"manifest が見つからない: {args.manifest}")
         return 2
     try:
-        genlib.load_manifest(args.manifest)
+        manifest = genlib.load_manifest(args.manifest)
     except genlib.YamlError as e:
         _out("ERROR", f"manifest 解析失敗: {e}")
         return 2

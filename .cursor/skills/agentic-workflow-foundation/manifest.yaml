@@ -42,6 +42,17 @@ framework:
       - CLAUDE.md
       - CLAUDE.local.md
       - MEMORY.md
+  hook_events:
+    - sessionStart
+    - beforeSubmitPrompt
+    - afterShellExecution
+    - beforeShellExecution
+    - stop
+    - preCompact
+    - afterAgentResponse
+    - afterAgentThought
+    - subagentStart
+    - subagentStop
   exit_codes:
     - code: 0
       meaning: 全検査PASS。次フェーズへ進む
@@ -51,7 +62,7 @@ framework:
       meaning: 致命的エラー（引数不正/ファイル不在/スクリプト破損）。ループ中断しユーザー報告
   # 追跡ドキュメント（.cursor/.tracking/tracker-{campaign_id}.md）が満たすべき必須セクションの SoT。
   # session-planning テンプレ（追跡ドキュメント作成ガイド）と plan-gate.sh（機械検査）が同一リストを参照する。
-  # 重量機構（Finding Code 79 / 数値判定）は採用しない。
+  # handoff.manifest_required_sections と同じ単一 SoT 方式。重量機構（Finding Code 79 / 数値判定）は採用しない。
   plan_required_sections:
     - "目的と完了条件"
     - "スコープ"
@@ -131,14 +142,52 @@ framework:
   review_start:
     prompt_max_age_seconds: 600
   handoff:
+    source_policy: "統一設計書を immutable upstream SoT として読み取り、seed default と root manifest を合成した一時 resolved manifest に展開する"
     purpose: "長時間セッションによる Lost in the Middle とコンテキストドリフトを防ぎ、新規チャットで作業状態を再構築する"
     # 劣化の自覚を促す根拠論文と具体例。論文は移植性のため汎用引用のみ（プロジェクト固有チケットは含めない）。
     paper_citation: "根拠: Liu et al. (2023) 『Lost in the Middle: How Language Models Use Long Contexts』 (TACL)。長い文脈では入力の中央付近にある情報の利用率が相対的に下がることを実証した。"
     degradation_example: "具体例: 序盤で「この更新処理は必ずトランザクション境界内で実行する」と決めたのに、終盤では境界外に実装してしまう。序盤の制約が AI の注意から落ちるのが典型的な劣化症状で、早期に気づけると handoff のタイミングを逃しにくい。"
     user_invisible: "`.cursor/.session/` のファイルや session_id をユーザーが通常意識する必要はない"
+    # campaign_id は親 campaign の安定 ID。創設 session_id と同値で、再開時も変えない。
+    # campaign_slug（report / envelope 用）とは別の識別子である。
+    # handoff がない場合でも、snapshot 1 件だけなら compact 情報の campaign_id と
+    # tracker_path を厳格に検証して bind し、artifact だけが残る孤児化を防ぐ。
+    campaign_id_field: "campaign_id"
+    campaign_id_source: "sessionStart の session-bootstrap.sh が handoff から bind、handoff なし・snapshot 1 件は検証済み snapshot から bind、それ以外は創設 session_id を mint"
+    state_campaign_id_field: "campaign_id"
+    tracker_path_pattern: ".cursor/.tracking/tracker-{campaign_id}.md"
     active_manifest_path: ".cursor/.session/handoff-{session_id}.md"
     consumed_manifest_pattern: ".cursor/.session/handoff-consumed-{orig_sid}-{unix}.md"
     snapshot_path_pattern: ".cursor/.session/pre-compact-{session_id}.md"
+    state_glob: ".cursor/.session/{session_id}.json"
+    state_files:
+      - path: ".cursor/.session/{session_id}.json"
+        role: "セッションごとの累積指標"
+        lifecycle: "session-bootstrap.sh が新規作成し、tracker / evaluator が更新する"
+      - path: ".cursor/.session/handoff-{session_id}.md"
+        role: "セッションごとの active handoff manifest（並行セッション対応）"
+        lifecycle: "AI が Yellow / Red 受信時に書き出し、session-bootstrap.sh が次セッションで消費する。並行セッションは独立した handoff ファイルを持つ"
+      - path: ".cursor/.session/handoff-consumed-{orig_sid}-{unix}.md"
+        role: "消費済み handoff manifest のアーカイブ（元セッション ID 付きでトレーサビリティ確保）"
+        lifecycle: "session-bootstrap.sh が active manifest をリネームして作成する"
+      - path: ".cursor/.session/compact-events.jsonl"
+        role: "compact イベントの校正データログ"
+        lifecycle: "session-compact-observer.sh が preCompact 発火時に追記する"
+      - path: ".cursor/.session/{session_id}.pending-handoff"
+        role: "compact 直後の handoff 発火トリガー（one-shot marker）"
+        lifecycle: "compact-observer が書き、budget-evaluator が検出後に削除する"
+      - path: ".cursor/.session/pre-compact-{session_id}.md"
+        role: "preCompact 時の包括的構造化スナップショット（追跡ドキュメント + turns.jsonl 末尾 + state を統合した復旧用退避）"
+        lifecycle: "compact-observer が preCompact 発火時に生成する。session-bootstrap.sh が次セッションで突合・注入に使用する"
+      - path: ".cursor/.session/{session_id}.turns.jsonl"
+        role: "全ターンの prompt + AI 応答 + thinking をゼロコストで記録する会話ログ"
+        lifecycle: "session-response-tracker.sh / session-budget-tracker.sh が追記。preCompact でスナップショットに含まれる"
+      # review_start: workflow Step ⑤ のレビュー検証フェーズ開始を、委譲スキル非依存の
+      # 境界契約として progress.jsonl に残す（表示/ゲート側の PROGRESS 判定用）。
+      # スキル名はイベントに載せない。DONE 証跡は既存の reports / tracker 承認のまま。
+      - path: ".cursor/.session/{session_id}.progress.jsonl"
+        role: "構造化されたセッション観測イベントの追記ログ"
+        lifecycle: "session-progress-emitter.sh が Hook イベントごとに追記する。初回 Step⑤ Mode A では review-start gate が検証後に session-progress-append.sh を呼び kind=review_start を追記・readbackする"
     user_actions:
       - warning: "[CONTEXT_BUDGET=YELLOW]"
         action: "現在の作業の区切りを意識し、区切りが見えたタイミングで Cmd+N を開く"
@@ -183,6 +232,15 @@ framework:
         measures: "対話往復数の proxy。往復が増えるほど序盤の情報が中央に埋もれて薄まる"
       - metric: "シェル出力バイト"
         measures: "ツール出力によるコンテキスト消費の proxy。大量ログ・広範な探索で中央埋没リスクが上がる"
+    manifest_required_sections:
+      - "ポインタ（追跡ドキュメントの現在位置）"
+      - "直近のユーザー依頼"
+      - "セッション判断ログ"
+      - "  - 採用した判断と根拠"
+      - "  - 却下した案と却下理由"
+      - "制約・ブロッカー・未完了の検証"
+      - "次セッションの推奨アクション"
+      - "復旧メモ"
     # 追跡ドキュメント = キャンペーン全体の SoT、handoff manifest = セッション固有の揮発情報 + 追跡ドキュメントへのポインタ。
     # manifest に追跡ドキュメントと同じ情報を重複して書かない。
     manifest_responsibility: "追跡ドキュメント（campaign tracker）が SoT。manifest は campaign_id / tracker へのポインタ + session 固有の揮発情報（直近の依頼・未コミットの判断）のみ"
@@ -198,6 +256,7 @@ framework:
     # 「いつ・どう校正するか」を明文化し、校正忘れを防ぐ。
     calibration:
       min_events: 20
+      review_trigger: "compact-events.jsonl のエントリが min_events に達したとき"
       review_actions:
         - "auto compact の発火 % 分布を確認し、compact_yellow/red_percent の位置を評価する"
         - "prompt_count / shell_bytes と context_usage_percent の相関を分析し、proxy 閾値を調整する"
@@ -239,6 +298,7 @@ tech_stack:
 #   が正式な検証コマンドの置き場になる。
 # ------------------------------------------------------------
 session:
+  tracker_always_required: true
   large_task_threshold:
     files: 5
     subtasks: 3
@@ -388,7 +448,7 @@ github_issue:
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
 #   orchestrator_skill: true の場合、.cursor/skills/workflow-orchestrator/SKILL.md を生成する。
-#   maintenance_docs.enabled: true の場合、.cursor/skills/maintenance-docs-workflow/SKILL.md を生成する。
+#   maintenance_docs.enabled: true の場合、.cursor/skills/agent-maintenance-docs/SKILL.md を生成する。
 #   maintenance_gotchas.enabled: true の場合、.cursor/skills/maintenance-gotchas-workflow/SKILL.md を生成する。
 # ------------------------------------------------------------
 agent_workflow:
@@ -396,17 +456,35 @@ agent_workflow:
   report_slug_format: "{ticket}-{slug}"
   maintenance_docs:
     enabled: true
+    judgment_enum:
+      - "pending"
+      - "required"
+      - "not_required"
+    queue_required_front_matter:
+      - "status"
+      - "created"
+      - "source_type"
+      - "source_report"
+      - "target_docs"
+      - "change_type"
   maintenance_gotchas:
     enabled: true
+  gate_scripts: true
   orchestrator_skill: true
   # step envelope: 全 worker の終端結果（complete/incomplete/blocked/fatal）を保存する永続 artifact（決定 13 / 14）。
   # complete を含む全状態で書き出し、次ステップの入力・再開・機械検証に用いる。
   # 前ステップの envelope は次ステップの envelope と正式成果物の検証完了後に削除する。最終残存検査は archive gate が行う。
   artifact:
     dir: ".cursor/.artifacts"
+    naming_pattern: "{report-slug}--{step}.md"
     envelope:
+      format: "yaml-front-matter"
+      required_fields:
+        - "status"
+        - "step"
       # I-4: front matter パーサー依存。PyYAML（yaml.safe_load）を唯一のパーサーとする。
       # 未導入・不正 front matter・未知必須フィールドは exit 2（致命的エラー）。
+      parser: "python3-pyyaml"
       parser_missing_exit: 2
   # --- step6 プロジェクト固有ゲート（任意・設定駆動）---
   # 下流プロジェクトの root manifest.yaml で以下を設定すると、
@@ -497,15 +575,39 @@ deep_thinking:
     max_rebuttal_turns_per_issue: 1
     max_issues_per_round: 1
     stop_when: "NO_MATERIAL_ISSUES"
+  static_gate:
+    enabled: true
+    checks:
+      - id: G-DEEP-CONFIG-001
+        desc: "必須キー・型・空値"
+      - id: G-DEEP-MODEL-001
+        desc: "require_distinct_models 時の A/B モデル重複"
+      - id: G-DEEP-BUDGET-001
+        desc: "再審上限（max_rounds / max_rebuttal_turns_per_issue / max_issues_per_round）の正の整数検査"
+      - id: G-DEEP-POLICY-001
+        desc: "model_unavailable / stop_when の契約値検査"
+    not_verifiable:
+      - "実モデル割当（Cursor Subagent API が返さない）"
+      - "A/B の相互非参照（プロセス間隔離を外部観測できない）"
+      - "別プロセス実行（Subagent 起動の内部実装に依存）"
+  high_impact_categories:
+    - "security_or_authorization"
+    - "secret_or_sensitive_data"
+    - "data_deletion_or_migration"
+    - "breaking_external_api"
+    - "irreversible_architecture"
+    - "unapproved_cost_or_schedule"
+    - "must_requirement_conflict"
 
 # ------------------------------------------------------------
 # (2k) requirement_analysis — 要求分析スキル（オプション生成）
-#   agent_workflow の子 feature（ADR-0007）。独立のトグルは持たず、agent_workflow.enabled: true なら常に有効。
+#   agent_workflow.enabled: true 時に自動有効化される子 feature。
 #   3 段階ガード（要求完全性・仕様整合性・実現性）と分析深度判定を統括する。
 #   deep 経路は deep_thinking.enabled: true を前提とする。
 #   deep_thinking.enabled: false の場合: deep 判定は standard に降格し警告を出す。
 # ------------------------------------------------------------
 requirement_analysis:
+  enabled: true
   models:
     normalize: "composer-2.5-fast"
     depth_triage: "cursor-grok-4.6-high-fast"
@@ -562,6 +664,7 @@ github_access:
 # ------------------------------------------------------------
 cross_repo_knowledge:
   enabled: true
+  clone_base_path: "/tmp/cross-repo-knowledge"
 
 # ------------------------------------------------------------
 # (2l) foundation — 基盤保守ゲート（条件生成 / ADR-0001）
@@ -601,6 +704,8 @@ tech_contract:
       framework: "[要確認]"
       test_framework: "[要確認]"
       package_manager: "[要確認]"
+      spec_sections:
+      architecture_sections:
       api_sections:
       data_model_sections:
       coding_standards_sections:
@@ -664,6 +769,8 @@ outputs:
       - "git credential"
       - "認証設定ファイルの読み取りはブロック"
       - ".env / .pem / .key ファイルの読み取りはブロック"
+      - "security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]]"
+      - "git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]]"
   # Context Budget の source 専用 UTF-8 byte-count helper。
   # hooks.json には登録せず、各 Hook が BASH_SOURCE から source する。
   - path: .cursor/hooks/session-byte-count.sh
@@ -834,6 +941,7 @@ outputs:
       - "preCompact"
       - "compact-events.jsonl"
       - "校正サイクル"
+      - "MemPalace"
       - "将来拡張候補"
       - "意図的に採用しない設計"
       - "閾値の決定根拠"
@@ -1563,6 +1671,15 @@ outputs:
       - "models"
       - "execution"
       - "high_impact_categories"
+  - path: .cursor/skills/deep-thinking/README.md
+    template: skills/deep-thinking/README.md
+    mode: render
+    feature: deep_thinking
+    required_sections:
+      - "## 動作の要点"
+      - "## 実行設定と前提"
+      - "## 有効なユースケース"
+      - "## 起動判断フロー"
   - path: .cursor/skills/deep-thinking/references/analyst-brief.md
     template: skills/deep-thinking/references/analyst-brief.md.template
     mode: render
@@ -1597,6 +1714,15 @@ outputs:
       - "禁止される表現パターン"
       - "許容される表現パターン"
       - "高影響領域の扱い"
+  - path: .cursor/skills/deep-thinking/references/workflow-triage.md
+    template: skills/deep-thinking/references/workflow-triage.md.template
+    mode: render
+    feature: deep_thinking
+    required_sections:
+      - "即時起動条件"
+      - "スコア起動条件"
+      - "triage_result"
+      - "失敗種別"
   # requirement-analysis スキル（feature: requirement_analysis で条件生成）。
   # agent_workflow.enabled: true 時に自動有効化される子 feature。
   # 3 段階ガード + 分析深度判定を統括する workflow-orchestrator の内部スキル。
@@ -1802,10 +1928,9 @@ outputs:
 # ------------------------------------------------------------
 # (3) project_overrides — root manifest 生成用のプロジェクト固有値 seed
 #     本ツールキットは新規リポジトリにコピーして実行する配布モデル。project.* は
-#     (a) init.yaml 由来(name / tech_stack_design.filename / context_budget。workflow_pattern は "開発型" 固定) /
-#     (b) 自動導出(slug/tracking_artifact/quality_gate) /
+#     (a) AskQuestion(workflow_pattern のみ) / (b) 自動導出(name/slug/tracking_artifact/quality_gate) /
 #     (c) 固定値(one_liner/agent_role/priorities/boundaries/doc_navigation = 本基盤の機能説明)
-#     で確定する（SKILL.md Phase 1.5 参照）。AskQuestion は行わない。
+#     の3分類で確定する（SKILL.md Phase 1.5 参照）。自由入力・PO 直接手入力は廃止。
 #     スキル実行により root manifest.yaml が生成された後、PO が正式な project manifest として評価する。
 # ------------------------------------------------------------
 project:
@@ -1873,6 +1998,9 @@ project:
     # 未定義（キー不在）= exit 2（安全側フォールバック禁止）。空リスト = gen 不要（スキップ）。
     gen_artifact_paths:
     gate_command: "bin/quality-gate verify"
+    # 任意。PO が「不要」なら [要確認] のままスキップ可
+    extra:
+      - "[要確認] 追加ゲート（任意）"
   # 固定値（本基盤の運用制約。PO には問わない）。
   boundaries:
     # 読込制約は kit が適用先へ配る固定設計であり、kit 自身では ADR を起票しない。

@@ -19,6 +19,7 @@ step4/step5/step6 の境界責務を正しく案内していることを検証�
 from __future__ import annotations
 
 import copy
+import re
 import sys
 from pathlib import Path
 
@@ -68,11 +69,15 @@ def _render_with_features(
     path: Path,
     *,
     maintenance_docs: bool = True,
+    gate_scripts: bool = True,
     code_review: bool = True,
     github_pr: bool = True,
+    requirement_analysis: bool = True,
 ) -> str:
     context = copy.deepcopy(load_manifest(str(MANIFEST)))
+    context["requirement_analysis"]["enabled"] = requirement_analysis
     context["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_docs
+    context["agent_workflow"]["gate_scripts"] = gate_scripts
     context["code_review"]["enabled"] = code_review
     context["github_pr"]["enabled"] = github_pr
     return render(_read(path), context)
@@ -81,25 +86,38 @@ def _render_with_features(
 def test_step4_matrix_implementation_to_verification():
     """Step ④ Matrix 行が step4 を「実装 → 検証」として案内すること。"""
     marker = "matrix-step4-impl-then-verify"
-    for path in (SKILL_TEMPLATE, INDEX_TEMPLATE):
-        rendered = _render_with_features(path)
-        cm.require_tokens_on_line(
-            rendered,
-            marker,
-            ["04-testing.md", "workflow-gate.sh step4"],
-            forbidden=("実装 → PR",),  # 旧契約（検証前に PR へ進む）の再混入防止
-            label=path.name,
-        )
+    for gate_scripts in (True, False):
+        for path in (SKILL_TEMPLATE, INDEX_TEMPLATE):
+            rendered = _render_with_features(path, gate_scripts=gate_scripts)
+            tokens = ["04-testing.md"]
+            if gate_scripts:
+                tokens.append("workflow-gate.sh step4")
+            cm.require_tokens_on_line(
+                rendered,
+                marker,
+                tokens,
+                forbidden=("実装 → PR",),  # 旧契約（検証前に PR へ進む）の再混入防止
+                label=f"{path.name} gate_scripts={gate_scripts}",
+            )
 
 
 def test_step5_matrix_entry_exit():
     """Step ⑤ Matrix 行が step5 を必須入口、step6 を必須出口として案内すること。"""
+    gated = _render_with_features(SKILL_TEMPLATE, gate_scripts=True)
     cm.require_tokens_on_line(
-        _render_with_features(SKILL_TEMPLATE),
+        gated,
         "matrix-step5-gate-chain",
         ("05-pr-review.md", "workflow-gate.sh step5", "review-start", "step6"),
         ordered=True,
-        label="orchestrator Matrix Step⑤",
+        label="orchestrator Matrix Step⑤ (gate_scripts)",
+    )
+    plain = _render_with_features(SKILL_TEMPLATE, gate_scripts=False)
+    cm.require_tokens_on_line(
+        plain,
+        "matrix-step5-gate-chain",
+        ("05-pr-review.md",),
+        forbidden=("workflow-gate.sh",),
+        label="orchestrator Matrix Step⑤ (no gate_scripts)",
     )
 
 
@@ -133,12 +151,19 @@ def test_step1_immediately_dispatches_step2_without_ack():
     「旧 ack を要求しない」側は test_step2_approval_boundary.py の旧契約語リスト
     （再ack 等）が検査する。ここでは即時遷移の契約マーカーとその主要トークンを確認する。
     """
-    content = _render_with_features(SKILL_TEMPLATE)
+    content = _render_with_features(SKILL_TEMPLATE, requirement_analysis=True)
     cm.require_tokens_on_line(
         content,
         "step1-pass-dispatches-step2-immediately",
         ("campaign_slug", "report_slug", "dispatch"),
         label="orchestrator Step①",
+    )
+    disabled = _render_with_features(SKILL_TEMPLATE, requirement_analysis=False)
+    cm.require_absent(
+        disabled,
+        "step1-pass-dispatches-step2-immediately",
+        reference=content,
+        label="requirement_analysis 無効",
     )
 
 
@@ -176,7 +201,7 @@ def test_resume_table_contains_pending_and_approved_branches():
 
 def test_step5_procedure_rerun_after_change():
     """Step ⑤ 手順がコード変更後の step5 再実行を要求すること。"""
-    content = _render_with_features(SKILL_TEMPLATE)
+    content = _render_with_features(SKILL_TEMPLATE, gate_scripts=True)
     cm.require_in_span(
         content,
         "orchestrator-step5",
@@ -190,11 +215,18 @@ def test_step5_procedure_rerun_after_change():
         ("workflow-gate.sh step5",),
         label="orchestrator Step⑤ 再実行",
     )
+    plain = _render_with_features(SKILL_TEMPLATE, gate_scripts=False)
+    cm.require_absent(
+        plain,
+        "step5-rerun-after-code-change",
+        reference=content,
+        label="gate_scripts 無効",
+    )
 
 
 def test_05_pr_review_template_step5_before_pr():
     """05-pr-review.md.template が PR 作成前 step5 を明記すること。"""
-    content = _render_with_features(PR_REVIEW_TEMPLATE)
+    content = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
     cm.require_in_span(
         content,
         "pr-review-completion-conditions",
@@ -212,7 +244,7 @@ def test_05_pr_review_template_step5_before_pr():
 
 def test_05_pr_review_template_step5_rerun():
     """05-pr-review.md.template がコード変更後の step5 再実行を明記すること。"""
-    content = _render_with_features(PR_REVIEW_TEMPLATE)
+    content = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
     cm.require_in_span(
         content,
         "pr-review-completion-conditions",
@@ -277,11 +309,16 @@ def _assert_approval_transition_line(
     marker: str,
     *,
     code_review: bool,
+    gate_scripts: bool,
     label: str,
 ) -> str:
     """承認 → 追跡ドキュメント更新 → 次工程 の遷移行を、安定トークンの順序で検査する。"""
-    tokens = ["承認取得済み", "workflow-gate.sh step6"]
-    forbidden = []
+    if gate_scripts:
+        tokens = ["承認取得済み", "workflow-gate.sh step6"]
+        forbidden = []
+    else:
+        tokens = ["承認取得済み", "plan-gate.sh review", "06-completion.md", "report archive"]
+        forbidden = ["workflow-gate.sh"]
     if code_review:
         tokens.insert(0, "agent-code-review")
     else:
@@ -298,66 +335,97 @@ def _assert_approval_transition_line(
 
 
 def test_review_approval_transition_feature_matrix():
-    """code_review の有無で承認順序と必須契約の存在を固定する。"""
+    """code_review / gate_scripts の4分岐で承認順序と必須契約の存在を固定する。"""
     for code_review in (True, False):
-        variant = f"code_review={code_review}"
+        for gate_scripts in (True, False):
+            variant = f"code_review={code_review} gate_scripts={gate_scripts}"
 
-        pr_review = _render_with_features(PR_REVIEW_TEMPLATE, code_review=code_review)
-        approval = cm.span(
-            pr_review,
-            "pr-review-approval-gate",
-            "pr-review-approval-fetch-new-comments",
-            label=f"05-pr-review 承認分岐 ({variant})",
-        )
-        cm.require(approval, "pr-review-approval-transition", label=f"05-pr-review ({variant})")
-        _assert_approval_transition_line(
-            pr_review,
-            "pr-review-approval-transition",
-            code_review=code_review,
-            label=f"05-pr-review 承認順序 ({variant})",
-        )
+            pr_review = _render_with_features(
+                PR_REVIEW_TEMPLATE,
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+            )
+            approval = cm.span(
+                pr_review,
+                "pr-review-approval-gate",
+                "pr-review-approval-fetch-new-comments",
+                label=f"05-pr-review 承認分岐 ({variant})",
+            )
+            cm.require(approval, "pr-review-approval-transition", label=f"05-pr-review ({variant})")
+            _assert_approval_transition_line(
+                pr_review,
+                "pr-review-approval-transition",
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+                label=f"05-pr-review 承認順序 ({variant})",
+            )
 
-        cm.require_tokens_on_line(
-            pr_review,
-            "pr-review-completion-step6-after-approval",
-            ("workflow-gate.sh step6",),
-            label=f"05-pr-review step6 通過条件 ({variant})",
-        )
-        cm.require_in_span(
-            pr_review,
-            "pr-review-completion-conditions",
-            "pr-review-completion-step6-after-approval",
-            end_outer="pr-review-approval-gate",
-            label=f"05-pr-review step6 通過条件の位置 ({variant})",
-        )
+            completion = cm.span(
+                pr_review,
+                "pr-review-completion-conditions",
+                "pr-review-approval-gate",
+                label=f"05-pr-review 完了条件 ({variant})",
+            )
+            step6_marker = "pr-review-completion-step6-after-approval"
+            if gate_scripts:
+                cm.require_tokens_on_line(
+                    pr_review,
+                    step6_marker,
+                    ("workflow-gate.sh step6",),
+                    label=f"05-pr-review step6 通過条件 ({variant})",
+                )
+                cm.require_in_span(
+                    pr_review,
+                    "pr-review-completion-conditions",
+                    step6_marker,
+                    end_outer="pr-review-approval-gate",
+                    label=f"05-pr-review step6 通過条件の位置 ({variant})",
+                )
+            else:
+                reference = _render_with_features(PR_REVIEW_TEMPLATE, gate_scripts=True)
+                cm.require_absent(
+                    completion, step6_marker, reference=reference, label=f"05-pr-review ({variant})"
+                )
 
-        orchestrator = _render_with_features(SKILL_TEMPLATE, code_review=code_review)
-        step5 = cm.span(
-            orchestrator,
-            "orchestrator-step5",
-            "step5-mode-b-excluded",
-            label=f"orchestrator Step⑤ ({variant})",
-        )
-        step6 = cm.span(
-            orchestrator,
-            "orchestrator-step6",
-            "orchestrator-context-budget",
-            label=f"orchestrator Step⑥ ({variant})",
-        )
-        cm.require(step5, "step5-approval-transition", label=f"orchestrator Step⑤ ({variant})")
-        _assert_approval_transition_line(
-            orchestrator,
-            "step5-approval-transition",
-            code_review=code_review,
-            label=f"orchestrator Step⑤ 承認順序 ({variant})",
-        )
-        cm.require_tokens_on_line(
-            orchestrator,
-            "orchestrator-step6-precondition",
-            ("plan-gate.sh review", "workflow-gate.sh step6"),
-            label=f"orchestrator Step⑥ 前提 ({variant})",
-        )
-        cm.require(step6, "orchestrator-step6-precondition", label=f"orchestrator Step⑥ ({variant})")
+            orchestrator = _render_with_features(
+                SKILL_TEMPLATE,
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+            )
+            step5 = cm.span(
+                orchestrator,
+                "orchestrator-step5",
+                "step5-mode-b-excluded",
+                label=f"orchestrator Step⑤ ({variant})",
+            )
+            step6 = cm.span(
+                orchestrator,
+                "orchestrator-step6",
+                "orchestrator-context-budget",
+                label=f"orchestrator Step⑥ ({variant})",
+            )
+            cm.require(step5, "step5-approval-transition", label=f"orchestrator Step⑤ ({variant})")
+            _assert_approval_transition_line(
+                orchestrator,
+                "step5-approval-transition",
+                code_review=code_review,
+                gate_scripts=gate_scripts,
+                label=f"orchestrator Step⑤ 承認順序 ({variant})",
+            )
+            cm.require_tokens_on_line(
+                orchestrator,
+                "orchestrator-step6-precondition",
+                ("plan-gate.sh review",),
+                label=f"orchestrator Step⑥ 前提 ({variant})",
+            )
+            cm.require(step6, "orchestrator-step6-precondition", label=f"orchestrator Step⑥ ({variant})")
+            if gate_scripts:
+                cm.require_tokens_on_line(
+                    orchestrator,
+                    "orchestrator-step6-precondition",
+                    ("workflow-gate.sh step6",),
+                    label=f"orchestrator Step⑥ 前提 ({variant})",
+                )
 
 
 def test_archive_procedure_and_inspection_only_gate():
@@ -382,8 +450,18 @@ def test_archive_procedure_and_inspection_only_gate():
         label="QUALITY_GATE G-ARCHIVE",
     )
 
-    assert move_command in _render_with_features(COMPLETION_TEMPLATE)
-    assert recovery_command in _render_with_features(SESSION_START_GATE_TEMPLATE)
+    for gate_scripts in (True, False):
+        completion = _render_with_features(
+            COMPLETION_TEMPLATE,
+            gate_scripts=gate_scripts,
+        )
+        assert move_command in completion
+
+        recovery = _render_with_features(
+            SESSION_START_GATE_TEMPLATE,
+            gate_scripts=gate_scripts,
+        )
+        assert recovery_command in recovery
 
     assert "git add" not in _read(SESSION_START_GATE_TEMPLATE)
 
@@ -435,10 +513,30 @@ def test_step6_archive_maintenance_docs_order_is_explicit():
     archive_gate = "step6-order-archive-gate"
     report_archive = "step6-order-report-archive"
     maintenance = "step6-order-maintenance-docs"
-    expected = [judgment, archive_gate, report_archive, maintenance]
-    for path in sources:
-        rendered = _render_with_features(path, maintenance_docs=True)
-        cm.require_order(rendered, expected, label=f"{path.name} Step⑥順序")
+    for gate_scripts in (True, False):
+        expected = [judgment]
+        if gate_scripts:
+            expected.append(archive_gate)
+        expected += [report_archive, maintenance]
+        for path in sources:
+            rendered = _render_with_features(
+                path, maintenance_docs=True, gate_scripts=gate_scripts
+            )
+            cm.require_order(
+                rendered,
+                expected,
+                label=f"{path.name} Step⑥順序 (gate_scripts={gate_scripts})",
+            )
+            if not gate_scripts:
+                reference = _render_with_features(
+                    path, maintenance_docs=True, gate_scripts=True
+                )
+                cm.require_absent(
+                    rendered,
+                    archive_gate,
+                    reference=reference,
+                    label=f"{path.name} gate_scripts 無効",
+                )
 
 
 def test_completion_labels_keep_maintenance_docs_feature_branches():
@@ -476,6 +574,19 @@ def test_representative_feature_renders_hide_disabled_contracts():
             assert "[maintenance-docs-workflow]" not in rendered, path
         else:
             assert "maintenance-docs-workflow" not in rendered, path
+
+    no_dispatcher_paths = (
+        INDEX_TEMPLATE,
+        QUALITY_GATE_TEMPLATE,
+        COMPLETION_TEMPLATE,
+        PR_REVIEW_TEMPLATE,
+        SKILL_TEMPLATE,
+        TEMPLATE_DIR / "hooks" / "README.md.template",
+        TEMPLATE_DIR / "skills" / "session-handover" / "SKILL.md.template",
+    )
+    for path in no_dispatcher_paths:
+        rendered = _render_with_features(path, gate_scripts=False)
+        assert "workflow-gate.sh" not in rendered, path
 
     for path in (PR_REVIEW_TEMPLATE, SKILL_TEMPLATE):
         rendered = _render_with_features(path, code_review=False, github_pr=False)

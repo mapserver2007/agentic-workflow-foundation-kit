@@ -361,6 +361,10 @@ def test_explicit_and_single_auto_report_resolution() -> None:
         explicit = _run(gate, (str(report),))
         assert explicit.returncode == 0
 
+        (tmp / "bin" / "foundation-gate").write_text(
+            (tmp / "bin" / "foundation-gate").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
         auto = _run(gate, tuple())
         assert auto.returncode == 0, auto.stdout + auto.stderr
 

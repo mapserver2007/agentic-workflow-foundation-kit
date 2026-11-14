@@ -404,7 +404,7 @@ def test_static_registration_contract() -> None:
     assert hooks.count(".cursor/hooks/session-progress-emitter.sh") == 6, "emitter registration count"
 
     manifest = MANIFEST.read_text(encoding="utf-8")
-    for needle in ("progress.jsonl", "session-progress-emitter.sh"):
+    for needle in ("subagentStart", "subagentStop", "{session_id}.progress.jsonl", "session-progress-emitter.sh"):
         assert needle in manifest, f"manifest missing {needle}"
     readme = README_TEMPLATE.read_text(encoding="utf-8")
     cm.require_tokens_on_line(

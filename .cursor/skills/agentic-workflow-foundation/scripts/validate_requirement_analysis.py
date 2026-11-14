@@ -22,11 +22,13 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+SKILL_DIR = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SKILL_DIR)))
+ENGINE_DIR = os.path.join(ROOT, ".cursor", "skills", "agentic-workflow-engine", "scripts")
+if ENGINE_DIR not in sys.path:
+    sys.path.insert(0, ENGINE_DIR)
 
-import validate_common as vc  # noqa: E402
-from validate_common import ROOT  # noqa: E402
+import genlib  # noqa: E402
 
 CONFIG_REL = os.path.join(
     ".cursor", "skills", "requirement-analysis", "config.yaml"
@@ -49,17 +51,63 @@ REQUIRED_EXECUTION_KEYS = (
     "model_unavailable",
 )
 
+VALID_MODEL_UNAVAILABLE = ("ABORT",)
+
+
+def _load_config(path: str) -> dict | None:
+    try:
+        return genlib.load_manifest(path)
+    except genlib.YamlError:
+        return None
+
 
 def validate(config: dict) -> list[tuple[str, str]]:
     """config dict を検査し、(検査ID, 理由) のリストを返す。空なら全 PASS。"""
-    failures, _models, execution = vc.check_models_and_execution(
-        config, "G-RA-CONFIG-001", REQUIRED_MODELS_KEYS, REQUIRED_EXECUTION_KEYS,
-        placeholder_markers=PLACEHOLDER_MARKERS,
-    )
+    failures: list[tuple[str, str]] = []
 
-    for key in ("score_threshold", "max_gate_retries"):
-        failures.extend(vc.check_positive_int(execution, key, "G-RA-CONFIG-001"))
-    failures.extend(vc.check_model_unavailable(execution, "G-RA-CONFIG-001"))
+    models = config.get("models")
+    if not isinstance(models, dict):
+        failures.append(("G-RA-CONFIG-001", "models セクションが存在しないか dict でない"))
+        models = {}
+
+    for key in REQUIRED_MODELS_KEYS:
+        val = models.get(key)
+        if not val or not isinstance(val, str) or not val.strip():
+            failures.append(("G-RA-CONFIG-001", f"models.{key} が未設定または空"))
+        elif val.strip() in PLACEHOLDER_MARKERS:
+            failures.append(("G-RA-CONFIG-001", f"models.{key} が未確認プレースホルダのまま（{val!r}）"))
+
+    execution = config.get("execution")
+    if not isinstance(execution, dict):
+        failures.append(("G-RA-CONFIG-001", "execution セクションが存在しないか dict でない"))
+        execution = {}
+
+    for key in REQUIRED_EXECUTION_KEYS:
+        if key not in execution:
+            failures.append(("G-RA-CONFIG-001", f"execution.{key} が未設定"))
+
+    score_threshold = execution.get("score_threshold")
+    if score_threshold is not None:
+        if not isinstance(score_threshold, int) or score_threshold < 1:
+            failures.append((
+                "G-RA-CONFIG-001",
+                f"execution.score_threshold は正の整数が必要（現在値: {score_threshold!r}）",
+            ))
+
+    max_gate_retries = execution.get("max_gate_retries")
+    if max_gate_retries is not None:
+        if not isinstance(max_gate_retries, int) or max_gate_retries < 1:
+            failures.append((
+                "G-RA-CONFIG-001",
+                f"execution.max_gate_retries は正の整数が必要（現在値: {max_gate_retries!r}）",
+            ))
+
+    mu = execution.get("model_unavailable")
+    if mu is not None and mu not in VALID_MODEL_UNAVAILABLE:
+        failures.append((
+            "G-RA-CONFIG-001",
+            f"execution.model_unavailable の値 {mu!r} は契約外（許可値: {VALID_MODEL_UNAVAILABLE}）",
+        ))
 
     hic = config.get("high_impact_categories")
     if not isinstance(hic, list) or len(hic) == 0:
@@ -112,7 +160,7 @@ def validate_deep_thinking_sot_duplication(
     if not os.path.isfile(dt_config_path) or not os.path.isfile(ra_config_path):
         return failures
 
-    dt_config = vc.load_config(dt_config_path)
+    dt_config = _load_config(dt_config_path)
     if dt_config and "triage" in dt_config:
         failures.append((
             "G-RA-LEGACY-001",
@@ -142,9 +190,14 @@ def run(
     deep_brief_path: str | None = None,
     root: str | None = None,
 ) -> int:
-    config, rc = vc.load_config_or_fatal(config_path)
+    if not os.path.isfile(config_path):
+        print(f"FATAL: config 不在: {config_path}", file=sys.stderr)
+        return 2
+
+    config = _load_config(config_path)
     if config is None:
-        return rc
+        print(f"FATAL: config YAML 破損: {config_path}", file=sys.stderr)
+        return 2
 
     scan_root = os.path.abspath(root or ROOT)
     failures = validate(config)
@@ -160,11 +213,26 @@ def run(
         )
         return 2
 
-    return vc.report("validate_requirement_analysis", failures)
+    if failures:
+        print(f"[validate_requirement_analysis] FAIL: {len(failures)} 件の契約違反")
+        for check_id, reason in failures:
+            print(f"  {check_id}: {reason}")
+        return 1
+
+    print("[validate_requirement_analysis] PASS: 全静的検査を通過")
+    return 0
 
 
 def main(argv=None) -> int:
-    parser = vc.make_parser("requirement-analysis config.yaml の静的契約検査", CONFIG_REL)
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="requirement-analysis config.yaml の静的契約検査",
+    )
+    parser.add_argument(
+        "--config",
+        default=os.path.join(ROOT, CONFIG_REL),
+        help="config.yaml のパス",
+    )
     parser.add_argument(
         "--deep-brief",
         default=os.path.join(ROOT, DEEP_BRIEF_REL),

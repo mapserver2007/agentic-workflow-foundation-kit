@@ -43,8 +43,8 @@ def domain_docs_escaped_scalar_roundtrip() -> bool:
         contract = consumer_contract(tc.source_fingerprint(design), "TypeScript", "pnpm")
         resolved = contract["domain_docs"]["resolved"]
         resolved["primary_language"] = scalar
-        resolved["api_sections"][0]["title"] = scalar
-        resolved["api_sections"][0]["guidance"] = guidance
+        resolved["spec_sections"][0]["title"] = scalar
+        resolved["spec_sections"][0]["guidance"] = guidance
         manifest, design = write_consumer_manifest(root, contract, design_text)
 
         result = subprocess.run(
@@ -61,7 +61,7 @@ def domain_docs_escaped_scalar_roundtrip() -> bool:
         if projected["primary_language"] != scalar:
             print("FAIL: projected scalar escape round-trip")
             return False
-        section = projected["api_sections"][0]
+        section = projected["spec_sections"][0]
         if section["title"] != scalar or section["guidance"] != guidance:
             print("FAIL: projected section escape round-trip")
             return False
@@ -84,7 +84,7 @@ def multiline_projection_roundtrip() -> bool:
         contract = consumer_contract(tc.source_fingerprint(design), "TypeScript", "pnpm")
         contract["review"]["coderabbit"]["path_instructions"][0]["instructions"] = instructions
         resolved = contract["domain_docs"]["resolved"]
-        resolved["api_sections"][0]["guidance"] = guidance
+        resolved["spec_sections"][0]["guidance"] = guidance
         resolved["coding_standards_sections"][0]["content"] = content
         manifest, _ = write_consumer_manifest(root, contract, design_text)
 
@@ -97,7 +97,7 @@ def multiline_projection_roundtrip() -> bool:
 
         projected = genlib.load_manifest(str(manifest))
         projected_instructions = projected["coderabbit"]["path_instructions"][0]["instructions"]
-        projected_guidance = projected["domain_docs"]["api_sections"][0]["guidance"]
+        projected_guidance = projected["domain_docs"]["spec_sections"][0]["guidance"]
         projected_content = projected["domain_docs"]["coding_standards_sections"][0]["content"]
         if (projected_instructions, projected_guidance, projected_content) != (
             instructions,

@@ -2,6 +2,7 @@
 """resolved engine の contract 投影が旧 root overlay を上書き不能にすることを検証。"""
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -20,6 +21,12 @@ def coderabbit_equals_contract(resolved: dict, contract: dict) -> bool:
 
 def domain_docs_equals_contract(resolved: dict, contract: dict) -> bool:
     return resolved.get("domain_docs") == cp.domain_docs_from_contract(contract)
+
+
+def quality_paths_equal(resolved: dict, contract: dict) -> bool:
+    pq = (resolved.get("project") or {}).get("quality_gate") or {}
+    expected = cp.project_quality_gate(contract)
+    return pq.get("gen_cmd") == expected["gen_cmd"] and pq.get("gen_artifact_paths") == expected["gen_artifact_paths"]
 
 
 def main() -> int:

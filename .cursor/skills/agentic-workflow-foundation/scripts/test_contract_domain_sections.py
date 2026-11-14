@@ -10,7 +10,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import contract_projection as cp  # noqa: E402
 import resolve_domain_docs as rd  # noqa: E402
 import run_resolved_engine as rre  # noqa: E402
 import tech_contract as tc  # noqa: E402
@@ -117,46 +116,11 @@ def valid_fixture_resolves_generates_and_audits() -> bool:
     return True
 
 
-def deprecated_sections_stay_optional_and_unprojected() -> bool:
-    """旧必須の spec_sections / architecture_sections は、あっても受理し（封印済みの既存契約を壊さない）、
-    無くても受理し、どちらの場合も root manifest の domain_docs へ投影しない。"""
-    deprecated = {
-        "spec_sections": [{"title": "Purpose", "guidance": "legacy"}],
-        "architecture_sections": [{"title": "Architecture", "content": "legacy"}],
-    }
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# fixture\nTypeScript\n", encoding="utf-8")
-        fingerprint = tc.source_fingerprint(design)
-
-        current = base_contract(fingerprint, with_file_action=False)
-        legacy = copy.deepcopy(current)
-        legacy["domain_docs"]["resolved"].update(deprecated)
-        for label, contract in (("current", current), ("legacy", legacy)):
-            tc.validate(contract, design, require_approval=False, check=True)
-            projected = cp.domain_docs_from_contract(contract)
-            if set(projected) & tc.DEPRECATED_RESOLVED_KEYS:
-                print(f"FAIL: {label} 契約の domain_docs 投影に旧キーが含まれます", file=sys.stderr)
-                return False
-
-        manifest, design = write_sealed_manifest(root, copy.deepcopy(legacy), "# fixture\nTypeScript\n")
-        if set(rd._resolve(str(manifest))) & tc.DEPRECATED_RESOLVED_KEYS:
-            print("FAIL: resolve_domain_docs が旧キーを投影します", file=sys.stderr)
-            return False
-
-        missing_required = copy.deepcopy(current)
-        del missing_required["domain_docs"]["resolved"]["api_sections"]
-        return _assert_schema_error(missing_required, design, "必須セクション api_sections の欠落")
-
-
 def main() -> int:
     checks = {
         "section_required_fields_reject_invalid_shapes": section_required_fields_reject_invalid_shapes,
         "templates_match_section_contract": templates_match_section_contract,
         "valid_fixture_resolves_generates_and_audits": valid_fixture_resolves_generates_and_audits,
-        "deprecated_sections_stay_optional_and_unprojected": deprecated_sections_stay_optional_and_unprojected,
     }
     for name, check in checks.items():
         if not check():

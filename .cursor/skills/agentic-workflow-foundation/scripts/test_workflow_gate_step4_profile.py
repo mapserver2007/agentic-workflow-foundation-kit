@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""workflow-gate.sh step4 の profile selector をテンプレートで静的に検査する。
+"""workflow-gate.sh step4 の profile selector 回帰。
 
-foundation / application / unknown それぞれの実行結果（self のみ・verify のみ・exit 2）は
-test_workflow_gate_step4_integration.py が検査する。ここは、実行では観測しにくいテンプレート側の宣言だけを見る。
+foundation profile: pnpm/quality-gate に触れず bin/foundation-gate self へ進むこと。
+application profile: G-GEN semantics + bin/quality-gate verify を使うこと。
+unknown profile: exit 2 fail-closed。
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent.parent.parent
 TEMPLATE = (
     HERE.parent
     / "templates"
@@ -18,6 +23,10 @@ TEMPLATE = (
     / "scripts"
     / "workflow-gate.sh.template"
 )
+REAL_GATE_DIR = ROOT / ".cursor" / "skills" / "session-handover" / "scripts"
+FIXTURES = HERE.parent / "fixtures" / "artifacts"
+DOMAIN_WRITE_SCOPE_SCRIPTS = ("gate-domain-write-scope.py", "domain_doc_scope.py")
+IMPL_BASE_COMMIT = "a1b2c3d4e5f6"
 
 
 def _read(path: Path) -> str:
@@ -34,17 +43,157 @@ def test_template_declares_profile_selector() -> None:
     assert "unknown project.quality_gate.profile" in content
 
 
+def _stage_gate_tree(tmp: Path, profile: str) -> Path:
+    gate_dir = tmp / ".cursor" / "skills" / "session-handover" / "scripts"
+    gate_dir.mkdir(parents=True)
+    bin_dir = tmp / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("workflow-gate.sh", "gate-artifact.py", "gate-test.py", *DOMAIN_WRITE_SCOPE_SCRIPTS):
+        src = REAL_GATE_DIR / name
+        if not src.exists():
+            raise FileNotFoundError(f"missing generated gate asset: {src}")
+        shutil.copy2(src, gate_dir / name)
+    gate = gate_dir / "workflow-gate.sh"
+    text = gate.read_text(encoding="utf-8")
+    text = text.replace('PROFILE="foundation"', f'PROFILE="{profile}"')
+    text = text.replace('PROFILE="application"', f'PROFILE="{profile}"')
+    if f'PROFILE="{profile}"' not in text:
+        raise AssertionError(f"could not patch PROFILE in staged workflow-gate.sh (wanted {profile})")
+    gate.write_text(text, encoding="utf-8")
+    gate.chmod(0o755)
+    return gate
+
+
+def _write_stub_executables(tmp: Path) -> tuple[Path, Path]:
+    bin_dir = tmp / "bin"
+    foundation_log = tmp / "foundation-gate.log"
+    quality_log = tmp / "quality-gate.log"
+    (bin_dir / "foundation-gate").write_text(
+        f"""#!/usr/bin/env bash
+echo "$@" >> "{foundation_log}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    (bin_dir / "quality-gate").write_text(
+        f"""#!/usr/bin/env bash
+echo "$@" >> "{quality_log}"
+case "${{1:-}}" in
+  verify) exit 0 ;;
+  gen) exit 0 ;;
+  *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    for path in (bin_dir / "foundation-gate", bin_dir / "quality-gate"):
+        path.chmod(0o755)
+    return foundation_log, quality_log
+
+
+def _setup_envelopes(tmp: Path, slug: str) -> Path:
+    reports = tmp / "docs" / "agent-tasks" / "reports"
+    reports.mkdir(parents=True)
+    report = reports / f"{slug}.md"
+    report.write_text(
+        "## 10. 完了チェック\n"
+        "- [x] 実装完了\n"
+        "- [x] テスト完了\n"
+        "- [x] コードゲート通過\n"
+        f"- implementation-base-commit: {IMPL_BASE_COMMIT}\n",
+        encoding="utf-8",
+    )
+    art = tmp / ".cursor" / ".artifacts"
+    art.mkdir(parents=True)
+    for step, fixture in (("step3", "step3-complete.md"), ("step4", "step4-complete.md")):
+        src = FIXTURES / fixture
+        if not src.exists():
+            raise FileNotFoundError(f"missing fixture: {src}")
+        shutil.copy2(src, art / f"{slug}--{step}.md")
+    return report
+
+
+def _run_step4(gate: Path, report: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(gate), "step4", str(report)],
+        capture_output=True,
+        text=True,
+        cwd=str(gate.parents[4]),
+    )
+
+
+def test_foundation_profile_uses_self_not_quality_gate() -> None:
+    if not (REAL_GATE_DIR / "workflow-gate.sh").exists():
+        print("  SKIP: workflow-gate.sh not found (pre-generate)", file=sys.stderr)
+        return
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        gate = _stage_gate_tree(tmp, "foundation")
+        foundation_log, quality_log = _write_stub_executables(tmp)
+        report = _setup_envelopes(tmp, "profile-foundation")
+        result = _run_step4(gate, report)
+        assert result.returncode == 0, (
+            f"foundation step4 should exit 0 (got {result.returncode})\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "foundation profile" in result.stdout
+        assert "pnpm" not in result.stdout.lower()
+        assert foundation_log.read_text(encoding="utf-8").strip() == "self"
+        assert not quality_log.exists() or quality_log.read_text(encoding="utf-8").strip() == ""
+
+
+def test_application_profile_uses_quality_gate_verify() -> None:
+    if not (REAL_GATE_DIR / "workflow-gate.sh").exists():
+        print("  SKIP: workflow-gate.sh not found (pre-generate)", file=sys.stderr)
+        return
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        gate = _stage_gate_tree(tmp, "application")
+        foundation_log, quality_log = _write_stub_executables(tmp)
+        report = _setup_envelopes(tmp, "profile-application")
+        result = _run_step4(gate, report)
+        assert result.returncode == 0, (
+            f"application step4 should exit 0 (got {result.returncode})\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "application profile" in result.stdout
+        assert "--- verify ---" in result.stdout
+        assert "verify" in quality_log.read_text(encoding="utf-8")
+        assert not foundation_log.exists() or foundation_log.read_text(encoding="utf-8").strip() == ""
+
+
 def test_application_template_always_runs_gen() -> None:
     content = _read(TEMPLATE)
-    # gen が application profile で実行される契約は、gen コマンド行と GEN_DIRTY 不在で担保する（ログ文言は契約ではない）。
+    # 旧: ログ文言 ("gen 必須実行" / "常に") の有無を検査していたが、文言は実行時ログであり契約ではない。
+    # gen が application profile で実行される契約は、下の gen コマンド行と GEN_DIRTY 不在で担保する。
     assert "GEN_DIRTY" not in content
     assert '"$ROOT_DIR/bin/quality-gate" gen' in content
+
+
+def test_unknown_profile_exit_2() -> None:
+    if not (REAL_GATE_DIR / "workflow-gate.sh").exists():
+        print("  SKIP: workflow-gate.sh not found (pre-generate)", file=sys.stderr)
+        return
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        gate = _stage_gate_tree(tmp, "unknown-profile")
+        _write_stub_executables(tmp)
+        report = _setup_envelopes(tmp, "profile-unknown")
+        result = _run_step4(gate, report)
+        assert result.returncode == 2, (
+            f"unknown profile should exit 2 (got {result.returncode})\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "unknown project.quality_gate.profile" in result.stderr
 
 
 def main() -> int:
     tests = [
         test_template_declares_profile_selector,
         test_application_template_always_runs_gen,
+        test_foundation_profile_uses_self_not_quality_gate,
+        test_application_profile_uses_quality_gate_verify,
+        test_unknown_profile_exit_2,
     ]
     passed = failed = 0
     for test in tests:

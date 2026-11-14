@@ -44,6 +44,32 @@ def absent_marker(target: str, package: str) -> dict:
     }
 
 
+WEB_PNPM_WS = (
+    "packages:\n"
+    "  - \"apps/*\"\n"
+    "  - \"packages/*\"\n"
+    "allowBuilds:\n"
+    "  '@scarf/scarf': set this to true or false\n"
+    "  core-js: set this to true or false\n"
+    "  esbuild: set this to true or false\n"
+    "  protobufjs: set this to true or false\n"
+    "  workerd: set this to true or false\n"
+)
+WEB_TSCONFIG = (
+    "{\n"
+    "  \"compilerOptions\": {\n"
+    "    \"strict\": true,\n"
+    "    \"target\": \"ES2022\",\n"
+    "    \"module\": \"ESNext\",\n"
+    "    \"moduleResolution\": \"bundler\",\n"
+    "    \"esModuleInterop\": true,\n"
+    "    \"skipLibCheck\": true,\n"
+    "    \"noEmit\": true\n"
+    "  }\n"
+    "}\n"
+)
+
+
 def fixture_command_action(*writes: str) -> dict:
     command_writes = list(writes) if writes else [".provision-marker"]
     marker = ".state/provision-state.json"
@@ -66,6 +92,8 @@ def fixture_command_action(*writes: str) -> dict:
     }
 
 _DOMAIN_SECTIONS = {
+    "spec_sections": [{"title": "Purpose", "guidance": "fixture"}],
+    "architecture_sections": [{"title": "Architecture", "guidance": "fixture"}],
     "api_sections": [{"title": "API", "guidance": "fixture"}],
     "data_model_sections": [{"title": "Data", "guidance": "fixture"}],
     "coding_standards_sections": [{"title": "Style", "content": "Go rules"}],
@@ -285,6 +313,13 @@ MINIMAL_SEED = """version: 1
 framework:
   version: 1
 """
+
+
+def write_lifecycle_workspace(root: Path, contract: dict, design_text: str) -> tuple[Path, Path, Path]:
+    seed = root / "seed.yaml"
+    seed.write_text(MINIMAL_SEED, encoding="utf-8")
+    manifest, design = write_sealed_manifest(root, contract, design_text)
+    return seed, manifest, design
 
 
 def write_consumer_manifest(root: Path, contract: dict, design_text: str = "# fixture\nGo\n") -> tuple[Path, Path]:

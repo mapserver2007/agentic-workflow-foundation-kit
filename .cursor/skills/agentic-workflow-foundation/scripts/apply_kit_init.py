@@ -25,13 +25,6 @@ if GENLIB_DIR not in sys.path:
     sys.path.insert(0, GENLIB_DIR)
 
 import genlib  # noqa: E402
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-from yaml_blocks import (  # noqa: E402
-    find_top_block as _find_top_block,
-    indent_of as _indent_of,
-    yaml_quote as _yaml_quote,
-)
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
@@ -289,6 +282,39 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     }
 
 
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _yaml_quote(value: str) -> str:
+    s = str(value)
+    if '"' in s:
+        return "'" + s.replace("'", "''") + "'"
+    return '"' + s + '"'
+
+
+def _find_top_block(lines: list[str], key: str):
+    start = None
+    for idx, line in enumerate(lines):
+        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
+            start = idx
+            break
+    if start is None:
+        return None, None
+    last = start
+    j = start + 1
+    while j < len(lines):
+        if lines[j].strip() == "":
+            j += 1
+            continue
+        if _indent_of(lines[j]) > 0:
+            last = j
+            j += 1
+            continue
+        break
+    return start, last
+
+
 def _set_scalar(lines: list[str], parent: str, key: str, value: str) -> list[str]:
     """parent ブロック内の key: value を更新する。"""
     p_start, p_last = _find_top_block(lines, parent)
@@ -381,8 +407,13 @@ def _set_github_access(lines: list[str], values: dict) -> list[str]:
     if start is not None:
         return lines[:start] + block + lines[last + 1:]
 
-    prefix = [] if not lines or lines[-1].strip() == "" else [""]
-    return lines + prefix + block
+    insert_at = len(lines)
+    context_start, _ = _find_top_block(lines, "context_budget")
+    if context_start is not None:
+        insert_at = context_start
+    prefix = [] if insert_at == 0 or lines[insert_at - 1].strip() == "" else [""]
+    suffix = [] if insert_at >= len(lines) or lines[insert_at].strip() == "" else [""]
+    return lines[:insert_at] + prefix + block + suffix + lines[insert_at:]
 
 
 def _render_manifest(content: str, values: dict) -> str:
@@ -508,7 +539,7 @@ def main(argv=None) -> int:
         _out("ERROR", f"root manifest が見つからない: {args.manifest}")
         return 2
     try:
-        genlib.load_manifest(args.manifest)
+        manifest = genlib.load_manifest(args.manifest)
     except genlib.YamlError as e:
         _out("ERROR", f"manifest 解析失敗: {e}")
         return 2

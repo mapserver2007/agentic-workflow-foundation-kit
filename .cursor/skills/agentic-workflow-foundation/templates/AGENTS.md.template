@@ -11,13 +11,13 @@
 - 主アウトプットと生成/検証ゲート: `bin/quality-gate gen` / `bin/quality-gate build` / `bin/quality-gate lint` / `bin/quality-gate test`
 - 追跡ドキュメント: `{{project.tracking_artifact}}`（キャンペーン単位の SoT。`.gitignore` 対象）
 - 識別子の親子関係: **親 = campaign、子 = session**。`campaign_id` は創設 `session_id` と同値で以後不変、`campaign_slug`（report / envelope 用）とは別
-- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate）
+{{#if agent_workflow.artifact}}- step envelope: `{{agent_workflow.artifact.dir}}/{report-slug}--step{N}.md`（全 worker の終端結果を保存する永続 artifact。`.gitignore` 対象・次ステップの検証完了後に前ステップの envelope を削除。最終残存検査は archive gate）{{/if}}
 
 ### コンテキスト保護の原則（統一設計書 原則5）
 
 - **リンク衛生**: 追跡ドキュメントにセッション ID / agent-transcript URL / 大規模ログを含めない
 - **runtime 保護**: current campaign の tracker / session / handoff / linked artifact はセッション再開に必要な runtime として保護する
-- **step envelope の削除**: 前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。削除前にオーケストレータが `gate-artifact.py` で検証する（誤削除防止）。最終的な残存検査・削除は archive gate が行う
+{{#if agent_workflow.artifact}}- **step envelope の削除**: 前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。削除前にオーケストレータが `gate-artifact.py` で検証する（誤削除防止）。最終的な残存検査・削除は archive gate が行う{{/if}}
 
 ## Documentation Naming Convention
 
@@ -206,8 +206,8 @@ G-* は承認済み `tech_contract.quality_gate` の backend argv を外部イ�
 ### タスク実行ワークフロー（agent_workflow 有効時）
 - **docs/agent-tasks/agent-workflow.md**: タスク実行ワークフロー index（6 段階：①〜⑥、①の退出ゲートを内包）
 {{#if agent_workflow.orchestrator_skill}}- **`.cursor/skills/workflow-orchestrator/SKILL.md`**: 6 段階標準ワークフローの制御スキル
-{{/if}}- **`.cursor/skills/requirement-analysis/SKILL.md`**: Step ① 要求分析（3 段階ガード + 分析深度判定）
-{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/maintenance-docs-workflow/SKILL.md`**: 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
+{{/if}}{{#if requirement_analysis.enabled}}- **`.cursor/skills/requirement-analysis/SKILL.md`**: Step ① 要求分析（3 段階ガード + 分析深度判定）
+{{/if}}{{#if agent_workflow.maintenance_docs.enabled}}- **`.cursor/skills/maintenance-docs-workflow/SKILL.md`**: 独立 docs メンテナンスパイプライン（maintenance-docs/ 駆動）
 {{/if}}{{#if agent_workflow.maintenance_gotchas.enabled}}- **`.cursor/skills/maintenance-gotchas-workflow/SKILL.md`**: GOTCHAS エントリのメタ層修復（独立パイプライン）
 {{/if}}- **docs/agent-tasks/reports/**: 進行中キャンペーンの SoT（ファイル存在 = 進行中）
 - **docs/agent-tasks/reports/archives/**: 完了済みキャンペーン

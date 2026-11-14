@@ -53,11 +53,11 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
     → {session_id}.progress.jsonl に構造化イベントを 1 行ずつ追記
 [workflow Step ⑤ Mode A: canonical PR URL 受領]
   → active report に review-pr-url を記録
+{{#if agent_workflow.gate_scripts}}
   → workflow-gate.sh review-start
     → Step③/④ + prompt/session/PR/campaign を fail-closed 検証
     → session-progress-append.sh（内部 writer）で kind=review_start を追記・readback
-{{#if code_review.enabled}}
-
+{{/if}}{{#if code_review.enabled}}
   → exit 0 の場合だけ委譲レビュースキルでレビュー検証
 {{else}}
   → レビュー担当へレビュー検証を委譲
@@ -110,7 +110,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 
 ### コンパクション連動 handoff（pending-handoff パターン）
 
-`preCompact` Hook は `followup_message` を返せないため、「pending マーカーパターン」を採用する。
+`preCompact` Hook は `followup_message` を返せないため、MemPalace と同じ「pending マーカーパターン」を採用する。
 
 1. `session-compact-observer.sh` が preCompact 発火時に `.cursor/.session/{session_id}.pending-handoff` マーカーを書く
 2. compact 後の最初のターンで `session-budget-evaluator.sh`（stop hook）がマーカーを検出
@@ -256,7 +256,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress
 Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は kit 側の `bin/foundation-gate scripts` が機械テストする。本リポジトリは foundation/engine を保持しないため、ローカルでは Cursor Settings > Hooks の発火確認に留める。
 {{/if}}
 
-review-start 境界のスモーク:
+{{#if agent_workflow.gate_scripts}}review-start 境界のスモーク:
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
@@ -264,6 +264,7 @@ review-start 境界のスモーク:
   --pr https://github.com/owner/repo/pull/123
 # PASS 時だけ kind=review_start が1行存在し、同一 prompt の再実行は追記しない
 ```
+{{/if}}
 
 ## ロールバック
 

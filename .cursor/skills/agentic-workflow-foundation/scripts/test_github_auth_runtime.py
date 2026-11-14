@@ -728,33 +728,206 @@ _github_git_run() {{
 
 
 def _test_static_contract(errors: list[str]) -> None:
-    """実行テストでは観測できない静的な不変条件だけを検査する（挙動は上の実行テストが検証する）。"""
     common = (BIN_TEMPLATES / "_github-auth.sh.template").read_text(encoding="utf-8")
+    app = (BIN_TEMPLATES / "_github-app-auth.sh.template").read_text(encoding="utf-8")
     keychain = (BIN_TEMPLATES / "_github-keychain-auth.sh.template").read_text(encoding="utf-8")
-    _assert("GIT_ASKPASS" in common, "Git askpass isolation missing", errors)
+    cross_repo = (BIN_TEMPLATES / "cross-repo-sync-safe.template").read_text(encoding="utf-8")
+    _assert("_get_github_token" in common, "dispatcher entrypoint missing", errors)
+    _assert("credential.helper=" in common and "GIT_ASKPASS" in common, "Git isolation missing", errors)
+    _assert('--data-binary "$payload"' not in common, "API body remains in curl argv", errors)
+    _assert('data-binary = "@%s"' in common, "API body file config missing", errors)
+    _assert("/repos/${owner}/${repo}/installation" in app, "repo installation lookup missing", errors)
     _assert(
-        "/usr/bin/security" in keychain,
-        "Keychain backend must call /usr/bin/security by absolute path",
+        app.count("jwt=$(_generate_jwt) || return $?") == 2,
+        "JWT generation failures are not propagated at both call sites",
         errors,
     )
+    _assert(
+        "_github_curl_config_escape" in common
+        and 'printf \'header = "Authorization: Bearer %s"\\n\' "$escaped_secret"' in common
+        and 'printf \'header = "Authorization: Bearer %s"\\n\' "$escaped_token"' in common,
+        "curl config secrets are not escaped at every call site",
+        errors,
+    )
+    _assert("GITHUB_APP_INSTALLATION_ID" not in app, "fixed installation ID remains", errors)
+    _assert("/usr/bin/security" in keychain and "-s \"$GITHUB_KEYCHAIN_SERVICE\"" in keychain,
+            "Keychain exact service lookup missing", errors)
+    _assert("-a \"$GITHUB_KEYCHAIN_ACCOUNT\"" in keychain, "Keychain exact account lookup missing", errors)
+    _assert("git_protocol" not in cross_repo, "cross-repo protocol selector remains", errors)
+    _assert("_github_git_run" in cross_repo, "cross-repo Git helper missing", errors)
+    _assert("_github_git_with_remote" not in cross_repo,
+            "cross-repo transport still depends on stored origin", errors)
+    _assert('fetch --prune --quiet "$HTTPS_REPO_URL"' in cross_repo,
+            "cross-repo fetch does not use explicit HTTPS URL", errors)
+    _assert('pull --quiet "$HTTPS_REPO_URL" "$branch"' in cross_repo,
+            "cross-repo pull does not use explicit HTTPS URL", errors)
+    _assert(
+        "symbolic-ref --short refs/remotes/origin/HEAD" in cross_repo,
+        "cross-repo empty branch does not resolve origin/HEAD",
+        errors,
+    )
+    _assert(
+        'remote set-head origin --auto' in cross_repo,
+        "cross-repo empty branch does not refresh origin/HEAD",
+        errors,
+    )
+    _assert(
+        "failed to refresh origin/HEAD" in cross_repo,
+        "cross-repo stale origin/HEAD failure is not fatal",
+        errors,
+    )
+    _assert(
+        'git check-ref-format --branch "$REPO_BRANCH"' in cross_repo,
+        "cross-repo configured branch validation missing",
+        errors,
+    )
+    _assert(
+        'show-ref --verify --quiet "refs/remotes/origin/$branch"' in cross_repo,
+        "cross-repo remote branch existence validation missing",
+        errors,
+    )
+    _assert(
+        "--sort=-committerdate" not in cross_repo,
+        "cross-repo still selects the most recently committed branch",
+        errors,
+    )
+    _assert("CONFIG_BRANCH" not in cross_repo, "cross-repo still reads a global branch", errors)
 
     wrapper_text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in BIN_TEMPLATES.glob("github-*-safe.template")
     )
+    _assert("_get_installation_token" not in wrapper_text, "legacy App token call remains", errors)
     _assert("Authorization: token" not in wrapper_text, "token header remains in wrapper argv", errors)
 
+    skill_paths = list((TEMPLATES / "skills").rglob("*.template"))
     network_command = re.compile(r"^\s*git\s+(fetch|push|clone|pull)(?:\s|$)", re.MULTILINE)
-    for path in (TEMPLATES / "skills").rglob("*.template"):
+    for path in skill_paths:
         text = path.read_text(encoding="utf-8")
         _assert(not network_command.search(text), f"direct Git network guidance remains: {path}", errors)
 
+    seed = (SKILL_DIR / "manifest.yaml").read_text(encoding="utf-8")
     config_template = (
         TEMPLATES / "skills" / "cross-repository-knowledge-link" / "config.json.template"
     ).read_text(encoding="utf-8")
+    _assert("git_protocol:" not in seed, "seed git_protocol remains", errors)
+    _assert('"git_protocol"' not in config_template, "generated config git_protocol remains", errors)
     parsed_config = json.loads(config_template)
     _assert("branch" not in parsed_config, "generated config still has a global branch", errors)
     _assert(parsed_config.get("repositories") == [], "generated config repositories default changed", errors)
+
+
+def _run_guard_hook(guard: Path, command: str) -> tuple[int, str, dict[str, str] | None]:
+    result = subprocess.run(
+        ["bash", str(guard)],
+        input=json.dumps({"command": command}),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    stdout = result.stdout.strip()
+    if stdout == "{}":
+        return result.returncode, stdout, None
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        return result.returncode, stdout, None
+    if not isinstance(parsed, dict):
+        return result.returncode, stdout, None
+    return result.returncode, stdout, parsed
+
+
+def _assert_guard_permission(
+    errors: list[str],
+    guard: Path,
+    command: str,
+    expected: str,
+    *,
+    reason_fragment: str | None = None,
+) -> None:
+    returncode, stdout, response = _run_guard_hook(guard, command)
+    _assert(
+        returncode == 0,
+        f"guard exited {returncode} for {command!r}: {stdout!r}",
+        errors,
+    )
+    if expected == "allow":
+        _assert(stdout == "{}", f"guard blocked allow command: {command!r} -> {stdout!r}", errors)
+        return
+    if response is None:
+        errors.append(f"guard returned invalid JSON for {command!r}: {stdout!r}")
+        return
+    _assert(
+        response.get("permission") == expected,
+        f"guard expected {expected} for {command!r}, got {response!r}",
+        errors,
+    )
+    if reason_fragment:
+        combined = f"{response.get('reason', '')} {response.get('agent_message', '')}"
+        _assert(reason_fragment in combined, f"guard message missing {reason_fragment!r}: {command!r}", errors)
+
+
+def _test_guard_deny_patterns(errors: list[str]) -> None:
+    guard = TEMPLATES / "hooks" / "guard-git-write.sh.template"
+    deny_commands = (
+        "git push --force origin feature",
+        "git push origin --delete old-branch",
+        "git push origin :branch",
+        "git push origin +:branch",
+        "git push upstream :feature",
+        "git push upstream +:release/v1",
+        "git reset --hard origin/main",
+        "gh pr merge 1",
+        "gh repo delete org/repo",
+        "gh pr list",
+        "command gh repo view",
+        "/usr/local/bin/gh release list",
+        "env gh pr list",
+        "env FOO=bar gh pr list",
+        "FOO=bar gh pr list",
+        "sudo gh pr list",
+        "bash -c 'gh pr list'",
+        "sh -c 'gh issue view 1'",
+        "zsh -c 'gh api repos/org/repo'",
+        "gh issue comment 1 --body test",
+        "gh pr create --title t --body b",
+        "gh auth token",
+    )
+    for command in deny_commands:
+        _assert_guard_permission(errors, guard, command, "deny")
+
+    _assert_guard_permission(
+        errors,
+        guard,
+        "gh issue comment 1 --body test",
+        "deny",
+        reason_fragment="現在未対応",
+    )
+
+
+def _test_guard_allow_and_ask_regression(errors: list[str]) -> None:
+    guard = TEMPLATES / "hooks" / "guard-git-write.sh.template"
+    allow_commands = (
+        "git status --short",
+        "git diff --stat",
+        "bin/github-pr-create-safe main /tmp/title /tmp/body",
+        "./bin/github-issue-read-safe 42",
+        "printf 'gh pr list\\n'",
+        "echo 'use gh pr create via wrapper'",
+        "grep -R 'gh pr merge' docs/",
+    )
+    for command in allow_commands:
+        _assert_guard_permission(errors, guard, command, "allow")
+
+    ask_commands = (
+        "git commit --amend --no-edit",
+        "git rebase main",
+        "env",
+        "printenv",
+        "git config --global --list",
+    )
+    for command in ask_commands:
+        _assert_guard_permission(errors, guard, command, "ask")
 
 
 def _test_curl_transport_constraints(errors: list[str]) -> None:
@@ -1097,6 +1270,8 @@ def main() -> int:
     _test_cross_repo_wrapper_exit_codes(errors)
     _test_cross_repo_branch_selection(errors)
     _test_static_contract(errors)
+    _test_guard_deny_patterns(errors)
+    _test_guard_allow_and_ask_regression(errors)
     _test_curl_transport_constraints(errors)
     _test_positive_id_contract(errors)
     _test_skill_prerequisite_fail_closed(errors)

@@ -161,6 +161,20 @@ compact-events.jsonl のエントリが {{framework.handoff.calibration.min_even
 
 {{framework.handoff.calibration.decision_record}}。
 
+## MemPalace 共存ガイドライン
+
+MemPalace が同じ `preCompact` に登録されている場合、hooks.json の配列に kit → MemPalace の順で並べる。kit の observer は軽量（timeout 5s）、MemPalace は重量（timeout 30s）。
+
+| 関心事 | kit | MemPalace |
+|---|---|---|
+| 判断構造の構造化退避 | 追跡ドキュメント + handoff manifest（SoT） | × |
+| transcript の verbatim 退避 | × | palace（mine） |
+| compact 直前の token% 記録 | compact-observer（state に書く） | × |
+| compact 検知後の handoff 促進 | pending-handoff → stop で followup | pending-save → stop で followup |
+| 長期記憶 RAG | × | palace search + wake hook |
+
+kit の `pending-handoff` と MemPalace の `pending-save` は別ファイル（`.cursor/.session/{id}.pending-handoff` vs `~/.mempalace/hook_state/cursor_{id}.pending`）で干渉しない。
+
 ## 将来拡張候補
 
 {{#each framework.handoff.future_notes}}

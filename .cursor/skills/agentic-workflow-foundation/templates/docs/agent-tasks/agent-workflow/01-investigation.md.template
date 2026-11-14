@@ -4,6 +4,7 @@
 
 タスク実行依頼を受けた直後のフェーズ。`.cursor/rules/00-init.mdc` の「AGENTS.md を最初に読む」制約に従い、AGENTS.md → docs → ソースコードの順で裏取りする。
 
+{{#if requirement_analysis.enabled}}
 > **requirement-analysis スキルによる統括**: 本ステップは [requirement-analysis](../../../.cursor/skills/requirement-analysis/SKILL.md) スキルに従い、3 段階ガード + 分析深度判定で要求分析を実行する。
 
 ---
@@ -130,9 +131,112 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 いずれかを満たさない場合は、Investigation Memo を作成せず [user-presentation.md](../../../.cursor/skills/requirement-analysis/references/user-presentation.md) の「Step① 退出不合格時の状況報告」テンプレに従いユーザーに状況を報告し、追加調査の方針を合意する。
 
+{{else}}
+---
+
+## 1.1 ユーザーとの対話
+
+以下を確認する（不明瞭な場合はユーザーに質問）。
+
+- どのような問題・要件があるか
+- どのような手順で再現・確認できるか
+- エラーメッセージやログはあるか（該当する場合）
+- いつから発生しているか（該当する場合）
+- どの機能に影響するか
+- どのユーザー・環境に影響するか
+- タスクの目的・ゴールは何か
+
+## 1.2 ドキュメントの参照
+
+> **AGENTS.md > Documentation Navigation の docs-first 原則**: コード調査（1.{{#if deep_thinking.enabled}}4{{else}}3{{/if}}）に進む前に、必ず本節の docs を先に確認する。コード検索を 1.2 より先に実行してはならない（仕様の推論をコードからしないため）。
+
+`AGENTS.md > Documentation Navigation` の参照順序に従う。
+
+対象は [`AGENTS.md > Documentation Navigation > Domain 層`](../../../AGENTS.md) に列挙された Domain 層 md ファイル。
+
+### docs-first 参照記録
+
+調査中に参照した Domain 層 docs を記録する（Step ② のレポート作成時に「関連する既存コード」セクションへ転記する）。対象一覧は上記 Documentation Navigation を参照し、各 docs について「参照した / 該当なし」を判定する。
+
+{{#if deep_thinking.enabled}}
+deep-thinking が `invoked`、または `deferred` の再判定で `invoked` となる場合、[workflow-triage.md](../../../.cursor/skills/deep-thinking/references/workflow-triage.md) の空でない検査次元インベントリ契約を適用する。統合結果のカバレッジ表（検査次元 / 判定 / 一次証跡 / 判断根拠）は、この `## docs-first 参照記録` 内へ格納する。判定は `所見 / 問題なし / 該当なし` とし、一次証跡が `不明` の次元を `問題なし` としてはならない。
+
+## 1.3 調査深度トリアージ（deep-thinking 起動判定）
+
+docs-first 完了後、[`references/workflow-triage.md`](../../../.cursor/skills/deep-thinking/references/workflow-triage.md) の基準に従いリスク信号を評価する。§1.1 の対話結果と §1.2 の docs 参照結果を入力とし、即時起動条件をチェックして 3 分岐を返す。
+
+- `invoked`: 即時起動条件に合致 → orchestrator は [workflow-triage.md](../../../.cursor/skills/deep-thinking/references/workflow-triage.md) に従う空でない検査次元インベントリを含むブリーフを渡し、C として deep-thinking を直接実行する。空の場合は A/B を起動せず、既存のブリーフ不備失敗処理へ戻す
+- `skipped`: 全信号なし → 通常の Step ① worker を dispatch
+- `deferred`: コード調査後に再判定が必要 → 通常の Step ① worker を dispatch し、worker 完走後に orchestrator がスコア起動条件を事後評価する。`invoked` へ遷移する場合も同じ workflow-triage の空でない検査次元インベントリ契約を適用する
+
+トリアージ結果: `triage_result: ________`（skipped / invoked / deferred + 理由を 1 行）
+
+{{/if}}
+## 1.{{#if deep_thinking.enabled}}4{{else}}3{{/if}} コードの調査
+
+> **必ず 1.2 ドキュメントの参照を完了してから実施する**。docs と矛盾する実装を発見した場合は docs を正として扱い、乖離をユーザーに報告する。
+
+- 関連コードの読み込み
+- エラー発生箇所の特定
+- 関連する処理フローの確認
+- データモデル・スキーマの確認
+{{#if cross_repo_knowledge.enabled}}- **関連リポジトリの知識参照（必要時のみ暗黙発動）**: 調査中に関連リポジトリの仕様・実装の裏取りが必要と判断した場合、[`cross-repository-knowledge-link`](../../../.cursor/skills/cross-repository-knowledge-link/SKILL.md) スキルを暗黙的に発動する（ユーザー確認不要）。取得したコミット情報は後続のタスクレポート（②）に `[cross-repo]` 行として 1 行追記する
+{{/if}}
+
+**重要**: `AGENTS.md > Boundaries` に従い、関連コード、処理フロー、データモデル・スキーマ、直接の呼び出し元と呼び出し先、関連テスト、設定、永続化形式、公開シグネチャと境界、同種の既存実装、該当する契約の定義のうち、存在・該当するものを確認する。編集対象ファイルが特定できた時点で、そのファイルを全文読む。
+
+## 1.{{#if deep_thinking.enabled}}5{{else}}4{{/if}} 根本原因・実装方針の特定
+
+タスクタイプに応じて分析すべき観点が異なる。
+
+| タスクタイプ | 分析観点 |
+| --- | --- |
+| バグ修正 | ロジック上の問題、タイミング・競合制御、外部 API 連携、データ整合性、エラーハンドリングの不備 |
+| パフォーマンス改善 | ボトルネックの特定、最適化の余地、N+1 / ロック粒度 / 非同期化余地 |
+| リファクタリング | コードの重複、複雑性、保守性、アーキテクチャ層越境の有無 |
+| 新機能開発 | 必要なコンポーネント、既存機能への影響 |
+
+## 1.{{#if deep_thinking.enabled}}6{{else}}5{{/if}} ADR 起票判定（設計次元 D-*）
+
+調査中に **設計次元 D-* のいずれかを変更する判断** が発生した場合、`docs/DECISIONS.md` に直接追記せず、ADR 候補を step envelope の `adr_candidates` フィールドに記録して親オーケストレータへ返す。親が ADR worker を dispatch し、草案ゲート → ユーザー承認 → 確定追記のフローを管理する（[`worker-dispatch.md §ADR Worker 契約`](../../../.cursor/skills/workflow-orchestrator/references/worker-dispatch.md) 参照）。判定軸は唯一「リポジトリ全体の設計次元 D-* を変更したか」であり、行為のラベル（バグ修正 / リファクタ / リネーム / チューニング / docs 整理）は判定軸にしない。
+
+**起票判定**（D-* のいずれか 1 つ以上に該当する場合のみ）:
+
+{{#each framework.design_dimensions}}
+- **{{this.id}}**: {{this.desc}}
+{{/each}}
+
+D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニング / リネーム / docs 整理 等）は ADR 起票せず PR 説明で完結。
 
 ---
 
+## 1.{{#if deep_thinking.enabled}}7{{else}}6{{/if}} 退出ゲート（タスク確定の判定）
+
+調査完了後、以下の全項目を検証する。すべてを満たした場合のみ Step ②（レポート作成）に進む。
+
+- [ ] **実現性**: タスクの実現方法が明確（証跡: 変更対象ファイルが 1 つ以上特定されている）
+- [ ] **影響範囲の明確化**: どの機能・ユーザーに影響するかが特定できている（証跡: 影響を受ける機能名 or コンポーネント名が列挙されている）
+- [ ] **実装方針の特定**: コード・ロジック・データのどこをどう変更すべきかが判明している（証跡: 変更内容が 1 文以上で記述されている）
+- [ ] **実装アプローチの立案**: どのように実装すべきかの方針が決まっている（証跡: 実装手順が順序付きで記述されている）
+- [ ] **優先度の決定**: High / Medium / Low の優先度が設定されている
+
+いずれかを満たさない場合は、タスクレポートを作成せずユーザーに状況を報告し、追加調査の方針を合意する。
+
+```markdown
+現在の調査状況：
+- {調査で判明していること}
+
+不明な点：
+- {特定できていない項目}
+
+追加で必要な情報：
+- {ユーザーに確認してほしいこと}
+```
+{{/if}}
+
+---
+
+{{#if agent_workflow.artifact}}
 ## Worker Contract
 
 本ステップを bounded worker に委譲する入出力契約。手順の SoT は上記セクションであり、本節は入出力 schema のみを定義する。
@@ -151,6 +255,7 @@ D-* 不該当の変更（バグ修正 / 通常リファクタ / 値チューニ�
 
 worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/{slug}--step1.md` へ書き出す。
 
+{{#if requirement_analysis.enabled}}
 | フィールド | 型 | 値域 | 説明 |
 | --- | --- | --- | --- |
 | `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 調査結果 |
@@ -173,10 +278,22 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 | `campaign_slug` | string | — | 入力値をそのまま記録。最終・normalize・depth-triage artifact の slug prefix と一致（complete 時必須） |
 | `reason` | string | — | `blocked` / `fatal` / `incomplete` 時の理由 |
 | `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
+{{else}}
+| フィールド | 型 | 値域 | 説明 |
+| --- | --- | --- | --- |
+| `status` | enum | `complete` / `incomplete` / `blocked` / `fatal` | 調査結果 |
+| `step` | string | `"step1"` | 固定値 |
+| `gate_result` | enum | `PASS` / `INCOMPLETE` | 本節の退出ゲート 5 項目の判定結果 |
+| `missing` | string[] | — | `INCOMPLETE` 時の不足項目。`PASS` 時は空配列 |
+| `investigation_memo_path` | string | — | 構造化調査メモの相対パス（step envelope body 部を指してよい） |
+{{#if deep_thinking.enabled}}| `triage_result` | enum | `skipped` / `invoked` / `deferred` | 調査深度トリアージの判定結果 |
+{{/if}}| `reason` | string | — | `blocked` / `fatal` 時の理由 |
+| `adr_candidates` | array | — | D-* 変更検知時の ADR 候補。未検知時は空配列 |
+{{/if}}
 
 ### 終端状態と遷移
 
-- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）と `workflow-gate.sh step1 <step1-envelope>` の完全検査通過を確認し、4分類進捗通知を行った同一ターンで人間の ack なしに②を dispatch する
+- `complete` + `gate_result: PASS`: オーケストレータは正式成果物（`investigation_memo_path` の存在 + `gate_result: PASS`）と {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} の完全検査通過を確認し、4分類進捗通知を行った同一ターンで人間の ack なしに②を dispatch する
 - `complete` + `gate_result: INCOMPLETE`: オーケストレータはユーザーに `missing` を提示し追加情報を収集して再 dispatch する
 - `incomplete`: worker のコンテキスト不足等による中断。オーケストレータは step envelope を読み追加情報付与で再 dispatch する
 - `blocked`: オーケストレータが reason に応じてエスカレーション
@@ -184,8 +301,9 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 ### Markdown body（標準セクション構造）
 
-調査メモ本体。次の worker（②）が文脈として読む。standard 分析・deep-thinking 分析のいずれでも [investigation-memo.md](../../../.cursor/skills/requirement-analysis/references/investigation-memo.md) の共通構造を使用し、② への透過性を保証する。
+調査メモ本体。次の worker（②）が文脈として読む。{{#if requirement_analysis.enabled}}standard 分析・deep-thinking 分析のいずれでも [investigation-memo.md](../../../.cursor/skills/requirement-analysis/references/investigation-memo.md) の共通構造を使用し、② への透過性を保証する。{{else}}通常分析・deep-thinking 分析のいずれでも同一構造を使用し、② への透過性を保証する。{{/if}}
 
+{{#if requirement_analysis.enabled}}
 - `## 正規化済み要求` — Gate A 通過後の構造化された要求記述
 - `## 確定済み受入条件` — 具体的な受入条件のリスト
 - `## 根本原因分析 / 実装方針候補` — standard: worker 自身の分析 / deep: C が A/B の Evidence Ledger を統合した分析
@@ -198,6 +316,14 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 - `## docs-first 参照記録` — 参照した Domain 層 docs のチェックリスト
 - `## Issue Ledger` — 解決済み Issue の一覧
 - `## non-blocking issues` — 警告として記録された軽微な問題
+{{else}}
+- `## 根本原因分析 / 実装方針候補` — 通常: worker 自身の分析 / deep-thinking: C が A/B の Evidence Ledger を統合した分析
+- `## 争点と判断根拠` — 検討した選択肢と採用/却下理由（いずれの方式でも「何を検討し、なぜ採用/却下したか」を記述）
+- `## 影響範囲` — 変更対象ファイル・コンポーネント・ユーザー影響
+- `## ADR 起票判定結果` — D-* 該当有無と判断根拠
+- `## docs-first 参照記録` — 参照した Domain 層 docs のチェックリスト
+{{/if}}
+{{/if}}
 
 ---
 
@@ -205,7 +331,8 @@ worker は全終端状態で step envelope を `{{agent_workflow.artifact.dir}}/
 
 - [docs/DECISIONS.md](../../DECISIONS.md) — ADR 起票フォーマット
 - [02-report-creation.md](02-report-creation.md) — 次ステップ（レポート作成）
-- [requirement-analysis/SKILL.md](../../../.cursor/skills/requirement-analysis/SKILL.md) — 要求分析スキル
+{{#if requirement_analysis.enabled}}- [requirement-analysis/SKILL.md](../../../.cursor/skills/requirement-analysis/SKILL.md) — 要求分析スキル
 - [requirement-contract.md](../../../.cursor/skills/requirement-analysis/references/requirement-contract.md) — 3 段階ガード契約
 - [analysis-depth.md](../../../.cursor/skills/requirement-analysis/references/analysis-depth.md) — 分析深度判定基準
 - [investigation-memo.md](../../../.cursor/skills/requirement-analysis/references/investigation-memo.md) — Investigation Memo 契約
+{{/if}}
