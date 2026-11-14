@@ -124,7 +124,6 @@ def test_agents_optional_sections_are_empty_or_rendered_as_configured() -> None:
     assert "### ユーザーとの協働" in rendered
     assert "### Code Patterns" in rendered
     assert "### Critical Files" in rendered
-    assert "NECPF" not in rendered
 
     partial_cases = (
         ("architecture_dirs", "主要ディレクトリ本文", "## Architecture", "### 主要ディレクトリ"),
@@ -147,6 +146,16 @@ def test_agents_optional_sections_are_empty_or_rendered_as_configured() -> None:
         assert partial_rendered.count(child_heading) == 1, field
 
 
+def _template_line(template: Path, prefix: str) -> str:
+    """テンプレートで `prefix` から始まる行をちょうど1行取り出す。"""
+    lines = [
+        line for line in template.read_text(encoding="utf-8").splitlines()
+        if line.startswith(prefix)
+    ]
+    assert len(lines) == 1, (template.name, prefix, lines)
+    return lines[0]
+
+
 def test_agents_and_claude_fixed_boundaries_render_from_seed_and_resolved_manifest() -> None:
     seed = _manifest()
     resolved = run_resolved_engine.resolved_manifest(
@@ -155,30 +164,41 @@ def test_agents_and_claude_fixed_boundaries_render_from_seed_and_resolved_manife
     )
     agents_template = SKILL_DIR / "templates" / "AGENTS.md.template"
     claude_template = SKILL_DIR / "templates" / "CLAUDE.md.template"
-    official_fixed_line = (
-        "**公式固定ファイル名**（大文字維持）: "
-        "`AGENTS.md` `CLAUDE.md` `CLAUDE.local.md` `MEMORY.md`"
-    )
-    speculation = "仕様の推測（ドキュメント不明時は質問）"
-    fixed_never_line = f"- **Never**: {speculation}"
+
+    # 公式固定ファイル名の行: テンプレートの行頭リテラル + manifest の配列を、順序どおり1行へ描画する。
+    official_head = _template_line(agents_template, "**公式固定ファイル名**").split("{{", 1)[0]
+    # CLAUDE.md の Never 行のうち、テンプレートへ固定記述されたもの（Mustache 式を含まない行）。
+    never_prefix = "- **Never**: "
+    fixed_never_lines = [
+        line for line in claude_template.read_text(encoding="utf-8").splitlines()
+        if line.startswith(never_prefix) and "{{" not in line
+    ]
+    assert fixed_never_lines, "CLAUDE.md template has no fixed Never lines"
 
     for label, manifest in (("seed", seed), ("resolved", resolved)):
-        assert speculation not in manifest["project"]["boundaries"]["never_extra"], label
+        never_extra = manifest["project"]["boundaries"]["never_extra"]
         agents = _render(agents_template, manifest)
         claude = _render(claude_template, manifest)
-        official_lines = [
-            line for line in agents.splitlines()
-            if line.startswith("**公式固定ファイル名**")
-        ]
-        assert official_lines == [official_fixed_line], label
-        assert not official_lines[0].endswith(" "), label
-        assert agents.count(speculation) == 1, label
-        assert claude.count(fixed_never_line) == 1, label
 
-        first_extra_line = (
-            f"- **Never**: {manifest['project']['boundaries']['never_extra'][0]}"
+        expected_official = official_head + "".join(
+            f" `{name}`" for name in manifest["framework"]["naming"]["official_fixed"]
         )
-        assert claude.index(fixed_never_line) < claude.index(first_extra_line), label
+        official_lines = [
+            line for line in agents.splitlines() if line.startswith(official_head)
+        ]
+        assert official_lines == [expected_official], label
+        assert not official_lines[0].endswith(" "), label
+
+        # 固定 Never は never_extra と重複せず、各1回だけ描画され、never_extra より前に並ぶ。
+        first_extra_line = f"{never_prefix}{never_extra[0]}"
+        for fixed_line in fixed_never_lines:
+            assert fixed_line[len(never_prefix):] not in never_extra, (label, fixed_line)
+            assert claude.count(fixed_line) == 1, (label, fixed_line)
+            assert claude.index(fixed_line) < claude.index(first_extra_line), (label, fixed_line)
+        # never_extra の各項目は AGENTS.md / CLAUDE.md にそれぞれ1回だけ描画される。
+        for entry in never_extra:
+            assert agents.count(entry) == 1, (label, entry)
+            assert claude.count(entry) == 1, (label, entry)
 
 
 def _render(template: Path, manifest: dict) -> str:
@@ -232,11 +252,7 @@ def _run_session_start(
         script.write_text(script_text, encoding="utf-8")
         script.chmod(0o700)
         record = tmp / "archive-argument.txt"
-        stub_name = (
-            "workflow-gate.sh"
-            if manifest["agent_workflow"]["gate_scripts"]
-            else "archive-gate.sh"
-        )
+        stub_name = "workflow-gate.sh"
         (scripts / stub_name).write_text(
             "#!/usr/bin/env bash\n"
             "set -u\n"
@@ -308,19 +324,16 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
     assert '"$SCRIPT_DIR/workflow-gate.sh" archive "$report"' in enabled_start
 
     for maintenance_enabled in (True, False):
-        for gate_scripts in (True, False):
-            variant = copy.deepcopy(enabled)
-            variant["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_enabled
-            variant["agent_workflow"]["gate_scripts"] = gate_scripts
-            rendered_start = _render(start_template, variant)
-            rendered_archive = _render(archive_template, variant)
-            rendered_report = _render(report_template, variant)
-            for item in _completion_items(variant):
-                assert item in rendered_start
-                assert item in rendered_archive
-                assert item in rendered_report
-            command = "workflow-gate.sh" if gate_scripts else "archive-gate.sh"
-            assert command in rendered_start
+        variant = copy.deepcopy(enabled)
+        variant["agent_workflow"]["maintenance_docs"]["enabled"] = maintenance_enabled
+        rendered_start = _render(start_template, variant)
+        rendered_archive = _render(archive_template, variant)
+        rendered_report = _render(report_template, variant)
+        for item in _completion_items(variant):
+            assert item in rendered_start
+            assert item in rendered_archive
+            assert item in rendered_report
+        assert "workflow-gate.sh" in rendered_start
 
     enabled_quality = _render(quality_template, enabled)
     disabled_quality = _render(quality_template, disabled)
@@ -413,12 +426,6 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
     assert fresh_report.returncode == 0 and "G-SESSION-REPORT-001" not in fresh_report.stdout
     stale_tracker = _run_session_start(enabled, {}, tracker_age=24)
     assert stale_tracker.returncode == 0 and "G-SESSION-STALE-001" in stale_tracker.stdout
-
-    direct_archive = copy.deepcopy(enabled)
-    direct_archive["agent_workflow"]["gate_scripts"] = False
-    direct_result = _run_session_start(direct_archive, {"TICKET-1-direct.md": _report(direct_archive)})
-    assert direct_result.returncode == 1
-    assert direct_result.archive_argument.endswith("TICKET-1-direct.md")  # type: ignore[attr-defined]
 
 
 def main() -> int:

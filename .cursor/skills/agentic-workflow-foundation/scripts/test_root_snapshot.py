@@ -13,7 +13,6 @@ SKILL_MANIFEST = HERE.parent / "manifest.yaml"
 TRACKED_PATHS = (
     ROOT / "manifest.yaml",
     SKILL_MANIFEST,
-    ROOT / "docs" / "agent-tasks" / "reports" / "llm-tech-contract-provisioning.md",
 )
 
 

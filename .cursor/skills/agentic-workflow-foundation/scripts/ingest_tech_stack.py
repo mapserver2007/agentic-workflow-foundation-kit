@@ -19,6 +19,7 @@ if HERE not in sys.path:
 
 import genlib  # noqa: E402
 import tech_contract as tc  # noqa: E402
+from yaml_blocks import yaml_quote as _yaml_quote  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 
@@ -72,13 +73,6 @@ def parse_section9(text: str):
                 "note": cells[3],
             })
     return note, items
-
-
-def _yaml_quote(value: str) -> str:
-    s = "" if value is None else str(value)
-    if '"' in s:
-        return "'" + s.replace("'", "''") + "'"
-    return '"' + s + '"'
 
 
 def build_block(note, items):

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1163,8 +1163,8 @@ def test_transaction_success_commits_app_and_host() -> None:
 
 def test_skill_contract_excludes_vendor_flow() -> None:
     content = SKILL_FILE.read_text(encoding="utf-8")
-    assert "固定public URL" in content
-    assert "並置 kit の `origin`" not in content
+    # 取得は固定 wrapper 経由。対象アプリ側の foundation 実行（bin/foundation-gate generate）に頼らない。
+    assert "bin/kit-source-fetch-safe" in content
     assert "foundation/engine" in content
     assert ".cursor/agentic-workflow-update.lock.yaml" in content
     assert "--root-manifest" in content
@@ -1180,14 +1180,18 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "render" in skill_readme
     assert "marker" in skill_readme
 
+    # README の更新手順: 見出し文言ではなく kit_update.py の plan / apply を案内する節を対象にする。
     readme = README_FILE.read_text(encoding="utf-8")
-    update_section = readme.split("## 適用済みアプリへの kit 更新", 1)[1]
-    update_section = update_section.split("## 手動実行", 1)[0]
-    assert "並置された" not in update_section
-    assert "--kit-root" not in update_section
-    assert "bin/foundation-gate generate" not in update_section
-    assert "対象アプリへ配置" not in update_section
-    assert "--update-skill-home" in update_section
+    update_sections = [
+        section
+        for section in re.split(r"(?m)^## ", readme)[1:]
+        if re.search(r"kit_update\.py\s+(plan|apply)", section)
+    ]
+    assert update_sections, "README has no kit_update.py plan/apply section"
+    for section in update_sections:
+        assert "--kit-root" not in section
+        assert "bin/foundation-gate generate" not in section
+    assert any("--update-skill-home" in section for section in update_sections)
 
 
 def test_host_install_and_check_do_not_update_host() -> None:

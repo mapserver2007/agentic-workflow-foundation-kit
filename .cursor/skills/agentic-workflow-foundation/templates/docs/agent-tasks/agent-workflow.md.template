@@ -37,16 +37,14 @@ POレビュー + 実装開始承認（唯一の実装開始 STOP）
  ↓
 ④ テスト実装（＋コードゲート通過＋完了チェック3項目）
  ↓
-⑤ PR レビュー検証（{{#if agent_workflow.gate_scripts}}`step5` → `review-start` → `step6`{{else}}検証ゲート → レビュー完了承認{{/if}}）
+⑤ PR レビュー検証（`step5` → `review-start` → `step6`）
  ↓
-⑥ 完了報告（最終判定<!-- contract: step6-order-final-judgment --> → {{#if agent_workflow.gate_scripts}}archive gate<!-- contract: step6-order-archive-gate --> → {{/if}}report archive<!-- contract: step6-order-report-archive -->{{#if agent_workflow.maintenance_docs.enabled}} → pending queue があれば独立 `maintenance-docs-workflow`<!-- contract: step6-order-maintenance-docs -->{{/if}}）
+⑥ 完了報告（最終判定<!-- contract: step6-order-final-judgment --> → archive gate<!-- contract: step6-order-archive-gate --> → report archive<!-- contract: step6-order-report-archive -->{{#if agent_workflow.maintenance_docs.enabled}} → pending queue があれば独立 `maintenance-docs-workflow`<!-- contract: step6-order-maintenance-docs -->{{/if}}）
 ```
 
 各ステップは [docs/QUALITY_GATE.md](../QUALITY_GATE.md) §3 のフェーズ境界と対応しており、境界ごとに出入口条件を満たすこと。
-{{#if agent_workflow.gate_scripts}}
 
 **フェーズ境界ゲート**: `.cursor/skills/session-handover/scripts/workflow-gate.sh <step>` で統一実行する（§1.7）。
-{{/if}}
 
 ---
 
@@ -54,12 +52,12 @@ POレビュー + 実装開始承認（唯一の実装開始 STOP）
 
 | ステップ | 詳細ファイル | 主要成果物 | 対応フェーズ境界 |
 | --- | --- | --- | --- |
-| ① 調査・分析 | [agent-workflow/01-investigation.md](agent-workflow/01-investigation.md) | 調査結果の整理 + step1 envelope | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} |
-| ② タスクレポートの作成 | [agent-workflow/02-report-creation.md](agent-workflow/02-report-creation.md) | report + step2 envelope + 機械ゲートPASS | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step2-report` → {{/if}}`step2` PASS → PO待ち |
-| ③ 実装の実行 | [agent-workflow/03-implementation.md](agent-workflow/03-implementation.md) | コード変更 + reports 完了チェック更新 | {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3`{{else}}親の実差分検査{{/if}} → ④ dispatch |
-| ④ テスト実装 | [agent-workflow/04-testing.md](agent-workflow/04-testing.md) | テストコード + コードゲート + G-TEST-COMP-001/002/003 PASS | 実装 → 検証（{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}コードゲート{{/if}}） <!-- contract: matrix-step4-impl-then-verify --> |
-| ⑤ PR レビュー検証 | [agent-workflow/05-pr-review.md](agent-workflow/05-pr-review.md) | レビュー対応完了 | {{#if agent_workflow.gate_scripts}}`step5` → `review-start` → `step6`{{else}}検証ゲート → レビュー完了承認{{/if}} |
-| ⑥ 完了報告 + archives 移動 | [agent-workflow/06-completion.md](agent-workflow/06-completion.md) | 最終判定 + `docs/agent-tasks/reports/archives/` への移動{{#if agent_workflow.maintenance_docs.enabled}} + pending queue の独立 workflow 引き渡し{{/if}} | {{#if agent_workflow.gate_scripts}}archive gate → {{/if}}report archive{{#if agent_workflow.maintenance_docs.enabled}} → `maintenance-docs-workflow`{{/if}} |
+| ① 調査・分析 | [agent-workflow/01-investigation.md](agent-workflow/01-investigation.md) | 調査結果の整理 + step1 envelope | `workflow-gate.sh step1 <step1-envelope>` |
+| ② タスクレポートの作成 | [agent-workflow/02-report-creation.md](agent-workflow/02-report-creation.md) | report + step2 envelope + 機械ゲートPASS | `workflow-gate.sh step2-report` → `step2` PASS → PO待ち |
+| ③ 実装の実行 | [agent-workflow/03-implementation.md](agent-workflow/03-implementation.md) | コード変更 + reports 完了チェック更新 | `workflow-gate.sh step3` → ④ dispatch |
+| ④ テスト実装 | [agent-workflow/04-testing.md](agent-workflow/04-testing.md) | テストコード + コードゲート + G-TEST-COMP-001/002/003 PASS | 実装 → 検証（`workflow-gate.sh step4`） <!-- contract: matrix-step4-impl-then-verify --> |
+| ⑤ PR レビュー検証 | [agent-workflow/05-pr-review.md](agent-workflow/05-pr-review.md) | レビュー対応完了 | `step5` → `review-start` → `step6` |
+| ⑥ 完了報告 + archives 移動 | [agent-workflow/06-completion.md](agent-workflow/06-completion.md) | 最終判定 + `docs/agent-tasks/reports/archives/` への移動{{#if agent_workflow.maintenance_docs.enabled}} + pending queue の独立 workflow 引き渡し{{/if}} | archive gate → report archive{{#if agent_workflow.maintenance_docs.enabled}} → `maintenance-docs-workflow`{{/if}} |
 
 ---
 

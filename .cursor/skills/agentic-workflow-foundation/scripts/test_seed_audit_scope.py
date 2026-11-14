@@ -205,7 +205,6 @@ def test_audit_passes_work_root_to_post_validators() -> None:
         work_root = Path(temp_dir) / "work"
         manifest = {
             "deep_thinking": {"enabled": True},
-            "requirement_analysis": {"enabled": True},
             "agent_kaizen": {"enabled": True},
             "agent_workflow": {"enabled": True},
         }
@@ -257,15 +256,10 @@ def test_audit_passes_work_root_to_post_validators() -> None:
             assert args[1] == str(work_root)
 
 
-def test_requirement_analysis_requires_agent_workflow() -> None:
-    disabled = {
-        "agent_workflow": {"enabled": False},
-        "requirement_analysis": {"enabled": True},
-    }
-    enabled = {
-        "agent_workflow": {"enabled": True},
-        "requirement_analysis": {"enabled": True},
-    }
+def test_requirement_analysis_follows_agent_workflow() -> None:
+    """requirement_analysis は agent_workflow の子機能で、独立のトグルを持たない（ADR-0007）。"""
+    disabled = {"agent_workflow": {"enabled": False}}
+    enabled = {"agent_workflow": {"enabled": True}}
     assert RUNNER._is_feature_enabled(disabled, "requirement_analysis") is False
     assert RUNNER._is_feature_enabled(enabled, "requirement_analysis") is True
     manifest = {
@@ -293,7 +287,7 @@ def main() -> int:
         ("foundation gate keeps default audit", test_foundation_gate_keeps_default_audit),
         ("resolved runner routes flag", test_resolved_runner_routes_flag_only_to_audit),
         ("audit validator work root", test_audit_passes_work_root_to_post_validators),
-        ("requirement analysis parent gate", test_requirement_analysis_requires_agent_workflow),
+        ("requirement analysis follows agent_workflow", test_requirement_analysis_follows_agent_workflow),
     )
     for label, test in tests:
         try:

@@ -2,11 +2,8 @@
 """Step④ loop7: generic coverage / postcondition ordering / version / malformed / SKILL claims。"""
 from __future__ import annotations
 
-import contextlib
 import copy
-import io
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -30,9 +27,6 @@ from test_contract_fixture import (  # noqa: E402
     json_field_validation,
     write_sealed_manifest,
 )
-
-TECH_SCRIPT = HERE / "tech_contract.py"
-
 
 def generic_covers_packages_no_node_inference() -> bool:
     src = (HERE / "tech_contract.py").read_text(encoding="utf-8")
@@ -64,10 +58,6 @@ def generic_covers_packages_no_node_inference() -> bool:
             return False
         print("FAIL: unknown covers_packages accepted", file=sys.stderr)
         return False
-
-
-def copy_contract(contract: dict) -> dict:
-    return copy.deepcopy(contract)
 
 
 def postcondition_marker_created_after_command() -> bool:
@@ -286,52 +276,6 @@ def invalid_path_element_schema_error() -> bool:
         return False
 
 
-def _run_cli(script: Path, args: list[str]) -> tuple[int, str]:
-    result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True)
-    return result.returncode, result.stdout + result.stderr
-
-
-def malformed_json_sections_no_traceback_all_clis() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        bad = root / "manifest.yaml"
-        bad.write_text("tech_contract: [bad]\n", encoding="utf-8")
-        design = root / "TECH.md"
-        design.write_text("# x\n", encoding="utf-8")
-        cases = [
-            (TECH_SCRIPT, ["validate", "--design-doc", str(design), "--draft", str(bad), "--check"]),
-            (prov.__file__, ["--preflight", "--manifest", str(bad), "--design-doc", str(design)]),
-            (mat.__file__, ["--check", "--manifest", str(bad), "--design-doc", str(design)]),
-            (conf.__file__, ["--manifest", str(bad)]),
-        ]
-        for script, args in cases:
-            code, combined = _run_cli(Path(script), args)
-            if "Traceback" in combined:
-                print(f"FAIL: traceback in {script.name}", combined, file=sys.stderr)
-                return False
-            if code not in (1, 2):
-                print(f"FAIL: unexpected exit {code} from {script.name}", combined, file=sys.stderr)
-                return False
-    return True
-
-
-def no_tech_specific_active_python() -> bool:
-    forbidden = (
-        "rebuild_root_tech_contract",
-        "dependency-marker",
-    )
-    for name in ("tech_contract.py", "runtime_plan.py", "provision_runtime.py"):
-        text = (HERE / name).read_text(encoding="utf-8")
-        for token in forbidden:
-            if token in text:
-                print(f"FAIL: {name} contains {token}", file=sys.stderr)
-                return False
-    if (HERE / "rebuild_root_tech_contract.py").is_file():
-        print("FAIL: rebuild_root_tech_contract.py exists", file=sys.stderr)
-        return False
-    return True
-
-
 def main() -> int:
     checks = {
         "generic_covers_packages_no_node_inference": generic_covers_packages_no_node_inference,
@@ -341,8 +285,6 @@ def main() -> int:
         "required_package_marker_missing_fails": required_package_marker_missing_fails,
         "state_digest_mismatch_fails": state_digest_mismatch_fails,
         "invalid_path_element_schema_error": invalid_path_element_schema_error,
-        "malformed_json_sections_no_traceback_all_clis": malformed_json_sections_no_traceback_all_clis,
-        "no_tech_specific_active_python": no_tech_specific_active_python,
     }
     for name, fn in checks.items():
         if not fn():

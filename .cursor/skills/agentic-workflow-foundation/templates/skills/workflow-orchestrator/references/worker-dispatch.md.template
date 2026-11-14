@@ -4,7 +4,6 @@
 
 ## dispatch モード一覧
 
-{{#if requirement_analysis.enabled}}
 | Step | Sub-step | モード | config キー | subagent_type | 書込み責務境界 |
 |------|----------|--------|------------|---------------|------------------|
 | ① | 要求正規化 | subagent dispatch | requirement_analysis.models.normalize | generalPurpose | 中間 artifact（`{slug}--step1-normalize.md`）書込み必須。`task_type` + 軽量 `fields[]`（`name` / `value` / `provenance` / `evidence_ref`）を出力。最終 envelope は書かない |
@@ -21,20 +20,10 @@
 
 > **中間 Subagent の制約**: 要求正規化・分析深度判定 Subagent は中間 artifact を**必須で書き出す**（入力が詳しくても省略不可）。最終 step1 envelope は書かない（親が書く）。Subagent から deep-thinking を入れ子起動しない。親は最終 envelope に `normalize_artifact_path` / `depth_triage_artifact_path` を記録する。`gate-artifact.py` が中間 artifact の存在・schema・整合を機械検査する。Step①系 artifact の保持は下記「例外（Step①系）」特則に従う。
 
-{{else}}
-| Step | モード | config キー | subagent_type | 書込み責務境界 |
-|------|--------|------------|---------------|------------------|
-| ① | subagent dispatch | step1_investigation | generalPurpose | step envelope のみ。source / report は変更しない |
-| ② | subagent dispatch | step2_report | generalPurpose | task report + step envelope のみ。source は変更しない |
-| ③ | subagent dispatch | step3_implementation | generalPurpose | source / test / report / maintenance-docs/ + step envelope。Domain docs 本体は不可。commit / push 禁止 |
-| ④ | subagent dispatch | step4_testing | generalPurpose | test / report + step envelope。`gate_results` は `gen/build/lint/test` の整数 exit code 4キーのみ（文字列ステータス禁止）。application は G-GEN 条件に従って個別実測、foundation は `self` 成功を全4キー `0` へ正規化。commit / push 禁止 |
-| ⑤ | 親直接実行 | —（config 対象外） | — | 親が対話・承認を担当 |
-| ⑥ | 親直接実行 | —（config 対象外） | — | maintenance-docs/ 最終確認 + archive |
-{{/if}}
 
 ## 親代行の禁止
 
-Subagent dispatch が指定された Step（①〜④）の worker 責務を、親が Subagent を dispatch せず直接実行してはならない。{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step2-report` は step1/step2 の complete envelope を、`workflow-gate.sh step4` は step3/step4 の complete envelope を必須検査するため、{{else}}`gate-artifact.py` 等の個別ゲートが各 envelope を検査するため、{{/if}}dispatch なしではゲートを通過できない。正規の親責務（Gate C の直接検査、ユーザーへの質問、deep-thinking 起動、Step ⑤⑥ の直接実行等）はこの制約の対象外である。
+Subagent dispatch が指定された Step（①〜④）の worker 責務を、親が Subagent を dispatch せず直接実行してはならない。`workflow-gate.sh step2-report` は step1/step2 の complete envelope を、`workflow-gate.sh step4` は step3/step4 の complete envelope を必須検査するため、dispatch なしではゲートを通過できない。正規の親責務（Gate C の直接検査、ユーザーへの質問、deep-thinking 起動、Step ⑤⑥ の直接実行等）はこの制約の対象外である。
 
 ## Subagent 起動方式
 
@@ -43,7 +32,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 1. Step①の最初の worker dispatch 前に `02-report-creation.md §2.1` の既存命名規約を一度だけ実行して `campaign_slug` を決定・凍結する。要求正規化・深度判定・standard/deep 調査・Step②へ同じ値を渡し、worker は独自に再計算・再命名・再発明せず、親から受領した値を artifact（front matter を含む）へそのまま記録する。Step②は `report_slug = campaign_slug` を必須とする
    - `campaign_slug` は report / envelope の命名専用で、campaign の runtime 親 ID ではない。親 = campaign、子 = session の bind は `state.campaign_id` が担う
    - `campaign_id` は sessionStart で mint または handoff から bind し、Red 後の新 session でも再採番しない。tracker は `state.campaign_id` から解決する
-2. `config.yaml > models.{config_key}` からモデルスラグを取得する{{#if requirement_analysis.enabled}}（Step ① は `requirement-analysis/config.yaml` が SoT）{{/if}}
+2. `config.yaml > models.{config_key}` からモデルスラグを取得する（Step ① は `requirement-analysis/config.yaml` が SoT）
 3. Cursor の `Task` ツールを以下のパラメータで起動する:
    - `model`: config.yaml から取得したモデルスラグ
    - `subagent_type`: dispatch モード一覧の値
@@ -56,7 +45,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 6. Subagent 完了後、次ステップへの遷移:
    - 全終端状態で step envelope（`{{agent_workflow.artifact.dir}}/\{slug\}--step\{N\}.md`）の存在と YAML front matter を `gate-artifact.py` で検査する
    - worker が結果または有効な step envelope を返せない場合は、親の **ABORT**（dispatch failure）としてユーザーに報告する。`incomplete` への読み替えや自動再 dispatch はしない
-   - `complete`: Step①は4分類通知後、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} PASS を確認した同一ターンで Step②を dispatchする。 <!-- contract: step1-pass-dispatches-step2-immediately -->Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}}（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
+   - `complete`: Step①は4分類通知後、`workflow-gate.sh step1 <step1-envelope>` PASS を確認した同一ターンで Step②を dispatchする。 <!-- contract: step1-pass-dispatches-step2-immediately -->Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに `workflow-gate.sh step3 [report-file]`（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
    - `incomplete`: 親が step envelope を読み、追加情報付与で再 dispatch
    - `blocked`: 親が reason に応じてエスカレーション
    - `fatal`: 親がユーザーに報告
@@ -69,10 +58,9 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 | Step | 正式成果物・検証 |
 |------|------------------|
-{{#if requirement_analysis.enabled}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` + `normalize_artifact_path` / `depth_triage_artifact_path`（中間 artifact 存在・schema・整合を `gate-artifact.py` が検査） |
-{{else}}| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` |
-{{/if}}| ② | `report_path` の存在 + 親による `step2-report` → `step2` PASS。step2 envelope の `implementation_approval` は `pending` + 候補 digest + `decider: PO` を必須とし、PO承認は機械退出条件に含めない |
-| ③ | `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}} が step3 complete、report `implementation-base-commit` と envelope `base_commit_sha` の完全 SHA 一致、Domain 実差分を検査してから④を dispatch |
+| ① | `investigation_memo_path`（step envelope の本文を指してよい）+ `gate_result: PASS` + `requirement_gate: PASS` + `spec_consistency_gate: PASS` + `feasibility_gate: PASS` + `blocking_open_issues: []` + `normalize_artifact_path` / `depth_triage_artifact_path`（中間 artifact 存在・schema・整合を `gate-artifact.py` が検査） |
+| ② | `report_path` の存在 + 親による `step2-report` → `step2` PASS。step2 envelope の `implementation_approval` は `pending` + 候補 digest + `decider: PO` を必須とし、PO承認は機械退出条件に含めない |
+| ③ | `git diff --name-only <base_commit_sha>` と `changed_files`、`git ls-files --others --exclude-standard` と `untracked_files` を working tree に対して照合し、さらに `workflow-gate.sh step3 [report-file]` が step3 complete、report `implementation-base-commit` と envelope `base_commit_sha` の完全 SHA 一致、Domain 実差分を検査してから④を dispatch |
 | ④ | `gate_results` は `gen` / `build` / `lint` / `test` の4キーだけを持ち、`status: complete` では全値が整数 `0` + 親による `workflow-gate.sh step4` PASS。`PASS` / `SKIP` / `SKIPPED` / 文字列 `"0"` は禁止。application は `gen_artifact_paths` 非空時に変更有無を問わず G-GEN を実測し、空の場合だけ `gen: 0` と未実行理由を記録する。foundation は `bin/foundation-gate self` 成功時に全4キーを `0` へ正規化し、exit 1 のループ超過は blocked、exit 2 は fatal とする |
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
@@ -101,15 +89,9 @@ Step② phase complete 後にだけ、完成レポートのレビューと実装
 
 ## Step ① の分析深度優先ルール
 
-{{#if requirement_analysis.enabled}}
 - `analysis_depth: standard`: requirement-analysis/config.yaml > models.standard_investigation が SoT
 - `analysis_depth: deep`: deep-thinking config.yaml が SoT → standard_investigation は不使用
 - `deferred`: standard 調査を実行 → 完走後に親がスコア起動条件を事後判定して standard/deep を確定
-{{else}}
-- triage_result = `invoked`: deep-thinking config.yaml が SoT → step1_investigation は不使用
-- triage_result = `skipped` / `deferred`: step1_investigation が SoT
-- `deferred` 再判定で起動: deep-thinking config に切替
-{{/if}}
 
 ## モデル利用不可時の挙動
 
@@ -128,7 +110,7 @@ Step ① / ③ で D-* 変更を検知した際にオーケストレータが di
 
 ### モデル
 
-{{#if requirement_analysis.enabled}}`requirement-analysis/config.yaml > models.standard_investigation` を再利用する。{{else}}`config.yaml > models.step1_investigation` を再利用する。{{/if}}
+`requirement-analysis/config.yaml > models.standard_investigation` を再利用する。
 
 ### ADR Worker 入出力
 

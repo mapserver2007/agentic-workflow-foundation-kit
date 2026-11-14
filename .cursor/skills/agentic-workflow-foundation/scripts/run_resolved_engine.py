@@ -23,6 +23,10 @@ import genlib  # noqa: E402
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from yaml_emitter import dump_yaml_text  # noqa: E402
+from yaml_blocks import (  # noqa: E402
+    find_top_block as _find_top_block,
+    indent_of as _indent_of,
+)
 from resolve_budget_thresholds import resolve as resolve_budget_thresholds  # noqa: E402
 
 ROOT_OVERLAY_KEYS = (
@@ -64,8 +68,6 @@ def dump_manifest(manifest: dict) -> str:
 def _normalize_accd_axis(axis: dict, base: dict | None = None) -> dict:
     normalized = dict(base or {})
     normalized.update(axis)
-    if "adopted" not in axis and axis.get("impl"):
-        normalized["adopted"] = axis["impl"]
     if "adopted" not in normalized:
         normalized["adopted"] = "軽量実装（開発型 / パイプライン型 / ドキュメント型では自動採用）"
     if "not_adopted" not in normalized:
@@ -147,13 +149,6 @@ def _apply_upstream_design_inputs(merged: dict) -> dict:
     """統一設計書を stateless input として resolved manifest にだけ反映する。"""
     framework = dict(merged.get("framework") or {})
     framework["upstream_design_inputs"] = _upstream_design_metadata()
-
-    handoff = dict(framework.get("handoff") or {})
-    handoff["resolved_policy"] = (
-        "immutable upstream docs + seed defaults + root manifest から、"
-        "毎回一時 resolved manifest/templates を生成して engine に渡す"
-    )
-    framework["handoff"] = handoff
     merged["framework"] = framework
     return merged
 
@@ -163,15 +158,15 @@ def _is_feature_enabled(manifest: dict, feature: str) -> bool:
 
     トップレベル（code_review / agent_workflow）と dot パス
     （agent_workflow.orchestrator_skill / agent_workflow.maintenance_docs）に対応する。
-    requirement_analysis は agent_workflow.enabled が真のときだけ有効になる。
+    requirement_analysis は agent_workflow の子機能（ADR-0007）で、独立のトグルを持たない。
+    agent_workflow.enabled が真のとき常に有効になる。
     末端が dict で enabled キーを持つ場合はその値を、それ以外は truthiness を返す。
     """
     if not feature:
         return False
-    if feature == "requirement_analysis" or feature.startswith("requirement_analysis."):
+    if feature == "requirement_analysis":
         parent = manifest.get("agent_workflow")
-        if not isinstance(parent, dict) or not bool(parent.get("enabled")):
-            return False
+        return isinstance(parent, dict) and bool(parent.get("enabled"))
     node: object = manifest
     parts = feature.split(".")
     for i, part in enumerate(parts):
@@ -223,159 +218,6 @@ def _migrate_agent_workflow_keys(manifest: dict) -> dict:
         print(f"[migrate] agent_workflow.{_LEGACY_WORKFLOW_KEY} → {_CANONICAL_WORKFLOW_KEY} へ移行")
 
     return manifest
-
-
-def _migrate_root_manifest_file(root_manifest_path: str) -> int:
-    """root manifest ファイルのテキストレベルで旧キーを正規化する。
-
-    dict レベルの検証は _migrate_agent_workflow_keys で行うため、
-    ここでは検証済みのテキスト置換のみ行う。0=更新あり/不要、2=競合。
-    """
-    if not os.path.isfile(root_manifest_path):
-        return 0
-
-    with open(root_manifest_path, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    import re
-
-    old_key_pat = re.compile(r"^(\s+)execute_skill:", re.MULTILINE)
-    new_key_pat = re.compile(r"^(\s+)orchestrator_skill:", re.MULTILINE)
-    old_matches = old_key_pat.findall(text)
-    new_matches = new_key_pat.findall(text)
-
-    if not old_matches:
-        return 0
-
-    if old_matches and new_matches:
-        old_line = re.search(r"^\s+execute_skill:\s*(.+)$", text, re.MULTILINE)
-        new_line = re.search(r"^\s+orchestrator_skill:\s*(.+)$", text, re.MULTILINE)
-        if old_line and new_line and old_line.group(1).strip() != new_line.group(1).strip():
-            print(
-                "FATAL: root manifest に execute_skill と orchestrator_skill が異なる値で併存。",
-                file=sys.stderr,
-            )
-            return 2
-        updated = re.sub(
-            r"^\s+execute_skill:.*\n?",
-            "",
-            text,
-            count=1,
-            flags=re.MULTILINE,
-        )
-    else:
-        updated = re.sub(r"execute_skill", "orchestrator_skill", text)
-    updated = re.sub(
-        r"execute-agent-workflow",
-        "workflow-orchestrator",
-        updated,
-    )
-
-    if updated != text:
-        with open(root_manifest_path, "w", encoding="utf-8") as f:
-            f.write(updated)
-        print(f"[migrate] root manifest のテキストレベル正規化完了: {root_manifest_path}")
-    return 0
-
-
-def _cleanup_legacy_skill_dir() -> int:
-    """旧生成ディレクトリ .cursor/skills/execute-agent-workflow/ を安全に削除する。
-
-    - 生成マーカー（agentic-workflow-foundation スキルの生成物）が確認できる SKILL.md のみ削除
-    - 想定外の内容・追加ファイルがある場合は exit 2
-    - 新スキルが存在しない場合は exit 2（新旧同時不在を防止）
-    """
-    legacy_dir = os.path.join(ROOT, ".cursor", "skills", "execute-agent-workflow")
-    new_dir = os.path.join(ROOT, ".cursor", "skills", "workflow-orchestrator")
-
-    if not os.path.isdir(legacy_dir):
-        return 0
-
-    if not os.path.isdir(new_dir):
-        print(
-            "FATAL: 旧ディレクトリ execute-agent-workflow が存在するが "
-            "新ディレクトリ workflow-orchestrator が未生成。先に generate を実行してください。",
-            file=sys.stderr,
-        )
-        return 2
-
-    entries = os.listdir(legacy_dir)
-    if set(entries) != {"SKILL.md"}:
-        print(
-            f"FATAL: execute-agent-workflow/ に想定外のファイルが存在: {entries}. "
-            f"手動で確認してください。",
-            file=sys.stderr,
-        )
-        return 2
-
-    skill_path = os.path.join(legacy_dir, "SKILL.md")
-    with open(skill_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    if "agentic-workflow-foundation" not in content:
-        print(
-            "FATAL: execute-agent-workflow/SKILL.md に生成マーカーがありません。手動で確認してください。",
-            file=sys.stderr,
-        )
-        return 2
-
-    shutil.rmtree(legacy_dir)
-    print("[cleanup] 旧ディレクトリ .cursor/skills/execute-agent-workflow/ を安全に削除")
-    return 0
-
-
-def _cleanup_legacy_decisions_record() -> int:
-    """廃止された .cursor/skills/decisions-record/ を安全に削除する。"""
-    legacy_dir = os.path.join(ROOT, ".cursor", "skills", "decisions-record")
-    if not os.path.isdir(legacy_dir):
-        return 0
-    entries = os.listdir(legacy_dir)
-    if not entries:
-        shutil.rmtree(legacy_dir)
-        print("[cleanup] .cursor/skills/decisions-record/（空）を削除")
-        return 0
-    if set(entries) != {"SKILL.md"}:
-        print(f"FATAL: decisions-record/ に想定外のファイル: {entries}", file=sys.stderr)
-        return 2
-    skill_path = os.path.join(legacy_dir, "SKILL.md")
-    with open(skill_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    if "agentic-workflow-foundation" not in content:
-        print("FATAL: decisions-record/SKILL.md に生成マーカーなし", file=sys.stderr)
-        return 2
-    shutil.rmtree(legacy_dir)
-    print("[cleanup] .cursor/skills/decisions-record/ を削除")
-    return 0
-
-
-_LEGACY_WORKFLOW_DOCS = {
-    "02-task-decision.md": "# ①退出ゲート — タスク確定の判定",
-    "03-report-creation.md": "# ③ タスクレポートの作成",
-    "04-implementation.md": "# ④ 実装の実行",
-    "05-testing.md": "# ⑤ テスト実装",
-    "06-pr-review.md": "# ⑥ PR レビュー検証",
-    "07-completion.md": "# ⑦ 完了報告",
-}
-
-
-def _cleanup_legacy_workflow_docs() -> int:
-    """連番化前の生成済み step docs を生成マーカー付きの内容だけ安全に削除する。"""
-    workflow_dir = os.path.join(ROOT, "docs", "agent-tasks", "agent-workflow")
-    for filename, expected_heading in _LEGACY_WORKFLOW_DOCS.items():
-        path = os.path.join(workflow_dir, filename)
-        if not os.path.isfile(path):
-            continue
-        with open(path, "r", encoding="utf-8") as f:
-            first_line = f.readline().rstrip("\n")
-        if first_line != expected_heading:
-            print(
-                f"FATAL: 旧 step doc '{path}' の内容が想定と異なります。"
-                "手動で確認してください。",
-                file=sys.stderr,
-            )
-            return 2
-        os.remove(path)
-        print(f"[cleanup] 旧 step doc を削除: {path}")
-    return 0
 
 
 _PROJECT_GATE_UNSAFE_CHARS = set('"\\$`')
@@ -492,16 +334,6 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
     outputs = manifest.get("outputs") or []
     filtered = []
     for out in outputs:
-        # requirement-analysis が workflow の深度判定を担う場合、旧
-        # workflow-triage.md は生成しない。generate 後の legacy cleanup と
-        # outputs カタログが矛盾すると audit/check が失敗するため、解決済み
-        # manifest の段階で除外する。
-        if (
-            out.get("path")
-            == ".cursor/skills/deep-thinking/references/workflow-triage.md"
-            and _is_feature_enabled(manifest, "requirement_analysis")
-        ):
-            continue
         feature = out.get("feature")
         if feature is None:
             filtered.append(out)
@@ -593,33 +425,6 @@ def _inject_approved_tech_contract(manifest: dict, root_manifest_path: str) -> d
     import contract_projection as cp  # noqa: WPS433
 
     return cp.apply_contract_projection(manifest, root_manifest_path)
-
-
-def _indent_of(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
-
-
-def _find_top_block(lines, key: str):
-    """インデント0の `key:` 行から、その配下（インデント>0）が続く範囲を返す。"""
-    start = None
-    for idx, line in enumerate(lines):
-        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
-            start = idx
-            break
-    if start is None:
-        return None, None
-    last = start
-    j = start + 1
-    while j < len(lines):
-        if lines[j].strip() == "":
-            j += 1
-            continue
-        if _indent_of(lines[j]) > 0:
-            last = j
-            j += 1
-            continue
-        break
-    return start, last
 
 
 _BOOTSTRAP_DEAD_BLOCKS = ("outputs", "quality_gate_contract")
@@ -750,27 +555,6 @@ def _run_agent_kaizen_validator(
     )
     from validate_agent_kaizen import run as validate_run
     return validate_run(config_path)
-
-
-def _cleanup_legacy_workflow_triage(manifest: dict) -> int:
-    """requirement_analysis 有効時に旧 workflow-triage.md を安全に削除する。"""
-    if not _is_feature_enabled(manifest, "requirement_analysis"):
-        return 0
-    triage_path = os.path.join(
-        ROOT, ".cursor", "skills", "deep-thinking", "references", "workflow-triage.md",
-    )
-    if not os.path.isfile(triage_path):
-        return 0
-    with open(triage_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    if "agentic-workflow-foundation" not in content and "即時起動条件" not in content:
-        print(
-            f"WARN: {triage_path} に生成マーカーがありません。手動で確認してください。",
-        )
-        return 0
-    os.remove(triage_path)
-    print(f"[cleanup] 旧ファイルを削除: {triage_path}（requirement-analysis へ移管済み）")
-    return 0
 
 
 def _run_worker_contract_validator(
@@ -913,11 +697,6 @@ def main(argv=None) -> int:
         return 2
     work_root = os.path.abspath(args.work_root) if args.work_root else ROOT
 
-    if args.command == "generate" and work_root == ROOT:
-        rc = _migrate_root_manifest_file(args.root_manifest)
-        if rc != 0:
-            return rc
-
     if args.command == "bootstrap":
         try:
             return bootstrap_root_manifest(args.seed_manifest, args.root_manifest)
@@ -957,19 +736,6 @@ def main(argv=None) -> int:
             )
             if rc != 0:
                 return rc
-            if args.command == "generate" and work_root == ROOT:
-                rc = _cleanup_legacy_workflow_docs()
-                if rc != 0:
-                    return rc
-                rc = _cleanup_legacy_skill_dir()
-                if rc != 0:
-                    return rc
-                rc = _cleanup_legacy_decisions_record()
-                if rc != 0:
-                    return rc
-                rc = _cleanup_legacy_workflow_triage(manifest)
-                if rc != 0:
-                    return rc
             if (
                 args.command == "generate"
                 and not args.skip_host_update

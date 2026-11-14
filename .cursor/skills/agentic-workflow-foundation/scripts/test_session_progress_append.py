@@ -17,6 +17,8 @@ sys.path.insert(0, str(HERE))
 import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 ROOT = SKILL_DIR.parent.parent.parent
+sys.path.insert(0, str(ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"))
+import genlib  # noqa: E402
 TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-append.sh.template"
 EMITTER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-emitter.sh.template"
 BYTE_HELPER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-byte-count.sh.template"
@@ -207,14 +209,34 @@ def test_existing_log_without_trailing_newline_is_repaired() -> None:
         assert_equal(rows[-1]["kind"], "review_start", "appended kind")
 
 
-def test_tail_byte_read_contract() -> None:
-    source = TEMPLATE.read_text(encoding="utf-8")
-    assert '.open("rb")' in source, "progress log must be opened in binary mode"
-    assert "seek(-1, 2)" in source, "progress log must seek from EOF"
-    assert "read(1)" in source, "progress log must read only the final byte"
-    assert "read_bytes()" not in source, "progress log must not be loaded in full"
-    assert 'if [[ -s "$PROGRESS_LOG" ]]; then' in source, "empty-log guard is required"
-    assert '"$PROGRESS_LOG" 2>/dev/null)" || return 2' in source, "read failure must fail closed"
+def _append_to_existing_log(prefix: str, content: bytes, session_id: str) -> list[str]:
+    """既存ログに review_start を追記し、追記後の全行（改行で分割）を返す。"""
+    with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
+        root = Path(tmp)
+        (root / ".cursor" / ".session").mkdir(parents=True)
+        script = _install_script(root, "session-progress-append.sh", TEMPLATE)
+        progress = _progress_path(root, session_id)
+        progress.write_bytes(content)
+        result = run_helper(
+            script, root, ["--kind", "review_start", "--extra", VALID_EXTRA], session_id=session_id,
+        )
+        assert_equal(result.returncode, 0, f"{prefix} exit")
+        return progress.read_bytes().decode("utf-8").split("\n")
+
+
+def test_empty_existing_log_gets_no_blank_line() -> None:
+    lines = _append_to_existing_log("progress-append-empty-", b"", "test-append-004")
+    assert_equal(len(lines), 2, "empty log: one row plus trailing newline")
+    assert_equal(lines[1], "", "empty log: ends with a single newline")
+    assert_equal(json.loads(lines[0])["kind"], "review_start", "empty log: first row")
+
+
+def test_log_with_trailing_newline_gets_no_blank_line() -> None:
+    existing = b'{"session_id":"test-append-005","kind":"prompt","extra":{}}\n'
+    lines = _append_to_existing_log("progress-append-newline-ok-", existing, "test-append-005")
+    assert_equal(len(lines), 3, "newline-terminated log: two rows plus trailing newline")
+    assert all(line for line in lines[:2]), "newline-terminated log: no blank line between rows"
+    assert_equal(json.loads(lines[1])["kind"], "review_start", "newline-terminated log: appended row")
 
 
 def test_invalid_schema_is_noop() -> None:
@@ -327,22 +349,15 @@ def test_lock_failure_is_nonzero() -> None:
 
 
 def test_generation_catalog_and_hooks_json() -> None:
-    manifest = MANIFEST.read_text(encoding="utf-8")
-    for needle in (
-        ".cursor/hooks/session-progress-append.sh",
-        "hooks/session-progress-append.sh.template",
-        "executable: true",
-        "review_start",
-        "kind=review_start",
-    ):
-        assert needle in manifest, f"manifest missing {needle}"
-
-    block_start = manifest.find("path: .cursor/hooks/session-progress-append.sh")
-    assert block_start != -1, "append helper output missing"
-    block = manifest[block_start:block_start + 400]
-    assert "template: hooks/session-progress-append.sh.template" in block
-    assert "executable: true" in block
-    assert "review_start" in block
+    outputs = genlib.load_manifest(str(MANIFEST))["outputs"]
+    entry = next(
+        (out for out in outputs if out.get("path") == ".cursor/hooks/session-progress-append.sh"),
+        None,
+    )
+    assert entry is not None, "append helper output missing"
+    assert_equal(entry.get("template"), "hooks/session-progress-append.sh.template", "append helper template")
+    assert entry.get("executable") in (True, "true"), "append helper must be executable"
+    assert "review_start" in (entry.get("required_sections") or []), "append helper must require review_start"
 
     hooks = HOOKS_TEMPLATE.read_text(encoding="utf-8")
     assert "session-progress-append.sh" not in hooks, "helper must not be registered in hooks.json"
@@ -418,7 +433,8 @@ def main() -> int:
         test_invalid_session_is_noop,
         test_valid_append_contract,
         test_existing_log_without_trailing_newline_is_repaired,
-        test_tail_byte_read_contract,
+        test_empty_existing_log_gets_no_blank_line,
+        test_log_with_trailing_newline_gets_no_blank_line,
         test_invalid_schema_is_noop,
         test_shared_flock_with_emitter,
         test_lock_failure_is_nonzero,

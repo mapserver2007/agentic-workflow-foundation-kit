@@ -19,6 +19,11 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import genlib  # noqa: E402
 import tech_contract as tc  # noqa: E402
+from yaml_blocks import (  # noqa: E402
+    find_top_block as _find_top_block,
+    indent_of as _indent_of,
+    yaml_quote as _yaml_quote,
+)
 from contract_projection import (  # noqa: E402
     _require_gen_artifact_paths,
     gate_command_for_profile,
@@ -32,14 +37,7 @@ def _out(level: str, msg: str) -> None:
     print(f"[resolve_quality_gate] {level}: {msg}")
 
 
-def _yaml_quote(value: str) -> str:
-    s = "" if value is None else str(value)
-    if '"' in s:
-        return "'" + s.replace("'", "''") + "'"
-    return '"' + s + '"'
-
-
-def _resolve(manifest_path: str, has_gen_paths: bool):
+def _resolve(manifest_path: str):
     try:
         path = Path(manifest_path)
         design_doc = tc.resolve_design_doc(path)
@@ -60,43 +58,15 @@ def _resolve(manifest_path: str, has_gen_paths: bool):
     if not isinstance(quality, dict):
         return "FATAL", "tech_contract.quality_gate が不正です"
     try:
-        paths = _require_gen_artifact_paths(contract)
+        _require_gen_artifact_paths(contract)
     except tc.SchemaError as exc:
         return "FATAL", str(exc)
-    if not has_gen_paths and "gen_artifact_paths" not in quality:
-        return "FATAL", "tech_contract.quality_gate.gen_artifact_paths が欠落しています"
     gate_cmds = project_quality_gate(contract)
     return {
         "quality_gate": gate_cmds,
         "gate_command": gate_command_for_profile(gate_cmds["profile"]),
         "contract": {gate: quality[gate].get("contract", []) for gate in ("gen", "build", "lint", "test")},
     }, None
-
-
-def _indent_of(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
-
-
-def _find_top_block(lines, key: str):
-    start = None
-    for idx, line in enumerate(lines):
-        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
-            start = idx
-            break
-    if start is None:
-        return None, None
-    last = start
-    j = start + 1
-    while j < len(lines):
-        if lines[j].strip() == "":
-            j += 1
-            continue
-        if _indent_of(lines[j]) > 0:
-            last = j
-            j += 1
-            continue
-        break
-    return start, last
 
 
 def _find_nested_block(lines, parent: str, child: str):
@@ -185,17 +155,14 @@ def main(argv=None) -> int:
         _out("ERROR", f"manifest が見つからない: {args.manifest}")
         return 2
     try:
-        manifest = genlib.load_manifest(args.manifest)
+        genlib.load_manifest(args.manifest)
     except genlib.YamlError as e:
         _out("ERROR", f"manifest 解析失敗: {e}")
         return 2
 
     with open(args.manifest, "r", encoding="utf-8") as f:
         content = f.read()
-    has_gen_paths = bool(
-        re.search(r"^\s+gen_artifact_paths:", content.split("tech_contract:", 1)[-1], re.MULTILINE)
-    )
-    resolved, reason = _resolve(args.manifest, has_gen_paths)
+    resolved, reason = _resolve(args.manifest)
     if resolved == "FATAL":
         _out("ERROR", reason)
         return 2

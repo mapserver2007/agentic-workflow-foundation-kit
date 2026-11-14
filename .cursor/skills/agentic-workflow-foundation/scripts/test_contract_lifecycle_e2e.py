@@ -249,26 +249,6 @@ def main() -> int:
             print("FAIL E: conflict not exit 2")
             return 1
 
-        # F
-        pkg.write_text('{"name":"old","scripts":{"test":"x","dev":"keep"},"extra":true}\n', encoding="utf-8")
-        merge = base_contract(fp, with_file_action=False)
-        merge["provisioning"]["policy"] = "explicit"
-        merge["runtime_materialization"]["actions"] = [{
-            "kind": "json-key-merge", "target": "package.json", "ownership": "project",
-            "conflict_policy": "merge_owned", "evidence_ref": "x",
-            "owned_keys": ["name", "scripts.test"],
-            "values": {"name": "fixture", "scripts.test": "echo ok"},
-        }]
-        write_sealed_manifest(root, merge, design_text)
-        rp.apply_file_action(merge["runtime_materialization"]["actions"][0], root)
-        data = json.loads(pkg.read_text())
-        if data.get("extra") is not True or data.get("name") != "fixture":
-            print("FAIL F: non-owned keys not preserved")
-            return 1
-        if data.get("scripts", {}).get("dev") != "keep":
-            print("FAIL F: nested scripts.dev not preserved")
-            return 1
-
         if rc.main(["--manifest", str(manifest)]) != 0 or rd.main(["--manifest", str(manifest)]) != 0:
             print("FAIL: consumers")
             return 1

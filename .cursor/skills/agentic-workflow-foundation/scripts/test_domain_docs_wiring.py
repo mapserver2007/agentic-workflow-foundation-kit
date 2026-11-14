@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -82,14 +83,27 @@ def test_document_templates_preserve_bundling_contracts():
     implementation = _render("docs/agent-tasks/agent-workflow/03-implementation.md.template")
     dispatch = _render("skills/workflow-orchestrator/references/worker-dispatch.md.template")
 
-    assert (
-        "`workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、"
-        "`session.verification.gate_command` 実行）"
-    ) in quality
-    assert "{具体的な理由}" not in completion
-    for allowed_reason in ("コードから判断可能", "振る舞い非変更", "バグ修正で仕様へ復帰"):
-        assert allowed_reason in completion
-    assert "3.1〜3.5" in implementation
+    # Step⑤ の検証行: Domain 実差分検査（G-WRITE-SCOPE-DOMAIN-001）の後に gate_command を実行する順序。
+    step5_lines = [
+        line for line in quality.splitlines()
+        if "workflow-gate.sh step5" in line and "G-WRITE-SCOPE-DOMAIN-001" in line
+    ]
+    assert step5_lines
+    for line in step5_lines:
+        assert line.index("G-WRITE-SCOPE-DOMAIN-001") < line.index("session.verification.gate_command")
+    # 完了報告が案内する「反映不要」の許可理由は、gate の ALLOW_REASON_PATTERNS が受理する。
+    gate = {"__name__": "rendered_gate_maintenance_docs"}
+    exec(compile(_render("skills/session-handover/scripts/gate-maintenance-docs.py.template"), "gate.py", "exec"), gate)
+    allow_patterns = gate["ALLOW_REASON_PATTERNS"]
+    reason_line = next(line for line in completion.splitlines() if "judgment_reason:" in line)
+    phrases = re.findall(r"「(.+?)」", reason_line)
+    assert len(phrases) == len(allow_patterns), phrases
+    for phrase in phrases:
+        assert any(re.search(pattern, phrase, re.IGNORECASE) for pattern in allow_patterns), phrase
+    # Worker Contract が参照する手順範囲は、実在する `## 3.N` 見出しの末尾までと一致する。
+    step_numbers = [int(n) for n in re.findall(r"(?m)^## 3\.(\d+) ", implementation)]
+    assert step_numbers == list(range(1, len(step_numbers) + 1)), step_numbers
+    assert f"3.1〜3.{step_numbers[-1]}" in implementation
     for document in (implementation, dispatch):
         assert "git diff --name-only <base_commit_sha>" in document
         assert "git ls-files --others --exclude-standard" in document

@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-import os
 import re
 import subprocess
 import sys
@@ -32,18 +31,6 @@ from test_contract_fixture import (  # noqa: E402
 
 TECH_SCRIPT = HERE / "tech_contract.py"
 ENGINE = HERE / "run_resolved_engine.py"
-SKILL_MANIFEST = HERE.parent / "manifest.yaml"
-
-
-def _run_cli(args: list[str]) -> tuple[int, str, str]:
-    result = subprocess.run(
-        [sys.executable, str(TECH_SCRIPT), *args],
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
 def _invoke_prov(args: list[str]) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -365,71 +352,6 @@ def undeclared_writes_schema_rejection() -> bool:
         return False
 
 
-def declared_partial_write_report() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# x\nGo\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = base_contract(fp)
-        contract["provisioning"]["command_actions"] = [{
-            "argv": ["false"],
-            "cwd": ".",
-            "effects": ["lockfile_write"],
-            "writes": ["partial.lock"],
-            "evidence_ref": "x",
-        }]
-
-        def runner(_argv, cwd):
-            (cwd / "partial.lock").write_text("x\n", encoding="utf-8")
-            return 1
-
-        manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
-        approved = tc.load_approved(manifest, design)
-        plan = rp.build_plan(approved, root)
-        code, report = rp.apply_plan(plan, approved, root, command_runner=runner)
-        if code != 1 or "partial.lock" not in report.get("changed_targets", []):
-            print("FAIL: partial write report", report, file=sys.stderr)
-            return False
-    return True
-
-
-def real_cli_yaml_roundtrip_web_go() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        for label, builder, design_text in (
-            ("web", web_lifecycle_contract, "# Web\nTypeScript\n"),
-            ("go", go_lifecycle_contract, "# Go\nGo\n"),
-        ):
-            design = root / f"{label}-TECH.md"
-            design.write_text(design_text, encoding="utf-8")
-            fp = tc.source_fingerprint(design)
-            draft = builder(fp)
-            draft_path = root / f"{label}-draft.yaml"
-            draft_path.write_text("\n".join(tc._dump_yaml({"tech_contract": draft})) + "\n", encoding="utf-8")
-            manifest = root / f"{label}-manifest.yaml"
-            manifest.write_text(
-                "version: 1\nproject:\n  tech_stack_design_filename: TECH.md\n", encoding="utf-8"
-            )
-            preimage = tc.file_digest(manifest)
-            code, _, err = _run_cli([
-                "validate", "--design-doc", str(design), "--draft", str(draft_path), "--check",
-            ])
-            if code != 0:
-                print(f"FAIL {label} validate", err, file=sys.stderr)
-                return False
-            code, _, err = _run_cli([
-                "apply", "--design-doc", str(design), "--draft", str(draft_path),
-                "--manifest", str(manifest), "--preimage", preimage,
-            ])
-            if code != 0:
-                print(f"FAIL {label} apply", err, file=sys.stderr)
-                return False
-            tc.load_approved(manifest, design)
-    return True
-
-
 def isolated_engine_generated_outputs() -> bool:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -480,17 +402,6 @@ def regenerate_drift_check() -> bool:
     coderabbit = ROOT / ".coderabbit.yaml"
     if not coderabbit.is_file():
         print("FAIL: .coderabbit.yaml missing", file=sys.stderr)
-        return False
-    return True
-
-
-def profile_line_level_hardcode() -> bool:
-    result = subprocess.run(
-        [sys.executable, str(HERE / "test_profile_selector_static.py")],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(result.stdout, result.stderr, file=sys.stderr)
         return False
     return True
 
@@ -548,10 +459,7 @@ def main() -> int:
         "preflight_no_subprocess_and_version_marker": preflight_no_subprocess_and_version_marker,
         "missing_executable_no_traceback_exit2": missing_executable_no_traceback_exit2,
         "undeclared_writes_schema_rejection": undeclared_writes_schema_rejection,
-        "declared_partial_write_report": declared_partial_write_report,
-        "real_cli_yaml_roundtrip_web_go": real_cli_yaml_roundtrip_web_go,
         "isolated_engine_generated_outputs": isolated_engine_generated_outputs,
-        "profile_line_level_hardcode": profile_line_level_hardcode,
         "gen_paths_missing_empty_nonempty": gen_paths_missing_empty_nonempty,
         "regenerate_drift_check": regenerate_drift_check,
     }

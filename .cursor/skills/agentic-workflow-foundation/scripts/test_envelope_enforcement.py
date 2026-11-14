@@ -209,17 +209,6 @@ def _setup_report(tmp: Path, slug: str, content: str = "# Test Report\n"):
     return report
 
 
-def _run_workflow_gate(step: str, args: list[str] = None, env_override: dict = None) -> subprocess.CompletedProcess:
-    gate = _find_workflow_gate()
-    if not gate.exists():
-        return None
-    cmd = ["bash", str(gate), step] + (args or [])
-    env = dict(os.environ)
-    if env_override:
-        env.update(env_override)
-    return subprocess.run(cmd, capture_output=True, text=True, env=env)
-
-
 def test_step2_report_envelope_missing_step1():
     """step2-report: step1 envelope 欠落で exit 1。"""
     gate = _find_workflow_gate()

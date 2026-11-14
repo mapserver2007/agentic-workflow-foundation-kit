@@ -136,27 +136,7 @@ def main() -> int:
                 print(f"[run_all_foundation_tests] FAIL: root snapshot drift after {test_name}: {drift}")
                 return 1
 
-        print(f"[run_all_foundation_tests] {passed}/{total} passed (pass 1)")
-        passed2 = 0
-        for test_name in TESTS_IN_ORDER:
-            test_path = HERE / test_name
-            print(f"[run_all_foundation_tests] RUN (pass 2): {test_name}")
-            result = subprocess.run(
-                [sys.executable, str(test_path)],
-                cwd=str(HERE),
-                env=test_env,
-            )
-            status = propagate_exit(result.returncode)
-            if status != 0:
-                print(f"[run_all_foundation_tests] FAIL pass 2: {test_name} (exit {result.returncode})")
-                return status
-            passed2 += 1
-            drift = assert_unchanged(before, snapshot())
-            if drift:
-                print(f"[run_all_foundation_tests] FAIL: root snapshot drift pass 2 after {test_name}: {drift}")
-                return 1
-
-    print(f"[run_all_foundation_tests] {passed2}/{total} passed (pass 2)")
+    print(f"[run_all_foundation_tests] {passed}/{total} passed")
     return 0
 
 

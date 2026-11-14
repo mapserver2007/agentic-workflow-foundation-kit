@@ -107,7 +107,7 @@ tracker は campaign の runtime として保持される。session が完了し
 
 ## handoff manifest
 
-handoff manifest の必須セクション一覧は `manifest.yaml > framework.handoff.manifest_required_sections` が SoT。manifest 内のセクションは「記録」（セッション判断ログ — 参照のみ、却下した案を再提案しない）と「指示」（次セッションの推奨アクション — 行動として実行）に分かれる。
+handoff manifest の必須セクションは、Yellow / Red 到達時に `session-budget-evaluator.sh` が生成する骨格の見出しが SoT。manifest 内のセクションは「記録」（セッション判断ログ — 参照のみ、却下した案を再提案しない）と「指示」（次セッションの推奨アクション — 行動として実行）に分かれる。
 
 復旧時の行動制約（SoT: manifest.yaml > recovery_constraints）:
 
@@ -156,7 +156,7 @@ cat .cursor/.session/*.json | jq .
 - session handoff の内容品質は AI が作る `handoff-{session_id}.md` の品質に依存する。manifest が無く snapshot が 1 件だけなら、compact 情報と tracker の厳格な検証に成功した場合のみ campaign bind と包括的構造化スナップショット（turns.jsonl + tracker + state）の fallback 注入を行う。検証に失敗した場合は誤 bind を避けて本文を注入せず、handoff または明示的な復旧を促す。snapshot が 2 件以上なら誤選択を避けるため自動復旧せず選択を求める
 
 > preCompact スナップショット / manifest 骨格の機械生成 / 注入サイズ上限 / スナップショット突合 /
-> compact-events.jsonl 校正 / 校正サイクル / MemPalace 共存 / 将来拡張候補の詳細は
+> compact-events.jsonl 校正 / 校正サイクル / 将来拡張候補の詳細は
 > [`docs/references/context-budget-internals.md`](references/context-budget-internals.md) を参照。
 
 ## チェックリスト

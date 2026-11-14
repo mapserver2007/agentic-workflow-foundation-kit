@@ -80,15 +80,6 @@ def _split_pointer(key: str) -> list[str]:
     return key.split(".")
 
 
-def _get_at(doc: object, parts: list[str]) -> object:
-    cur = doc
-    for part in parts:
-        if not isinstance(cur, dict) or part not in cur:
-            return None
-        cur = cur[part]
-    return cur
-
-
 def _set_at(doc: dict, parts: list[str], value: object) -> None:
     cur: dict = doc
     for part in parts[:-1]:

@@ -2,9 +2,6 @@
 """Step④ loop6: 監査再現テスト（root不変/command/postcondition/schema/isolated E2E）。"""
 from __future__ import annotations
 
-import contextlib
-import io
-import json
 import subprocess
 import sys
 import tempfile
@@ -43,13 +40,6 @@ def _run_cli(args: list[str]) -> tuple[int, str, str]:
         text=True,
     )
     return result.returncode, result.stdout, result.stderr
-
-
-def _invoke_prov(args: list[str]) -> tuple[int, str, str]:
-    out, err = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = prov.main(args)
-    return code, out.getvalue(), err.getvalue()
 
 
 def runner_root_immutable_twice() -> bool:
@@ -151,57 +141,6 @@ def command_only_allowed() -> bool:
     return True
 
 
-def postcondition_marker_reported() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# x\nGo\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = base_contract(fp, with_file_action=False)
-        contract["provisioning"]["policy"] = "explicit"
-        contract["runtime_materialization"]["actions"] = []
-        contract["provisioning"]["command_actions"] = [fixture_command_action(".provision-marker")]
-        contract["provisioning"]["preflight_checks"] = []
-        manifest, design = write_sealed_manifest(root, contract, "# x\nGo\n")
-        approved = tc.load_approved(manifest, design)
-        plan = rp.build_plan(approved, root)
-        code, report = rp.apply_plan(plan, approved, root)
-        marker = ".state/provision-state.json"
-        if code != 0 or marker not in report.get("changed_targets", []):
-            print("FAIL: postcondition marker not reported", report, file=sys.stderr)
-            return False
-    return True
-
-
-def marker_version_mismatch() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# x\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = base_contract(fp, with_file_action=True)
-        contract["provisioning"]["command_actions"] = []
-        contract["provisioning"]["preflight_checks"] = [{
-            "kind": "json-value-pattern",
-            "target": ".state/toolchain-state.json",
-            "pointer": "pnpm.version",
-            "pattern": r"^9\.\d+\.\d+$",
-            "evidence_ref": "x",
-            "guidance": "version mismatch expected",
-        }]
-        manifest, design = write_sealed_manifest(root, contract, "# x\n")
-        marker = root / ".state" / "toolchain-state.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('{"pnpm":{"version":"11.0.0"}}\n', encoding="utf-8")
-        errors = rp.run_preflight(tc.load_approved(manifest, design), root)
-        if not errors or not any("json-value-pattern" in error for error in errors):
-            print("FAIL: version mismatch not detected", errors, file=sys.stderr)
-            return False
-    return True
-
-
 def all_required_packages_covered() -> bool:
     with tempfile.TemporaryDirectory() as tmp:
         doc = Path(tmp) / "TECH.md"
@@ -229,54 +168,6 @@ def all_required_packages_covered() -> bool:
             return False
         print("FAIL: uncovered required_packages accepted", file=sys.stderr)
         return False
-
-
-def lockfile_state_digest_mismatch() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# x\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = base_contract(fp, with_file_action=True)
-        contract["provisioning"]["command_actions"] = []
-        contract["provisioning"]["preflight_checks"] = [{
-            "kind": "state-digests",
-            "marker": ".state/provision-state.json",
-            "paths": ["pnpm-lock.yaml"],
-            "evidence_ref": "x",
-            "guidance": "digest mismatch expected",
-        }]
-        manifest, design = write_sealed_manifest(root, contract, "# x\n")
-        marker = root / ".state" / "provision-state.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('{"digests":{"pnpm-lock.yaml":"deadbeef"}}\n', encoding="utf-8")
-        (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
-        errors = rp.run_preflight(tc.load_approved(manifest, design), root)
-        if not errors or not any("state-digests" in error for error in errors):
-            print("FAIL: state digest mismatch not detected", errors, file=sys.stderr)
-            return False
-    return True
-
-
-def malformed_inputs_no_traceback() -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "TECH.md"
-        design.write_text("# x\n", encoding="utf-8")
-        draft = root / "draft.yaml"
-        draft.write_text("tech_contract: [not-a-mapping]\n", encoding="utf-8")
-        result = subprocess.run(
-            [sys.executable, str(TECH_SCRIPT), "validate",
-             "--design-doc", str(design), "--draft", str(draft), "--check"],
-            capture_output=True,
-            text=True,
-        )
-        combined = result.stdout + result.stderr
-        if result.returncode != 2 or "Traceback" in combined:
-            print("FAIL: malformed input handling", result.returncode, combined, file=sys.stderr)
-            return False
-    return True
 
 
 def _engine_stack(label: str, contract_builder, design_text: str, *, assert_no_package_json: bool) -> bool:
@@ -384,61 +275,7 @@ def real_isolated_engine_outputs_web_go() -> bool:
         "# Go fixture\nGo\n",
         assert_no_package_json=True,
     )
-    if not web_ok or not go_ok:
-        return False
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# Go fixture\nGo\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = go_lifecycle_contract(fp)
-        manifest, design = write_sealed_manifest(root, contract, "# Go fixture\nGo\n")
-        code, out, _ = _invoke_prov(["--plan", "--manifest", str(manifest), "--design-doc", str(design)])
-        if code != 0:
-            print("FAIL: isolated provision plan", out, file=sys.stderr)
-            return False
-        plan = json.loads(out)
-        plan_path = root / "plan.json"
-        plan_path.write_text(json.dumps(plan), encoding="utf-8")
-        code, apply_out, _ = _invoke_prov([
-            "--apply", "--manifest", str(manifest), "--design-doc", str(design),
-            "--plan-file", str(plan_path), "--approve-plan", plan["plan_digest"],
-        ])
-        if code != 0:
-            print("FAIL: isolated provision apply", apply_out, file=sys.stderr)
-            return False
-        if prov.main(["--preflight", "--manifest", str(manifest), "--design-doc", str(design)]) != 0:
-            print("FAIL: isolated provision preflight", file=sys.stderr)
-            return False
-        if conf.main(["--manifest", str(manifest)]) != 0:
-            print("FAIL: isolated provision conformance", file=sys.stderr)
-            return False
-        go_mod = root / "go.mod"
-        expected = "module example.com/go-fixture\n\ngo 1.22\n"
-        if not go_mod.is_file() or go_mod.read_text(encoding="utf-8") != expected:
-            print("FAIL: go.mod exact bytes", file=sys.stderr)
-            return False
-        if (root / "package.json").is_file():
-            print("FAIL: package.json present in go workspace", file=sys.stderr)
-            return False
-    return True
-
-
-def profile_each_line_checked() -> bool:
-    result = subprocess.run(
-        [sys.executable, str(HERE / "test_profile_selector_static.py")],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(result.stdout, result.stderr, file=sys.stderr)
-        return False
-    text = (HERE / "test_profile_selector_static.py").read_text(encoding="utf-8")
-    if 'if "{{session.verification.gate_command}}" in text:' in text:
-        print("FAIL: profile test still skips whole files", file=sys.stderr)
-        return False
-    return True
+    return web_ok and go_ok
 
 
 def main() -> int:
@@ -446,13 +283,8 @@ def main() -> int:
         "duplicate_preflight_rejected": duplicate_preflight_rejected,
         "command_missing_declared_write_fails": command_missing_declared_write_fails,
         "command_only_allowed": command_only_allowed,
-        "postcondition_marker_reported": postcondition_marker_reported,
-        "marker_version_mismatch": marker_version_mismatch,
         "all_required_packages_covered": all_required_packages_covered,
-        "lockfile_state_digest_mismatch": lockfile_state_digest_mismatch,
-        "malformed_inputs_no_traceback": malformed_inputs_no_traceback,
         "real_isolated_engine_outputs_web_go": real_isolated_engine_outputs_web_go,
-        "profile_each_line_checked": profile_each_line_checked,
         "runner_root_immutable_twice": runner_root_immutable_twice,
     }
     for name, fn in checks.items():

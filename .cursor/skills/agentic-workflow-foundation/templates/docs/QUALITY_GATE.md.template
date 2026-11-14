@@ -30,7 +30,7 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-LINT | `bin/quality-gate lint` | exit 0 |
 | G-TEST | `bin/quality-gate test` | exit 0（全テスト PASS） |
 
-**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}コードゲートの実行{{/if}} は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
+**G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。`workflow-gate.sh step4` は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:
 - 生成物に関わる変更: `bin/quality-gate gen && bin/quality-gate verify`
@@ -48,7 +48,7 @@ Worker Contract の静的検査も、生成済み作業ツリーの `work_root` 
 
 #### Step4 完了チェックゲート
 
-{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}profile 別コードゲート{{/if}} は、envelope 検査と profile 別コードゲートが exit 0 の場合だけ、対象レポート1件へ `gate-test.py` を実行する。`gate-test.py` は完了チェック節内の次の3項目を検査する。
+`workflow-gate.sh step4` は、envelope 検査と profile 別コードゲートが exit 0 の場合だけ、対象レポート1件へ `gate-test.py` を実行する。`gate-test.py` は完了チェック節内の次の3項目を検査する。
 
 | 検査 ID | 項目 | 合格条件 |
 | --- | --- | --- |
@@ -58,10 +58,10 @@ Worker Contract の静的検査も、生成済み作業ツリーの `work_root` 
 
 完了チェック見出しは `## 完了チェック` と番号付きの `## 10. 完了チェック` を認識し、見出しが重複する場合は fail-closed で exit 2 とする。3項目の未完了・欠落は exit 1、レポートパス不正・読込不能は exit 2 とする。
 
-CLI 契約は `gate-test.py <report-file> [--format=<human|json>]` または `gate-test.py <report-file> [--format <human|json>]` であり、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4` も同じ2形式を受理する{{else}}個別の `gate-test.py` がこの形式を受理する{{/if}}。`--format=json` / `--format json` の JSON には正規化済み `report_path` と `exit_code` を含める。
+CLI 契約は `gate-test.py <report-file> [--format=<human|json>]` または `gate-test.py <report-file> [--format <human|json>]` であり、`workflow-gate.sh step4` も同じ2形式を受理する。`--format=json` / `--format json` の JSON には正規化済み `report_path` と `exit_code` を含める。
 
 JSON モードのストリーム契約:
-- {{#if agent_workflow.gate_scripts}}`workflow-gate.sh`{{else}}各ゲート{{/if}} のゲートヘッダ、envelope / コードゲートの出力、引数エラーの `FATAL` は stderr に出力する
+- `workflow-gate.sh` のゲートヘッダ、envelope / コードゲートの出力、引数エラーの `FATAL` は stderr に出力する
 - 引数エラー時は stdout を空にし、`gate-test.py` が生成する完了チェックの JSON 結果だけを stdout に出力する
 
 #### quality gate backend contract
@@ -132,7 +132,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 
 `source_type: manual` の queue は突合スキャンから除外する。移行期間なし・即時 Hard Fail。
 
-**失敗時の戻り先**: レポートの maintenance-docs-judgment を確定し、必要に応じて queue ファイルを作成・修正した後 {{#if agent_workflow.gate_scripts}}`workflow-gate.sh archive`{{else}}`archive-gate.sh`{{/if}} を再実行する。
+**失敗時の戻り先**: レポートの maintenance-docs-judgment を確定し、必要に応じて queue ファイルを作成・修正した後 `workflow-gate.sh archive` を再実行する。
 {{/if}}
 {{/if}}
 
@@ -182,7 +182,7 @@ G-{GATE}-{CATEGORY}-{NNN}
 WARN は exit 0 を返すため Advisory ループの対象外（再実行不要の注意喚起）。FAIL のみが Advisory ループに乗る。
 {{#if agent_workflow.enabled}}
 
-`reports/` ディレクトリの欠落は exit 2、対象レポートが0件なら ARCH / REPORT は PASS とする。archive 入口は {{#if agent_workflow.gate_scripts}}`workflow-gate.sh archive <report>`{{else}}`archive-gate.sh <report>`{{/if}} であり、引数なし実行は禁止する。
+`reports/` ディレクトリの欠落は exit 2、対象レポートが0件なら ARCH / REPORT は PASS とする。archive 入口は `workflow-gate.sh archive <report>` であり、引数なし実行は禁止する。
 {{/if}}
 
 **campaign / session の識別子責務**: **親 = campaign、子 = session** とする。`campaign_id` は創設 `session_id` と同値の不変 IDであり、tracker（`{{project.tracking_artifact}}`）を解決する唯一のキーである。`session_id` は現在チャットの state / handoff / turns / progress に限定し、`campaign_slug` は report / envelope の命名用として別管理する。
@@ -202,7 +202,6 @@ campaign tracker `{{project.tracking_artifact}}` のフェーズ境界（計画�
 
 WARN は exit 0、FAIL（exit 1）のみが Advisory ループに乗る。引数不正・追跡ドキュメント不在は exit 2（致命的）。
 
-{{#if agent_workflow.gate_scripts}}
 ### 1.7 ワークフローゲートディスパッチャー
 
 workflow-orchestrator のフェーズ境界ゲートを統一インターフェースで実行するディスパッチャー。tech stack が変わっても呼び出し方は不変（再生成で内部コマンドが差し替わる）。
@@ -268,9 +267,8 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 **設計原則**: ディスパッチャー自体は tech stack に依存しない安定インターフェース。検証入口は `project.quality_gate.profile` の単一 selector、内部 backend は承認済み `tech_contract` からテンプレート展開時に決定される。本リポジトリは foundation/engine を保持しない（`foundation.enabled: false`）ため、contract の検査・pin を行う foundation scripts は利用できない。tech stack 変更時は root `manifest.yaml` の `tech_contract` を更新し、kit updater（`agentic-workflow-update`）の plan → 計画全体承認 → apply で生成物へ反映する。
 {{/if}}
 
-**archive ゲート（G-ARCHIVE-CHECK-001{{#if agent_workflow.artifact}} + G-ARCHIVE-ARTIFACT-001{{/if}}）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。{{#if agent_workflow.artifact}}加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。手動削除は行わない。{{/if}} FAIL 時は未完了項目を列挙し exit 1 を返す。
+**archive ゲート（G-ARCHIVE-CHECK-001 + G-ARCHIVE-ARTIFACT-001）**: タスクレポートの完了チェック 6 項目（実装 / テスト / コードゲート / PR レビュー / {{#if agent_workflow.maintenance_docs.enabled}}maintenance-docs/ 起票判定{{else}}docs 反映{{/if}} / ADR 起票判定）がすべて `[x]` であることを機械検査する。加えて、レポート slug に紐づく残存 partial artifact（`{{agent_workflow.artifact.dir}}/{slug}--*.md`）がないことを検査する。残存がある場合は FAIL。手動削除は行わない。 FAIL 時は未完了項目を列挙し exit 1 を返す。
 
-{{#if agent_workflow.artifact}}
 **artifact ゲート（G-ARTIFACT-*）**: Worker artifact（`{{agent_workflow.artifact.dir}}/` 配下の YAML front matter + Markdown body ファイル）の envelope を検査する。`status` / `step` 必須フィールド、ステップ別必須フィールド（complete 時）、`base_commit_sha` 形式を検証する。Step ③ `blocked: adr_required` 時は `base_commit_sha` と `decision_alternatives`（2 件以上）を必須化する（G-ARTIFACT-ADR-SHA-001 / G-ARTIFACT-ADR-ALTS-001）。PyYAML 未導入時は exit {{agent_workflow.artifact.envelope.parser_missing_exit}}（致命的エラー）。
 
 **Step ④ gate_results 検査**:
@@ -288,7 +286,6 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 | G-ARTIFACT-STEP2-APPROVAL-003 | `implementation_approval.approved_plan_digest` が64桁の SHA-256 hex 形式である |
 | G-ARTIFACT-STEP2-APPROVAL-004 | `implementation_approval.decider` が `PO` である |
 
-{{#if requirement_analysis.enabled}}
 **Step ① 中間 artifact 検査（G-ARTIFACT-RA-REF/NORM/DEPTH/CONSIST/GATE-SOURCE）**: `status=complete` かつ `step=step1` のとき、中間 artifact の存在・schema・整合を追加検査する。
 
 | 検査 ID | 検査内容 |
@@ -339,7 +336,6 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 | --- | --- |
 | G-REPORT-RA-AC-001 | レポートに「受入条件」見出しと `AC-NNN:` 定義が 1 件以上存在し重複がない |
 | G-REPORT-RA-DIGEST-001 | レポートの `requirements_digest` が64桁の SHA-256 hex 形式で、Step① envelope の値と大小文字非依存で一致する |
-{{/if}}
 
 **redispatch ゲート（G-REDISPATCH-*）**: re-dispatch 前に partial artifact の `base_commit_sha` / `changed_files` / `untracked_files` を現在の working tree と照合する。差分不一致時は FAIL（exit 1）で re-dispatch を阻止する。
 
@@ -348,8 +344,6 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 **step2-report envelope 必須検査**: `workflow-gate.sh step2-report` はレポート構造検査（`gate-report.py`）の前に、対応する step1/step2 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。report basename、step1/step2 envelope prefix、両 front matter の `campaign_slug`、step2 の `report_path` stem、`report_slug` を同じ campaign slug に束縛する。envelope 欠落・不正・不一致は exit 1（`gate-report.py` を実行しない）。
 
 **step3 / step4 envelope 必須検査**: `workflow-gate.sh step3` は Step③ complete を検査し、`G-WRITE-SCOPE-BASE-001` と `G-WRITE-SCOPE-DOMAIN-001` が PASS の場合だけ④ worker を dispatch できる。`workflow-gate.sh step4` は防御層として同じ Step③基準 SHA・実差分検査を再実行した後、対応する step3/step4 の complete envelope（G-ARTIFACT）の存在と妥当性を検査する。Step③ complete は `untracked_files` が必須（G-ARTIFACT-STEP3-UNTRACKED-001）。envelope 欠落・不正または実差分違反は exit 1（profile に応じた code gate と `gate-test.py` を実行しない）。`foundation` profile では `bin/foundation-gate self`、`application` profile では G-GEN + `bin/quality-gate verify` を実行し、コードゲート成功後に完了チェック3項目を検査する。
-{{/if}}
-{{/if}}
 
 ## 2. 例外承認フロー
 
@@ -416,16 +410,13 @@ workflow-gate.sh step6 {{agent_workflow.ticket.example}}
 ## 3. フェーズ境界ゲート
 {{#if foundation.enabled}}
 
-campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたげるため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたげるため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、BAS の Finding Code 体系（79 種）は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）/ ワークフローゲートディスパッチャー（§1.7）/ 自己検証ゲート（§4）という**軽量シェルゲート + 軽量 Python ゲート（`gate-*.py`）+ 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 
 {{else}}
-campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたぐため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、重量級の `gate-*.py` / Finding Code 体系は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）{{#if agent_workflow.gate_scripts}}/ ワークフローゲートディスパッチャー（§1.7）{{/if}}という**軽量シェルゲート + 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
+campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡ドキュメント = 1 PR）のライフサイクルに沿って、フェーズごとに適用ゲートが切り替わる。1つの campaign は複数の session をまたぐため、ゲートは現在の `session_id` ではなく `state.campaign_id` から tracker を解決する。本リポは軽量実装のため、BAS の Finding Code 体系（79 種）は持たず、コードゲート（§1.1）/ セッション開始ゲート（§1.5）/ 計画ライフサイクルゲート（§1.6）/ ワークフローゲートディスパッチャー（§1.7）という**軽量シェルゲート + 軽量 Python ゲート（`gate-*.py`）+ 軽量検査ID**で各境界を機械検査する。シェルゲートで判定できない判断（実装方針の妥当性等）のみ Advisory ループ（AI の自主遵守）に残す。
 {{/if}}
-{{#if agent_workflow.gate_scripts}}
 **統一ディスパッチャー**: フェーズ境界ゲートは `workflow-gate.sh <step>` で統一実行できる（§1.7）。個別スクリプトの直接実行も引き続き有効。
-{{/if}}
 
-{{#if agent_workflow.gate_scripts}}
 | フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
 | --- | --- | --- | --- |
 | **セッション開始** | （前セッション終了時）handoff manifest 消費済み | 新セッションの整合性確認完了 | `session-start-gate.sh`（§1.5：handoff / tracker 停滞{{#if agent_workflow.enabled}} / ARCH-001・ARCH-002 / reports 停滞{{/if}}） |
@@ -437,18 +428,6 @@ campaign tracker `{{project.tracking_artifact}}`（1キャンペーン = 1追跡
 | **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされ、初回 Mode A の `review-start` が PASS | `workflow-gate.sh step5`（G-WRITE-SCOPE-DOMAIN-001 による Domain 実差分検査後、`session.verification.gate_command` 実行）→ `workflow-gate.sh review-start`（Step③/④ + prompt/session/PR/readback 再検証） |
 | **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可 | `workflow-gate.sh step6`{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review`）{{/if}}。Step⑤の出口かつStep⑥の入口 |
 | **完了報告 → アーカイブ** | Step⑥の最終判定完了 + 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `workflow-gate.sh archive <report>`（§1.6 G-PLAN-REVIEW-001 + G-ARCHIVE-CHECK-001） |
-{{else}}
-| フェーズ境界 | 前フェーズの出口条件 | 後フェーズの入口条件 | 出口検査 |
-| --- | --- | --- | --- |
-| **セッション開始** | （前セッション終了時）handoff manifest 消費済み | 新セッションの整合性確認完了 | `.cursor/skills/session-handover/scripts/session-start-gate.sh`（§1.5） |
-| **計画 → 実装** | `{{project.tracking_artifact}}` に目的・対象ファイル・検証計画・完了チェックが揃い、PO が「実装開始」指示 | 既存実装踏襲可否の判断完了、ブランチ作成済み | `.cursor/skills/session-handover/scripts/plan-gate.sh report`（§1.6 G-PLAN-SECTION-001 / -PLACEHOLDER-001） |
-| **実装 → 検証** | 変更が一区切り（コミット単位）に達した | §1.1 コードゲートを実行できる状態 | `bin/quality-gate verify`（gen 対象変更時は先に `bin/quality-gate gen` + porcelain チェック） |
-| **検証 → PR レビュー** | §1.1 コードゲート全 PASS（G-GEN / G-BUILD / G-LINT / G-TEST）| PR が `{{project.tracking_artifact}}` にリンクされている | `.cursor/skills/session-handover/scripts/verification-gate.sh`（`session.verification.gate_command` 実行） |
-| **PR レビュー → 完了** | レビュー指摘対応完了 + 「レビュー完了承認」記録（`承認取得済み`）+ `{{project.tracking_artifact}}` 完了チェックすべて `[x]` | 完了報告へ進行可能 | `.cursor/skills/session-handover/scripts/plan-gate.sh review`（§1.6 G-PLAN-REVIEW-001）+ runtime 残存は次セッションの §1.5 `G-SESSION-DONE-001` で検出 |
-{{#if agent_workflow.enabled}}
-| **完了報告 → アーカイブ** | 完了チェックすべて `[x]` | タスクレポートを `reports/archives/` へ移動可 | `.cursor/skills/session-handover/scripts/archive-gate.sh <report>`（対象パスを必須指定） |
-{{/if}}
-{{/if}}
 
 > 昇格方針: 同一フェーズ境界で**同一違反が 3 回以上観測**された場合のみ、対応操作を `beforeShellExecution` Hook（[`guard-git-write.sh`](../.cursor/hooks/guard-git-write.sh) に倣う）で Deterministic 強制へ昇格する。観測前の先行 Hook 化は行わない（YAGNI）。
 
@@ -465,7 +444,6 @@ bin/foundation-gate self
 - exit 1 = 出力ファイルが直接編集された（drift）または必須要件欠落 → 再生成または manifest 修正
 - exit 2 = テンプレート不在 / manifest 破損
 
-{{#if deep_thinking.static_gate.enabled}}
 ### 4.1 deep-thinking 静的契約ゲート
 
 audit 成功後、`deep_thinking` feature が有効な場合に `validate_deep_thinking.py` を自動実行する。生成済み `config.yaml` の設定値を検査し、契約違反を audit 失敗へ昇格させる。
@@ -484,7 +462,6 @@ audit 成功後、`deep_thinking` feature が有効な場合に `validate_deep_t
 - 別プロセス実行（Subagent 起動の内部実装に依存）
 
 検査対象外の実行時特性を静的検査で PASS したと主張しない。
-{{/if}}
 
 {{#if agent_kaizen.enabled}}
 ### 4.2 agent-kaizen 静的契約ゲート
@@ -507,7 +484,6 @@ audit 成功後、`agent_kaizen` feature が有効な場合に `validate_agent_k
 検査対象外の実行時特性を静的検査で PASS したと主張しない。
 {{/if}}
 
-{{#if requirement_analysis.enabled}}
 ### 4.3 requirement-analysis 静的契約ゲート
 
 audit 成功後、`requirement_analysis` feature が有効な場合に `validate_requirement_analysis.py` を自動実行する。生成済み `config.yaml` と `deep-brief.md` の契約を検査し、契約違反を audit 失敗へ昇格させる。
@@ -520,7 +496,6 @@ audit 成功後、`requirement_analysis` feature が有効な場合に `validate
 | G-RA-DEEP-BRIEF-001 | deep ブリーフ | `deep-brief.md` が存在し、`## 必須ブリーフ要素` と `## 検査次元インベントリ` の両固定見出しを含む。ファイル不在・見出し欠落は exit 1、読み込み不能は exit 2 |
 
 ランタイム検査（digest 結合 ack / AC 相互参照 / provenance / Memo 構造）は `gate-artifact.py` / `gate-report.py` が担当する（§1.7 参照）。静的検査では保証しない。
-{{/if}}
 {{/if}}
 
 ## 5. 参考

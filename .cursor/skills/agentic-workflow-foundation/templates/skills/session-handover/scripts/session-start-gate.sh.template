@@ -182,11 +182,7 @@ else
       exit 2
     fi
     if (( completion_headings == 1 && completed == ${#COMPLETION_ITEMS[@]} )); then
-{{#if agent_workflow.gate_scripts}}
       "$SCRIPT_DIR/workflow-gate.sh" archive "$report"
-{{else}}
-      "$SCRIPT_DIR/archive-gate.sh" "$report"
-{{/if}}
       archive_rc=$?
       case "$archive_rc" in
         0)

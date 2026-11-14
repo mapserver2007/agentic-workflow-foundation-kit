@@ -7,10 +7,13 @@ import os
 import re
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SKILL_DIR = HERE.parent
+sys.path.insert(0, str(SKILL_DIR.parent / "agentic-workflow-engine" / "scripts"))
+import genlib  # noqa: E402
 TEMPLATE_DIR = SKILL_DIR / "templates"
 BASH_EXECUTABLE = "/bin/bash"
 
@@ -28,32 +31,12 @@ ORCHESTRATOR_TEMPLATE = TEMPLATE_DIR / "skills" / "workflow-orchestrator" / "SKI
 CLEANUP_TEMPLATE = TEMPLATE_DIR / "skills" / "campaign-cleanup" / "scripts" / "campaign-cleanup.sh.template"
 MANIFEST = SKILL_DIR / "manifest.yaml"
 
-RENDER_VALUES = {
-    "{{framework.budget_thresholds.max_injection_bytes}}": "8192",
-    "{{framework.budget_thresholds.max_snapshot_bytes}}": "8192",
-    "{{framework.budget_thresholds.checkpoint_interval_prompts}}": "15",
-    "{{framework.budget_thresholds.yellow.prompt_count}}": "35",
-    "{{framework.budget_thresholds.yellow.shell_bytes}}": "768000",
-    "{{framework.budget_thresholds.red.prompt_count}}": "70",
-    "{{framework.budget_thresholds.red.shell_bytes}}": "4194304",
-    "{{framework.budget_thresholds.compact_yellow_percent}}": "60",
-    "{{framework.budget_thresholds.compact_red_percent}}": "78",
-    "{{framework.budget_thresholds.compact_freshness_sec}}": "300",
-    "{{framework.budget_thresholds.compact_thrashing_count}}": "3",
-    "{{project.tracking_artifact}}": ".cursor/.tracking/tracker-{campaign_id}.md",
-}
+SEED_MANIFEST = genlib.load_manifest(str(MANIFEST))
+RED_PROMPT_COUNT = SEED_MANIFEST["framework"]["budget_thresholds"]["red"]["prompt_count"]
 
 
 def render_template(template: Path) -> str:
-    text = template.read_text(encoding="utf-8")
-    text = re.sub(
-        r"\{\{#each framework\.handoff\.recovery_constraints\}\}.*?\{\{/each\}\}",
-        "- recovery constraint",
-        text,
-        flags=re.DOTALL,
-    )
-    for source, value in RENDER_VALUES.items():
-        text = text.replace(source, value)
+    text = genlib.render(template.read_text(encoding="utf-8"), SEED_MANIFEST)
     if re.search(r"\{\{.*?\}\}", text, flags=re.DOTALL):
         raise AssertionError(f"unresolved template marker in {template}")
     return text
@@ -146,7 +129,7 @@ def test_runtime_mint_bind_and_tracker_lookup() -> None:
         assert read_state(root, "S1")["campaign_id_source"] == "session_start"
         assert not (tracking_dir / "tracker-S1.md").exists(), "bootstrap は tracker を作成しない"
 
-        write_state(root, "S1", prompt_count=70)
+        write_state(root, "S1", prompt_count=RED_PROMPT_COUNT)
         evaluator_output = run_hook(evaluator, root, "S1", {})
         assert "followup_message" in evaluator_output, "Red followup が発火しない"
         followup = evaluator_output["followup_message"]
@@ -604,8 +587,6 @@ def test_template_contracts() -> None:
     orchestrator = ORCHESTRATOR_TEMPLATE.read_text(encoding="utf-8")
 
     assert 'tracking_artifact: ".cursor/.tracking/tracker-{campaign_id}.md"' in manifest
-    assert "campaign_id_field: \"campaign_id\"" in manifest
-    assert "tracker_path_pattern: \".cursor/.tracking/tracker-{campaign_id}.md\"" in manifest
     assert "campaign_id" in bootstrap and "campaign_id" in evaluator and "campaign_id" in observer
     for source in (bootstrap, evaluator, observer):
         assert "tracker-${SESSION_ID}" not in source, "SESSION_ID から tracker を作る実装が残っている"

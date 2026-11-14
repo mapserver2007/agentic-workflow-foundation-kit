@@ -50,8 +50,7 @@ consumer 経路でも引き続き失敗とする。
 - `guard-git-write.sh`: `beforeShellExecution` + `permission` deny/ask。`gh` CLI 全般と AI シェルからの credential store 取得を deny し、GitHub API / Git network operation は `github_access` の選択 provider を使う wrapper へ誘導する。wrapper 内 subprocess は Hook の直接入力外。raw AI SSH は論理禁止で、物理的な fail-closed 遮断はしない。
 - `認証設定ファイルの読み取りはブロック`: `AGENTS.md > Boundaries > Never` の gh 設定ファイル・SSH 鍵の直接読み取り禁止を Hook で deterministic 強制する。
 - `.env / .pem / .key ファイルの読み取りはブロック`: `AGENTS.md > Boundaries > Never` の秘匿ファイル直接読み取り禁止を Hook で deterministic 強制する。
-- `security[[:space:]]+(find-generic-password|find-internet-password|dump-keychain) ]]`: Keychain deny クラスを解析不能入力でも fail-close する契約に由来する。
-- `git[[:space:]]+credential[[:space:]]+(fill|approve|reject) ]]`: Git credential deny クラスを解析不能入力でも fail-close する契約に由来する。
+- Keychain / Git credential の deny クラス（`security find-*-password` / `dump-keychain` / `git credential fill|approve|reject`）は、解析不能入力でも fail-close する。`required_sections` の文字列ではなく `test_guard_git_write.py` の fail-close 経路が実行で検査する。
 - `session-bootstrap.sh`: `additional_context` で handoff manifest 注入。
 - `session-budget-evaluator.sh`: `followup_message` で `[CONTEXT_BUDGET=...]` を AI に通知。
 - **二段階フェイル戦略**: `session-*` 系と `guard-git-write.sh` の deny 対象以外はフェイルオープン（`{}` 素通り）。`guard-git-write.sh` の deny クラスのみフェイルクローズ（解析不能時 `ask`）。
@@ -72,7 +71,7 @@ consumer 経路でも引き続き失敗とする。
 - `quality gate backend contract`: 承認済み `tech_contract.quality_gate` から導出された G-* backend argv とセマンティクスを、`package.json` の有無に依存せず復元できること。
 - `検査 ID`: §1.4 スクリプト実装ゲートの安定検査 ID 命名規約（`G-{GATE}-{CATEGORY}-{NNN}`）。BAS Finding Code 79 種体系は採用せず軽量 ID 運用に留めること（`framework.accd_axes[B].not_adopted` の死守）。
 - `セッション開始ゲート`: §1.5 クロスセッション整合性検査（handoff 未消費 / 追跡ドキュメント停滞 / agent_workflow 有効時の reports archive 取り残し・reports 停滞）の定義と検査 ID を含むこと。
-- `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。専用 `gate-*.py` は持たず既存ゲート + Advisory ループで運用する軽量実装であること。
+- `フェーズ境界`: §3 追跡ドキュメント（`tracking_artifact`）ライフサイクルの各境界に出口/入口条件と出口検査を割り当てること。既存ゲート + Advisory ループで運用する軽量実装であること。
 - `cat ~/.config/gh/*`: `AGENTS.md > Boundaries > Never` の gh 認証設定ファイル直接読み取り禁止を secret 表へ投影する。
 - `cat ~/.ssh/*`: `AGENTS.md > Boundaries > Never` の SSH 認証ファイル直接読み取り禁止を secret 表へ投影する。
 - `cat .env`: `AGENTS.md > Boundaries > Never` の `.env` 直接読み取り禁止を secret 表へ投影する。
@@ -93,11 +92,13 @@ consumer 経路でも引き続き失敗とする。
 - `handoff-{session_id}.md`: manifest パス規約の SoT（並行セッション対応）。
 - `## 生成根拠`: 設計入力の役割と入力状態が出力から確認でき（正本ファイル名・ハッシュは出力へ露出しない）、SKILL 内部に永続状態を持たないことを説明できること。
 - `## なぜ必要か`: Lost in the Middle とコンテキストドリフトの運用リスクを利用者が理解できること。
-- `## 構成`: Hook スクリプトと `.cursor/.session/` 状態ファイルの責務が復元可能であること。
-- `## 各指標の更新タイミング`: prompt_count / shell_bytes の proxy 指標がいつ更新・リセットされるかを明示すること。
+- `## ユーザーが実際にやること`: Yellow/Red 到達後の再開操作（新規チャットでの短文送信）を利用者が実行できること。
+- `## 失敗モード`: handoff が引き継がれない典型原因と対処を利用者が判別できること。
 - `## チェックリスト`: 新メンバーが初回セットアップで Hook 登録・実行権限・state 生成を確認できること。
 - `## 参考リンク`: 採用根拠（DECISIONS）・Hook 技術詳細・AI 振る舞い規範への安定リンクを提示し、判断の裏取り経路を保全すること。プロジェクト固有チケットや未検証の外部引用は焼き込まない（`framework.handoff.references` が SoT）。
 - `並行セッション対応`: セッションごとの独立した handoff manifest（`handoff-{session_id}.md`）による並行セッション管理と、stale-handoff の検出・選択機構を説明できること。
+
+### docs/references/context-budget-internals.md（Context Budget 内部詳細）
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
 ### docs/tech-stack.md（techstack §9）
@@ -133,11 +134,12 @@ consumer 経路でも引き続き失敗とする。
 - `G-SESSION-HANDOFF-001` / `G-SESSION-STALE-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）、tracker mtime 停滞（WARN）、完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`G-SESSION-STALE-001` は全 consumer で required_sections に含める。
 - `G-SESSION-ARCH-001` / `G-SESSION-ARCH-002` / `G-SESSION-REPORT-001` は agent_workflow 有効時だけ描画する条件付き契約であり、feature 無効 consumer を壊さないため required_sections には追加しない。
 
-### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
-- `name: agent-maintenance-docs`: Cursor skill としての識別子。
-- `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。
-- `G-DOC-SPEC`: Domain 層ドキュメント仕様反映ゲートのスコープ定義。
-- `責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
+### .cursor/skills/maintenance-docs-workflow/SKILL.md（feature: agent_workflow.maintenance_docs）
+- `name: maintenance-docs-workflow`: Cursor skill としての識別子。
+- `## 実行フロー`: maintenance-docs 起票ファイルを入力キューとして docs 反映からデリバリまで完結させる手順。
+- `## 反映判定基準`: `G-DOC-SPEC`（Domain 層ドキュメント仕様反映ゲート）のスコープ定義を含む反映対象の判定。
+- `## 責務境界テーブル`: Meta 層（AGENTS.md 等）を除外する責務境界。AGENTS.md 技術スタック欄の除外根拠（SoT フロー一方向 / Boundaries 違反）を含むこと。
+- `## Context Budget 到達時の対応`: Yellow / Red 到達時の中断・引き継ぎ手順。
 
 ### .cursor/skills/deep-thinking/SKILL.md（feature: deep_thinking）
 - `name: deep-thinking`: Cursor skill としての識別子。

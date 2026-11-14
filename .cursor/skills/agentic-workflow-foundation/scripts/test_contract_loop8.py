@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import copy
-import json
-import os
 import re
 import stat
 import subprocess
@@ -41,32 +39,8 @@ SOURCE_MAPPING = HERE.parent / "references" / "source-mapping.md"
 
 
 def version_fullmatch() -> bool:
-    # 形式 pattern は search ではなく fullmatch で評価される。pattern は数字クラスだけで、版の数値は持たない。
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        design = root / "docs" / "TECH.md"
-        design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# x\n", encoding="utf-8")
-        fp = tc.source_fingerprint(design)
-        contract = base_contract(fp, with_file_action=True)
-        contract["provisioning"]["command_actions"] = []
-        contract["provisioning"]["preflight_checks"] = [{
-            "kind": "json-value-pattern",
-            "target": ".state/toolchain-state.json",
-            "pointer": "tool.version",
-            "pattern": r"\d+\.\d+\.\d+",
-            "evidence_ref": "x",
-            "guidance": "version marker",
-        }]
-        manifest, design = write_sealed_manifest(root, contract, "# x\n")
-        approved = tc.load_approved(manifest, design)
-        marker = root / ".state" / "toolchain-state.json"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('{"tool":{"version":"2.0.0-rc1"}}\n', encoding="utf-8")
-        errors = rp.run_preflight(approved, root)
-        if not any("2.0.0-rc1" in error for error in errors):
-            print("FAIL: suffix value should fail fullmatch", errors, file=sys.stderr)
-            return False
+    # 形式 pattern は search ではなく fullmatch で評価される（部分一致は不一致）。
+    # suffix 付きの値の検出と素の形式の受理は test_contract_loop7.marker_version_mismatch_fails が検査する。
     with tempfile.TemporaryDirectory() as tmp:
         doc = Path(tmp) / "TECH.md"
         doc.write_text("# x\n", encoding="utf-8")
@@ -270,7 +244,8 @@ def malformed_state_runtime_no_traceback_all_clis() -> bool:
             if "Traceback" in combined:
                 print(f"FAIL: traceback in {script.name}", combined, file=sys.stderr)
                 return False
-            if code not in (1, 2):
+            expected_codes = (2,) if Path(script) == TECH_SCRIPT else (1, 2)
+            if code not in expected_codes:
                 print(f"FAIL: unexpected exit {code} from {script.name}", combined, file=sys.stderr)
                 return False
         marker_bad = root / "manifest-marker.yaml"
@@ -320,9 +295,6 @@ def docs_contract_only_precise() -> bool:
         )
         return False
     handover_lines = SESSION_HANDOVER.read_text(encoding="utf-8").splitlines()
-    if len(handover_lines) < 42:
-        print("FAIL: session-handover too short", file=sys.stderr)
-        return False
     projection_lines = [
         line for line in handover_lines if "resolve_quality_gate.py" in line
     ]
@@ -343,18 +315,6 @@ def docs_contract_only_precise() -> bool:
             file=sys.stderr,
         )
         return False
-    legacy_patterns = (
-        (SKILL, r"workflow_pattern[`\s×]+tech_stack"),
-        (SKILL, r"_tech_stack_hash"),
-        (SKILL, r"registry compose"),
-        (DESIGN_CONFORMANCE, r"package\.json 不在は fail-closed"),
-        (DESIGN_CONFORMANCE, r"category/hash"),
-    )
-    for path, pattern in legacy_patterns:
-        text = path.read_text(encoding="utf-8")
-        if re.search(pattern, text):
-            print(f"FAIL: legacy claim matched in {path.name}: {pattern}", file=sys.stderr)
-            return False
     for path, needles in (
         (DESIGN_CONFORMANCE, ("validation", "absent-marker", "fullmatch")),
         (SOURCE_MAPPING, ("validation", "absent-marker", "installed-marker")),

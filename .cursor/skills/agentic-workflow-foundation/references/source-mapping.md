@@ -1,10 +1,8 @@
 # source-mapping — unified design → resolved manifest/templates → 出力ファイル のトレーサビリティ
 
-> 本スキルでは `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` / `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` を immutable upstream SoT として読み取り、`.cursor/skills/agentic-workflow-foundation/manifest.yaml` + `templates/` を schema/default として使う。スキル実行時に `scripts/run_resolved_engine.py` が一時 resolved skill-dir を作成し、既存 engine に渡す。
+> 本スキルでは `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` / `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` を immutable upstream SoT として読み取り、`.cursor/skills/agentic-workflow-foundation/manifest.yaml` + `templates/` を schema/default として使う。Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が一時 resolved skill-dir を作成し、immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / feature-flag overlay keys を seed manifest に overlay して既存 engine に渡す。
 >
-> 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
->
-> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / feature-flag overlay keys を seed manifest に overlay する。承認済み `tech_contract` が quality gate / review / domain docs / provisioning の唯一 consumer 入力であり、registry live compose や tech 名カテゴリ推論は使用しない。
+> 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。承認済み `tech_contract` が quality gate / review / domain docs / provisioning の唯一 consumer 入力であり、registry live compose や tech 名カテゴリ推論は使用しない。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
@@ -21,7 +19,6 @@
 | manifest キー | 出力ファイル |
 | --- | --- |
 | `framework.naming` | `AGENTS.md`（Documentation Naming Convention）/ `docs/QUALITY_GATE.md`（G-DOC-NAMING） |
-| `framework.hook_events` | `.cursor/hooks.json` / `.cursor/hooks/README.md` |
 | `framework.exit_codes` | `docs/QUALITY_GATE.md` |
 | `framework.design_dimensions` | `docs/DECISIONS.md` / `.cursor/rules/00-init.mdc` |
 | `framework.accd_axes` | `docs/AGENT_RUNBOOK.md §0`（開発型の軽量実装として seed manifest に固定し、root manifest から overlay） |

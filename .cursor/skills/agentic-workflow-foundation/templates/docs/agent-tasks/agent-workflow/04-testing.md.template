@@ -60,15 +60,9 @@ worker は個別テストとコードゲートの実測後に、タスクレポ�
 
 worker が成果記録と step4 envelope を作成した後、親オーケストレータが `workflow-gate.sh step4` を実行する。親ゲートは step3 / step4 envelope、profile 別コードゲート、完了チェック3項目をこの順序で再検証し、exit 0 の場合だけ Step ⑤へ進める。
 
-{{#if agent_workflow.gate_scripts}}
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh step4
 ```
-{{else}}
-```bash
-{{session.verification.gate_command}}
-```
-{{/if}}
 
 親ゲートが失敗した場合、worker の自己申告だけで完了扱いにせず、失敗原因を修正して worker の実測から再実行する。
 
@@ -77,7 +71,6 @@ worker が成果記録と step4 envelope を作成した後、親オーケスト
 - lint 指摘を一括抑制する
 - 失敗しているテストをスキップする
 
-{{#if agent_workflow.artifact}}
 ---
 
 ## Worker Contract
@@ -147,7 +140,6 @@ worker はテストと個別コードゲートの Advisory ループを**上限 
 - `incomplete`: worker のコンテキスト不足等。step envelope を再開入力として再 dispatch 可能にする
 - `blocked` (`advisory_loop_exceeded`): オーケストレータの選択肢 — (a) QUALITY_GATE §2 例外承認 → 通過 / (b) 追加情報付与で再 dispatch / (c) ユーザー報告 + 中断
 - `fatal` (exit 2): オーケストレータがユーザーに報告し例外承認導線を案内する
-{{/if}}
 
 ---
 

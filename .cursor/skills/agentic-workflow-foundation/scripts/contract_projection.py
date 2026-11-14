@@ -62,7 +62,7 @@ def domain_docs_from_contract(contract: dict) -> dict:
     resolved = (contract.get("domain_docs") or {}).get("resolved")
     if not isinstance(resolved, dict):
         raise tc.SchemaError("tech_contract.domain_docs.resolved が不正です")
-    return dict(resolved)
+    return {key: value for key, value in resolved.items() if key not in tc.DEPRECATED_RESOLVED_KEYS}
 
 
 def quality_gate_contract_from_contract(contract: dict) -> dict:

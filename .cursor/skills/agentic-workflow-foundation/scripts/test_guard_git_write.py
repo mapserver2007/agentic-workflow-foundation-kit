@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""guard-git-write.sh の git グローバルオプション正規化回帰。"""
+"""guard-git-write.sh の git グローバルオプション正規化・機密 cat・gh / 破壊的 git の判定回帰。"""
 from __future__ import annotations
 
 import json
@@ -192,6 +192,61 @@ def test_local_git_commands_remain_allowed(hook: Path) -> None:
         assert output == {}, (command, output)
 
 
+def test_gh_cli_and_destructive_git_are_denied(hook: Path) -> None:
+    for command in (
+        "git push --force origin feature",
+        "git push origin --delete old-branch",
+        "git push origin :branch",
+        "git push origin +:branch",
+        "git push upstream :feature",
+        "git push upstream +:release/v1",
+        "git reset --hard origin/main",
+        "gh pr merge 1",
+        "gh repo delete org/repo",
+        "gh pr list",
+        "command gh repo view",
+        "/usr/local/bin/gh release list",
+        "env gh pr list",
+        "env FOO=bar gh pr list",
+        "FOO=bar gh pr list",
+        "sudo gh pr list",
+        "bash -c 'gh pr list'",
+        "sh -c 'gh issue view 1'",
+        "zsh -c 'gh api repos/org/repo'",
+        "gh issue comment 1 --body test",
+        "gh pr create --title t --body b",
+        "gh auth token",
+    ):
+        output = _run(hook, command)
+        assert output.get("permission") == "deny", (command, output)
+    output = _run(hook, "gh issue comment 1 --body test")
+    message = f"{output.get('reason', '')} {output.get('agent_message', '')}"
+    assert "現在未対応" in message, output
+
+
+def test_wrappers_and_read_only_commands_are_allowed_and_env_dumps_ask(hook: Path) -> None:
+    for command in (
+        "git status --short",
+        "git diff --stat",
+        "bin/github-pr-create-safe main /tmp/title /tmp/body",
+        "./bin/github-issue-read-safe 42",
+        "printf 'gh pr list\\n'",
+        "echo 'use gh pr create via wrapper'",
+        "grep -R 'gh pr merge' docs/",
+    ):
+        output = _run(hook, command)
+        assert output == {}, (command, output)
+    for command in (
+        "git commit --amend --no-edit",
+        "git rebase main",
+        "env",
+        "printenv",
+        "git config --global --list",
+    ):
+        output = _run(hook, command)
+        assert output.get("permission") == "ask", (command, output)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="guard-git-write-render-") as temp_dir:
         hook = _render_hook(Path(temp_dir))
@@ -203,6 +258,8 @@ def main() -> int:
         test_failclose_route_allows_non_secret_cat(hook)
         test_failclose_route_asks_for_credential_commands(hook)
         test_local_git_commands_remain_allowed(hook)
+        test_gh_cli_and_destructive_git_are_denied(hook)
+        test_wrappers_and_read_only_commands_are_allowed_and_env_dumps_ask(hook)
     print("[test_guard_git_write] PASS")
     return 0
 

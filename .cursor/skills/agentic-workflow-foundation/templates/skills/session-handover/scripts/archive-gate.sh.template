@@ -30,9 +30,7 @@ COMPLETION_ITEMS=(
   "ADR 起票判定"
 )
 
-{{#if agent_workflow.artifact}}
 ARTIFACTS_DIR="$PROJECT_DIR/{{agent_workflow.artifact.dir}}"
-{{/if}}
 
 check_report() {
   local file="$1"
@@ -46,7 +44,6 @@ check_report() {
     return 2
   fi
 
-{{#if agent_workflow.gate_scripts}}
   # --- G-WRITE-SCOPE-DOMAIN-001: archive 前の実差分最終検査 ---
   python3 "$SCRIPT_DIR/gate-domain-write-scope.py" --report "$file" --repo "$PROJECT_DIR"
   local scope_rc=$?
@@ -57,7 +54,6 @@ check_report() {
     echo "[FAIL] 実差分 Domain scope 検査失敗 (G-WRITE-SCOPE-DOMAIN-001)"
     fail=1
   fi
-{{/if}}
 
   # 完了チェックセクションを抽出（"完了チェック" 見出し以降の行を対象）
   local in_section=0
@@ -84,7 +80,6 @@ check_report() {
     fail=1
   fi
 
-{{#if agent_workflow.artifact}}
   # --- G-ARCHIVE-ARTIFACT-001: slug に紐づく残存 step envelope の検査 ---
   # 全ステップが完了し archive 可能な状態では step envelope は全て削除済みであるべき。
   # 残存 envelope がある場合は、いずれかのステップの成果物検証が未完了の可能性がある。
@@ -107,7 +102,6 @@ check_report() {
       echo "[PASS] 残存 step envelope なし (G-ARCHIVE-ARTIFACT-001)"
     fi
   fi
-{{/if}}
 
 {{#if agent_workflow.maintenance_docs.enabled}}
   # --- G-ARCHIVE-MDOCS-001: maintenance-docs 起票判定の整合性検査 ---

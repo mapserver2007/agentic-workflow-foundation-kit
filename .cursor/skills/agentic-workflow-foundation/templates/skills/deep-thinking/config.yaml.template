@@ -26,41 +26,8 @@ execution:
   stop_when: "{{#if deep_thinking.execution.stop_when}}{{deep_thinking.execution.stop_when}}{{else}}NO_MATERIAL_ISSUES{{/if}}"
 
 # 高影響領域: この領域に該当する判断は不確実性を明示しユーザー判断を促す
-# SoT: manifest.yaml > requirement_analysis.high_impact_categories（requirement_analysis 有効時）
-#       manifest.yaml > deep_thinking.high_impact_categories（requirement_analysis 無効時）
+# SoT: manifest.yaml > requirement_analysis.high_impact_categories
 high_impact_categories:
-{{#if requirement_analysis.enabled}}
 {{#each requirement_analysis.high_impact_categories}}  - "{{this}}"
 {{/each}}
-{{else}}{{#if deep_thinking.high_impact_categories}}
-{{#each deep_thinking.high_impact_categories}}  - "{{this}}"
-{{/each}}
-{{else}}
-  - "security_or_authorization"
-  - "secret_or_sensitive_data"
-  - "data_deletion_or_migration"
-  - "breaking_external_api"
-  - "irreversible_architecture"
-  - "unapproved_cost_or_schedule"
-  - "must_requirement_conflict"
-{{/if}}{{/if}}
-{{#if requirement_analysis.enabled}}
-{{else}}
 
-# ワークフロー自動起動トリアージ設定（requirement_analysis 無効時のみ）
-# Step ① の調査深度トリアージで使用する。詳細は references/workflow-triage.md を参照。
-# requirement_analysis.enabled: true の場合は requirement-analysis/config.yaml が SoT となるため、
-# このセクションは不要。既存プロジェクトでは手動削除を推奨。
-triage:
-  # スコア起動の閾値（信号がこの件数以上で deep-thinking を起動）
-  score_threshold: {{#if deep_thinking.triage.score_threshold}}{{deep_thinking.triage.score_threshold}}{{else}}2{{/if}}
-  # 即時起動条件のカテゴリ（high_impact_categories を参照）
-  immediate_triggers:
-    - "requirement_docs_contradiction"
-    - "high_impact_category_match"
-    - "undefined_acceptance_with_multiple_candidates"
-  # ワークフロー自動起動の失敗時方針（skip: graceful skip / abort: 中止）
-  on_failure: "{{#if deep_thinking.triage.on_failure}}{{deep_thinking.triage.on_failure}}{{else}}skip{{/if}}"
-  # 高影響カテゴリ該当 + 起動失敗時にユーザー通知するか
-  notify_on_high_impact_failure: {{#if deep_thinking.triage.notify_on_high_impact_failure}}{{deep_thinking.triage.notify_on_high_impact_failure}}{{else}}true{{/if}}
-{{/if}}

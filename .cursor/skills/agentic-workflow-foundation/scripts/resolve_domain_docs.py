@@ -20,11 +20,12 @@ if HERE not in sys.path:
 import genlib  # noqa: E402
 import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
+from yaml_blocks import indent_of as _indent_of  # noqa: E402
 from yaml_emitter import dump_yaml  # noqa: E402
 
 DEFAULT_MANIFEST = os.path.join(ROOT, "manifest.yaml")
 SCALAR_KEYS = ("primary_language", "api_style", "database", "architecture", "framework", "test_framework", "package_manager")
-SECTION_KEYS = ("spec_sections", "architecture_sections", "api_sections", "data_model_sections", "coding_standards_sections", "workflow_sections")
+SECTION_KEYS = ("api_sections", "data_model_sections", "coding_standards_sections", "workflow_sections")
 
 
 def _out(level: str, message: str) -> None:
@@ -50,11 +51,7 @@ def _resolve(manifest_path: str) -> dict:
             for item in resolved[key]
         ):
             raise ValueError(f"tech_contract.domain_docs.resolved.{key} が不正です")
-    return resolved
-
-
-def _indent_of(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
+    return {key: value for key, value in resolved.items() if key not in tc.DEPRECATED_RESOLVED_KEYS}
 
 
 def _find_top_block(lines: list[str], key: str) -> tuple[int | None, int | None]:
