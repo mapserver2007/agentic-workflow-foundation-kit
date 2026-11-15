@@ -348,6 +348,20 @@ def test_merge_seed_sections_boundaries() -> None:
         raise AssertionError("missing structural heading accepted")
 
 
+def test_merge_rejects_projected_duplicate_heading() -> None:
+    """投影本文が構造見出しと同名の `##` を含むと、境界を誤認せず不一致として拒否する。"""
+    merge = generate.merge_seed_sections
+    pristine = "## エラー\n\nTODO\n\n## 参照\n\n- a\n"
+    expected = "## エラー\n\nP1\n\n## 参照\n\nP2-remainder\n\n## 参照\n\n- a\n"
+    existing = "## エラー\n\nTODO\n\n## 参照\n\n- hand edited\n"
+    try:
+        merged, _ = merge(existing, pristine, expected)
+    except generate.SectionMismatch as exc:
+        _assert(exc.heading == "## 参照", f"wrong mismatch heading: {exc.heading!r}")
+    else:
+        raise AssertionError(f"projected duplicate heading accepted: {merged!r}")
+
+
 def test_permission_errors_are_aggregated() -> None:
     manifest = """\
 marker_id: permission-test
@@ -424,6 +438,7 @@ def main() -> int:
         ("pristine seed replacement", test_pristine_seed_replacement),
         ("structural section merge via generate", test_structural_section_merge_via_generate),
         ("merge seed sections boundaries", test_merge_seed_sections_boundaries),
+        ("merge rejects projected duplicate heading", test_merge_rejects_projected_duplicate_heading),
         ("permission error aggregation", test_permission_errors_are_aggregated),
         ("symlink output rejection", test_symlink_output_is_rejected_before_write),
     )

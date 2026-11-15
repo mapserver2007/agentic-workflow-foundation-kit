@@ -15,6 +15,7 @@ ROOT = HERE.parents[3]
 ENGINE_DIR = ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"
 sys.path.insert(0, str(ENGINE_DIR))
 sys.path.insert(0, str(HERE))
+import generate  # noqa: E402
 import genlib  # noqa: E402
 import runtime_plan as rp  # noqa: E402
 import tech_contract as tc  # noqa: E402
@@ -47,7 +48,7 @@ PROJECTION_FIELDS = {
     "data_models": frozenset({"principles", "entities", "access"}),
     "workflows": frozenset({"flows", "retry", "states"}),
 }
-ATX_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+ATX_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
 
 
 class ProjectionError(Exception):
@@ -104,9 +105,14 @@ def _heading_names(design_doc: Path) -> set[str]:
         text = design_doc.read_text(encoding="utf-8")
     except OSError as exc:
         raise SchemaError(f"Design Doc 読み込み失敗: {exc}") from exc
+    # コードフェンス内の `## ` は見出しではないため、generate.py の節境界と同じ規則で除外する。
+    lines = text.splitlines(keepends=True)
+    mask = generate._fence_mask(lines)
     headings = set()
-    for line in text.splitlines():
-        match = ATX_HEADING.match(line)
+    for line, inside in zip(lines, mask):
+        if inside:
+            continue
+        match = ATX_HEADING.match(line.rstrip("\r\n"))
         if match:
             headings.add(match.group(1).strip())
     return headings
@@ -234,11 +240,15 @@ def _line_indent(line: str) -> int:
 
 
 def _is_top_level_key_line(line: str) -> bool:
+    """値の有無にかかわらず、インデント 0 の `key:` 行を次のトップレベルキーとみなす。"""
     stripped = line.rstrip("\r\n")
     if not stripped.strip() or _line_indent(stripped) != 0:
         return False
-    head = stripped.split("#", 1)[0].rstrip()
-    return head.endswith(":") and bool(head[:-1].strip())
+    if stripped.startswith("#"):
+        return False
+    key, separator, _ = stripped.partition(":")
+    key = key.strip()
+    return bool(separator) and bool(key) and not key.startswith("- ")
 
 
 def _find_top_level_block_span(raw: bytes, key: str) -> tuple[int, int] | None:

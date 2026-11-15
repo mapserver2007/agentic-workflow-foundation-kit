@@ -49,10 +49,13 @@ _STRUCTURAL_HEADING_RE = re.compile(r"^##[ \t]+\S")
 class SectionMismatch(Exception):
     """構造見出しが対象テキストから順に見つからない（節マージ不可）。"""
 
-    def __init__(self, heading: str, where: str):
+    def __init__(self, heading: str, where: str, reason: str | None = None):
         self.heading = heading
         self.where = where
-        super().__init__(f"構造見出し {heading!r} が {where} に見つかりません")
+        if reason is None:
+            super().__init__(f"構造見出し {heading!r} が {where} に見つかりません")
+        else:
+            super().__init__(f"構造見出し {heading!r} ({where}): {reason}")
 
 
 def _fence_mask(lines: list[str]) -> list[bool]:
@@ -122,6 +125,18 @@ def split_structural_sections(
     return preamble, sections
 
 
+def _heading_counts(text: str, headings: list[str]) -> dict[str, int]:
+    """`headings` の各見出しが、コードフェンス外で何回出現するかを数える。"""
+    lines = text.splitlines(keepends=True)
+    mask = _fence_mask(lines)
+    counts = dict.fromkeys(headings, 0)
+    for line, inside in zip(lines, mask):
+        stripped = line.rstrip("\r\n")
+        if not inside and stripped in counts:
+            counts[stripped] += 1
+    return counts
+
+
 def merge_seed_sections(
     existing: str, pristine: str, expected: str
 ) -> tuple[str, list[str]]:
@@ -129,9 +144,19 @@ def merge_seed_sections(
 
     戻り値は (マージ結果, 置換した構造見出しのリスト)。手で書いた節と前文は保持する。
     構造見出しが既存・投影なし・投影ありのいずれかから順に見つからないときは
-    SectionMismatch を送出する。
+    SectionMismatch を送出する。投影あり描画で構造見出しの出現数が投影なしと
+    異なるとき（投影本文が同名の `##` を含む）も、境界を誤認しないよう SectionMismatch を送出する。
     """
     headings = structural_headings(pristine)
+    pristine_counts = _heading_counts(pristine, headings)
+    expected_counts = _heading_counts(expected, headings)
+    for heading in headings:
+        if expected_counts[heading] != pristine_counts[heading]:
+            raise SectionMismatch(
+                heading,
+                "投影あり描画",
+                "出現数が投影なしスケルトンと一致しません（投影本文が同名の見出しを含みます）",
+            )
     _, pristine_sections = split_structural_sections(pristine, headings, "投影なしスケルトン")
     _, expected_sections = split_structural_sections(expected, headings, "投影あり描画")
     preamble, existing_sections = split_structural_sections(existing, headings, "既存ファイル")

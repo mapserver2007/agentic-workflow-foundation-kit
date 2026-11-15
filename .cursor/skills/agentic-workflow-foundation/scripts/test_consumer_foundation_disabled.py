@@ -233,6 +233,107 @@ def main() -> int:
                 f"{path.relative_to(TEMPLATES)}: foundation.enabled=false でも foundation scripts パスを案内している"
             )
 
+    def _render_verify_steps(build: list[str], lint: list[str], test: list[str]) -> str:
+        return genlib.render(
+            quality_gate,
+            {
+                "foundation": {"enabled": False},
+                "project": {"tech_stack_design_filename": "TECH.md"},
+                "tech_contract": {
+                    "quality_gate": {
+                        "gen": {"argv": ["true"]},
+                        "build": {"argv": build},
+                        "lint": {"argv": lint},
+                        "test": {"argv": test},
+                    },
+                },
+            },
+        )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="consumer-quality-gate-make-") as temp_dir:
+            root = Path(temp_dir)
+            log = root / "steps.log"
+            makefile = root / "Makefile"
+            gate = root / "bin" / "quality-gate"
+            gate.parent.mkdir()
+
+            makefile.write_text(
+                "lint:\n"
+                f"\tprintf 'lint\\n' >> {log}\n"
+                "test:\n"
+                f"\tprintf 'test\\n' >> {log}\n",
+                encoding="utf-8",
+            )
+            gate.write_text(
+                _render_verify_steps(["make", "build"], ["make", "lint"], ["make", "test"]),
+                encoding="utf-8",
+            )
+            gate.chmod(0o755)
+            skipped = subprocess.run(
+                [str(gate), "verify"], cwd=root, capture_output=True, text=True, check=False
+            )
+            skipped_log = log.read_text(encoding="utf-8") if log.exists() else ""
+            if (
+                skipped.returncode != 0
+                or "SKIP: make target 'build'" not in skipped.stdout
+                or skipped_log != "lint\ntest\n"
+            ):
+                failures.append(
+                    "bin/quality-gate: 無い make ターゲットを省略できていない "
+                    f"(exit {skipped.returncode}, log={skipped_log!r}): "
+                    f"{skipped.stdout}{skipped.stderr}"
+                )
+
+            log.unlink(missing_ok=True)
+            makefile.unlink()
+            no_makefile = subprocess.run(
+                [str(gate), "verify"], cwd=root, capture_output=True, text=True, check=False
+            )
+            if no_makefile.returncode != 0 or no_makefile.stdout.count("SKIP:") != 3:
+                failures.append(
+                    "bin/quality-gate: Makefile 自体が無い場合をターゲット不在として省略できていない "
+                    f"(exit {no_makefile.returncode}): "
+                    f"{no_makefile.stdout}{no_makefile.stderr}"
+                )
+
+            log.unlink(missing_ok=True)
+            makefile.write_text(
+                "build:\n"
+                f"\tprintf 'build\\n' >> {log}\n"
+                "\texit 1\n"
+                "lint:\n"
+                f"\tprintf 'lint\\n' >> {log}\n",
+                encoding="utf-8",
+            )
+            failed = subprocess.run(
+                [str(gate), "verify"], cwd=root, capture_output=True, text=True, check=False
+            )
+            failed_log = log.read_text(encoding="utf-8") if log.exists() else ""
+            if failed.returncode == 0 or failed_log != "build\n" or "SKIP:" in failed.stdout:
+                failures.append(
+                    "bin/quality-gate: 実在ターゲットの失敗で停止できていない "
+                    f"(exit {failed.returncode}, log={failed_log!r}): "
+                    f"{failed.stdout}{failed.stderr}"
+                )
+
+            log.unlink(missing_ok=True)
+            makefile.write_text(
+                "build: missing-dep\n"
+                f"\tprintf 'build\\n' >> {log}\n",
+                encoding="utf-8",
+            )
+            dependency = subprocess.run(
+                [str(gate), "verify"], cwd=root, capture_output=True, text=True, check=False
+            )
+            if dependency.returncode == 0 or "SKIP:" in dependency.stdout:
+                failures.append(
+                    "bin/quality-gate: 依存欠落をターゲット不在として省略した "
+                    f"(exit {dependency.returncode}): {dependency.stdout}{dependency.stderr}"
+                )
+    except (OSError, genlib.RenderError) as exc:
+        failures.append(f"bin/quality-gate: make ターゲット省略の検証不能: {exc}")
+
     if failures:
         for item in failures:
             print(f"FAIL: {item}", file=sys.stderr)

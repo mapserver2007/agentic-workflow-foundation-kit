@@ -363,9 +363,42 @@ def test_docs_structural_headings_and_projection_match() -> None:
     _assert(checked == 5, f"expected 5 projected seed docs, got {checked}")
 
 
+def test_heading_names_trailing_hash_and_fence() -> None:
+    """閉じ記号は直前に空白がある `#` だけ除去し、コードフェンス内の見出しは登録しない。"""
+    with tempfile.TemporaryDirectory(prefix="design-doc-headings-") as temp_dir:
+        doc = Path(temp_dir) / "designdoc.md"
+        doc.write_text(
+            "# Design\n\n## C#\n\n## Foo ##\n\n## Foo #bar\n\n"
+            "```md\n## OnlyInCode\n```\n",
+            encoding="utf-8",
+        )
+        names = dp._heading_names(doc)
+        _assert("C#" in names, f"trailing # without space was stripped: {sorted(names)}")
+        _assert("Foo" in names, f"closing ## with space not stripped: {sorted(names)}")
+        _assert("Foo #bar" in names, f"non-closing # was stripped: {sorted(names)}")
+        _assert("OnlyInCode" not in names, f"fenced heading registered: {sorted(names)}")
+
+
+def test_pin_preserves_following_top_level_keys() -> None:
+    """design_doc の直後にある値ありのトップレベルキーとコメント行は置換範囲に含めない。"""
+    with tempfile.TemporaryDirectory(prefix="design-doc-boundary-") as temp_dir:
+        root = Path(temp_dir)
+        manifest = root / "manifest.yaml"
+        _write_manifest(manifest)
+        doc = _write_doc(root)
+        _pin(manifest, doc)
+        following = "custom_flag: true\n# note: keep\nother:\n  a: 1\n"
+        manifest.write_text(manifest.read_text(encoding="utf-8") + following, encoding="utf-8")
+        _pin(manifest, doc)
+        raw = manifest.read_text(encoding="utf-8")
+        _assert(raw.endswith(following), f"following top-level keys were removed: {raw!r}")
+
+
 def main() -> int:
     tests = (
         ("state table", test_state_table),
+        ("heading names trailing hash and fence", test_heading_names_trailing_hash_and_fence),
+        ("pin preserves following top-level keys", test_pin_preserves_following_top_level_keys),
         ("schema and auto approval", test_schema_and_auto_approval),
         ("pristine seed replacement", test_pristine_seed_replacement),
         ("doc coverage and omissions", test_doc_coverage_and_omissions),

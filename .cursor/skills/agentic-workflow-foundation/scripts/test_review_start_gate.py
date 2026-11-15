@@ -57,6 +57,25 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o700)
 
 
+def _init_git_fixture(root: Path, report: Path, step3: Path) -> None:
+    """実差分ゲートが検査できる一時 git worktree を作る。"""
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "config", "user.name", "test fixture"], check=True)
+    subprocess.run([*git, "config", "user.email", "test-fixture@example.invalid"], check=True)
+    subprocess.run([*git, "add", "--all"], check=True)
+    subprocess.run([*git, "commit", "-qm", "fixture baseline"], check=True)
+    base_commit = subprocess.check_output(
+        [*git, "rev-parse", "HEAD"],
+        text=True,
+    ).strip()
+    for path in (report, step3):
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(IMPL_BASE_COMMIT, base_commit),
+            encoding="utf-8",
+        )
+
+
 def _setup() -> tuple[tempfile.TemporaryDirectory[str], Path, Path]:
     temporary = tempfile.TemporaryDirectory(prefix="review-start-")
     root = Path(temporary.name)
@@ -445,12 +464,12 @@ def _setup_dispatch_fixture() -> tuple[tempfile.TemporaryDirectory[str], Path, P
         BYTE_HELPER_TEMPLATE.read_text(encoding="utf-8"),
     )
 
-    foundation_log = root / "foundation-gate.calls"
+    quality_log = root / "quality-gate.calls"
     _write_executable(
-        root / "bin" / "foundation-gate",
+        root / "bin" / "quality-gate",
         f"""#!/usr/bin/env bash
-printf '%s\n' "$*" >> "{foundation_log}"
-exit "${{STUB_FOUNDATION_EXIT:-0}}"
+printf '%s\n' "$*" >> "{quality_log}"
+exit "${{STUB_QUALITY_GATE_EXIT:-0}}"
 """,
     )
     report = root / "docs" / "agent-tasks" / "reports" / f"{CAMPAIGN}.md"
@@ -470,6 +489,11 @@ exit "${{STUB_FOUNDATION_EXIT:-0}}"
     shutil.copy2(FIXTURES / "step4-complete.md", artifacts / f"{CAMPAIGN}--step4.md")
     (root / ".cursor" / ".session").mkdir(parents=True)
     progress = _write_progress(root, "dispatch-session", [_prompt_event("dispatch-session")])
+    _init_git_fixture(
+        root,
+        report,
+        artifacts / f"{CAMPAIGN}--step3.md",
+    )
     return temporary, root, report, progress
 
 
@@ -508,7 +532,10 @@ def test_workflow_dispatch_with_real_step4_contract() -> None:
     with temporary:
         result = _run_dispatch(root, report)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert (root / "foundation-gate.calls").read_text(encoding="utf-8").splitlines() == ["self"]
+        assert (root / "quality-gate.calls").read_text(encoding="utf-8").splitlines() == [
+            "gen",
+            "verify",
+        ]
         review_rows = [row for row in _rows(progress) if row["kind"] == "review_start"]
         assert len(review_rows) == 1
 
@@ -547,7 +574,7 @@ def test_workflow_dispatch_with_real_step4_contract() -> None:
     for exit_code in ("1", "2"):
         temporary, root, report, progress = _setup_dispatch_fixture()
         with temporary:
-            result = _run_dispatch(root, report, extra_env={"STUB_FOUNDATION_EXIT": exit_code})
+            result = _run_dispatch(root, report, extra_env={"STUB_QUALITY_GATE_EXIT": exit_code})
             assert result.returncode == int(exit_code), result.stdout + result.stderr
             assert not any(row["kind"] == "review_start" for row in _rows(progress))
 

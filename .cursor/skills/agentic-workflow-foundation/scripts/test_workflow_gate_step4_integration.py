@@ -222,7 +222,7 @@ def test_application_success_runs_gate_test_once() -> None:
         report = _setup_report(tmp, "application-success")
         result = _run(gate, (str(report),))
         assert result.returncode == 0, result.stdout + result.stderr
-        assert quality_log.read_text(encoding="utf-8").splitlines() == ["verify"]
+        assert quality_log.read_text(encoding="utf-8").splitlines() == ["gen", "verify"]
         assert not foundation_log.exists()
         assert gate_test_log.read_text(encoding="utf-8").splitlines() == ["invoked"]
 
