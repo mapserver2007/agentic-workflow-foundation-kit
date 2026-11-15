@@ -15,7 +15,9 @@ set -u
 #   build    — 下流 G-BUILD（backend build_cmd を実行）
 #   lint     — 下流 G-LINT（backend lint_cmd を実行）
 #   test     — 下流 G-TEST（backend test_cmd を実行）
-#   verify   — 下流 build → lint → test（G-GEN を含めない）
+#   verify   — 下流 build → lint → test（G-GEN を含めない）。
+#              make ターゲットが無い段は省略して次へ進む。
+#              ターゲットが実在して検査が失敗した段で停止する。
 #
 # Exit codes:
 #   0 = PASS
@@ -51,6 +53,41 @@ _run_backend() {
     127) echo "ERROR: backend command not found: $1" >&2; return 2 ;;
     *) return 1 ;;
   esac
+}
+
+# make の対象ターゲット自体が Makefile に無いとき 0。
+# 依存の欠落（needed by）や、ターゲットが実在するときの失敗は 1 とし、実実行に委ねる。
+_make_target_missing() {
+  local target="$1"
+  local output
+  if ! command -v make >/dev/null 2>&1; then
+    return 1
+  fi
+  output="$(
+    cd "$ROOT_DIR" || exit 2
+    make -n "$target" 2>&1
+  )" || true
+  case "$output" in
+    *"needed by"*)
+      return 1
+      ;;
+    *"No targets specified and no makefile found"*)
+      return 0
+      ;;
+    *"No rule to make target \`${target}'"*|*"No rule to make target '${target}'"*|*"No rule to make target \"${target}\""*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+# verify だけが使う。make ターゲットが無ければ実行せず次へ進む。
+_verify_step() {
+  if [[ "${1:-}" == "make" && "$#" -eq 2 ]] && _make_target_missing "$2"; then
+    echo "SKIP: make target '$2' が無いため省略します"
+    return 0
+  fi
+  _run_backend "$@"
 }
 
 {{#if foundation.enabled}}
@@ -105,9 +142,9 @@ case "$SUBCMD" in
     lint_cmd=({{#each tech_contract.quality_gate.lint.argv}} "{{this}}"{{/each}} )
     test_cmd=({{#each tech_contract.quality_gate.test.argv}} "{{this}}"{{/each}} )
     _contract_status && _preflight && \
-    _run_backend "${build_cmd[@]}" && \
-    _run_backend "${lint_cmd[@]}" && \
-    _run_backend "${test_cmd[@]}"
+    _verify_step "${build_cmd[@]}" && \
+    _verify_step "${lint_cmd[@]}" && \
+    _verify_step "${test_cmd[@]}"
     ;;
   audit|check|scripts|self|adr)
     echo "ERROR: '$SUBCMD' は bin/quality-gate から削除されました（ADR-0001）。" >&2

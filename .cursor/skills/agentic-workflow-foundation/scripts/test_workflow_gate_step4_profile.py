@@ -33,6 +33,23 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _init_git_fixture(root: Path, report: Path) -> None:
+    """実差分ゲートが検査できる一時 git worktree を作る。"""
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "config", "user.name", "test fixture"], check=True)
+    subprocess.run([*git, "config", "user.email", "test-fixture@example.invalid"], check=True)
+    subprocess.run([*git, "add", "--all"], check=True)
+    subprocess.run([*git, "commit", "-qm", "fixture baseline"], check=True)
+    base_commit = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+    step3 = root / ".cursor" / ".artifacts" / f"{report.stem}--step3.md"
+    for path in (report, step3):
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(IMPL_BASE_COMMIT, base_commit),
+            encoding="utf-8",
+        )
+
+
 def test_template_declares_profile_selector() -> None:
     content = _read(TEMPLATE)
     assert content, f"missing template: {TEMPLATE}"
@@ -131,6 +148,7 @@ def test_foundation_profile_uses_self_not_quality_gate() -> None:
         gate = _stage_gate_tree(tmp, "foundation")
         foundation_log, quality_log = _write_stub_executables(tmp)
         report = _setup_envelopes(tmp, "profile-foundation")
+        _init_git_fixture(tmp, report)
         result = _run_step4(gate, report)
         assert result.returncode == 0, (
             f"foundation step4 should exit 0 (got {result.returncode})\n"
@@ -151,6 +169,7 @@ def test_application_profile_uses_quality_gate_verify() -> None:
         gate = _stage_gate_tree(tmp, "application")
         foundation_log, quality_log = _write_stub_executables(tmp)
         report = _setup_envelopes(tmp, "profile-application")
+        _init_git_fixture(tmp, report)
         result = _run_step4(gate, report)
         assert result.returncode == 0, (
             f"application step4 should exit 0 (got {result.returncode})\n"
@@ -179,6 +198,7 @@ def test_unknown_profile_exit_2() -> None:
         gate = _stage_gate_tree(tmp, "unknown-profile")
         _write_stub_executables(tmp)
         report = _setup_envelopes(tmp, "profile-unknown")
+        _init_git_fixture(tmp, report)
         result = _run_step4(gate, report)
         assert result.returncode == 2, (
             f"unknown profile should exit 2 (got {result.returncode})\n"

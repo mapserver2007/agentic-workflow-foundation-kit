@@ -8,6 +8,9 @@
 
 ## 主要ユースケースの処理フロー
 
+{{#if design_doc.projection.workflows.flows.body}}
+{{design_doc.projection.workflows.flows.body}}
+{{else}}
 [TODO] 主要な業務フローを記述する（Mermaid シーケンス図推奨）。
 
 ```mermaid
@@ -20,13 +23,21 @@ sequenceDiagram
     Service-->>API: 結果
     API-->>Client: レスポンス
 ```
+{{/if}}
 
 ## エラーハンドリング・リトライパターン
 
+{{#if design_doc.projection.workflows.retry.body}}
+{{design_doc.projection.workflows.retry.body}}
+{{else}}
 [TODO] 外部 API 呼び出しのリトライ・タイムアウト方針を記述する。
+{{/if}}
 
 ## 状態管理・状態遷移
 
+{{#if design_doc.projection.workflows.states.body}}
+{{design_doc.projection.workflows.states.body}}
+{{else}}
 [TODO] 主要エンティティの状態遷移を図示する（Mermaid 推奨）。
 
 ```mermaid
@@ -38,6 +49,7 @@ stateDiagram-v2
     Failed --> [*]
     Completed --> [*]
 ```
+{{/if}}
 
 {{#each domain_docs.workflow_sections}}
 ## {{this.title}}

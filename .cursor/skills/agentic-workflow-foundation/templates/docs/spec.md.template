@@ -9,29 +9,48 @@
 
 ## 目的と背景
 
+{{#if design_doc.projection.spec.purpose.body}}
+{{design_doc.projection.spec.purpose.body}}
+{{else}}
 [TODO] サービス/アプリケーションの目的・解決する課題・非目標を記述する。
 
 - **目的**:
 - **非目標（スコープ外）**:
+{{/if}}
 
 ## ドメイン用語集
 
+{{#if design_doc.projection.spec.glossary.body}}
+{{design_doc.projection.spec.glossary.body}}
+{{else}}
 [TODO] プロジェクト固有の用語を定義する。
 
 | 用語 | 定義 | 備考 |
 |------|------|------|
 |  |  |  |
+{{/if}}
 
 ## システム境界
 
+{{#if design_doc.projection.spec.boundary.body}}
+{{design_doc.projection.spec.boundary.body}}
+{{else}}
 [TODO] 外部システムとの接続点・責務境界を記述する。
+{{/if}}
 
 ## 不変の設計原則 (MUST)
 
+{{#if design_doc.projection.spec.principles.body}}
+{{design_doc.projection.spec.principles.body}}
+{{else}}
 [TODO] 変更不可の設計原則を列挙する（冪等性、トランザクション境界等）。
+{{/if}}
 
 ## 機能仕様
 
+{{#if design_doc.projection.spec.features.body}}
+{{design_doc.projection.spec.features.body}}
+{{else}}
 各機能は以下の形式で要件サマリを記述し、詳細は `docs/spec/{機能名}.md` に分割する。
 テンプレートは [docs/spec/README.md](spec/README.md) を参照。
 
@@ -45,14 +64,23 @@
 **詳細**: [./spec/{機能名}.md](./spec/{機能名}.md)
 
 -->
+{{/if}}
 
 ## 非機能要件
 
+{{#if design_doc.projection.spec.non_functional.body}}
+{{design_doc.projection.spec.non_functional.body}}
+{{else}}
 [TODO] SLO・パフォーマンス要件・セキュリティ要件等を記述する。
+{{/if}}
 
 ## 変更に強い点・弱い点
 
+{{#if design_doc.projection.spec.change_resilience.body}}
+{{design_doc.projection.spec.change_resilience.body}}
+{{else}}
 [TODO] アーキテクチャ上の拡張容易性と制約を記述する。
+{{/if}}
 
 ## 参照
 

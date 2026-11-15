@@ -1218,6 +1218,15 @@ def _test_root_overlay_to_wrapper_constants(errors: list[str]) -> None:
             ),
             encoding="utf-8",
         )
+        # root manifest が design_doc を pin 済みなら、入力の Design Doc も fixture へ複製する。
+        # 複製しないと「固定済み入力が消失」で resolver が exit 2 になり、provider overlay の検証に届かない。
+        pinned_design_doc = (genlib.load_manifest(str(root_manifest)).get("design_doc") or {}).get(
+            "source_path"
+        )
+        if isinstance(pinned_design_doc, str) and pinned_design_doc:
+            fixture_design_doc = fixture_root.parent / pinned_design_doc
+            fixture_design_doc.parent.mkdir(parents=True, exist_ok=True)
+            fixture_design_doc.write_bytes((ROOT / pinned_design_doc).read_bytes())
         resolved = rre.resolved_manifest(str(SKILL_DIR / "manifest.yaml"), str(fixture_root))
         access = resolved.get("github_access") or {}
         keychain = access.get("keychain") or {}
