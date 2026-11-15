@@ -163,6 +163,191 @@ outputs:
         _assert(seed.read_text(encoding="utf-8") == "skeleton\n", "no-projection seed changed")
 
 
+def _sectioned_manifest() -> str:
+    """投影本文が `##` とコードフェンスを含む、見出し付き seed の manifest。"""
+    lines = [
+        "marker_id: section-merge",
+        "design_doc:",
+        "  projection:",
+        "    alpha: |-",
+        "      alpha projected",
+        "      ## Alpha extra",
+        "      ```text",
+        "      ## fenced is not a boundary",
+        "      ```",
+        "    beta: beta projected",
+        "    detail: detail projected",
+        "outputs:",
+        "  - path: sectioned.md",
+        "    template: sectioned.template",
+        "    mode: seed",
+        "    pristine_drop_keys:",
+        "      - design_doc",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+SECTIONED_TEMPLATE = """\
+# Title
+
+> fixed preamble
+
+## Alpha
+
+{{#if design_doc.projection.alpha}}
+{{design_doc.projection.alpha}}
+{{else}}
+[TODO] alpha
+{{/if}}
+
+## Beta
+
+{{#if design_doc.projection.beta}}
+{{design_doc.projection.beta}}
+{{else}}
+[TODO] beta
+{{/if}}
+
+{{#if design_doc.projection.detail}}
+## Detail
+
+{{design_doc.projection.detail}}
+
+{{/if}}
+## Refs
+
+- ref
+"""
+
+
+def _sectioned_fixture(root: Path):
+    import genlib
+
+    skill_dir = _make_skill(root, _sectioned_manifest())
+    (skill_dir / "templates" / "sectioned.template").write_text(SECTIONED_TEMPLATE, encoding="utf-8")
+    manifest = genlib.load_manifest(str(skill_dir / "manifest.yaml"))
+    pristine_manifest = {k: v for k, v in manifest.items() if k != "design_doc"}
+    pristine = genlib.render(SECTIONED_TEMPLATE, pristine_manifest)
+    expected = genlib.render(SECTIONED_TEMPLATE, manifest)
+    return skill_dir, root / "sectioned.md", pristine, expected
+
+
+def _run_capture(skill_dir: Path, check: bool) -> tuple[int, str]:
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        code = generate.run(str(skill_dir), check=check)
+    return code, stdout.getvalue()
+
+
+def test_structural_section_merge_via_generate() -> None:
+    with tempfile.TemporaryDirectory(prefix="generate-section-merge-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir, target, pristine, expected = _sectioned_fixture(root)
+        _assert(
+            generate.structural_headings(pristine) == ["## Alpha", "## Beta", "## Refs"],
+            "pristine structural headings mismatch",
+        )
+        # 投影あり描画の `##` 列は投影なしと一致しない（投影本文の `##` と条件付き節が増える）。
+        # コードフェンス内の `## ` は数えない。
+        _assert(
+            generate.structural_headings(expected)
+            == ["## Alpha", "## Alpha extra", "## Beta", "## Detail", "## Refs"],
+            f"expected headings mismatch: {generate.structural_headings(expected)}",
+        )
+
+        # 1. 未編集（投影なしスケルトンそのもの）: ファイル全体を置換する。
+        target.write_text(pristine, encoding="utf-8")
+        code, out = _run_capture(skill_dir, check=True)
+        _assert(code == 1 and "[pristine置換] sectioned.md" in out, f"whole replace check: {code} {out!r}")
+        _assert(target.read_text(encoding="utf-8") == pristine, "check mutated the file")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "whole replacement failed")
+        _assert(target.read_text(encoding="utf-8") == expected, "whole replacement mismatch")
+        _assert(_run_capture(skill_dir, check=True)[0] == 0, "projected file must be stable")
+
+        # 2. 前文と Alpha を手編集。Beta はスケルトンのまま -> Beta だけが置換される。
+        hand = pristine.replace("> fixed preamble", "> hand preamble")
+        hand = hand.replace("## Alpha\n\n[TODO] alpha\n", "## Alpha\n\nhand written alpha\n")
+        _assert(hand != pristine, "fixture edit did not apply")
+        target.write_text(hand, encoding="utf-8")
+        code, out = _run_capture(skill_dir, check=True)
+        _assert(
+            code == 1 and "[section置換] sectioned.md#Beta" in out and "#Alpha" not in out,
+            f"section check output mismatch: {code} {out!r}",
+        )
+        _assert(target.read_text(encoding="utf-8") == hand, "check mutated the file")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "section merge failed")
+        merged = target.read_text(encoding="utf-8")
+        _assert("> hand preamble" in merged, "preamble was not kept")
+        _assert("hand written alpha" in merged, "hand-edited section was not kept")
+        _assert("beta projected" in merged and "[TODO] beta" not in merged, "skeleton section not filled")
+        _assert("## Detail" in merged and "detail projected" in merged, "extra projected heading missing")
+        _assert("alpha projected" not in merged, "hand-edited section was overwritten")
+        _assert(_run_capture(skill_dir, check=True)[0] == 0, "merge must be idempotent")
+        before = target.stat().st_mtime_ns
+        _assert(generate.run(str(skill_dir), check=False) == 0, "second generation failed")
+        _assert(target.stat().st_mtime_ns == before, "idempotent run rewrote the file")
+
+        # 3. 投影済みの Alpha（本文中の `##` とコードフェンスを含む）は境界にならず、Beta だけ埋まる。
+        partly = expected.replace("beta projected", "[TODO] beta")
+        partly = partly.replace("## Detail\n\ndetail projected\n\n", "")
+        _assert(partly != expected, "fixture edit did not apply")
+        target.write_text(partly, encoding="utf-8")
+        code, out = _run_capture(skill_dir, check=True)
+        _assert(code == 1 and "[section置換] sectioned.md#Beta" in out, f"projected alpha: {code} {out!r}")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "projected alpha merge failed")
+        _assert(target.read_text(encoding="utf-8") == expected, "projected alpha merge mismatch")
+
+        # 4. 構造見出しが欠けた既存ファイルは変更せず、理由を出す。
+        broken = hand.replace("## Beta\n", "## Renamed\n")
+        target.write_text(broken, encoding="utf-8")
+        code, out = _run_capture(skill_dir, check=False)
+        _assert(code == 0 and "見出し構成不一致" in out, f"mismatch not reported: {code} {out!r}")
+        _assert(target.read_text(encoding="utf-8") == broken, "mismatched file was modified")
+        code, out = _run_capture(skill_dir, check=True)
+        _assert(code == 0 and "見出し構成不一致" in out, "mismatch must not fail the check")
+
+
+def test_merge_seed_sections_boundaries() -> None:
+    merge = generate.merge_seed_sections
+
+    # 空の構造節: 投影なしと投影ありが同じなら置換しない。手編集は保持する。
+    merged, replaced = merge("## A\nmine\n## B\ntext\n", "## A\n## B\ntext\n", "## A\n## B\nproj\n")
+    _assert(merged == "## A\nmine\n## B\nproj\n" and replaced == ["## B"], f"empty section: {merged!r}")
+
+    # 末尾改行なし。
+    merged, replaced = merge("## A\nmine\n## B\ntext", "## A\n\n## B\ntext", "## A\n\n## B\nproj")
+    _assert(merged == "## A\nmine\n## B\nproj", f"no trailing newline: {merged!r}")
+
+    # 構造見出しの重複は出現順に対応づける。
+    merged, replaced = merge(
+        "## X\nmine\n## X\nb\n", "## X\na\n## X\nb\n", "## X\na\n## X\nB!\n"
+    )
+    _assert(merged == "## X\nmine\n## X\nB!\n" and replaced == ["## X"], f"duplicate headings: {merged!r}")
+
+    # CRLF は正規化せず、一致しない節は保持する。
+    crlf = "## A\r\nmine\r\n## B\r\ntext\r\n"
+    merged, replaced = merge(crlf, "## A\n## B\ntext\n", "## A\n## B\nproj\n")
+    _assert(merged == crlf and replaced == [], f"CRLF must be preserved: {merged!r}")
+
+    # コードフェンス内の `## ` は境界にならない。
+    fenced = "## A\n```text\n## not a heading\n```\n## B\ntext\n"
+    _assert(generate.structural_headings(fenced) == ["## A", "## B"], "fenced heading counted")
+    merged, replaced = merge(fenced, "## A\n```text\n## not a heading\n```\n## B\ntext\n", "## A\n```text\n## not a heading\n```\n## B\nproj\n")
+    _assert(merged.endswith("## B\nproj\n") and replaced == ["## B"], f"fenced merge: {merged!r}")
+
+    # 前文は常に保持する。
+    merged, _ = merge("hand\n## A\n## B\ntext\n", "pre\n## A\n## B\ntext\n", "pre\n## A\n## B\nproj\n")
+    _assert(merged == "hand\n## A\n## B\nproj\n", f"preamble: {merged!r}")
+
+    # 既存ファイルに構造見出しが無ければ SectionMismatch。
+    try:
+        merge("## A\nmine\n", "## A\n## B\ntext\n", "## A\n## B\nproj\n")
+    except generate.SectionMismatch as exc:
+        _assert(exc.heading == "## B", "wrong mismatch heading")
+    else:
+        raise AssertionError("missing structural heading accepted")
+
+
 def test_permission_errors_are_aggregated() -> None:
     manifest = """\
 marker_id: permission-test
@@ -237,6 +422,8 @@ def main() -> int:
         ("skip unchanged and seed", test_skip_unchanged_and_seed),
         ("executable bits and check", test_executable_bits_and_check_are_non_mutating),
         ("pristine seed replacement", test_pristine_seed_replacement),
+        ("structural section merge via generate", test_structural_section_merge_via_generate),
+        ("merge seed sections boundaries", test_merge_seed_sections_boundaries),
         ("permission error aggregation", test_permission_errors_are_aggregated),
         ("symlink output rejection", test_symlink_output_is_rejected_before_write),
     )

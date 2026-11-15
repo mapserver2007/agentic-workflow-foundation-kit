@@ -26,6 +26,7 @@ TOP_LEVEL_KEYS = frozenset({
     "source_path",
     "source_fingerprint",
     "projection",
+    "omissions",
     "digest",
     "approval",
 })
@@ -50,7 +51,7 @@ ATX_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 
 
 class ProjectionError(Exception):
-    """stale / digest mismatch など、再起案で修正できる不一致。"""
+    """stale / digest mismatch / doc 欠落など、再起案で修正できる不一致。"""
 
 
 class SchemaError(Exception):
@@ -76,6 +77,19 @@ def _bare_projection(value: dict) -> dict:
 def projection_digest(value: dict) -> str:
     payload = tc.canonical_json(_bare_projection(value)).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _validate_omissions(value: object) -> dict[str, str]:
+    """omissions（doc 名 → 省略理由）の形式を検査し、正規化して返す。"""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SchemaError("design_doc.omissions は mapping である必要があります")
+    _reject_unknown(value, frozenset(PROJECTION_FIELDS), "design_doc.omissions")
+    return {
+        doc_name: _require_str(reason, f"design_doc.omissions.{doc_name}")
+        for doc_name, reason in value.items()
+    }
 
 
 def _design_doc_relative_path(manifest_path: Path, design_doc: Path) -> str:
@@ -125,13 +139,17 @@ def validate(
     if not isinstance(projection, dict):
         raise SchemaError("design_doc.projection は mapping である必要があります")
     _reject_unknown(projection, frozenset(PROJECTION_FIELDS), "design_doc.projection")
+    omissions = _validate_omissions(value.get("omissions"))
     headings = _heading_names(design_doc)
     field_count = 0
+    projected_docs: set[str] = set()
     for doc_name, fields in projection.items():
         label = f"design_doc.projection.{doc_name}"
         if not isinstance(fields, dict):
             raise SchemaError(f"{label} は mapping である必要があります")
         _reject_unknown(fields, PROJECTION_FIELDS[doc_name], label)
+        if fields:
+            projected_docs.add(doc_name)
         for field_name, field in fields.items():
             field_count += 1
             field_label = f"{label}.{field_name}"
@@ -148,6 +166,22 @@ def validate(
                 )
     if field_count == 0:
         raise SchemaError("design_doc.projection には少なくとも1フィールド必要です")
+    overlap = sorted(projected_docs & set(omissions))
+    if overlap:
+        raise SchemaError(
+            f"design_doc.omissions と projection の両方に書かれた doc があります: {overlap}"
+        )
+    # PROJECTION_FIELDS の全 doc を走査する。旧規則で pin 済みの投影も再起案（exit 1）で復旧させる。
+    uncovered = [
+        doc_name
+        for doc_name in PROJECTION_FIELDS
+        if doc_name not in projected_docs and doc_name not in omissions
+    ]
+    if uncovered:
+        raise ProjectionError(
+            "投影も omissions も無い doc があります: "
+            f"{uncovered}。フィールドを起案するか、design_doc.omissions に省略理由を書いてください"
+        )
 
     expected_digest = projection_digest(value)
     digest = value.get("digest")

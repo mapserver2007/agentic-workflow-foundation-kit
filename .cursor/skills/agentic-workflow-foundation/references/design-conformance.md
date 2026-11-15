@@ -133,15 +133,17 @@ consumer 経路でも引き続き失敗とする。
 - `G-SESSION-HANDOFF-001` / `G-SESSION-STALE-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）、tracker mtime 停滞（WARN）、完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`G-SESSION-STALE-001` は全 consumer で required_sections に含める。
 - `G-SESSION-ARCH-001` / `G-SESSION-ARCH-002` / `G-SESSION-REPORT-001` は agent_workflow 有効時だけ描画する条件付き契約であり、feature 無効 consumer を壊さないため required_sections には追加しない。
 
-## 設計判断: Design Doc 投影は初回限定の seed とする（D-SOT）
+## 設計判断: Design Doc 投影はスケルトン節の追記に限る seed とする（D-SOT）
 
-`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方を任意入力とし、固定済み `design_doc.projection` から Domain docs 5 ファイルへ業務仕様本文を初回投影する。
+`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方を任意入力とし、固定済み `design_doc.projection` から Domain docs 5 ファイルへ業務仕様本文を投影する。投影が入るのは、投影なしスケルトンのまま残っている構造節だけである。
 
-- **SoT**: Design Doc が上流入力、root `manifest.yaml > design_doc` が fingerprint / digest / approval に結合された派生 SoT、投影後の `docs/*` が日常の Domain 正本である。初回投影後の更新は `maintenance-docs-workflow` が担う。
-- **初回置換条件**: 対象は `mode: seed` のまま維持する。既存ファイルが `design_doc` キーを除外したコンテキストで描画したスケルトンと UTF-8 文字列で完全一致し、かつ固定済み投影を含む描画結果と異なる場合だけ置換する。改行・末尾空白を正規化しない。編集済みファイルは不可侵。
-- **管理節方式を採らない理由**: Domain docs 内に管理マーカーを置くと、`maintenance-docs-workflow` の編集と生成所有権が競合し、consumer updater が project-owned seed を保護する契約とも整合しない。
+- **SoT**: Design Doc が上流入力、root `manifest.yaml > design_doc` が fingerprint / digest / approval に結合された派生 SoT、投影後の `docs/*` が日常の Domain 正本である。手で書いた節の更新は `maintenance-docs-workflow` が担う。
+- **doc の網羅**: 5 つの doc は、投影するか `design_doc.omissions` に省略理由を書く。投影も `omissions` も無い doc は、旧規則で pin 済みのものも含め `ProjectionError`（exit 1、再起案）とする。architecture のように根拠が見出し名で特定しにくい doc を AI が黙って省略する経路を塞ぐためである。
+- **置換条件**: 対象は `mode: seed` のまま維持する。既存ファイルを次の順で扱う。(1) 固定済み投影を含む描画結果と一致するなら何もしない。(2) `design_doc` キーを除外したコンテキストで描画したスケルトンと UTF-8 文字列で完全一致するなら、ファイル全体を置換する。(3) それ以外は構造節マージとし、本文が投影なしスケルトンの同じ節と完全一致し、かつ投影あり描画の同じ節と異なる構造節だけを置換する。改行・末尾空白を正規化しない。手で書いた節と前文は保持する。
+- **構造節の定義**: 構造節の境界は、投影なしスケルトンの `## ` 見出し（コードフェンス外）を出現順に探した位置だけで決める。投影本文中の `##` や条件付きで出る追加見出し（例: `API 詳細`）は境界にならず、直前の構造節の本文に含まれる。描画結果の全 `##` を境界にしないのは、投影本文が `##` を含むため、投影あり・なしで見出し列が一致しなくなるからである。構造見出しが既存ファイルから順に見つからないときは、ファイルを変更せず `見出し構成不一致` を報告する。
+- **管理節方式を採らない理由**: Domain docs 内に管理マーカーを置くと、`maintenance-docs-workflow` の編集と生成所有権が競合し、consumer updater が project-owned seed を保護する契約とも整合しない。節境界はマーカーではなく、投影なしスケルトン由来の見出しで決める。
 - **自動承認**: AskQuestion は使わない。draft の schema、field 単位 evidence 見出し、source fingerprint が妥当なら apply が `approval.status: approved` と digest 結合を記録する。validate FAIL では固定しない。
-- **状態境界**: 未 pin の Design Doc は通常の engine audit / check / generate では投影なしとして通し、Phase 1.69 が exit 1 で起案を促す。pin 済み fingerprint 不一致は exit 1。入力消失、2ファイル共存、approval / digest 不整合は exit 2。古い投影を WARN で黙って除外しない。
+- **状態境界**: 未 pin の Design Doc は通常の engine audit / check / generate では投影なしとして通し、Phase 1.69 が exit 1 で起案を促す。pin 済み fingerprint 不一致と doc 欠落は exit 1。入力消失、2ファイル共存、approval / digest 不整合は exit 2。古い投影を WARN で黙って除外しない。
 - **意味検証の限界**: `evidence` は Design Doc 内の ATX 見出し名が存在することだけを機械検証する。本文の意味的正確性は AI 起案時と PO の生成結果評価に委ねる。
 - **ADR 境界**: これは kit 自身の生成仕様であり、`docs/DECISIONS.md` の「起票しないケース」に従い、適用先プロジェクトの ADR には記録しない。根拠は本節と seed manifest コメントに保持する。
 

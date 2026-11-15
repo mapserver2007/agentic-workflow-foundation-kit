@@ -958,6 +958,8 @@ outputs:
   # テンプレート内の {{#each}} で契約済みセクションを展開する。
   # Phase 1.69 の Design Doc 投影は kit 内部の生成仕様であり、適用先の
   # docs/DECISIONS.md「起票しないケース」に従って ADR は起票しない。
+  # pristine_drop_keys を持つ seed は、投影なしスケルトンのまま残る構造節（## 見出し単位）
+  # だけを投影で埋める。手で書いた節は保持する（references/design-conformance.md 参照）。
   - path: docs/spec.md
     template: docs/spec.md.template
     mode: seed

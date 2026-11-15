@@ -223,6 +223,13 @@ def test_06_resolved_equivalent():
         design_dst = tmp_root / ".cursor" / "docs" / str(design_name)
         design_dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(design_src, design_dst)
+        # root manifest が design_doc を pin 済みなら、入力の Design Doc も複製する。
+        # 複製しないと「固定済み入力が消失」で resolver が exit 2 になり、等価性の検証に届かない。
+        pinned_design_doc = (root_overlay.get("design_doc") or {}).get("source_path")
+        if isinstance(pinned_design_doc, str) and pinned_design_doc:
+            pinned_dst = tmp_root / pinned_design_doc
+            pinned_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / pinned_design_doc, pinned_dst)
 
         m1 = rre.resolved_manifest(str(seed_path), str(root_with))
         m2 = rre.resolved_manifest(str(seed_path), str(root_without))

@@ -39,7 +39,11 @@ def _write_doc(root: Path, filename: str = "designdoc.md") -> Path:
     return path
 
 
+_OTHER_DOCS = ("api", "architecture", "data_models", "workflows")
+
+
 def _draft(manifest: Path, doc: Path, body: str = "Explicit purpose.") -> dict:
+    """spec だけを投影し、他の 4 doc は omissions で省略理由を示す draft。"""
     return {
         "schema_version": 1,
         "source_path": doc.relative_to(manifest.parent).as_posix(),
@@ -52,7 +56,30 @@ def _draft(manifest: Path, doc: Path, body: str = "Explicit purpose.") -> dict:
                 },
             },
         },
+        "omissions": {name: f"Design Doc に {name} の根拠節が無い" for name in _OTHER_DOCS},
     }
+
+
+def _full_draft(manifest: Path, doc: Path) -> dict:
+    """5 つの doc すべてを投影し、omissions を持たない draft。"""
+    draft = _draft(manifest, doc)
+    del draft["omissions"]
+    for name in _OTHER_DOCS:
+        first_field = sorted(dp.PROJECTION_FIELDS[name])[0]
+        draft["projection"][name] = {
+            first_field: {"body": f"{name} projected", "evidence": "Purpose"},
+        }
+    return draft
+
+
+def _expect(exc_type: type, label: str, fn) -> None:
+    try:
+        fn()
+    except exc_type:
+        return
+    except Exception as exc:  # noqa: BLE001
+        raise AssertionError(f"{label}: expected {exc_type.__name__}, got {type(exc).__name__}: {exc}") from exc
+    raise AssertionError(f"{label}: {exc_type.__name__} was not raised")
 
 
 def _pin(manifest: Path, doc: Path) -> dict:
@@ -222,21 +249,118 @@ def test_pristine_seed_replacement() -> None:
         _assert(target.read_text(encoding="utf-8") == "edited\n", "edited seed overwritten")
 
 
-def test_no_projection_templates_are_byte_identical() -> None:
+def test_doc_coverage_and_omissions() -> None:
+    with tempfile.TemporaryDirectory(prefix="design-doc-coverage-") as temp_dir:
+        root = Path(temp_dir)
+        manifest = root / "manifest.yaml"
+        _write_manifest(manifest)
+        doc = _write_doc(root)
+
+        def validate(draft: dict) -> None:
+            dp.validate(draft, manifest, doc, require_approval=False)
+
+        validate(_draft(manifest, doc))
+        validate(_full_draft(manifest, doc))
+
+        # 投影も omissions も無い doc は、再起案で直せる ProjectionError（exit 1）。
+        gap = _draft(manifest, doc)
+        del gap["omissions"]["architecture"]
+        _expect(dp.ProjectionError, "doc gap", lambda: validate(gap))
+        no_omissions = _draft(manifest, doc)
+        del no_omissions["omissions"]
+        _expect(dp.ProjectionError, "no omissions", lambda: validate(no_omissions))
+        empty_doc = _draft(manifest, doc)
+        empty_doc["projection"]["architecture"] = {}
+        del empty_doc["omissions"]["architecture"]
+        _expect(dp.ProjectionError, "empty doc mapping", lambda: validate(empty_doc))
+
+        # omissions の形式不正・重複・投影 0 件は SchemaError（exit 2）。
+        unknown = _draft(manifest, doc)
+        unknown["omissions"]["unknown_doc"] = "reason"
+        _expect(dp.SchemaError, "unknown doc", lambda: validate(unknown))
+        blank = _draft(manifest, doc)
+        blank["omissions"]["api"] = "  "
+        _expect(dp.SchemaError, "blank reason", lambda: validate(blank))
+        not_mapping = _draft(manifest, doc)
+        not_mapping["omissions"] = ["api"]
+        _expect(dp.SchemaError, "omissions list", lambda: validate(not_mapping))
+        overlap = _draft(manifest, doc)
+        overlap["omissions"]["spec"] = "投影と両立しない"
+        _expect(dp.SchemaError, "overlap", lambda: validate(overlap))
+        only_omissions = _draft(manifest, doc)
+        only_omissions["projection"] = {}
+        only_omissions["omissions"]["spec"] = "Design Doc に spec の根拠節が無い"
+        _expect(dp.SchemaError, "omissions only", lambda: validate(only_omissions))
+
+        # 空の projection の doc を omissions で埋める場合は重複扱いにならない。
+        empty_with_reason = _draft(manifest, doc)
+        empty_with_reason["projection"]["api"] = {}
+        validate(empty_with_reason)
+
+
+def test_digest_compat_and_legacy_pin() -> None:
+    with tempfile.TemporaryDirectory(prefix="design-doc-digest-") as temp_dir:
+        root = Path(temp_dir)
+        manifest = root / "manifest.yaml"
+        _write_manifest(manifest)
+        doc = _write_doc(root)
+
+        # omissions を持たない pin の digest は、omissions キー追加前の規則と同一である。
+        full = _full_draft(manifest, doc)
+        sealed = dp.pin_projection(manifest, full, dp.tc.file_digest(manifest), doc)
+        _assert("omissions" not in sealed, "full pin must not gain an omissions key")
+        _assert(sealed["digest"] == dp.projection_digest(full), "digest changed for omissions-free pin")
+        with_omissions = copy.deepcopy(full)
+        with_omissions["omissions"] = {}
+        _assert(
+            dp.projection_digest(with_omissions) != sealed["digest"],
+            "omissions must participate in the digest",
+        )
+
+        # 旧規則で pin 済み（spec だけ投影、omissions 無し）: 再起案で直せる exit 1。
+        legacy_root = root / "legacy"
+        legacy_root.mkdir()
+        legacy_manifest = legacy_root / "manifest.yaml"
+        _write_manifest(legacy_manifest)
+        legacy_doc = _write_doc(legacy_root)
+        legacy = _draft(legacy_manifest, legacy_doc)
+        del legacy["omissions"]
+        _write_manifest(legacy_manifest, dp._finalize(legacy))
+        _assert(
+            (_exit_for_phase(legacy_manifest), _exit_for_engine(legacy_manifest)) == (1, 1),
+            "legacy pin without doc coverage must be exit 1",
+        )
+
+
+def test_docs_structural_headings_and_projection_match() -> None:
+    """kit 自身の Domain docs について、節マージの前提と pin 済み状態の一致を検査する。"""
     manifest = resolver.resolved_manifest(
         str(ROOT / ".cursor/skills/agentic-workflow-foundation/manifest.yaml"),
         str(ROOT / "manifest.yaml"),
     )
-    _assert("design_doc" not in manifest, "kit unpinned Design Doc must not be overlaid")
-    for filename in ("spec.md", "architecture.md", "api.md", "data-models.md", "workflows.md"):
+    checked = 0
+    for output in manifest["outputs"]:
+        drop_keys = output.get("pristine_drop_keys")
+        if not drop_keys:
+            continue
         template = (
-            ROOT
-            / ".cursor/skills/agentic-workflow-foundation/templates/docs"
-            / f"{filename}.template"
+            ROOT / ".cursor/skills/agentic-workflow-foundation/templates" / output["template"]
+        ).read_text(encoding="utf-8")
+        pristine = genlib.render(
+            template, {key: value for key, value in manifest.items() if key not in drop_keys}
         )
-        rendered = genlib.render(template.read_text(encoding="utf-8"), manifest)
-        actual = (ROOT / "docs" / filename).read_text(encoding="utf-8")
-        _assert(rendered == actual, f"no-projection output drift: {filename}")
+        expected = genlib.render(template, manifest)
+        actual = (ROOT / output["path"]).read_text(encoding="utf-8")
+        headings = generate.structural_headings(pristine)
+        for where, text in (("投影なし", pristine), ("投影あり", expected), ("実ファイル", actual)):
+            try:
+                generate.split_structural_sections(text, headings, where)
+            except generate.SectionMismatch as exc:
+                raise AssertionError(f"{output['path']}: {exc}") from exc
+        # 固定済み投影があれば docs/* は投影あり描画と一致する。未 pin ならスケルトンと一致する。
+        _assert(actual == expected, f"docs drift from projected render: {output['path']}")
+        checked += 1
+    _assert(checked == 5, f"expected 5 projected seed docs, got {checked}")
 
 
 def main() -> int:
@@ -244,7 +368,9 @@ def main() -> int:
         ("state table", test_state_table),
         ("schema and auto approval", test_schema_and_auto_approval),
         ("pristine seed replacement", test_pristine_seed_replacement),
-        ("no-projection byte identity", test_no_projection_templates_are_byte_identical),
+        ("doc coverage and omissions", test_doc_coverage_and_omissions),
+        ("digest compat and legacy pin", test_digest_compat_and_legacy_pin),
+        ("docs structural headings and projection match", test_docs_structural_headings_and_projection_match),
     )
     for label, test in tests:
         try:
