@@ -134,8 +134,8 @@ plan ファイルが指定された場合は Read ツールで全体を読み込
 1. タイトルと本文を一時ファイルに書き出す:
 
    ```bash
-   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-title.XXXXXX.txt")"
-   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-body.XXXXXX.md")"
+   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-title.XXXXXX")"
+   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/issue-body.XXXXXX")"
 
    cat > "$TITLE_FILE" << 'TITLE_EOF'
    {title}

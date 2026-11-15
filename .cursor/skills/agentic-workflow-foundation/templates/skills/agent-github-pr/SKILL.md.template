@@ -153,8 +153,8 @@ test -x bin/github-pr-create-safe || { echo "GitHub wrapper not found" >&2; exit
 1. タイトルと本文を一時ファイルに書き出す:
 
    ```bash
-   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-title.XXXXXX.txt")"
-   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX.md")"
+   TITLE_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-title.XXXXXX")"
+   BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX")"
    trap 'rm -f "$TITLE_FILE" "$BODY_FILE"' EXIT
 
    cat > "$TITLE_FILE" << 'TITLE_EOF'
