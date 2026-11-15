@@ -8,7 +8,20 @@
 出力モード（manifest.yaml > outputs[].mode）:
   render : テンプレート全展開でファイルを丸ごと生成（直接編集は drift）
   marker : `marker_id` のマーカーブロックを既存ファイルへ upsert（ブロック外は不可侵）
-  seed   : 不在時のみ初期生成。既存ファイルは上書きしない（DECISIONS/GOTCHAS 等の追記ログ）
+  seed   : 不在時のみ初期生成。既存ファイルは上書きしない（DECISIONS/GOTCHAS 等の追記ログ）。
+           outputs[].pristine_drop_keys があるときだけ、指定キーを除いて描画した
+           「投影なしスケルトン」を基準に、既存ファイルを次の順で扱う。
+             1. 既存 == 投影あり描画 → 何もしない。
+             2. 既存 == 投影なしスケルトン → ファイル全体を投影あり描画へ置換する。
+             3. それ以外 → 構造節マージ。構造節は、投影なしスケルトンの `## ` 見出し
+                （コードフェンス外）を出現順に境界とした「見出し行から次の構造見出し
+                直前まで」のバイト列である。本文が投影なしスケルトンのまま残っている
+                節だけを投影あり描画の節へ置換し、手で書いた節と前文は保持する。
+                構造見出しが既存ファイルから順に見つからないときは、そのファイルを
+                変更せず `見出し構成不一致` を報告する。
+           既知の制約: 投影だけが出す追加見出し（投影本文中の `##` や条件付き節）は
+           構造境界にならず、直前の構造節の本文に含まれる。その塊は、直前の節が
+           置換されるときだけ挿入される。節境界に管理マーカーは使わない。
 
 exit code:
   0 = 生成成功 / --check で全出力が冪等（差分なし）
@@ -19,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -27,6 +41,111 @@ import genlib
 
 
 EXECUTABLE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_STRUCTURAL_HEADING_RE = re.compile(r"^##[ \t]+\S")
+
+
+class SectionMismatch(Exception):
+    """構造見出しが対象テキストから順に見つからない（節マージ不可）。"""
+
+    def __init__(self, heading: str, where: str):
+        self.heading = heading
+        self.where = where
+        super().__init__(f"構造見出し {heading!r} が {where} に見つかりません")
+
+
+def _fence_mask(lines: list[str]) -> list[bool]:
+    """各行がコードフェンスの内側（区切り行を含む）なら True。"""
+    mask: list[bool] = []
+    open_fence: str | None = None
+    for line in lines:
+        match = _FENCE_RE.match(line)
+        if open_fence is None:
+            mask.append(bool(match))
+            if match:
+                open_fence = match.group(1)
+            continue
+        mask.append(True)
+        stripped = line.strip()
+        if (
+            match
+            and stripped
+            and set(stripped) == {open_fence[0]}
+            and len(stripped) >= len(open_fence)
+        ):
+            open_fence = None
+    return mask
+
+
+def structural_headings(text: str) -> list[str]:
+    """コードフェンス外の `## ` 見出し行を出現順に返す（行末の改行は除く）。"""
+    lines = text.splitlines(keepends=True)
+    mask = _fence_mask(lines)
+    return [
+        line.rstrip("\r\n")
+        for line, inside in zip(lines, mask)
+        if not inside and _STRUCTURAL_HEADING_RE.match(line)
+    ]
+
+
+def split_structural_sections(
+    text: str, headings: list[str], where: str
+) -> tuple[str, list[str]]:
+    """`headings` を先頭から順に探して分割し、(前文, 節本文リスト) を返す。
+
+    各節は「構造見出し行から次の構造見出し行の直前まで」の生の文字列で、
+    連結すると元のテキストに戻る。`headings` に無い `##` は節本文に含める。
+    見出しを順に見つけられないときは SectionMismatch を送出する。
+    """
+    lines = text.splitlines(keepends=True)
+    mask = _fence_mask(lines)
+    starts: list[int] = []
+    cursor = 0
+    for heading in headings:
+        found = None
+        for index in range(cursor, len(lines)):
+            if not mask[index] and lines[index].rstrip("\r\n") == heading:
+                found = index
+                break
+        if found is None:
+            raise SectionMismatch(heading, where)
+        starts.append(found)
+        cursor = found + 1
+    if not starts:
+        return text, []
+    preamble = "".join(lines[: starts[0]])
+    bounds = starts + [len(lines)]
+    sections = [
+        "".join(lines[bounds[i]: bounds[i + 1]]) for i in range(len(starts))
+    ]
+    return preamble, sections
+
+
+def merge_seed_sections(
+    existing: str, pristine: str, expected: str
+) -> tuple[str, list[str]]:
+    """投影なしスケルトンのまま残る構造節だけを、投影あり描画の節へ置換する。
+
+    戻り値は (マージ結果, 置換した構造見出しのリスト)。手で書いた節と前文は保持する。
+    構造見出しが既存・投影なし・投影ありのいずれかから順に見つからないときは
+    SectionMismatch を送出する。
+    """
+    headings = structural_headings(pristine)
+    _, pristine_sections = split_structural_sections(pristine, headings, "投影なしスケルトン")
+    _, expected_sections = split_structural_sections(expected, headings, "投影あり描画")
+    preamble, existing_sections = split_structural_sections(existing, headings, "既存ファイル")
+    merged_sections: list[str] = []
+    replaced: list[str] = []
+    for heading, current, base, projected in zip(
+        headings, existing_sections, pristine_sections, expected_sections
+    ):
+        if current == base and base != projected:
+            merged_sections.append(projected)
+            replaced.append(heading)
+        else:
+            merged_sections.append(current)
+    return preamble + "".join(merged_sections), replaced
 
 
 def _marker_block(marker_id: str, body: str) -> str:
@@ -145,7 +264,55 @@ def run(skill_dir: str, check: bool) -> int:
         mode = out.get("mode", "render")
 
         if mode == "seed" and existing is not None:
-            skipped.append(rel)
+            drop_keys = out.get("pristine_drop_keys") or []
+            if not drop_keys:
+                skipped.append(rel)
+                continue
+            template_text = _read(template_path)
+            if template_text is None:
+                print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
+                return 2
+            pristine_manifest = {
+                key: value for key, value in manifest.items() if key not in drop_keys
+            }
+            try:
+                expected = expected_content(
+                    out, manifest, target_path, template_text, marker_id
+                )
+                pristine = genlib.render(template_text, pristine_manifest)
+            except genlib.RenderError as e:
+                print(f"FATAL: 描画失敗 ({rel}): {e}", file=sys.stderr)
+                return 2
+            if existing == expected:
+                skipped.append(rel)
+                continue
+            if existing == pristine:
+                # 投影なしスケルトンそのもの: 見出しの有無によらずファイル全体を置換する。
+                new_content = expected
+                replaced_labels = [(rel, "pristine置換")]
+            else:
+                try:
+                    new_content, replaced = merge_seed_sections(existing, pristine, expected)
+                except SectionMismatch as e:
+                    print(f"見出し構成不一致: {rel}（{e}。ファイルは変更しません）")
+                    skipped.append(rel)
+                    continue
+                if new_content == existing:
+                    skipped.append(rel)
+                    continue
+                replaced_labels = [
+                    (f"{rel}#{heading.lstrip('#').strip()}", "section置換")
+                    for heading in replaced
+                ]
+            if check:
+                changed.extend((label, why) for label, why in replaced_labels)
+                continue
+            try:
+                _write(target_path, new_content, bool(out.get("executable")))
+            except PermissionError as exc:
+                permission_errors.append((rel, exc))
+            else:
+                written.append((rel, replaced_labels[0][1]))
             continue
 
         template_text = _read(template_path)
