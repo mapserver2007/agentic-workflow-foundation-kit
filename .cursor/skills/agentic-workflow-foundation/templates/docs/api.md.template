@@ -8,27 +8,39 @@
 
 ## API設計概要
 
+{{#if design_doc.projection.api.overview.body}}
+{{design_doc.projection.api.overview.body}}
+{{else}}
 [TODO] API の設計方針・認証方式・共通仕様を記述する。
 
 - **ベース URL**:
 - **認証方式**:
 - **バージョニング方針**:
+{{/if}}
 
 ## エンドポイント一覧
 
+{{#if design_doc.projection.api.endpoints.body}}
+{{design_doc.projection.api.endpoints.body}}
+{{else}}
 [TODO] 主要エンドポイントのパス・メソッド・概要を記述する。
 
 | メソッド | パス | 概要 | 認証 |
 |---------|------|------|------|
 |  |  |  |  |
+{{/if}}
 
 ## エラーハンドリング
 
+{{#if design_doc.projection.api.errors.body}}
+{{design_doc.projection.api.errors.body}}
+{{else}}
 [TODO] 共通エラーコード・エラーレスポンス形式を記述する。
 
 | HTTP ステータス | エラーコード | 意味 |
 |----------------|-------------|------|
 |  |  |  |
+{{/if}}
 
 {{#each domain_docs.api_sections}}
 ## {{this.title}}
@@ -39,6 +51,12 @@
 
 {{/each}}
 
+{{#if design_doc.projection.api.details.body}}
+## API 詳細
+
+{{design_doc.projection.api.details.body}}
+
+{{/if}}
 ## 参照
 
 - [仕様概要](spec.md)

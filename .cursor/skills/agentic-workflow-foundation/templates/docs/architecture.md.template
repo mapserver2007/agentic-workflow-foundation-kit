@@ -8,6 +8,9 @@
 
 ## システム全体構成
 
+{{#if design_doc.projection.architecture.overview.body}}
+{{design_doc.projection.architecture.overview.body}}
+{{else}}
 [TODO] 外部システムとの接続関係を図示する（Mermaid 推奨）。
 
 ```mermaid
@@ -20,22 +23,35 @@ graph TB
     A --> B
     B --> C
 ```
+{{/if}}
 
 ## ディレクトリ/モジュール責務
 
+{{#if design_doc.projection.architecture.modules.body}}
+{{design_doc.projection.architecture.modules.body}}
+{{else}}
 [TODO] 主要ディレクトリの責務を記述する。
 
 | ディレクトリ | 責務 | 依存先 |
 |-------------|------|--------|
 |  |  |  |
+{{/if}}
 
 ## 主要コンポーネント詳細
 
+{{#if design_doc.projection.architecture.components.body}}
+{{design_doc.projection.architecture.components.body}}
+{{else}}
 [TODO] コンポーネント間の依存関係と責務を記述する。
+{{/if}}
 
 ## 依存関係方針
 
+{{#if design_doc.projection.architecture.dependencies.body}}
+{{design_doc.projection.architecture.dependencies.body}}
+{{else}}
 [TODO] 依存の方向性・DI 方針・外部ライブラリ選定基準を記述する。
+{{/if}}
 
 ## 参照
 

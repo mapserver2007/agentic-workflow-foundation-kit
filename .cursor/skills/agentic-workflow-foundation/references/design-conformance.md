@@ -133,6 +133,18 @@ consumer 経路でも引き続き失敗とする。
 - `G-SESSION-HANDOFF-001` / `G-SESSION-STALE-001` / `G-SESSION-DONE-001`: §1.5 の安定検査 ID で、handoff 未消費（WARN）、tracker mtime 停滞（WARN）、完了済み追跡ドキュメントの残存（WARN）を機械特定できること。`G-SESSION-STALE-001` は全 consumer で required_sections に含める。
 - `G-SESSION-ARCH-001` / `G-SESSION-ARCH-002` / `G-SESSION-REPORT-001` は agent_workflow 有効時だけ描画する条件付き契約であり、feature 無効 consumer を壊さないため required_sections には追加しない。
 
+## 設計判断: Design Doc 投影は初回限定の seed とする（D-SOT）
+
+`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方を任意入力とし、固定済み `design_doc.projection` から Domain docs 5 ファイルへ業務仕様本文を初回投影する。
+
+- **SoT**: Design Doc が上流入力、root `manifest.yaml > design_doc` が fingerprint / digest / approval に結合された派生 SoT、投影後の `docs/*` が日常の Domain 正本である。初回投影後の更新は `maintenance-docs-workflow` が担う。
+- **初回置換条件**: 対象は `mode: seed` のまま維持する。既存ファイルが `design_doc` キーを除外したコンテキストで描画したスケルトンと UTF-8 文字列で完全一致し、かつ固定済み投影を含む描画結果と異なる場合だけ置換する。改行・末尾空白を正規化しない。編集済みファイルは不可侵。
+- **管理節方式を採らない理由**: Domain docs 内に管理マーカーを置くと、`maintenance-docs-workflow` の編集と生成所有権が競合し、consumer updater が project-owned seed を保護する契約とも整合しない。
+- **自動承認**: AskQuestion は使わない。draft の schema、field 単位 evidence 見出し、source fingerprint が妥当なら apply が `approval.status: approved` と digest 結合を記録する。validate FAIL では固定しない。
+- **状態境界**: 未 pin の Design Doc は通常の engine audit / check / generate では投影なしとして通し、Phase 1.69 が exit 1 で起案を促す。pin 済み fingerprint 不一致は exit 1。入力消失、2ファイル共存、approval / digest 不整合は exit 2。古い投影を WARN で黙って除外しない。
+- **意味検証の限界**: `evidence` は Design Doc 内の ATX 見出し名が存在することだけを機械検証する。本文の意味的正確性は AI 起案時と PO の生成結果評価に委ねる。
+- **ADR 境界**: これは kit 自身の生成仕様であり、`docs/DECISIONS.md` の「起票しないケース」に従い、適用先プロジェクトの ADR には記録しない。根拠は本節と seed manifest コメントに保持する。
+
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
 - `name: agent-maintenance-docs`: Cursor skill としての識別子。
 - `## 責務範囲`: docs 反映 + archives 移動の責務テーブル。

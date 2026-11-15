@@ -114,6 +114,55 @@ def test_executable_bits_and_check_are_non_mutating() -> None:
         _assert(output_a.read_bytes() == content_before, "mode repair rewrote content")
 
 
+def test_pristine_seed_replacement() -> None:
+    manifest = """\
+marker_id: pristine-seed
+design_doc:
+  projection:
+    body: projected
+outputs:
+  - path: seed.md
+    template: seed.template
+    mode: seed
+    pristine_drop_keys:
+      - design_doc
+"""
+    with tempfile.TemporaryDirectory(prefix="generate-pristine-seed-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir = _make_skill(root, manifest)
+        template = skill_dir / "templates" / "seed.template"
+        template.write_text(
+            "{{#if design_doc.projection.body}}"
+            "{{design_doc.projection.body}}\n"
+            "{{else}}skeleton\n{{/if}}",
+            encoding="utf-8",
+        )
+        seed = root / "seed.md"
+
+        seed.write_text("skeleton\n", encoding="utf-8")
+        _assert(generate.run(str(skill_dir), check=True) == 1, "pristine check must report drift")
+        _assert(seed.read_text(encoding="utf-8") == "skeleton\n", "check mutated pristine seed")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "pristine replacement failed")
+        _assert(seed.read_text(encoding="utf-8") == "projected\n", "pristine seed was not replaced")
+
+        seed.write_text("hand edited\n", encoding="utf-8")
+        before = seed.stat().st_mtime_ns
+        _assert(generate.run(str(skill_dir), check=True) == 0, "edited seed check must pass")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "edited seed generation failed")
+        _assert(seed.read_text(encoding="utf-8") == "hand edited\n", "edited seed was overwritten")
+        _assert(seed.stat().st_mtime_ns == before, "edited seed mtime changed")
+
+        no_projection = manifest.replace(
+            "design_doc:\n  projection:\n    body: projected\n",
+            "",
+        )
+        (skill_dir / "manifest.yaml").write_text(no_projection, encoding="utf-8")
+        seed.write_text("skeleton\n", encoding="utf-8")
+        _assert(generate.run(str(skill_dir), check=True) == 0, "no-projection seed must be stable")
+        _assert(generate.run(str(skill_dir), check=False) == 0, "no-projection generation failed")
+        _assert(seed.read_text(encoding="utf-8") == "skeleton\n", "no-projection seed changed")
+
+
 def test_permission_errors_are_aggregated() -> None:
     manifest = """\
 marker_id: permission-test
@@ -187,6 +236,7 @@ def main() -> int:
     tests = (
         ("skip unchanged and seed", test_skip_unchanged_and_seed),
         ("executable bits and check", test_executable_bits_and_check_are_non_mutating),
+        ("pristine seed replacement", test_pristine_seed_replacement),
         ("permission error aggregation", test_permission_errors_are_aggregated),
         ("symlink output rejection", test_symlink_output_is_rejected_before_write),
     )

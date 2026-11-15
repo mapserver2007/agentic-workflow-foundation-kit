@@ -956,9 +956,13 @@ outputs:
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
   # resolve_domain_docs.py（Phase 1.67）が承認済み tech_contract.domain_docs.resolved を投影し、
   # テンプレート内の {{#each}} で契約済みセクションを展開する。
+  # Phase 1.69 の Design Doc 投影は kit 内部の生成仕様であり、適用先の
+  # docs/DECISIONS.md「起票しないケース」に従って ADR は起票しない。
   - path: docs/spec.md
     template: docs/spec.md.template
     mode: seed
+    pristine_drop_keys:
+      - design_doc
     required_sections:
       - "## 目的と背景"
       - "## ドメイン用語集"
@@ -971,16 +975,22 @@ outputs:
   - path: docs/architecture.md
     template: docs/architecture.md.template
     mode: seed
+    pristine_drop_keys:
+      - design_doc
     required_sections:
       - "## システム全体構成"
   - path: docs/api.md
     template: docs/api.md.template
     mode: seed
+    pristine_drop_keys:
+      - design_doc
     required_sections:
       - "## API設計概要"
   - path: docs/data-models.md
     template: docs/data-models.md.template
     mode: seed
+    pristine_drop_keys:
+      - design_doc
     required_sections:
       - "## データベース設計思想"
   - path: docs/coding-standards.md
@@ -991,6 +1001,8 @@ outputs:
   - path: docs/workflows.md
     template: docs/workflows.md.template
     mode: seed
+    pristine_drop_keys:
+      - design_doc
     required_sections:
       - "## 主要ユースケースの処理フロー"
   # CodeRabbit 設定（tech_contract.review.coderabbit 投影 / feature: coderabbit で条件生成）。
