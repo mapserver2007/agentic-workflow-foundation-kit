@@ -117,7 +117,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 
 **Domain docs 同梱防止（application + maintenance-docs 有効時）**: `G-REPORT-DOC-SCOPE-001` は Step② で §6 の変更対象、§5 の直接書込み意図、AC の直接成果を検査し、queue または後続 `maintenance-docs-workflow` を伴わない Domain docs 成果を拒否する。`G-WRITE-SCOPE-BASE-001` は Step③ envelope `base_commit_sha` と report の `implementation-base-commit` を完全 SHA に正規化して一致検査する。`G-WRITE-SCOPE-DOMAIN-001` は report の基準から `git diff --name-only` と未追跡ファイルの和集合を検査し、Step③→④・Step⑤再実行・archive 前に Domain docs 実差分を拒否する。policy 無効時は既存 G-DOC-SPEC 経路を変更しない。
 
-**G-ARCHIVE の動作**: `archive-gate.sh` は完了チェックを検査し、ファイルは移動しない。exit 0 の移動は [06-completion.md](agent-tasks/agent-workflow/06-completion.md) の report archive。
+**G-ARCHIVE の動作**: `archive-gate.sh` は完了チェックを検査し、ファイルは移動しない。exit 0 の移動は [06-completion.md](agent-tasks/agent-workflow/06-completion.md) の report archive。 <!-- contract: quality-gate-archive-inspection-only -->
 {{#if agent_workflow.maintenance_docs.enabled}}
 **G-ARCHIVE-MDOCS の動作（maintenance-docs 起票判定 Hard Gate）**:
 
@@ -137,7 +137,7 @@ G-* の backend argv とセマンティクスは、承認済み `tech_contract.q
 {{/if}}
 
 {{#if foundation.enabled}}
-**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。{{#if agent_workflow.enabled}}タスク完了ゲート（G-DOC-SPEC / G-ARCHIVE）は上記 §1.2.1 で定義済み。{{/if}}Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。
+**本 kit で対象外（理由付き）**: 比較対象（業務アプリ）が持つ「Runbook ゲート（`docs/runbooks/RB-*.md`）/ DB スキーマ整合ゲート」は、本リポが **業務仕様を持たない基盤ジェネレータ**でありこれらのアーティファクトを生成しないため対象外とする。本 kit の仕様 SoT は `manifest.yaml` + `templates/` であり、その整合は §4 の自己検証ゲートが担保する。{{#if agent_workflow.enabled}}タスク完了ゲート（G-DOC-SPEC / G-ARCHIVE）は上記 §1.2.1 で定義済み。{{/if}}Domain 層 docs を持つ下流プロジェクトでは、これらのゲートを再採用すること。 <!-- contract: quality-gate-foundation-out-of-scope-note -->
 {{else}}
 **本リポジトリで対象外（理由付き）**: Runbook ゲート（`docs/runbooks/RB-*.md`）と DB スキーマ整合ゲートは、Domain 層 docs を SoT とする下流プロジェクトで管理する。本リポジトリのコードゲートは §1.1 に定義する。
 {{/if}}

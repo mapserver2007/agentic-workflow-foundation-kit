@@ -154,7 +154,8 @@ def test_file_not_found_still_exit_2():
 def test_step2_report_slug_binding_template_contract():
     """step2-report は basename ではなく --stepN 前の prefix を束縛する。"""
     content = WORKFLOW_GATE_TEMPLATE.read_text(encoding="utf-8")
-    assert "フル basename ではなく --stepN より前の prefix" in content
+    # 旧: 説明コメント（日本語の文章）の有無を検査していた。コメントは契約ではないため削除し、
+    # 束縛そのものを表す下の 2 つのコード断片（report_slug / report_path stem の比較）で検査する。
     assert '"step2 report_slug": step2["report_slug"]' in content
     assert '"step2 report_path stem"' in content
 

@@ -6,9 +6,12 @@ import json
 import os
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 ROOT = SKILL_DIR.parent.parent.parent
 TEMPLATE_DIR = SKILL_DIR / "templates"
@@ -592,15 +595,33 @@ def test_static_contracts() -> None:
     assert "session_byte_count" in append_source
     assert "fail 2" in append_source
     assert "UTF-8 byte-count" in readme
-    assert "最大 1000 UTF-8 bytes" in readme
-    assert "`turns.jsonl` の `bytes` は切り詰め前の入力全体" in readme
-    assert "`progress.jsonl` の `bytes` は保存された `summary`" in readme
-    assert "直近最大 20 行" in readme and "20 行すべての保持を保証しない" in readme
+    # 文言ではなく契約マーカー + 値トークン（1000 / 20）で検査する。
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-byte-fields-semantics",
+        ("turns.jsonl", "progress.jsonl", "bytes", "summary"),
+        label="hooks README: byte フィールドの意味",
+    )
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-summary-limit-and-turns-tail",
+        ("1000", "UTF-8", "20"),
+        label="hooks README: summary 上限と turns 保持行数",
+    )
     assert "tracker-{campaign_id}.md" in readme and "handoff-{session_id}.md" in readme
     assert "UTF-8 byte-count" in internals
-    assert "最大 1000 UTF-8 bytes" in internals
-    assert "全件保持は保証しない" in internals
-    assert "prompt_count" in internals and "送信回数" in internals
+    cm.require_tokens_on_line(
+        internals,
+        "internals-summary-limit-and-prompt-count",
+        ("1000", "UTF-8", "prompt_count"),
+        label="context-budget-internals: summary 上限と prompt_count",
+    )
+    cm.require_tokens_on_line(
+        internals,
+        "internals-turns-tail-retention",
+        ("turns.jsonl", "20"),
+        label="context-budget-internals: turns 保持行数",
+    )
 
 
 def main() -> int:

@@ -172,21 +172,94 @@ def test_current_state_and_path_safety_fail_closed() -> None:
         assert link.is_symlink()
 
 
-def test_tracker_ownership_evidence_is_required_when_artifacts_exist() -> None:
+def test_undetermined_artifact_is_retained_without_blocking_when_current_has_no_keys() -> None:
     with tempfile.TemporaryDirectory(prefix="campaign-cleanup-ownership-") as tmp:
         root = Path(tmp)
         script = write_script(root)
         state(root, "S1", "C1")
         artifact = touch(root, ".cursor/.artifacts/OTHER--step1.md")
 
+        # current tracker 欠落: 全体停止せず、所属不明の artifact だけ保持する
         missing_tracker = run(script, root, "apply", "--current-session-id", "S1")
-        assert missing_tracker.returncode == 2
+        assert missing_tracker.returncode == 0, missing_tracker.stderr
         assert artifact.is_file()
+        assert "--- undetermined (retained) ---" in missing_tracker.stdout
+        assert ".cursor/.artifacts/OTHER--step1.md" in missing_tracker.stdout.split(
+            "--- undetermined (retained) ---", 1
+        )[1]
+        assert ".cursor/.artifacts/OTHER--step1.md" not in missing_tracker.stdout.split(
+            "--- delete candidates ---", 1
+        )[1].split("--- undetermined (retained) ---", 1)[0]
 
+        # current tracker はあるが所有キーが 0 件: 同様に保持する
         touch(root, ".cursor/.tracking/tracker-C1.md", "report_path: docs/report.md\n")
         empty_keys = run(script, root, "inventory", "--current-session-id", "S1")
-        assert empty_keys.returncode == 2
+        assert empty_keys.returncode == 0, empty_keys.stderr
+        assert "--- undetermined (retained) ---" in empty_keys.stdout
         assert artifact.is_file()
+
+
+def test_other_tracker_claim_breaks_tracker_artifact_cycle() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-cycle-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        state(root, "S2", "C2")
+        # current tracker には所有キーが無い（循環が起きていた状態）
+        current_tracker = touch(root, ".cursor/.tracking/tracker-C1.md", "report_path: docs/report.md\n")
+        other_tracker = touch(
+            root,
+            ".cursor/.tracking/tracker-C2.md",
+            "campaign_slug: DONE-slug\n` .cursor/.artifacts/DONE-ref--step1.md `\n",
+        )
+        claimed_by_slug = touch(root, ".cursor/.artifacts/DONE-slug--step1.md")
+        claimed_by_path = touch(root, ".cursor/.artifacts/DONE-ref--step2.md")
+        orphan = touch(root, ".cursor/.artifacts/ORPHAN--step1.md")
+        # slug は substring 照合しない
+        near_miss = touch(root, ".cursor/.artifacts/DONE-slug-extra--step1.md")
+
+        result = run(script, root, "apply", "--current-session-id", "S1")
+        assert result.returncode == 0, result.stderr
+        assert current_tracker.is_file()
+        assert (root / ".cursor/.session/S1.json").is_file()
+        assert not other_tracker.exists()
+        assert not (root / ".cursor/.session/S2.json").exists()
+        assert not claimed_by_slug.exists()
+        assert not claimed_by_path.exists()
+        assert orphan.is_file()
+        assert near_miss.is_file()
+        assert "deleted: 4" in result.stdout, result.stdout
+
+
+def test_current_claim_wins_over_other_tracker_claim() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-collision-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        touch(root, ".cursor/.tracking/tracker-C1.md", "campaign_slug: SHARED\n")
+        other_tracker = touch(root, ".cursor/.tracking/tracker-C2.md", "campaign_slug: SHARED\n")
+        shared = touch(root, ".cursor/.artifacts/SHARED--step1.md")
+
+        result = run(script, root, "apply", "--current-session-id", "S1")
+        assert result.returncode == 0, result.stderr
+        assert shared.is_file()
+        assert not other_tracker.exists()
+
+
+def test_unreadable_other_tracker_does_not_block_cleanup() -> None:
+    with tempfile.TemporaryDirectory(prefix="campaign-cleanup-other-unreadable-") as tmp:
+        root = Path(tmp)
+        script = write_script(root)
+        state(root, "S1", "C1")
+        touch(root, ".cursor/.tracking/tracker-C1.md", "report_path: docs/report.md\n")
+        other_tracker = touch_bytes(root, ".cursor/.tracking/tracker-C2.md", b"campaign_slug: \xff\n")
+        artifact = touch(root, ".cursor/.artifacts/OTHER--step1.md")
+
+        result = run(script, root, "apply", "--current-session-id", "S1")
+        assert result.returncode == 0, result.stderr
+        assert not other_tracker.exists()
+        assert artifact.is_file()
+        assert "--- undetermined (retained) ---" in result.stdout
 
 
 def test_tracker_read_failure_and_broken_other_state_abort_without_deletion() -> None:
@@ -299,7 +372,10 @@ def main() -> int:
     tests = (
         test_inventory_and_apply_protect_current_campaign,
         test_current_state_and_path_safety_fail_closed,
-        test_tracker_ownership_evidence_is_required_when_artifacts_exist,
+        test_undetermined_artifact_is_retained_without_blocking_when_current_has_no_keys,
+        test_other_tracker_claim_breaks_tracker_artifact_cycle,
+        test_current_claim_wins_over_other_tracker_claim,
+        test_unreadable_other_tracker_does_not_block_cleanup,
         test_tracker_read_failure_and_broken_other_state_abort_without_deletion,
         test_explicit_tracker_artifact_path_is_authoritative,
         test_tracked_file_is_rejected_before_delete,

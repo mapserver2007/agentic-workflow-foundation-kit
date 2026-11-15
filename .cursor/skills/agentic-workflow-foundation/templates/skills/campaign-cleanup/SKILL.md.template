@@ -74,11 +74,20 @@ allowlist 内ファイルをすべて削除する。完了・未完了・stale�
 - state の `campaign_id` が current campaign と一致する全 SID の state 一式
 - 上記 SID の `.lock`、checkpoint、pending-handoff、turns、progress、pre-compact snapshot
 - 上記 SID の active / consumed handoff
-- tracker の `campaign_slug:` または `.cursor/.artifacts/{slug}--` の明示参照により current campaign に所属すると判定できる artifact
+- current tracker の `campaign_slug:` または `.cursor/.artifacts/{slug}--` の明示参照により current campaign に所属すると判定できる artifact
 
-artifact の slug は substring で照合しない。tracker の明示参照から current campaign への所属を判定できない artifact は
-保護対象にせず、削除対象とする。current tracker が存在する場合は、所有キーを読み取れない状態を
-正常な非所属として扱わず、fail-closed で停止する。
+artifact の slug は substring で照合しない。artifact は次の3分類で扱う。
+
+1. current 所属: current tracker の所有キーに一致する。保護する
+2. 他 campaign 所属: current 以外の tracker（削除対象）が同じ形式で明示参照している。削除する。
+   同じ slug を current tracker も参照している場合は current 所属を優先して保護する
+3. 所属不明: どの tracker にも参照されていない。current tracker に所有キーがあれば削除する。
+   current tracker が無い、または所有キーが 0 件のときは、進行中 campaign の artifact を
+   誤削除しないため削除せず保持し、`--- undetermined (retained) ---` に一覧表示する（exit 0）
+
+所属不明の保持は全体停止の理由にしない。他 campaign の tracker / session / 他 campaign 所属 artifact は
+通常どおり削除する。他 tracker の読み取り失敗も停止させず、その tracker の参照を 0 件として扱う。
+保持された artifact は、current tracker に `campaign_slug:` を追記して再実行するか、内容を確認して手動で削除する。
 
 current SID の state が無い場合は全体を停止する。current campaign 以外の unbound session も、
 このスキルの「現在の campaign 以外」に含まれるため削除対象となる。
@@ -86,9 +95,8 @@ current SID の state が無い場合は全体を停止する。current campaign
 `compact-events.jsonl` は session / campaign に属さない共有校正ログであり、常に削除対象とする。
 削除後は Hook が再作成できるが、過去の校正履歴は失われる。
 
-current tracker の欠落は artifact が存在しない場合だけ許容する。artifact が存在するのに
-tracker が欠落している、または tracker に所有キーがない場合は、所属を判定できないため
-削除せず exit 2 で停止する。
+current tracker の欠落は許容する。ただし current tracker が symlink、regular file でない、
+または読み取れない場合は、所有キーの有無を判定できないため削除せず exit 2 で停止する。
 
 ## 安全規則
 

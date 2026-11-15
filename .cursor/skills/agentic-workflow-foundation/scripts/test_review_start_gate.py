@@ -9,9 +9,12 @@ import os
 import shutil
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 GATE_TEMPLATE = (
     SKILL_DIR
@@ -614,13 +617,29 @@ exec "$review"
 
 
 def test_static_caller_stop_contract() -> None:
-    orchestrator = WORKFLOW_TEMPLATE.read_text(encoding="utf-8")
-    step5 = orchestrator.split("### Step ⑤: PR レビュー検証", 1)[1].split("### Step ⑥", 1)[0]
+    orchestrator = cm.render_template(WORKFLOW_TEMPLATE)
+    step5 = cm.span(
+        orchestrator, "orchestrator-step5", "step5-mode-b-excluded", label="orchestrator Step⑤"
+    )
     assert "workflow-gate.sh review-start" in step5
-    assert "exit 0 を確認できた場合だけレビューを委譲" in step5
-    assert step5.find("workflow-gate.sh review-start") < step5.find("レビュー指摘を取得")
+    # exit 0 を確認できた場合だけレビューを委譲する契約と、review-start → 委譲 の順序
+    cm.require_tokens_on_line(
+        step5,
+        "step5-delegate-only-after-review-start-exit0",
+        ("review-start", "exit 0"),
+        label="orchestrator Step⑤ 委譲条件",
+    )
+    cm.require_order(
+        step5,
+        (
+            "step5-delegate-only-after-review-start-exit0",
+            "step5-review-start-gate",
+            "step5-review-delegation",
+        ),
+        label="orchestrator Step⑤ review-start → 委譲",
+    )
     assert "Mode B" in step5 and "standalone" in step5
-    pr_doc = PR_REVIEW_TEMPLATE.read_text(encoding="utf-8")
+    pr_doc = cm.render_template(PR_REVIEW_TEMPLATE)
     assert "review-pr-url" in pr_doc
     assert "report SHA-256" not in pr_doc
     assert "report / PR / prompt SHA-256" not in pr_doc

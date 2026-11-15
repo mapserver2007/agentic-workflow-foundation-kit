@@ -35,7 +35,7 @@ Context Budget の byte フィールドは、locale や Unicode code point 数�
 
 helper は source 専用で、stdin 消費・source 時の出力・shell option 変更・`exit` を行わない。API の成功は return 0、引数不正または不正 UTF-8 は return 2、`python3` など実行時依存の欠落は return 127 とする。通常の観測 Hook は fail-open、fail-closed の progress append は helper の失敗を非0で返す。
 
-summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値であり、閾値や最小コンテキストウィンドウからの算出値ではない。`prompt_count` は送信回数の件数指標として意味を変えない。UTF-8 byte-count の導入により、マルチバイト入力では旧来の文字数計測と比べて shell byte 閾値や handoff 注入切詰めのタイミングが変わり得るが、閾値の数値自体は変更しない。
+summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値であり、閾値や最小コンテキストウィンドウからの算出値ではない。`prompt_count` は送信回数の件数指標として意味を変えない。UTF-8 byte-count の導入により、マルチバイト入力では旧来の文字数計測と比べて shell byte 閾値や handoff 注入切詰めのタイミングが変わり得るが、閾値の数値自体は変更しない。 <!-- contract: internals-summary-limit-and-prompt-count -->
 
 ## 閾値の変更手順
 
@@ -114,7 +114,7 @@ preCompact 発火時に `session-compact-observer.sh` が以下の情報を統�
 |---|---|---|
 | compact 情報 | trigger / usage% / tokens / prompt_count / timestamp | — |
 | 追跡ドキュメント | 追跡ドキュメントの内容 | UTF-8 byte-count で先頭最大 4096 bytes |
-| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 直近最大 20 行（全件保持は保証しない） |
+| turns.jsonl 末尾 | 直近の prompt + AI 応答サマリ（時系列） | 直近最大 20 行（全件保持は保証しない） | <!-- contract: internals-turns-tail-retention -->
 | state | prompt_count / shell_bytes / weighted_prompt_score 等の累積指標 | 全体 |
 
 | 項目 | 内容 |

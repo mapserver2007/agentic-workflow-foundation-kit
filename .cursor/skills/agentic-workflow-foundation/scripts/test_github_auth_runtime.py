@@ -1075,6 +1075,24 @@ def _test_skill_prerequisite_fail_closed(errors: list[str]) -> None:
             errors,
         )
 
+    # macOS mktemp replaces only trailing X. A suffix such as .txt makes the path literal.
+    mktemp_templates = (
+        TEMPLATES / "skills" / "agent-github-pr" / "SKILL.md.template",
+        TEMPLATES / "skills" / "agent-github-issue" / "SKILL.md.template",
+    )
+    mktemp_arg_re = re.compile(r'mktemp\s+"\$\{TMPDIR:-/tmp\}/([^"]+)"')
+    trailing_x_re = re.compile(r"[A-Za-z0-9._-]*X{6,}")
+    for path in mktemp_templates:
+        text = path.read_text(encoding="utf-8")
+        args = mktemp_arg_re.findall(text)
+        _assert(len(args) >= 1, f"mktemp template missing: {path}", errors)
+        for arg in args:
+            _assert(
+                trailing_x_re.fullmatch(arg) is not None,
+                f"mktemp template must end with X: {path}: {arg}",
+                errors,
+            )
+
     with tempfile.TemporaryDirectory(prefix="github-skill-prereq-") as tmp:
         root = Path(tmp)
         (root / "bin").mkdir()

@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 ROOT = SKILL_DIR.parents[2]
 ENGINE_SCRIPTS = ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"
@@ -39,7 +41,24 @@ def test_foundation_false_removes_self_validation_references() -> None:
         SKILL_DIR / "templates" / "docs" / "QUALITY_GATE.md.template",
         manifest,
     )
-    assert "基盤ジェネレータ" not in quality_gate
+    # foundation 無効時は、基盤固有の「対象外」注記ブロックごと消える（契約マーカーで検査）
+    enabled_manifest = _manifest()
+    enabled_manifest["foundation"]["enabled"] = True
+    enabled_quality_gate = _conditionals(
+        SKILL_DIR / "templates" / "docs" / "QUALITY_GATE.md.template",
+        enabled_manifest,
+    )
+    cm.require(
+        enabled_quality_gate,
+        "quality-gate-foundation-out-of-scope-note",
+        label="foundation 有効",
+    )
+    cm.require_absent(
+        quality_gate,
+        "quality-gate-foundation-out-of-scope-note",
+        reference=enabled_quality_gate,
+        label="foundation 無効",
+    )
     assert "§4" not in quality_gate
 
     deep_thinking = _conditionals(
@@ -311,9 +330,12 @@ def test_session_start_report_conditionals_and_runtime_contract() -> None:
     assert "G-SESSION-ARCH-001" in enabled_quality
     assert "workflow-gate.sh archive <report>" in enabled_quality
     assert "G-SESSION-ARCH-001" not in disabled_quality
-    assert "archive 可能な reports" in enabled_agents
-    assert "archive 可能な reports" not in disabled_agents
-    assert "archive 可能な reports" in enabled_index
+    archivable = "session-start-checks-archivable-reports"
+    cm.require(enabled_agents, archivable, label="AGENTS.md (agent_workflow 有効)")
+    cm.require_absent(
+        disabled_agents, archivable, reference=enabled_agents, label="AGENTS.md (agent_workflow 無効)"
+    )
+    cm.require(enabled_index, archivable, label="agent-workflow.md (agent_workflow 有効)")
 
     missing = _run_session_start(enabled, None)
     assert missing.returncode == 2 and "reports ディレクトリ" in missing.stdout

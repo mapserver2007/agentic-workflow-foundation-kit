@@ -93,9 +93,9 @@ Cursor の [Hooks](https://cursor.com/docs/hooks) 機能で利用するスクリ
 
 Context Budget の byte フィールドはすべて UTF-8 byte-count で記録・比較する。`session-budget-tracker.sh` の prompt byte、`session-shell-tracker.sh` の `shell_bytes`、response / progress の `bytes`、bootstrap の注入サイズ、compact snapshot の tracker サイズ、progress の `output_tail` は同じ `session-byte-count.sh` を使う。`session-budget-evaluator.sh` は Hook が記録した byte 値の読取・比較だけを行い、計測単位を再解釈しない。
 
-`turns.jsonl` の `bytes` は切り詰め前の入力全体、`progress.jsonl` の `bytes` は保存された `summary` の UTF-8 byte 数を表す。両者は異なるログ契約のフィールドであり、入力サイズとして横断比較する共通指標ではない。
+`turns.jsonl` の `bytes` は切り詰め前の入力全体、`progress.jsonl` の `bytes` は保存された `summary` の UTF-8 byte 数を表す。両者は異なるログ契約のフィールドであり、入力サイズとして横断比較する共通指標ではない。 <!-- contract: hooks-readme-byte-fields-semantics -->
 
-`summary` は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値である。これは Context Budget の閾値・最小コンテキストウィンドウ・snapshot 全体の容量から算出した値ではない。compact snapshot は tracker を先頭最大 4096 bytes、全体を最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes、turns は直近最大 20 行として保持するが、全体 byte 制限により 20 行すべての保持を保証しない。復旧情報の SoT は `tracker-{campaign_id}.md` と `handoff-{session_id}.md` であり、turns の summary は直近イベントの識別・補助復旧情報である。`prompt_count` は byte 数ではなく送信回数のまま維持する。
+`summary` は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運用値である。これは Context Budget の閾値・最小コンテキストウィンドウ・snapshot 全体の容量から算出した値ではない。compact snapshot は tracker を先頭最大 4096 bytes、全体を最大 {{framework.budget_thresholds.max_snapshot_bytes}} bytes、turns は直近最大 20 行として保持するが、全体 byte 制限により 20 行すべての保持を保証しない。復旧情報の SoT は `tracker-{campaign_id}.md` と `handoff-{session_id}.md` であり、turns の summary は直近イベントの識別・補助復旧情報である。`prompt_count` は byte 数ではなく送信回数のまま維持する。 <!-- contract: hooks-readme-summary-limit-and-turns-tail -->
 
 ## 判定優先順位
 
@@ -126,7 +126,7 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 - **素通し（ローカル操作）**: `git add` / `git commit`（amend 無し）/ network を伴わない git 読み取り系。AI の fetch/push/clone/pull は専用 wrapper を使う。
 - **二段階フェイル戦略**: `guard-git-write.sh` は二段階で倒す。
   - **deny 対象（保護ブランチ直 push / `--force` push / `git push --delete` / `gh pr merge` / `git reset --hard origin/*` / `security find-generic-password|find-internet-password|dump-keychain` / `git credential fill|approve|reject` / `cat` による ~/.config/gh・~/.ssh・.env・.pem・.key の読み取り / `gh repo delete\|archive` / `gh` 全般）はフェイルクローズ**: `jq` 未インストール / JSON パース失敗等で入力を正常解析できない場合は、生入力へ deny クラスのフォールバック判定を適用し、`{}` 素通りではなく **`ask`** を返す。
-  - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`hooks.json` に登録された `session-*` 観測 Hook は全イベントで fail_open。明示実行 helper の `session-progress-append.sh` は Hook ではなく fail_closed。
+  - **deny 対象以外（git 読み取り系・通常 push 等）はフェイルオープン**: スクリプト障害時は `{}` 素通り。Hook 自爆でワークフロー全停止しないため。`hooks.json` に登録された `session-*` 観測 Hook は全イベントで fail_open。明示実行 helper の `session-progress-append.sh` は Hook ではなく fail_closed。 <!-- contract: hooks-readme-fail-open-vs-append-fail-closed -->
 
 ## State ファイル仕様（session-* 系）
 
@@ -167,10 +167,10 @@ evaluator は以下の優先順位で判定する。上位の判定が適用さ�
 - `kind`: `prompt` / `thought` / `response` / `shell` / `subagent_start` / `subagent_stop` / `review_start`
 - `extra` の共通フィールド（取得可能時）: `model`、`model_id`、`model_params`、`hook_event_name`
 - `prompt` の `extra`: `pr_urls`（JSON decode 済み prompt 全文から抽出した canonical GitHub PR URL の重複排除済み配列）と `prompt_sha256`（同じ全文を trim・改行追加・Unicode再正規化せずUTF-8化した SHA-256 lowercase hex）。prompt 全文は保存せず、`summary` は最大 1000 UTF-8 bytes で、照合には使わない。
-- `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大 6144 UTF-8 bytes。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース）
+- `shell` の `extra`（取得可能時）: `exit_code`（`exit_code` / `exitCode` / `status_code` の順で正規化。空文字は無視）、`output_tail`（`.output` / `.stdout` / `.result` のうち最初の非空値。末尾最大 6144 UTF-8 bytes。gate PASS/FAIL バナー検知向け。Cursor は `exit_code` を保証しないため output が主ソース） <!-- contract: hooks-readme-shell-extra -->
 - `subagent_start` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`subagent_model`、`task`、`description`
-- `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。
-- `review_start` の `extra`: 文字列フィールド `gate_id: review` / `campaign` / `pr` / `review_go_id` / `source: review-start-gate` に固定する。書き込み契機は **workflow-orchestrator 初回 Step⑤ Mode A の review-start gate**。同一 prompt の完全一致だけを冪等 PASS とする。
+- `subagent_stop` の `extra`（取得可能時）: `subagent_id`、`subagent_type`、`status`、`duration_ms`、`task`、`description`。`subagent_model` は含めない。 <!-- contract: hooks-readme-subagent-stop-extra -->
+- `review_start` の `extra`: 文字列フィールド `gate_id: review` / `campaign` / `pr` / `review_go_id` / `source: review-start-gate` に固定する。書き込み契機は **workflow-orchestrator 初回 Step⑤ Mode A の review-start gate**。同一 prompt の完全一致だけを冪等 PASS とする。 <!-- contract: hooks-readme-review-start-extra -->
 
 `session-progress-emitter.sh`（観測 Hook）のセッション ID は `CTX_BUDGET_SESSION_ID` を優先し、未設定時だけ payload の `session_id`、次いで `conversation_id` を使う。JSON が不正、`jq` が利用不能、ID が無効、またはセッションディレクトリが存在しない場合は、何も書き込まず `{}` を返す（fail_open）。
 
@@ -289,6 +289,7 @@ Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は kit 側
 7. [ ] kit updater（`agentic-workflow-update`）の plan → 計画全体承認 → apply で再生成し、生成差分が意図どおりであることを確認した
 {{/if}}
 
+<!-- contract: hooks-readme-helper-checklist -->
 ## helper 検証チェックリスト
 
 Hook ではない明示実行 helper を追加する際は以下を確認する（Hook 登録チェックリストとは別）。

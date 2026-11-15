@@ -10,9 +10,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import _contract_markers as cm  # noqa: E402
 SKILL_DIR = HERE.parent
 TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-progress-emitter.sh.template"
 BYTE_HELPER_TEMPLATE = SKILL_DIR / "templates" / "hooks" / "session-byte-count.sh.template"
@@ -404,8 +407,18 @@ def test_static_registration_contract() -> None:
     for needle in ("subagentStart", "subagentStop", "{session_id}.progress.jsonl", "session-progress-emitter.sh"):
         assert needle in manifest, f"manifest missing {needle}"
     readme = README_TEMPLATE.read_text(encoding="utf-8")
-    assert "subagent_stop" in readme and "subagent_model` は含めない" in readme, "README contract missing"
-    assert "`shell` の `extra`" in readme and "output_tail" in readme, "README shell extra contract missing"
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-subagent-stop-extra",
+        ("subagent_stop", "subagent_model"),
+        label="README subagent_stop extra",
+    )
+    cm.require_tokens_on_line(
+        readme,
+        "hooks-readme-shell-extra",
+        ("shell", "extra", "output_tail"),
+        label="README shell extra",
+    )
 
 
 def main() -> int:

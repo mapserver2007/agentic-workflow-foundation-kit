@@ -221,7 +221,7 @@ Step ① `status: complete` は次を **AND** で満たす場合のみ。
 
 ### 対話条件（Advisory + 記録必須）
 
-8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを進捗通知として提示し、機械退出 PASS 後は同一ターンで Step②を dispatchする
+8. 退出前に「確定事項 / AI提案（要確認済） / 未決定(non-blocking) / 外部待ち」の4分類サマリを進捗通知として提示し、機械退出 PASS 後は同一ターンで Step②を dispatchする <!-- contract: step1-pass-dispatches-step2-immediately -->
 9. open blocking = 0。`blocked_external` blocking が残る場合は `complete` 不可（既存どおり `blocked`）
 
 ### 完了にしないもの

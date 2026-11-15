@@ -56,7 +56,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 6. Subagent 完了後、次ステップへの遷移:
    - 全終端状態で step envelope（`{{agent_workflow.artifact.dir}}/\{slug\}--step\{N\}.md`）の存在と YAML front matter を `gate-artifact.py` で検査する
    - worker が結果または有効な step envelope を返せない場合は、親の **ABORT**（dispatch failure）としてユーザーに報告する。`incomplete` への読み替えや自動再 dispatch はしない
-   - `complete`: Step①は4分類通知後、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} PASS を確認した同一ターンで Step②を dispatchする。Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}}（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
+   - `complete`: Step①は4分類通知後、{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step1 <step1-envelope>`{{else}}`gate-artifact.py <step1-envelope>`{{/if}} PASS を確認した同一ターンで Step②を dispatchする。 <!-- contract: step1-pass-dispatches-step2-immediately -->Step②→③だけは PO `implementation_approval` を待つ。Step③→④は `changed_files` / `untracked_files` と working tree の一般差分一覧を照合し、さらに {{#if agent_workflow.gate_scripts}}`workflow-gate.sh step3 [report-file]`{{else}}Step③の個別 envelope / 実差分ゲート{{/if}}（envelope / base SHA 一致 / Domain 実差分）が PASS の場合だけ dispatch する
    - `incomplete`: 親が step envelope を読み、追加情報付与で再 dispatch
    - `blocked`: 親が reason に応じてエスカレーション
    - `fatal`: 親がユーザーに報告
@@ -77,7 +77,7 @@ Subagent dispatch が指定された Step（①〜④）の worker 責務を、�
 
 `incomplete` / `blocked` / `fatal` は step envelope を再開・報告の入力として保持する。前ステップの envelope は、次ステップがその入力を読み、次ステップ自身の envelope と正式成果物の検証が完了してから削除する。最終的な残存検査・削除は archive gate が行う。
 
-例外（Step①系）: 一般保持則より特則が優先する。Step①系 artifact の保持上限は `implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認まで。その後は削除してよいが、dispatch 前の強制削除義務はない。
+例外（Step①系）: 一般保持則より特則が優先する。Step①系 artifact の保持上限は `implementation_approval.status: approved` かつ Step③ dispatch 直前の digest 一致確認まで。その後は削除してよいが、dispatch 前の強制削除義務はない。 <!-- contract: step1-artifact-retention-exception -->
 
 ## Step②→③ 承認境界
 

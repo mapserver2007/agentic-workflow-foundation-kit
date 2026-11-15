@@ -122,6 +122,7 @@ consumer 経路でも引き続き失敗とする。
 
 ### .cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh
 - allowlist 内 runtime の current campaign 保護と、他 campaign runtime の承認なし apply を実装する。
+- artifact の所属は current tracker と他 tracker の明示参照で判定する。どの tracker にも参照されず current tracker から所有キーも得られない artifact は、全体停止せず `undetermined (retained)` として保持する（tracker と artifact の削除循環を作らない）。
 
 ### .cursor/skills/session-handover/scripts/verification-gate.sh
 - `session.verification.gate_command`: 生成済み root `manifest.yaml` の検証コマンドが展開されていること。

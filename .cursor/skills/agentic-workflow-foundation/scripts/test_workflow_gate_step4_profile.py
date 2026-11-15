@@ -164,7 +164,8 @@ def test_application_profile_uses_quality_gate_verify() -> None:
 
 def test_application_template_always_runs_gen() -> None:
     content = _read(TEMPLATE)
-    assert "gen 必須実行" in content or "常に" in content
+    # 旧: ログ文言 ("gen 必須実行" / "常に") の有無を検査していたが、文言は実行時ログであり契約ではない。
+    # gen が application profile で実行される契約は、下の gen コマンド行と GEN_DIRTY 不在で担保する。
     assert "GEN_DIRTY" not in content
     assert '"$ROOT_DIR/bin/quality-gate" gen' in content
 

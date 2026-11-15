@@ -74,6 +74,7 @@ TESTS_IN_ORDER = [
     "test_domain_docs_wiring.py",
     "test_gate_maintenance_docs.py",
     "test_project_gate_command.py",
+    "test_contract_markers.py",
     "test_workflow_orchestrator_gate_matrix.py",
     "test_step2_approval_boundary.py",
     "test_gate_test.py",

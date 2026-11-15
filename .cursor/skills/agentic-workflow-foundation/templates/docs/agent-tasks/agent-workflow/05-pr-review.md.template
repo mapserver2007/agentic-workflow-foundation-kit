@@ -42,14 +42,15 @@ PR 作成方法を選択してください：
 {{/if}}
 
 {{#if agent_workflow.gate_scripts}}
+<!-- contract: pr-review-review-start-boundary -->
 ## 5.1.1 レビュー検証フェーズ開始の fail-closed 境界
 
-PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が次を実行する。
+PR URL 受領後、委譲レビュースキル呼び出し直前に **workflow-orchestrator** が次を実行する。 <!-- contract: pr-review-review-start-runs-after-pr-url -->
 
 1. ユーザーから canonical PR URL を受領する。beforeSubmitPrompt Hook は prompt 全文を保存せず、全文から抽出した canonical URL 配列と prompt SHA-256 を progress event に記録する。
 2. active report の完了チェック節に `review-pr-url: <canonical-pr-url>` を正確に1行記録する。
 3. `workflow-gate.sh review-start --report <active-report> --pr <canonical-pr-url>` を実行する。
-4. exit 0 の場合だけ {{#if code_review.enabled}}`agent-code-review` Mode A {{else}}レビュー担当{{/if}}へ委譲する。
+4. exit 0 の場合だけ {{#if code_review.enabled}}`agent-code-review` Mode A {{else}}レビュー担当{{/if}}へ委譲する。 <!-- contract: pr-review-delegate-only-after-review-start-exit0 -->
 
 ```bash
 .cursor/skills/session-handover/scripts/workflow-gate.sh review-start \
@@ -90,17 +91,20 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 レビュー完了時に、タスクレポートの「PRレビュー検証完了」チェックボックスを `[x]` に更新する。
 
 {{#if code_review.report.enabled}}
+<!-- contract: pr-review-report-update -->
 {{#if code_review.enabled}}
-レビューレポートの作成とコミットは [agent-code-review](../../../.cursor/skills/agent-code-review/SKILL.md) の段階的作成とコミットポリシーに従う。
+レビューレポートの作成とコミットは [agent-code-review](../../../.cursor/skills/agent-code-review/SKILL.md) の段階的作成とコミットポリシーに従う。 <!-- contract: pr-review-report-commit-policy-delegated -->
 {{else}}
-レビューレポートは Step 5〜7 では commit せず、Step ⑥ の完了コミットで `reviews/` のまま `git add` する（`reviews/archives/` へは移さない）。CodeRabbit の `path_filters` 対象外。
+レビューレポートは Step 5〜7 では commit せず、Step ⑥ の完了コミットで `reviews/` のまま `git add` する（`reviews/archives/` へは移さない）。CodeRabbit の `path_filters` 対象外。 <!-- contract: pr-review-report-commit-policy-inline -->
 {{/if}}
+<!-- contract: pr-review-report-update-end -->
 {{/if}}
 
 ```markdown
 - [x] PRレビュー検証完了
 ```
 
+<!-- contract: pr-review-completion-conditions -->
 ## 5.6 完了条件
 
 - すべての指摘に対して検証（修正する / 修正不要）が完了していること
@@ -108,23 +112,24 @@ PR 作成後、レビューコメント（自動レビューツール / 人間�
 - 各指摘の PR コメントに返信済みであること
 - **レビュー完了承認をユーザーから取得済みであること**
 - タスクレポートの「PRレビュー検証完了」が `[x]` に更新されていること
-{{#if agent_workflow.gate_scripts}}- PR 作成前に `workflow-gate.sh step5` が通過していること
-- 初回 Mode A 委譲前に `workflow-gate.sh review-start` が exit 0 であること
-- コード変更後は `workflow-gate.sh step5` が再度通過していること
-- レビュー完了承認後に `workflow-gate.sh step6` が通過していること{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲートが失敗した場合は汎用ゲートへ進まず、完了報告には進めない）{{/if}}
+{{#if agent_workflow.gate_scripts}}- PR 作成前に `workflow-gate.sh step5` が通過していること <!-- contract: pr-review-completion-step5-before-pr -->
+- 初回 Mode A 委譲前に `workflow-gate.sh review-start` が exit 0 であること <!-- contract: pr-review-completion-review-start-before-delegation -->
+- コード変更後は `workflow-gate.sh step5` が再度通過していること <!-- contract: pr-review-completion-step5-rerun-after-change -->
+- レビュー完了承認後に `workflow-gate.sh step6` が通過していること <!-- contract: pr-review-completion-step6-after-approval -->{{#if agent_workflow.step6.project_gate_command}}（プロジェクトゲート → `plan-gate.sh review` の順序で実行。プロジェクトゲートが失敗した場合は汎用ゲートへ進まず、完了報告には進めない）{{/if}}
 {{else}}- `{{session.verification.gate_command}}` が通過していること
 {{/if}}
 
+<!-- contract: pr-review-approval-gate -->
 ## 5.7 レビュー完了承認（PO 承認ゲート）
 
 指摘対応が完了し保留が 0 件になったら、ユーザーに完了承認を求める。AI は GitHub の新規コメントを自律検知できないため、フェーズ完了は人間承認で担保する。
 
 1. 保留（pending / discuss 未着地）が **0 件**になったときのみ本ゲートに到達する
 2. 承認を求め、提示後はターンを終了する
-{{#if agent_workflow.gate_scripts}}   - **承認する** → 次ターンで{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にし、親が `workflow-gate.sh step6` を通して⑥へ進む
-{{else}}   - **承認する** → 次ターン先頭で{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にする。完了後は [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の `plan-gate.sh review` 境界と [06-completion.md](06-completion.md) の事前確認・report archive 手順に従う
+{{#if agent_workflow.gate_scripts}}   - **承認する** → 次ターンで{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にし、親が `workflow-gate.sh step6` を通して⑥へ進む <!-- contract: pr-review-approval-transition -->
+{{else}}   - **承認する** → 次ターン先頭で{{#if code_review.enabled}} `agent-code-review` Step 7 が{{else}} レビュー担当が{{/if}}追跡ドキュメントを `承認取得済み` にする。完了後は [docs/QUALITY_GATE.md](../../QUALITY_GATE.md) §3 の `plan-gate.sh review` 境界と [06-completion.md](06-completion.md) の事前確認・report archive 手順に従う <!-- contract: pr-review-approval-transition -->
 {{/if}}
-   - **新規のレビューコメントを取得して** → 指摘取得へ戻る
+   - **新規のレビューコメントを取得して** → 指摘取得へ戻る <!-- contract: pr-review-approval-fetch-new-comments -->
 
 ---
 
