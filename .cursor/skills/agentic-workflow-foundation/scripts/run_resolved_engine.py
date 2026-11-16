@@ -29,7 +29,6 @@ ROOT_OVERLAY_KEYS = (
     "project",
     "tech_stack",
     "tech_contract",
-    "design_doc",
     "session",
     "domain_docs",
     "code_review",
@@ -584,7 +583,6 @@ def resolved_manifest(seed_manifest_path: str, root_manifest_path: str) -> dict:
     _validate_project_gate_command(merged)
     _validate_report_id_contract(merged)
     merged = _inject_approved_tech_contract(merged, root_manifest_path)
-    merged = _inject_design_doc_projection(merged, root_manifest_path)
     return _filter_outputs_by_features(merged)
 
 
@@ -595,21 +593,6 @@ def _inject_approved_tech_contract(manifest: dict, root_manifest_path: str) -> d
     import contract_projection as cp  # noqa: WPS433
 
     return cp.apply_contract_projection(manifest, root_manifest_path)
-
-
-def _inject_design_doc_projection(manifest: dict, root_manifest_path: str) -> dict:
-    """固定済み Design Doc 投影だけを検証して resolved manifest へ注入する。"""
-    from resolve_design_doc import resolve_projection  # noqa: WPS433
-
-    _, projection = resolve_projection(
-        Path(root_manifest_path),
-        allow_unpinned=True,
-    )
-    if projection is None:
-        manifest.pop("design_doc", None)
-        return manifest
-    manifest["design_doc"] = projection
-    return manifest
 
 
 def _indent_of(line: str) -> int:
@@ -1003,13 +986,12 @@ def main(argv=None) -> int:
         print(f"FATAL: resolved skill-dir 作成失敗: {e}", file=sys.stderr)
         return 2
     except Exception as e:
-        import design_doc_projection as dp  # noqa: WPS433
         import tech_contract as tc  # noqa: WPS433
 
-        if isinstance(e, (tc.ContractError, dp.ProjectionError)):
+        if isinstance(e, tc.ContractError):
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
-        if isinstance(e, (tc.SchemaError, dp.SchemaError)):
+        if isinstance(e, tc.SchemaError):
             print(f"FATAL: {e}", file=sys.stderr)
             return 2
         raise

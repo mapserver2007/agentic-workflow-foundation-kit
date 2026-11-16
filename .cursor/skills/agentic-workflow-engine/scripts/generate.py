@@ -8,20 +8,7 @@
 出力モード（manifest.yaml > outputs[].mode）:
   render : テンプレート全展開でファイルを丸ごと生成（直接編集は drift）
   marker : `marker_id` のマーカーブロックを既存ファイルへ upsert（ブロック外は不可侵）
-  seed   : 不在時のみ初期生成。既存ファイルは上書きしない（DECISIONS/GOTCHAS 等の追記ログ）。
-           outputs[].pristine_drop_keys があるときだけ、指定キーを除いて描画した
-           「投影なしスケルトン」を基準に、既存ファイルを次の順で扱う。
-             1. 既存 == 投影あり描画 → 何もしない。
-             2. 既存 == 投影なしスケルトン → ファイル全体を投影あり描画へ置換する。
-             3. それ以外 → 構造節マージ。構造節は、投影なしスケルトンの `## ` 見出し
-                （コードフェンス外）を出現順に境界とした「見出し行から次の構造見出し
-                直前まで」のバイト列である。本文が投影なしスケルトンのまま残っている
-                節だけを投影あり描画の節へ置換し、手で書いた節と前文は保持する。
-                構造見出しが既存ファイルから順に見つからないときは、そのファイルを
-                変更せず `見出し構成不一致` を報告する。
-           既知の制約: 投影だけが出す追加見出し（投影本文中の `##` や条件付き節）は
-           構造境界にならず、直前の構造節の本文に含まれる。その塊は、直前の節が
-           置換されるときだけ挿入される。節境界に管理マーカーは使わない。
+  seed   : 不在時のみ初期生成。既存ファイルは上書きしない（DECISIONS/GOTCHAS や Domain docs 等の追記ログ）。
 
 exit code:
   0 = 生成成功 / --check で全出力が冪等（差分なし）
@@ -289,55 +276,7 @@ def run(skill_dir: str, check: bool) -> int:
         mode = out.get("mode", "render")
 
         if mode == "seed" and existing is not None:
-            drop_keys = out.get("pristine_drop_keys") or []
-            if not drop_keys:
-                skipped.append(rel)
-                continue
-            template_text = _read(template_path)
-            if template_text is None:
-                print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
-                return 2
-            pristine_manifest = {
-                key: value for key, value in manifest.items() if key not in drop_keys
-            }
-            try:
-                expected = expected_content(
-                    out, manifest, target_path, template_text, marker_id
-                )
-                pristine = genlib.render(template_text, pristine_manifest)
-            except genlib.RenderError as e:
-                print(f"FATAL: 描画失敗 ({rel}): {e}", file=sys.stderr)
-                return 2
-            if existing == expected:
-                skipped.append(rel)
-                continue
-            if existing == pristine:
-                # 投影なしスケルトンそのもの: 見出しの有無によらずファイル全体を置換する。
-                new_content = expected
-                replaced_labels = [(rel, "pristine置換")]
-            else:
-                try:
-                    new_content, replaced = merge_seed_sections(existing, pristine, expected)
-                except SectionMismatch as e:
-                    print(f"見出し構成不一致: {rel}（{e}。ファイルは変更しません）")
-                    skipped.append(rel)
-                    continue
-                if new_content == existing:
-                    skipped.append(rel)
-                    continue
-                replaced_labels = [
-                    (f"{rel}#{heading.lstrip('#').strip()}", "section置換")
-                    for heading in replaced
-                ]
-            if check:
-                changed.extend((label, why) for label, why in replaced_labels)
-                continue
-            try:
-                _write(target_path, new_content, bool(out.get("executable")))
-            except PermissionError as exc:
-                permission_errors.append((rel, exc))
-            else:
-                written.append((rel, replaced_labels[0][1]))
+            skipped.append(rel)
             continue
 
         template_text = _read(template_path)

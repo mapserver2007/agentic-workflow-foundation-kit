@@ -31,7 +31,7 @@ TESTS_IN_ORDER = [
     "test_engine_readonly.py",
     "test_seed_audit_scope.py",
     "test_generate_skip_unchanged.py",
-    "test_design_doc_projection.py",
+    "test_domain_docs_apply.py",
     "test_genlib_literal_render.py",
     "test_apply_kit_init.py",
     "test_github_auth_runtime.py",
