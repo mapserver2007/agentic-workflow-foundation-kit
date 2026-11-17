@@ -1,0 +1,94 @@
+---
+name: domain-docs
+description: >-
+  Design Doc から Domain 層ドキュメントの本文を起案し、結果ファイル
+  tmp/domain-docs-result.yaml だけを書く。docs と manifest は編集しない。
+  agentic-workflow-foundation の Phase 2.1 から起動する。
+disable-model-invocation: true
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# domain-docs
+
+Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果ファイルへ起案する。書込みは `domain_docs_apply.py` が行う。このスキルは本文を docs へ直接書かない。
+
+## 入力と出力
+
+読んでよいファイルは次の2つだけである。
+
+- `designs/docs/designdoc.md` または `designs/docs/design-doc.md`（targets の `design_doc` が指す方）
+- `tmp/domain-docs-targets.yaml`
+
+書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets を変更しない。
+
+## 結果ファイル
+
+トップレベルのキーは `schema_version`、`sections`、`omissions`、`spec_files` だけである。`schema_version` は `1` とする。
+
+`sections` の各要素は `file`、`heading`、`body`、`evidence` をすべて持つ。
+
+`omissions` の各要素は `file`、`heading`、`reason` をすべて持つ。根拠が無い対象節だけを書く。
+
+`spec_files` の各要素は `slug`、`title`、`summary`、`evidence`、`body` をすべて持つ。
+
+`evidence` は Design Doc に実在する ATX 見出しと完全一致する1行にする。コードフェンス内の見出しは使わない。
+
+`body` に書いてはならないもの:
+
+- 空、または空白だけの本文
+- `[TODO]`
+- 二重波括弧によるテンプレート構文
+- 画像リンク
+- `erDiagram`
+- 対象ファイルの構造見出しと同名の `##`
+
+## 所有権表
+
+書ける節は次のとおりである。表に無い節、`参照`、`ER図・関係性`、契約由来の節、各ファイルの前文は書かない。
+
+| file | heading |
+| --- | --- |
+| `docs/spec.md` | 目的と背景 |
+| `docs/spec.md` | ドメイン用語集 |
+| `docs/spec.md` | システム境界 |
+| `docs/spec.md` | 不変の設計原則 (MUST) |
+| `docs/spec.md` | 機能仕様 |
+| `docs/spec.md` | 非機能要件 |
+| `docs/spec.md` | 変更に強い点・弱い点 |
+| `docs/spec/README.md` | 収録仕様 |
+| `docs/architecture.md` | システム全体構成 |
+| `docs/architecture.md` | ディレクトリ/モジュール責務 |
+| `docs/architecture.md` | 主要コンポーネント詳細 |
+| `docs/architecture.md` | 依存関係方針 |
+| `docs/api.md` | API設計概要 |
+| `docs/api.md` | エンドポイント一覧 |
+| `docs/api.md` | エラーハンドリング |
+| `docs/api.md` | API 詳細 |
+| `docs/data-models.md` | データベース設計思想 |
+| `docs/data-models.md` | 主要テーブル/コレクション構成 |
+| `docs/data-models.md` | データアクセスパターン |
+| `docs/workflows.md` | 主要ユースケースの処理フロー |
+| `docs/workflows.md` | エラーハンドリング・リトライパターン |
+| `docs/workflows.md` | 状態管理・状態遷移 |
+
+targets の `files[].sections` に含まれる節は、`sections` か `omissions` のどちらか一方に必ず書く。同じ節を両方に書かない。
+
+## 機能仕様
+
+`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/{slug}.md` の3者を同じ機能の集合にする。
+
+- slug は kebab-case とする。`readme` は使わない。
+- 収録仕様の1行は `- [題名]({slug}.md) — 要約（根拠: \`見出し\`）` とする。
+- `docs/spec.md` の機能仕様からは `docs/spec/{slug}.md` へリンクする。
+- spec の `body` は `## 概要` を含む。H1 と `## 関連仕様` は書かない。apply が H1 と関連仕様を付ける。
+- 1つの根拠見出しは1つの slug にだけ使う。
+- refresh では、targets の既存 `spec_files` と同じ根拠見出しに同じ slug を使う。根拠見出しを変えて別の slug を割り当てない。
+- 既存ファイルを結果から外しても apply は削除しない。収録仕様と機能仕様には、残す既存行を維持する。
+
+## 手順
+
+1. targets の `mode`、`action`、対象節、既存 spec の slug と evidence を読む。
+2. Design Doc から、対象節の本文と機能仕様を起案する。
+3. `tmp/domain-docs-result.yaml` だけを書く。
+4. docs を直接編集せず終了する。検証と書込みは親が `domain_docs_apply.py apply` で行う。

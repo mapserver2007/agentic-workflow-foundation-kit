@@ -1007,6 +1007,15 @@ outputs:
       - "coderabbit.ai/integrations/schema.v2.json"
       - "path_instructions"
       - "tools"
+  # Domain docs 本文の起案手順。feature 条件は付けない。本文の SoT は domain_docs_apply.py の OWNERSHIP。
+  - path: .cursor/skills/domain-docs/SKILL.md
+    template: skills/domain-docs/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: domain-docs"
+      - "tmp/domain-docs-result.yaml"
+      - "## 所有権表"
+      - "docs/spec/{slug}.md"
   # Layer 3 セッション管理スキル群（親 manifest に内包）。
   - path: .cursor/skills/session-planning/SKILL.md
     template: skills/session-planning/SKILL.md.template

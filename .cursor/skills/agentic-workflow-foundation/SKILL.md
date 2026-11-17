@@ -60,7 +60,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed / schema / default**。統一設計書から一意に抽出できない既定値を保持するが、実行結果によって永続更新しない。
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。SoT 更新時は対話 SKILL が `tmp/tech-stack-contract-draft.yaml` を起案し、`tech_contract.py` が検証・承認済み pin を行う。consumer は未承認契約を fail-closed で拒否する。
-- **Design Doc は任意の per-project 入力**。`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知する。kit は Domain 層ドキュメント（spec / spec/README / architecture / api / data-models / workflows）の器（見出し・節順・`[TODO]`）だけを決定論で生成する。Design Doc を読む推論は独立スキル [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、結果ファイルだけを返す。`scripts/domain_docs_apply.py` が所有権・根拠見出し・整合を検証して書き込む。root `manifest.yaml > design_doc` は `source_path` と `source_fingerprint` の2キーで、Design Doc の変更検知だけに使う。
+- **Design Doc は任意の per-project 入力**。`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知する。kit は Domain 層ドキュメント（spec / spec/README / architecture / api / data-models / workflows）の器（見出し・節順・`[TODO]`）だけを決定論で生成する。Design Doc を読む推論は、seed の `outputs[]` から生成する [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、結果ファイルだけを返す。`scripts/domain_docs_apply.py` が所有権・根拠見出し・整合を検証して書き込む。root `manifest.yaml > design_doc` は `source_path` と `source_fingerprint` の2キーで、Design Doc の変更検知だけに使う。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
 - **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成し、承認済み `tech_contract.quality_gate` から `quality_gate_contract` を一時展開した skill-dir を作る。engine には解決済み入力だけを渡し、`outputs` は seed が単一 SoT であり root には保持しない。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `campaign-cleanup` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。runtime cleanup は current campaign を保護し、承認なしの apply で他 campaign の allowlist 内 runtime を削除する。
@@ -83,7 +83,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/resolve_coderabbit.py` | 承認済み `tech_contract.review.coderabbit` を投影 |
 | `scripts/resolve_domain_docs.py` | 承認済み `tech_contract.domain_docs.resolved` を投影 |
 | `scripts/domain_docs_apply.py` | Phase 2.1。Design Doc の検知と状態判定（`state`）、domain-docs の結果ファイルの検証と atomic 適用（`apply` / `apply --refresh`）、`design_doc` の2キー固定（`pin`） |
-| [`../domain-docs/SKILL.md`](../domain-docs/SKILL.md) | Design Doc から Domain 層本文を起案する subagent の手順（所有権表・結果ファイル形式・分割規則） |
+| [`../domain-docs/SKILL.md`](../domain-docs/SKILL.md) | seed の `outputs[]` から生成する、Design Doc から Domain 層本文を起案する subagent の手順（所有権表・結果ファイル形式・分割規則） |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
@@ -421,7 +421,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 ### Phase 2.1: Design Doc から Domain docs 本文を埋める
 
-Phase 2 の generate が書いた器（見出し・節順・`[TODO]`）の空の節に、Design Doc から推論した本文を足す。推論は独立スキル [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、親は本文を起案しない。順序は generate → Phase 2.1 → audit。
+Phase 2 の generate が書いた器（見出し・節順・`[TODO]`）の空の節に、Design Doc から推論した本文を足す。推論は Phase 2 で生成した [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、親は本文を起案しない。順序は generate → Phase 2.1 → audit。
 
 実行は基盤のセットアップ時（キャンペーン外）に限る。workflow の Step③〜⑥の間は実行しない（`G-WRITE-SCOPE-DOMAIN-001` が Domain docs の変更を拒否する）。
 
@@ -451,7 +451,7 @@ python3 "$apply" apply
 fill-only の規則:
 
 - 本文が器と完全一致する節だけを埋める。手で書いた節と `maintenance-docs-workflow` の反映は変更しない。
-- 書込み先は所有権表（[`domain-docs/references/field-guide.md`](../domain-docs/references/field-guide.md)）の節と `docs/spec/{slug}.md` だけ。kit 所有の節（`参照`、`ER図・関係性`、`domain_docs.*_sections` の節）は書けない。
+- 書込み先は所有権表（[`domain_docs_apply.py`](scripts/domain_docs_apply.py) の `OWNERSHIP`。生成済み [`domain-docs` SKILL.md](../domain-docs/SKILL.md) に同じ表を持つ）の節と `docs/spec/{slug}.md` だけ。kit 所有の節（`参照`、`ER図・関係性`、`domain_docs.*_sections` の節）は書けない。
 - 適用後の `docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/*.md` が同じ機能の集合であることを検証する。
 - `evidence` は Design Doc に実在する ATX 見出し。意味の妥当性までは機械検証しない。
 - 初回の fill-only の成功時に、root `manifest.yaml > design_doc` へ `source_path` と `source_fingerprint` を固定する。`stale` 状態の fill-only は fingerprint を更新しない。旧形式の `design_doc`（`projection` など）は `python3 "$apply" pin` で2キーへ移行する。

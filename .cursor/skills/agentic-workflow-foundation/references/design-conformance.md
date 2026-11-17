@@ -135,7 +135,7 @@ consumer 経路でも引き続き失敗とする。
 
 ## 設計判断: Domain docs の器は kit、Design Doc 由来の本文は domain-docs とする（D-SOT / D-BOUNDARY）
 
-`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方を任意入力とする。kit は Domain 層ドキュメントの器（見出し・節順・`[TODO]`・`tech_contract` 由来の節）だけを決定論で生成する。Design Doc を読む推論は独立スキル `domain-docs` の subagent が行い、`scripts/domain_docs_apply.py` が検証して書き込む。
+`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方を任意入力とする。kit は Domain 層ドキュメントの器（見出し・節順・`[TODO]`・`tech_contract` 由来の節）だけを決定論で生成する。Design Doc を読む推論は、seed の `outputs[]` から生成する `domain-docs` の subagent が行い、`scripts/domain_docs_apply.py` が検証して書き込む。
 
 - **SoT**: Design Doc が上流入力、投影後の `docs/*` が日常の Domain 正本である。root `manifest.yaml > design_doc` は `source_path` と `source_fingerprint` の2キーで、Design Doc の変更検知にだけ使う。手で書いた節の更新は `maintenance-docs-workflow` が担う。
 - **推論と書込みの分離**: subagent は docs を直接編集せず、`tmp/domain-docs-result.yaml` だけを返す。書込みは `domain_docs_apply.py` だけが行う。親（foundation）は本文を起案しない。結果ファイルの検証を通らない限り、docs は変更されない。
@@ -149,6 +149,15 @@ consumer 経路でも引き続き失敗とする。
 - **意味検証の限界**: `evidence` は Design Doc 内の ATX 見出し名が存在することだけを機械検証する。本文の意味的正確性は AI 起案時と PO の生成結果評価に委ねる。
 - **実行タイミング**: 基盤のセットアップ時（キャンペーン外）に限る。Step③以降の実差分は `G-WRITE-SCOPE-DOMAIN-001` が Domain docs の変更として拒否する。
 - **ADR 境界**: これは kit 自身の生成仕様であり、`docs/DECISIONS.md` の「起票しないケース」に従い、適用先プロジェクトの ADR には記録しない。根拠は本節と seed manifest コメントに保持する。
+
+### .cursor/skills/domain-docs/SKILL.md
+
+seed の `outputs[]` から `mode: render` で生成する。feature 条件は付けない。適用スクリプトの書込み範囲は変えない。
+
+- `name: domain-docs`: Cursor skill としての識別子。
+- `tmp/domain-docs-result.yaml`: subagent が書いてよい唯一のファイル。
+- `## 所有権表`: `domain_docs_apply.py` の `OWNERSHIP` と同じ節を手順に持つ。
+- `docs/spec/{slug}.md`: 機能仕様の出力先。`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様と3者一致させる。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
 - `name: agent-maintenance-docs`: Cursor skill としての識別子。

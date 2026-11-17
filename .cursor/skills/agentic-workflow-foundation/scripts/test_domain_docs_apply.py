@@ -716,6 +716,89 @@ def test_refresh_replaces_existing_spec_files() -> None:
         _assert((root / "docs/spec/order.md").is_file(), "orphan file must not be deleted")
 
 
+def test_domain_docs_skill_template_contract() -> None:
+    template_path = da.TEMPLATES_DIR / "skills/domain-docs/SKILL.md.template"
+    rendered = genlib.render(template_path.read_text(encoding="utf-8"), {})
+    _assert(rendered == template_path.read_text(encoding="utf-8"), "template must render without substitution")
+    for required in (
+        "name: domain-docs",
+        "tmp/domain-docs-result.yaml",
+        "## 所有権表",
+        "docs/spec/{slug}.md",
+        "結果ファイル以外は編集しない",
+        "schema_version",
+        "sections",
+        "omissions",
+        "spec_files",
+        "[TODO]",
+        "erDiagram",
+        "画像リンク",
+    ):
+        _assert(required in rendered, f"skill contract missing: {required}")
+    _assert("field-guide" not in rendered, "field-guide must not be referenced")
+    for rel, owned in da.OWNERSHIP.items():
+        _assert(rel in rendered, f"ownership file missing: {rel}")
+        for name in owned:
+            _assert(name in rendered, f"ownership heading missing: {rel}#{name}")
+    _assert(sum(len(names) for names in da.OWNERSHIP.values()) == 22, "ownership size changed")
+    for kit_owned in ("参照", "ER図・関係性"):
+        _assert(kit_owned in rendered, f"kit-owned exclusion missing: {kit_owned}")
+
+
+def test_generated_skill_is_cataloged_and_linked() -> None:
+    """生成スキルが seed の outputs[] に登録され、foundation SKILL.md の参照先と一致すること。"""
+    seed = genlib.load_manifest(str(da.SEED_MANIFEST))
+    entries = [out for out in seed.get("outputs") or [] if out.get("path") == ".cursor/skills/domain-docs/SKILL.md"]
+    _assert(len(entries) == 1, f"domain-docs must be cataloged exactly once: {len(entries)}")
+    entry = entries[0]
+    _assert(entry.get("template") == "skills/domain-docs/SKILL.md.template", "template path mismatch")
+    _assert(entry.get("mode") == "render", "domain-docs must be render mode")
+    _assert("feature" not in entry, "domain-docs must not be feature-gated")
+    _assert((da.TEMPLATES_DIR / entry["template"]).is_file(), "cataloged template is missing")
+
+    skill_text = (da.SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    _assert("(../domain-docs/SKILL.md)" in skill_text, "foundation SKILL.md must link the generated skill")
+    _assert("field-guide" not in skill_text, "foundation SKILL.md must not reference field-guide")
+    _assert("独立スキル [`domain-docs`]" not in skill_text, "domain-docs must not be described as independent")
+
+    generated = ROOT / ".cursor" / "skills" / "domain-docs" / "SKILL.md"
+    _assert(generated.is_file(), "generated domain-docs SKILL.md is missing; run generate")
+    template_text = (da.TEMPLATES_DIR / entry["template"]).read_text(encoding="utf-8")
+    _assert(generated.read_text(encoding="utf-8") == genlib.render(template_text, {}), "generated skill drifted")
+
+
+def test_zero_state_e2e_ends_skip_fresh() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-e2e-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, name="e2e")
+        code, out, err = run_cli(root, skeletons, "state")
+        _assert(code == 0 and "action=fill" in out and "pin=unpinned" in out, f"state: {out} {err}")
+        targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+        write_result(root, make_result(targets))
+        code, out, err = run_cli(root, skeletons, "apply")
+        _assert(code == 0 and "適用完了" in out, f"apply: {out} {err}")
+        before = {rel: (root / rel).read_bytes() for rel in da.OWNERSHIP}
+        code, out, err = run_cli(root, skeletons, "state")
+        _assert(code == 0 and "action=skip" in out and "pin=fresh" in out, f"after: {out} {err}")
+        code, out, _ = run_cli(root, skeletons, "state")
+        _assert(code == 0 and "action=skip" in out, "rerun state changed")
+        _assert(all((root / rel).read_bytes() == data for rel, data in before.items()), "rerun changed docs")
+
+
+def test_refresh_invalid_result_does_not_write() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-refresh-invalid-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
+        apply_fill(root, skeletons)
+        before = {rel: (root / rel).read_bytes() for rel in da.OWNERSHIP}
+        code, out, err = run_cli(root, skeletons, "state", "--refresh")
+        _assert(code == 0 and "action=refresh" in out, f"refresh state: {out} {err}")
+        write_result(root, {"sections": [{"file": "docs/api.md", "heading": "参照", "evidence": "概要", "body": "x"}]})
+        code, _, err = run_cli(root, skeletons, "apply", "--refresh")
+        _assert(code == 1 and "ERROR" in err, f"invalid refresh accepted: {code} {err}")
+        _assert(all((root / rel).read_bytes() == data for rel, data in before.items()), "invalid refresh wrote docs")
+
+
 def test_real_repo_docs_keep_structure() -> None:
     """本リポジトリの6つの docs が、kit の器の見出しを順に保っていること。全文一致は求めない。"""
     manifest_path = ROOT / "manifest.yaml"
@@ -741,6 +824,10 @@ def main() -> int:
         ("cli fill flow and stale pin", test_cli_fill_flow_and_stale_pin),
         ("cli refresh requires approval", test_cli_refresh_requires_approval),
         ("refresh replaces existing spec files", test_refresh_replaces_existing_spec_files),
+        ("domain-docs skill template contract", test_domain_docs_skill_template_contract),
+        ("generated skill is cataloged and linked", test_generated_skill_is_cataloged_and_linked),
+        ("zero state e2e ends skip fresh", test_zero_state_e2e_ends_skip_fresh),
+        ("refresh invalid result does not write", test_refresh_invalid_result_does_not_write),
         ("real repo docs keep structure", test_real_repo_docs_keep_structure),
     )
     for label, test in tests:
