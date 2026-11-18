@@ -956,15 +956,12 @@ outputs:
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
   # resolve_domain_docs.py（Phase 1.67）が承認済み tech_contract.domain_docs.resolved を投影し、
   # テンプレート内の {{#each}} で契約済みセクションを展開する。
-  # Phase 1.69 の Design Doc 投影は kit 内部の生成仕様であり、適用先の
-  # docs/DECISIONS.md「起票しないケース」に従って ADR は起票しない。
-  # pristine_drop_keys を持つ seed は、投影なしスケルトンのまま残る構造節（## 見出し単位）
-  # だけを投影で埋める。手で書いた節は保持する（references/design-conformance.md 参照）。
+  # Design Doc 由来の本文は本カタログの対象外。kit は器（見出し・節順・[TODO]）だけを書き、
+  # 本文は domain-docs スキルの結果を domain_docs_apply.py が埋める（SKILL.md Phase 2.1）。
+  # 既存ファイルは seed として上書きしない。
   - path: docs/spec.md
     template: docs/spec.md.template
     mode: seed
-    pristine_drop_keys:
-      - design_doc
     required_sections:
       - "## 目的と背景"
       - "## ドメイン用語集"
@@ -972,27 +969,22 @@ outputs:
     template: docs/spec/README.md.template
     mode: seed
     required_sections:
+      - "## 収録仕様"
       - "## 命名規約"
       - "## テンプレート"
   - path: docs/architecture.md
     template: docs/architecture.md.template
     mode: seed
-    pristine_drop_keys:
-      - design_doc
     required_sections:
       - "## システム全体構成"
   - path: docs/api.md
     template: docs/api.md.template
     mode: seed
-    pristine_drop_keys:
-      - design_doc
     required_sections:
       - "## API設計概要"
   - path: docs/data-models.md
     template: docs/data-models.md.template
     mode: seed
-    pristine_drop_keys:
-      - design_doc
     required_sections:
       - "## データベース設計思想"
   - path: docs/coding-standards.md
@@ -1003,8 +995,6 @@ outputs:
   - path: docs/workflows.md
     template: docs/workflows.md.template
     mode: seed
-    pristine_drop_keys:
-      - design_doc
     required_sections:
       - "## 主要ユースケースの処理フロー"
   # CodeRabbit 設定（tech_contract.review.coderabbit 投影 / feature: coderabbit で条件生成）。
@@ -1017,6 +1007,17 @@ outputs:
       - "coderabbit.ai/integrations/schema.v2.json"
       - "path_instructions"
       - "tools"
+  # Domain docs 本文の起案手順。feature 条件は付けない。本文の SoT は domain_docs_apply.py の OWNERSHIP。
+  - path: .cursor/skills/domain-docs/SKILL.md
+    template: skills/domain-docs/SKILL.md.template
+    mode: render
+    required_sections:
+      - "name: domain-docs"
+      - "tmp/domain-docs-result.yaml"
+      - "## 所有権表"
+      - "## 持ち込む内容"
+      - "## 図の引継ぎ"
+      - "docs/spec/{slug}.md"
   # Layer 3 セッション管理スキル群（親 manifest に内包）。
   - path: .cursor/skills/session-planning/SKILL.md
     template: skills/session-planning/SKILL.md.template
@@ -2042,7 +2043,7 @@ project:
       - path: "docs/spec.md"
         desc: "仕様概要 — ドメインコンテキスト + 機能インデックス。各機能の詳細は docs/spec/*.md（seed 生成物）"
       - path: "docs/spec/"
-        desc: "機能別詳細仕様 — 各機能の SoT。README.md に命名規約とテンプレート（seed 生成物）"
+        desc: "機能別詳細仕様 — Design Doc から推論した各機能の SoT。README.md に収録一覧とテンプレート（seed 生成物）"
       - path: "docs/architecture.md"
         desc: "アーキテクチャ設計 — システム構成・コンポーネント責務・依存関係方針（seed 生成物）"
       - path: "docs/api.md"

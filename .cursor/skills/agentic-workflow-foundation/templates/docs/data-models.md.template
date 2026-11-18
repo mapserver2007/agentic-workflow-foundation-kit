@@ -8,36 +8,19 @@
 
 ## データベース設計思想
 
-{{#if design_doc.projection.data_models.principles.body}}
-{{design_doc.projection.data_models.principles.body}}
-{{else}}
 [TODO] DB 設計の基本方針・正規化レベル・命名規約を記述する。
-{{/if}}
 
 ## 主要テーブル/コレクション構成
 
-{{#if design_doc.projection.data_models.entities.body}}
-{{design_doc.projection.data_models.entities.body}}
-{{else}}
 [TODO] 主要エンティティの構造・カラム・型を記述する。
-{{/if}}
 
 ## ER図・関係性
 
-[TODO] エンティティ間のリレーションを図示する（Mermaid 推奨）。
-
-```mermaid
-erDiagram
-    ENTITY_A ||--o{ ENTITY_B : "has"
-```
+[TODO] エンティティ間のリレーションを図示する（Mermaid の `erDiagram` 推奨）。
 
 ## データアクセスパターン
 
-{{#if design_doc.projection.data_models.access.body}}
-{{design_doc.projection.data_models.access.body}}
-{{else}}
 [TODO] Repository パターン・クエリ方針・トランザクション管理を記述する。
-{{/if}}
 
 {{#each domain_docs.data_model_sections}}
 ## {{this.title}}

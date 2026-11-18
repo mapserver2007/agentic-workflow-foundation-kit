@@ -1,0 +1,159 @@
+---
+name: domain-docs
+description: >-
+  Design Doc から Domain 層ドキュメントの本文を起案し、結果ファイル
+  tmp/domain-docs-result.yaml だけを書く。docs と manifest は編集しない。
+  agentic-workflow-foundation の Phase 2.1 から起動する。
+disable-model-invocation: true
+---
+
+<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml / templates を更新して再生成する。 -->
+
+# domain-docs
+
+Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果ファイルへ起案する。書込みは `domain_docs_apply.py` が行う。このスキルは本文を docs へ直接書かない。
+
+## 入力と出力
+
+読んでよいファイルは次の2つだけである。
+
+- `designs/docs/designdoc.md` または `designs/docs/design-doc.md`（targets の `design_doc` が指す方）
+- `tmp/domain-docs-targets.yaml`
+
+修復を頼まれたとき（親が `apply --check` の失敗を渡したとき）に限り、次の2つも読んでよい。
+
+- `tmp/domain-docs-findings.yaml`（ゲートの findings）
+- `tmp/domain-docs-result.yaml`（前回の結果。直す元）
+
+書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets、findings を変更しない。
+
+## 結果ファイル
+
+トップレベルのキーは `schema_version`、`sections`、`omissions`、`spec_files` だけである。`schema_version` は `1` または `2` とする。`supporting_evidence` を使うときは `2` にする。
+
+`sections` の各要素は `file`、`heading`、`body`、`evidence` をすべて持つ。`schema_version: 2` では、任意の `supporting_evidence`（Design Doc の見出しの配列）を足せる。
+
+`omissions` の各要素は `file`、`heading`、`reason` をすべて持つ。根拠が無い対象節だけを書く。
+
+`spec_files` の各要素は `slug`、`title`、`summary`、`evidence`、`body` をすべて持つ。`schema_version: 2` では、任意の `supporting_evidence` を足せる。
+
+配列（`supporting_evidence` など）は、1 行に 1 要素の `- "見出し"` のブロック形式で書く。`["a", "b"]` のインライン形式は、apply の YAML パーサが配列として読めず、検証が失敗するので使わない。
+
+`evidence`（主根拠）は Design Doc に実在する ATX 見出しと完全一致する1行にする。コードフェンス内の見出しは使わない。契約節（後述）だけは、guidance だけが根拠のとき、固定値 `contract` を書ける。`supporting_evidence` には、主根拠のほかに取り込んだ Design Doc の見出しを書く（画面設計、エラーハンドリング、UML などの見出し）。
+
+`body` に書いてはならないもの:
+
+- 空、または空白だけの本文
+- `[TODO]`
+- 二重波括弧によるテンプレート構文
+- 画像リンク
+- `erDiagram`（`ER図・関係性` 節だけが書ける。後述）
+- 対象ファイルの構造見出しと同名の `##`
+- 雛形の残り（`ENTITY_A` などの偽の図、`Client->>API: リクエスト` のような見本の図）
+
+## 所有権表
+
+書ける節は次のとおりである。表に無い節、`参照`、各ファイルの前文は書かない。契約由来の節は、次の「契約節」で `files[].placeholders` に載ったものだけ書ける。
+
+| file | heading |
+| --- | --- |
+| `docs/spec.md` | 目的と背景 |
+| `docs/spec.md` | ドメイン用語集 |
+| `docs/spec.md` | システム境界 |
+| `docs/spec.md` | 不変の設計原則 (MUST) |
+| `docs/spec.md` | 機能仕様 |
+| `docs/spec.md` | 非機能要件 |
+| `docs/spec.md` | 変更に強い点・弱い点 |
+| `docs/spec/README.md` | 収録仕様 |
+| `docs/architecture.md` | システム全体構成 |
+| `docs/architecture.md` | ディレクトリ/モジュール責務 |
+| `docs/architecture.md` | 主要コンポーネント詳細 |
+| `docs/architecture.md` | 依存関係方針 |
+| `docs/api.md` | API設計概要 |
+| `docs/api.md` | エンドポイント一覧 |
+| `docs/api.md` | エラーハンドリング |
+| `docs/api.md` | API 詳細 |
+| `docs/data-models.md` | データベース設計思想 |
+| `docs/data-models.md` | 主要テーブル/コレクション構成 |
+| `docs/data-models.md` | ER図・関係性 |
+| `docs/data-models.md` | データアクセスパターン |
+| `docs/workflows.md` | 主要ユースケースの処理フロー |
+| `docs/workflows.md` | エラーハンドリング・リトライパターン |
+| `docs/workflows.md` | 状態管理・状態遷移 |
+
+targets の `files[].sections` に含まれる節は、`sections` か `omissions` のどちらか一方に必ず書く。同じ節を両方に書かない。
+
+## 持ち込む内容
+
+Design Doc に記載があるものは、落とさずに持ち込む。記載が無いものは書かない（推測で補わない）。節ごとに書くものが無ければ `omissions` に理由を書く。Design Doc の PoC 上の割り切りや既知の弱点は、塞がずにそのまま書く。
+
+- `docs/spec.md`: 目的・課題・解決方針・対象外、全ステータス値とその意味、採番の開始値・単位・境界（日付の区切りなど）、不変の設計原則（ロック、採番、スナップショット、原子性など、変えてはならない規則を1つずつ）、既知の弱点と、失敗したときに残る状態・復旧手順。
+- `docs/api.md`: 全エンドポイントの呼び元、request、response、条件付きで返す項目、並び順と同値のときの順序、既定値、検証失敗の分類とエラーコード、同じ値の再送の扱い、冪等性の有無。
+- `docs/data-models.md`: テーブルごとの列・型・制約・索引、ID 方式、ロックと採番の手順（番号付き）、処理ごとのアクセスパターンと使う索引、物理制約を置かない項目とその理由。
+- `docs/workflows.md`: 業務フローの時系列、エラー時の挙動、状態の値と遷移の表、画面や端末の同期契機、再試行の方針。
+- `docs/architecture.md`: 構成要素とその責務、依存の向き、トランザクションとロックの境界、同期の方式、システム外との境界。`ディレクトリ/モジュール責務` は、Design Doc に実在のパスが無いとき、構成要素（サーバー、フロントエンド、管理画面など）と責務の表にする。パスと依存先を推測で書かない。構成要素の記述も無いときだけ `omissions` に書く。
+
+## 矛盾する記述の扱い
+
+Design Doc の中で、同じ事項の記述が食い違うことがある（画面設計と DB 設計で、一覧の範囲や並びが違うなど）。次のとおりにする。
+
+- 「どちらも残す」「併記する」「両案を残す」と書かない。docs の読み手は、契約を1つに決められなくなる。
+- Design Doc が「振る舞いの正」と指す節（業務フロー、画面設計）の側を、契約として書く。もう一方が索引の読み方など実装上の説明であるときは、同じ事項の別契約として持ち込まない。
+- 正を決められないときは、その事項を扱う節の1か所にだけ「未決。実装しない」と書く。ほかのファイルには書かず、その節へのリンクで参照する。
+- 契約の引用が断定している内容を、本文で限定したり打ち消したりしない。引用と Design Doc に差があるときは、「書かれていない」「留保する」と本文に書かず、Design Doc が明示している事実だけを書く。
+
+## 図の引継ぎ
+
+- Design Doc の Mermaid の sequence 図と state 図は、`docs/workflows.md` へ Mermaid のまま引き継ぐ。意味を変えずに、本文の節に合わせて分けてよい。本数は Design Doc 以上にする。図の無い節を作るために図を書き足さない。
+- 構成図は、Design Doc に構成の記述があれば `docs/architecture.md` の `システム全体構成` に Mermaid で書く。
+- 図の中身は Design Doc の語だけで書く。見本の図を写さない。
+
+## ER図・関係性
+
+`ER図・関係性` は、Design Doc のデータベース設計の本文（テーブルと関係の記述）から起こす。Design Doc の ER が画像のときも、画像リンクは書かず、同じ設計書のテーブルの記述から起こす。
+
+- `mermaid` のコードフェンスに `erDiagram` を書く。
+- エンティティ名は、`docs/data-models.md` の本文（ER 図以外）に実在するテーブル名だけにする。apply が検証する。
+- 関係は、Design Doc が述べる論理的な関係だけを書く。物理外部キーを置かない設計でも、論理的な関係は書いてよい。
+- テーブルの記述が Design Doc に無ければ、`omissions` で見送る。
+
+## 契約節
+
+targets の `files[].placeholders` に載った節は、契約の `api_sections`（`docs/api.md`）、`data_model_sections`（`docs/data-models.md`）、`workflow_sections`（`docs/workflows.md`）由来の節である。節ごとの引用の本文（技術スタック由来の規約）は、targets の `files[].guidance`（節名 → 本文）にある。docs は読めないので、本文の根拠にする規約は `files[].guidance` から読む。
+
+- `sections` の要素は、所有権表の節と同じ `file`、`heading`、`body`、`evidence` で書く。`body` は節の `[TODO]` の置換文だけである。節の見出しと、kit が書いた引用段落（`>` で始まる行）は書かない。apply が引用を残す。引用は技術スタック由来の規約であり、`body` で言い換えて繰り返さない。
+- `docs/api.md` の契約節: Design Doc の本文が明示している JSON の外形と、エラー応答の外形だけを書く。型の定義、シリアライザやゲートウェイの設定、gRPC status、OpenAPI の required、実装のパッケージ名、各 API の JSON 例、データベースの型、画面遷移は書かない。同じファイルの所有節（`エラーハンドリング` など）が書く画面の挙動は再記しない。「素案である」「振る舞いの正は …」のように、正を docs の外へ戻す文は契約節の本文に書かない。正本の宣言は引用の1つだけにする。エラーコードの表は、`エラーハンドリング` と重ねて書かない。
+- `docs/data-models.md` の契約節: 引用の規約を、Design Doc のデータベース設計の記述（型、制約、採番、ロック、トランザクション）と突き合わせ、テーブルと手順の本文にする。引用と Design Doc のどちらにも無い技術事実は書かない。引用が全体に断定する規則（日時の保存形式など）を、一部の列だけに限る文を書かない。
+- `docs/workflows.md` の契約節: 引用の手順（起動、適用、変更の順序、品質ゲート）を、番号付きの手順に写す。Design Doc に根拠があれば補う。引用に無いコマンド、版、手順は作らない。ただし `変更手順` の API 変更と DB 変更は、引用が Domain docs の更新を含まないとき、先頭に「`docs/api.md`（DB 変更では `docs/data-models.md`）を、proto（DB 変更では `schema/*.sql`）と同じ変更単位で更新する」を1手順として足す。仕様の正は docs だからである。この手順の `evidence` は `contract` とする。
+- `evidence`: Design Doc の見出しを根拠にしたときはその見出しを、引用だけが根拠のときは `contract` を書く。所有権表の節には `contract` を使えない。
+- 根拠が無い節は `omissions` に書く。
+- refresh では契約節を書かない。
+
+## 機能仕様
+
+`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/{slug}.md` の3者を同じ機能の集合にする。
+
+- slug は kebab-case とする。`readme` は使わない。
+- 収録仕様の1行は `- [題名]({slug}.md) — 要約（根拠: \`見出し\`）` とする。根拠は主根拠だけを書く。
+- `docs/spec.md` の機能仕様からは `docs/spec/{slug}.md` へリンクする。
+- spec の `body` は `## 概要` を含む。H1 と `## 関連仕様` は書かない。apply が H1 と関連仕様を付ける。
+- 機能仕様には、設計書にある限り、次を書く。`## 概要`（必須）、前提条件、振る舞い・処理フロー（番号付きの手順、分岐の表）、`## エラーハンドリング`（業務としての失敗時の挙動）、制約・割り切り。見出し名は Design Doc の語に合わせてよいが、`## エラーハンドリング` は付ける。エラーの記述が Design Doc に無い機能は、無いことを1行で書く。
+- HTTP のフィールド定義は api、テーブルと排他は data-models、機能をまたぐ時系列と状態遷移は workflows に集約する。機能仕様では契約値を再掲せず、リンクで参照する。ただしテストに必要な境界値は、機能仕様に書いてよい。
+- 機能仕様に書かないもの: エラーコードの表、リクエストとレスポンスの項目の列挙、状態遷移の表、採番とロックの番号付き手順。これらは api、data-models、workflows が持つ。書くもの: その機能の業務としての流れ、画面の振る舞い、テストに必要な境界値、その機能固有の割り切りと残存状態。流れの手順に、API 名とフィールド名を並べない。
+- 件数は、Design Doc の `業務フロー` 直下の見出しの数を既定とする。主根拠（`evidence`）は、新しい機能仕様では `業務フロー` 直下の見出しに限る。画面や API の単位に細分化しない。画面設計やエラーハンドリングなど、ほかの見出しは `supporting_evidence`（`schema_version: 2`）で取り込む。
+- 1つの主根拠見出しは1つの slug にだけ使う。
+- refresh では、targets の既存 `spec_files` と同じ根拠見出しに同じ slug を使う。根拠見出しを変えて別の slug を割り当てない。
+- 既存ファイルを結果から外しても apply は削除しない。収録仕様と機能仕様には、残す既存行を維持する。
+
+## 手順
+
+1. targets の `mode`、`action`、対象節、既存 spec の slug と evidence を読む。
+2. Design Doc から、対象節の本文と機能仕様を起案する。「持ち込む内容」「図の引継ぎ」を満たす。
+3. `tmp/domain-docs-result.yaml` だけを書く。
+4. docs を直接編集せず終了する。検証と書込みは親が `domain_docs_apply.py apply --check` と `apply` で行う。
+
+修復を頼まれたときは、次のとおりにする。
+
+1. `tmp/domain-docs-findings.yaml` と、`apply --check` が出したエラー、前回の `tmp/domain-docs-result.yaml` を読む。
+2. 指摘された点だけを直す。指摘の無い節を書き直さない。指摘が WARN だけのときは、直せる範囲で直す。
+3. 結果ファイルだけを書き直して終了する。

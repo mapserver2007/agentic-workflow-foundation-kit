@@ -17,7 +17,8 @@ description: >-
   from immutable unified design inputs, a skill-bundled seed manifest +
   templates, and a stateless resolved skill-dir.
   Do NOT use for: Design Doc（基本設計書）自体の作成・テンプレート書き出し、
-  または手編集した Domain 層 docs 節の更新。Design Doc からの投影（スケルトンのまま残る節の追記を含む）は対象。
+  または手編集した Domain 層 docs 節の更新。Domain 層 docs の器の生成と、Design Doc から本文を埋める
+  domain-docs スキルの起動（Phase 2.1）は対象。
 disable-model-invocation: true
 ---
 
@@ -44,7 +45,6 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
        ├─ Phase 1.6: techstack 設計書（必要時のみ）→ root manifest tech_stack（Domain サマリ）
        ├─ Phase 1.65–1.67: 承認済み tech_contract → quality_gate / coderabbit / domain_docs 投影
        ├─ Phase 1.68: materialize_runtime --check → provision_runtime --plan/--apply
-       ├─ Phase 1.69: designs/docs の Design Doc → 自動承認済み初回 docs 投影
        │
       └─ run_resolved_engine.py（unified design + root manifest overlay）
              │
@@ -52,6 +52,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
              │
              └─ 100%決定論 engine ──▶ 出力ファイル群
                                       │
+                                      ├─ Phase 2.1: Design Doc → domain-docs subagent → domain_docs_apply.py
                                       └─ audit.py / conformance gate
 ```
 
@@ -59,9 +60,9 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 - **スキル内 `manifest.yaml` は root manifest 生成前の汎用 seed / schema / default**。統一設計書から一意に抽出できない既定値を保持するが、実行結果によって永続更新しない。
 - **リポジトリ直下 `manifest.yaml` は本スキル実行で生成される正式 project manifest**。`project.*` / `framework.accd_axes` / `tech_stack.*` / `session.verification.*` / `code_review` / `github_pr` / `github_issue` / `coderabbit` は生成後の root manifest で PO が評価する。
 - **techstack は per-project パラメータ**。配布時点の seed manifest には具体スタックを焼き込まず、`ingest_tech_stack.py` が `project.tech_stack_design_filename`（`init.yaml` で必須指定）から `.cursor/docs/{filename}` を解決して生成済み root `manifest.yaml` を更新する。SoT 更新時は対話 SKILL が `tmp/tech-stack-contract-draft.yaml` を起案し、`tech_contract.py` が検証・承認済み pin を行う。consumer は未承認契約を fail-closed で拒否する。
-- **Design Doc は任意の per-project 入力**。`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知し、AI が `tmp/design-doc-projection-draft.yaml` を起案する。schema / evidence / fingerprint 検証 PASS 後は AskQuestion なしで root `manifest.yaml > design_doc` へ固定し、Domain docs（spec / architecture / api / data-models / workflows）は投影なしスケルトンのまま残る構造節だけを埋める。手で書いた節は保持する。5 つの doc は、投影するか `omissions` で省略理由を示す必要があり、欠けた doc は validate が検出する。
+- **Design Doc は任意の per-project 入力**。`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知する。kit は Domain 層ドキュメント（spec / spec/README / architecture / api / data-models / workflows）の器（見出し・節順・`[TODO]`）だけを決定論で生成する。Design Doc を読む推論は、seed の `outputs[]` から生成する [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、結果ファイルだけを返す。`scripts/domain_docs_apply.py` が所有権・根拠見出し・整合を検証して書き込む。root `manifest.yaml > design_doc` は `source_path` と `source_fingerprint` の2キーで、Design Doc の変更検知だけに使う。
 - **生成/監査エンジン（how）は独立スキル [`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) に分離**。本スキルは「what（manifest + templates + 固有の取り込み/整合ロジック）」を担う設定スキル。
-- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `tech_contract` / `design_doc` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成し、承認済み `tech_contract.quality_gate` から `quality_gate_contract` を一時展開した skill-dir を作る。engine には解決済み入力だけを渡し、`outputs` は seed が単一 SoT であり root には保持しない。
+- **unified design / root manifest overlay は本スキルの前処理責務**。`run_resolved_engine.py` が immutable design docs、seed manifest、root `manifest.yaml` の per-project 値（`project` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / `code_review` / `github_pr` / `github_issue` / `coderabbit`）を合成し、承認済み `tech_contract.quality_gate` から `quality_gate_contract` を一時展開した skill-dir を作る。engine には解決済み入力だけを渡し、`outputs` は seed が単一 SoT であり root には保持しない。
 - **session 管理（Layer 3）は親に内包**。`session-planning` / `session-handover` / `campaign-cleanup` は本スキルの `outputs[]` から生成し、別の `agentic-session-management` スキルは不要。runtime cleanup は current campaign を保護し、承認なしの apply で他 campaign の allowlist 内 runtime を削除する。
 
 ### 構成ファイル
@@ -81,9 +82,9 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/check_tech_stack_conformance.py` | 承認済み `tech_contract.provisioning.preflight_checks` の declarative contract 評価（generic preflight / installed-marker validation） |
 | `scripts/resolve_coderabbit.py` | 承認済み `tech_contract.review.coderabbit` を投影 |
 | `scripts/resolve_domain_docs.py` | 承認済み `tech_contract.domain_docs.resolved` を投影 |
-| `scripts/design_doc_projection.py` | Design Doc 投影 draft の schema / evidence / fingerprint / doc 単位の欠落（`omissions`）検証と自動承認済み pin |
-| `scripts/resolve_design_doc.py` | `designs/docs/(designdoc\|design-doc).md` の自動検知と固定済み投影の状態判定 |
-| `references/design-doc-projection.md` | Design Doc から投影 draft を起案するフィールド対応・禁止事項 |
+| `scripts/domain_docs_apply.py` | Phase 2.1。Design Doc の検知と状態判定（`state`）、domain-docs の結果ファイルの検証と atomic 適用（`apply` / `apply --check` / `apply --refresh`）、`design_doc` の2キー固定（`pin`） |
+| `scripts/domain_docs_gate.py` | Phase 2.1 の決定論ゲート（`G-DOCFILL-001`〜`005`）。apply が書込み前に呼び、`tmp/domain-docs-findings.yaml` を書く。標準ライブラリのみ |
+| [`../domain-docs/SKILL.md`](../domain-docs/SKILL.md) | seed の `outputs[]` から生成する、Design Doc から Domain 層本文を起案する subagent の手順（所有権表・結果ファイル形式・分割規則） |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 
 > 生成エンジン（`generate.py` / `audit.py` / `genlib.py`）は本スキルには含まれず、[`agentic-workflow-engine`](../agentic-workflow-engine/SKILL.md) が提供する。engine は統一設計書や root `manifest.yaml` を直接読まず、渡された一時 skill-dir の `manifest.yaml + templates/` だけを決定論変換する。
@@ -105,9 +106,9 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.66: CodeRabbit 投影（resolve_coderabbit.py — `tech_contract.review.coderabbit` のみ）
 - [ ] Phase 1.67: Domain docs 投影（resolve_domain_docs.py — `tech_contract.domain_docs.resolved` のみ）
 - [ ] Phase 1.68: runtime renderability 検査（materialize_runtime.py --check）→ Provisioning（provision_runtime.py --plan/--apply/--preflight）
-- [ ] Phase 1.69: Design Doc 自動検知・初回 Domain docs 投影（validate PASS 後に自動承認）
 - [ ] Phase 1.7: techstack 整合ゲート（check_tech_stack_conformance.py）
 - [ ] Phase 2: 生成（generate.py）
+- [ ] Phase 2.1: Domain docs 本文の起案と適用（Design Doc がある場合のみ。domain-docs subagent → domain_docs_apply.py）
 - [ ] Phase 3: 監査ゲート（audit.py）
 - [ ] Phase 4: 報告
 ```
@@ -343,6 +344,24 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.p
 - exit 0 → 決定済みとして継続可。
 - exit 2 → manifest 破損など致命的エラー。中断する。
 
+#### `domain_docs` 起案プレイブック（tech_contract 起案時）
+
+対話 SKILL が `tech_contract.domain_docs.resolved` を起案するときの規則。節は、技術スタック設計書の**見出しの役割**で選ぶ。節番号は設計書ごとに異なる（骨格と実在の設計書でずれる）ので、番号では選ばない。`evidence_ref` にも、番号ではなく設計書の見出し名を書く。
+
+| 契約の配列 | 描画先 | 入れる内容（設計書のどの役割の節から取るか） |
+| --- | --- | --- |
+| `api_sections` | `docs/api.md` | 公開契約の正本の置き場所、エンコード規約（命名・ID・日時・金額）、エラー応答の方式。API 定義・interface の役割の節から取る |
+| `data_model_sections` | `docs/data-models.md` | 識別子・型・時刻の規約、トランザクションと排他の実装方式、スキーマ管理と初期データの投入。data・storage の役割の節から取る |
+| `workflow_sections` | `docs/workflows.md` | ローカル開発の手順、変更の種類ごとの順序、品質ゲート。ローカル開発・実装順序・CI の役割の節から取る。品質ゲートは `tech_contract.quality_gate` と整合させる |
+| `coding_standards_sections` | `docs/coding-standards.md` | 依存の向き、生成物の扱い、時刻・ID、データアクセス、テスト。レイヤ責務・テスト層の役割の節から取る（`content` で書く） |
+| `spec_sections` / `architecture_sections` | なし | 空にする。テンプレートに受け皿の節が無い。構成の内容は、所有権表の `architecture` の節が Design Doc から埋める |
+
+- **guidance は技術規約（形式・方式・手順）に限る。** 業務語彙（エラーコード名、ステータス値、エンティティ名、画面名）は契約に入れない。業務語彙は Design Doc 由来の本文が担う。`domain_docs_apply.py state` は、Design Doc のコードスパンの識別子が guidance に現れたとき WARN を出す（報告専用）。
+- 設計書に根拠が無い節は作らない（配列を空にする）。設計書にない値や手順を補わない。
+- 1つの節は1つの論点にし、節数は必要最小限にする。同じ内容を `docs/api.md` の所有節と重ねない。
+- 版の数値は書かない（`tech_contract` 起案時のバージョンの扱いに従う）。
+- 本文（`[TODO]` の置換文）は Phase 2.1 の domain-docs が書く。guidance は kit が引用段落として残すので、本文で繰り返さない。domain-docs は docs を読めないため、`state` が `tmp/domain-docs-targets.yaml` の `files[].guidance`（契約節名 → 引用の本文）で guidance を渡す。
+
 ### Phase 1.68: runtime renderability + Provisioning（唯一 write path）
 
 承認済み `tech_contract.runtime_materialization.actions` を **plan/apply 経由だけ** filesystem へ反映する。`materialize_runtime.py` は read-only `--check`（renderability / ownership dry-run）のみ。
@@ -391,36 +410,6 @@ bin/project-setup --preflight
 - CI / 非対話 generate / quality gate は auto apply しない。
 - command action の途中失敗による部分変更は既存制約どおり rollback を保証しない。成功済み action・未実行 action・変更対象・復旧手順を報告する。
 
-### Phase 1.69: Design Doc から Domain docs へ初回投影
-
-`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知する。両方が存在する場合は入力が曖昧なため exit 2。どちらも無い場合は投影せず、現行スケルトンを生成する。
-
-```bash
-python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_design_doc.py --check
-```
-
-設計書を検出し、固定済み投影が無い場合は exit 1 になる。`references/design-doc-projection.md` に従って AI が `tmp/design-doc-projection-draft.yaml` を起案し、次の順で固定する。
-
-```bash
-design_doc="designs/docs/designdoc.md" # 自動検知された片方
-python3 .cursor/skills/agentic-workflow-foundation/scripts/design_doc_projection.py validate \
-  --design-doc "$design_doc" \
-  --check
-preimage="$(python3 -c 'import hashlib; print(hashlib.sha256(open("manifest.yaml","rb").read()).hexdigest())')"
-python3 .cursor/skills/agentic-workflow-foundation/scripts/design_doc_projection.py apply \
-  --design-doc "$design_doc" \
-  --preimage "$preimage"
-python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_design_doc.py --check
-```
-
-- validate PASS 後は AskQuestion を使わず即 apply する。ログに `design_doc projection auto-approved` を残す。validate FAIL では固定しない。
-- 各投影フィールドは `{body, evidence}`。`evidence` は Design Doc 内に実在する ATX 見出し名でなければ exit 2。意味の妥当性までは機械検証しない。
-- 設計書に根拠節が無いフィールドは省略し、テンプレートの `[TODO]` を残す。画面設計、画像リンク、ER 図は投影しない。
-- 5 つの doc（`spec` / `api` / `architecture` / `data_models` / `workflows`）は、それぞれ1フィールド以上を投影するか、`design_doc.omissions` に doc 名と省略理由を書く。投影も `omissions` も無い doc があると exit 1（再起案）。`omissions` の形式不正、投影との重複、全 doc が `omissions` のみ（投影 0 件）は exit 2。`architecture` の根拠対応は `references/design-doc-projection.md` を参照する。ディレクトリ構成やレイヤ依存の節が無くても、シーケンスや業務フローの構成要素から起案する。
-- pin 済み fingerprint が現在の Design Doc と異なる場合は exit 1 で停止し、再起案する。固定済み入力が消失、2ファイル共存、approval / digest 不整合は exit 2。
-- `docs/spec.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/workflows.md` は seed のまま。generate は次の順で扱う。(1) 既存が投影あり描画と一致するなら何もしない。(2) 既存が「投影なしスケルトン」と UTF-8 文字列で完全一致するなら、ファイル全体を置換する。(3) それ以外は構造節（投影なしスケルトン由来の `##` 見出し）ごとに比較し、本文が投影なしスケルトンのまま残っている節だけを投影あり描画の節へ置換する。手で書いた節と前文は保持する。構造見出しが既存ファイルから順に見つからないときは、変更せず `見出し構成不一致` を報告する。節境界に管理マーカーは使わない。投影が出す追加見出し（例: `API 詳細`）は直前の構造節の本文に含まれ、その節が置換されるときだけ挿入される。
-- 手で書いた節の更新は `maintenance-docs-workflow` の責務。Design Doc 更新で手編集した節を自動上書きしない。
-
 ### Phase 1.7: techstack 整合ゲート（contract declarative preflight）
 
 承認済み `tech_contract.provisioning.preflight_checks` を generic に評価する。subprocess 禁止。
@@ -449,6 +438,83 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `bin/_github-auth.sh` / `bin/_github-{app,keychain}-auth.sh` は `code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に生成し、各 operation wrapper は対応 feature で条件生成する。API と Git は `init.yaml` の単一 provider を使用する。`github_app` は対象 owner/repo の installation を動的解決し、`keychain` は専用 service/account の PAT を完全一致で取得する。AI の clone/fetch/pull/push は wrapper 内で HTTPS + operation-scoped `GIT_ASKPASS` を使い、既存 credential helper と SSH remote を恒久変更しない。
 - `session-planning` / `session-handover` / `campaign-cleanup` は本スキルの `templates/skills/*` から生成する。別スキルの orchestration は行わない。
 
+### Phase 2.1: Design Doc から Domain docs 本文を埋める
+
+Phase 2 の generate が書いた器（見出し・節順・`[TODO]`）の空の節に、Design Doc から推論した本文を足す。推論は Phase 2 で生成した [`domain-docs`](../domain-docs/SKILL.md) の subagent が行い、親は本文を起案しない。順序は generate → Phase 2.1 → audit。
+
+実行は基盤のセットアップ時（キャンペーン外）に限る。workflow の Step③〜⑥の間は実行しない（`G-WRITE-SCOPE-DOMAIN-001` が Domain docs の変更を拒否する）。
+
+```bash
+apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
+python3 "$apply" state
+```
+
+`designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方だけを自動検知する。両方が存在する場合は入力が曖昧なため exit 2。`state` は `tmp/domain-docs-targets.yaml`（対象節とファイルの digest）を書き、`STATE: action=...` を表示する。
+
+| action | 意味 | 親の動作 |
+| --- | --- | --- |
+| `skip` | Design Doc が無い、または埋める節が残っていない | subagent を起動せず Phase 3 へ進む |
+| `fill` | 器のままの節がある | subagent → `apply` |
+| `stale` | pin 後に Design Doc が変わった | fill-only を実行できる。続けて下記の更新を提案する |
+
+`fill` / `stale` のとき、`Task` ツール（`subagent_type: generalPurpose`）で subagent を起動する。prompt には [`domain-docs` SKILL.md](../domain-docs/SKILL.md) のパスと `tmp/domain-docs-targets.yaml` のパスを渡し、結果ファイル `tmp/domain-docs-result.yaml` 以外を編集させない。完了後に親が、書込みなしの検査を実行する。
+
+```bash
+python3 "$apply" apply --check
+```
+
+`--check` は、書込み・`design_doc` の pin・targets と結果ファイルの片付けをせず、`apply` と同じ検証と決定論ゲート（[`domain_docs_gate.py`](scripts/domain_docs_gate.py)、`G-DOCFILL-*`）だけを実行する。ゲートの結果は `tmp/domain-docs-findings.yaml` へ書く。
+
+- exit 0 → PASS。WARN があってもよい。WARN は再起案せず、Phase 4 の報告に載せる。次の `apply` へ進む。
+- exit 1 → 検証失敗、またはゲートの FAIL。docs は変更されない。**最大 1 回だけ**修復する。メッセージと `tmp/domain-docs-findings.yaml` を subagent へ渡し（修復時の読取許可は [`domain-docs` SKILL.md](../domain-docs/SKILL.md) の「入力と出力」に従う）、結果ファイルを直させて `apply --check` を再実行する。2 回目も exit 1 なら、ユーザーへ報告して停止する。
+- exit 2 → 致命的（入力が曖昧・消失）。中断してユーザーに報告する。
+
+`--check` が PASS したら、次を実行する。
+
+```bash
+python3 "$apply" apply
+```
+
+- exit 0 → 完了。対象ファイルの見出し構成は保たれ、埋め済みの節と手で書いた節は変わらない。`tmp/domain-docs-findings.yaml` は片付けられる。
+- exit 1 → `--check` が PASS した後は、subagent による直接編集の検知（digest 不一致）などに限られる。docs は変更されない。再起案はせず、原因をユーザーへ報告する。
+- exit 2 → 致命的（入力が曖昧・消失、書込み失敗）。中断してユーザーに報告する。書込み失敗時は元の内容へ戻している。
+
+決定論ゲート（`G-DOCFILL-*`）:
+
+| ID | 判定 | 内容 |
+| --- | --- | --- |
+| `G-DOCFILL-001` | FAIL | 今回置換する本文に、コードフェンス外の `[TODO]` と雛形名（偽の図の雛形）が残っていない |
+| `G-DOCFILL-002` | WARN | `docs/workflows.md` の `sequenceDiagram` と `stateDiagram` の本数が、Design Doc の本数以上 |
+| `G-DOCFILL-003` | WARN | Design Doc の `データベース設計` にあるテーブル名と列名が `docs/data-models.md` にある |
+| `G-DOCFILL-004` | WARN | Design Doc の `API設計` の「メソッドとパス」表のエンドポイントが `docs/api.md` にある |
+| `G-DOCFILL-005` | WARN | 今回作成・置換する機能仕様に `## エラーハンドリング` がある |
+
+- 検査対象は今回置換する本文だけ。omissions で器のまま残る節の `[TODO]` と、`docs/spec/README.md` の作成手順の見本は対象外。
+- 雛形名は、Design Doc に同じパターンが無いときだけ残存とみなす。Design Doc にある遷移は持ち込む。`[TODO]` は Design Doc にあっても FAIL にする。
+- Design Doc が標準の見出し構造（`業務フロー` / `データベース設計` / `API設計`）を持たず抽出できない検査は `skipped` とし、理由を findings に書く。
+- 数値の閾値や割合の指標は持たない（`docs/QUALITY_GATE.md` の「数値スコアリングをしない」に合わせる）。意味の食い違いは検出できない。
+
+fill-only の規則:
+
+- 本文が器と完全一致する節だけを埋める。手で書いた節と `maintenance-docs-workflow` の反映は変更しない。
+- 書込み先は所有権表（[`domain_docs_apply.py`](scripts/domain_docs_apply.py) の `OWNERSHIP`。`ER図・関係性` を含む 23 節。生成済み [`domain-docs` SKILL.md](../domain-docs/SKILL.md) に同じ表を持つ）の節、契約節（`docs/api.md` の `api_sections`、`docs/data-models.md` の `data_model_sections`、`docs/workflows.md` の `workflow_sections`。kit の引用を残して `[TODO]` だけを置換する）、`docs/spec/{slug}.md` だけ。kit 所有の節は `参照` と各ファイルの前文である。`spec_sections` / `architecture_sections` の契約節は対象にしない。契約節は fill-only だけで、refresh では書かない。
+- `ER図・関係性` は、Design Doc のデータベース設計の記述から起こした Mermaid の `erDiagram` だけを書ける。エンティティ名は `docs/data-models.md` の本文（ER 図以外）に実在するものに限り、雛形名は拒否する。画像リンクの拒否は変わらない。
+- 適用後の `docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/*.md` が同じ機能の集合であることを検証する。
+- `evidence`（主根拠）は Design Doc に実在する ATX 見出し。契約節だけは固定値 `contract`（guidance が根拠）も使える。意味の妥当性までは機械検証しない。
+- 結果ファイルの `schema_version` は `1` または `2`。`2` では `sections` と `spec_files` に任意の `supporting_evidence`（Design Doc に実在する見出しの配列）を置ける。targets の `schema_version` は `1` のまま。一意性、既存 slug との対応、README の根拠の併記は、主根拠だけに適用する。
+- 新しい機能仕様の主根拠は、Design Doc に `業務フロー` 見出しがあるとき、その直下の見出しに限る（既存の機能仕様の根拠は変えない）。`業務フロー` 見出しが無いときは、この検査を行わない。
+- 機能仕様の `body` は `## 概要` を必須とする。
+- 初回の fill-only の成功時に、root `manifest.yaml > design_doc` へ `source_path` と `source_fingerprint` を固定する。`stale` 状態の fill-only は fingerprint を更新しない。旧形式の `design_doc`（`projection` など）は `python3 "$apply" pin` で2キーへ移行する。
+- subagent が結果ファイル以外を編集した場合は、`apply` が digest 不一致で exit 1 にする。
+- `state` は、契約の guidance に Design Doc のコードスパンの識別子が現れたとき、WARN を表示する（報告専用、exit 0）。
+
+`action: stale` のときの更新（再推論）:
+
+1. `AskQuestion` で更新するかを確認する（推奨: 更新する。Design Doc の変更が docs に反映されないまま残るのを避けるため。見送りなら `python3 "$apply" state --refresh` → `python3 "$apply" apply --refresh --decline`）。
+2. 更新する場合は `python3 "$apply" state --refresh` → subagent（所有権表の全節を対象に再起案）→ `python3 "$apply" apply --refresh`（diff、ゲートの findings、`PLAN: ... digest=<digest>` を表示。書込みなし）。refresh の再試行は、プレビューがゲートの FAIL または検証失敗（exit 1）のときに限り最大 1 回で、fill 経路の修復と同じ規則とする。WARN は再起案せず、承認時の提示に添える。
+3. diff をユーザーに提示して承認を得る。承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用しない。
+4. 見送る場合は `python3 "$apply" state --refresh` → `python3 "$apply" apply --refresh --decline` を実行する。docs は変更せず、現在の Design Doc を既読にする。
+
 ### Phase 3: 監査ゲート
 
 resolved manifest で親 skill-dir 相当の出力だけを監査する。session 系出力も親 `outputs[]` に含まれる。
@@ -472,6 +538,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 以下を報告する。
 
 - Phase 1.6 / 1.7 の結果（techstack 取り込み・整合ゲート）
+- Phase 2.1 の結果（`state` の action、埋めた節と作成した `docs/spec/*.md`、見送った節、修復パスの有無、決定論ゲートの WARN と `skipped`、契約の識別子混入 WARN）
 - Phase 1.65 の結果（G-GEN を含む G-* / quality gate backend contract 自動決定）
 - 生成/更新した出力ファイル一覧（generate.py の出力）
 - audit.py の結果（PASS / FAIL）
@@ -496,6 +563,6 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 ## スコープ外
 
 - **生成/監査エンジン `agentic-workflow-engine` 自体の生成**。エンジン（How）は独立スキルで、本スキルは `--skill-dir` 付きで呼び出すだけ。
-- Design Doc が無い状態でのプロジェクト固有 Domain docs 本文生成、および手編集した Domain docs 節の更新（スケルトンのまま残る節の追記は対象）。
+- Design Doc が無い状態でのプロジェクト固有 Domain docs 本文生成、および手編集した Domain docs 節の更新（器の生成と、Design Doc から空の節を埋める Phase 2.1 は対象）。
 - feature 単位の Design Doc 作成。
 - unified/bas への永続同期、前回実行結果を前提にした stateful drift 追跡。
