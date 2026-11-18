@@ -1,0 +1,344 @@
+schema_version: 1
+sections:
+  - file: "docs/spec.md"
+    heading: "目的と背景"
+    evidence: "概要"
+    body: |-
+      地域図書館の貸出管理システムである。司書は受付の端末で会員を登録し、蔵書の貸出と返却を記録する。
+      
+      解決する課題は、貸出の記録が紙の台帳にあり、返却期限を過ぎた貸出を探すのに時間がかかることである。
+      
+      作らないものは、会員自身が操作する画面である。この版の管理画面は貸出一覧の参照だけを持つ。
+  - file: "docs/spec.md"
+    heading: "ドメイン用語集"
+    evidence: "業務フロー"
+    body: |-
+      | 用語 | 意味 |
+      | --- | --- |
+      | 会員 | 氏名と連絡先を登録した利用者。会員番号は `member_id` |
+      | 蔵書 | 貸し出す本 1 冊。`book_id` で識別する |
+      | 貸出 | 蔵書 1 冊につき 1 件。`loan_id` で識別する |
+      | 貸出ステータス | 貸出中（`0`）、返却済み（`1`）の 2 値 |
+      | 返却期限 | 貸出日の 14 日後 |
+  - file: "docs/spec.md"
+    heading: "システム境界"
+    evidence: "要件"
+    body: |-
+      本システムが扱うのは、会員の登録、貸出、返却、貸出一覧の参照である。
+      
+      会員自身が操作する画面、延滞の通知、蔵書の登録機能はシステムの外とする。
+  - file: "docs/spec.md"
+    heading: "不変の設計原則 (MUST)"
+    evidence: "設計上の考慮点"
+    body: |-
+      - 同じ蔵書の貸出中は 1 件とする。貸出の確定では、蔵書の行をロックしてから貸出中を検索する。
+      - 貸出の保存は単一のトランザクションで行う。
+      - 返却期限は貸出日の 14 日後とする。
+      - すでに返却済みの貸出への返却は、書き換えずに成功とする。
+  - file: "docs/spec.md"
+    heading: "機能仕様"
+    evidence: "業務フロー"
+    body: |-
+      ### 会員の登録
+      
+      **要件**: 司書が会員を登録する。
+      
+      **詳細**: [会員の登録](spec/register-member.md)
+      
+      ### 貸出
+      
+      **要件**: 司書が蔵書の貸出を記録する。
+      
+      **詳細**: [貸出](spec/lend-book.md)
+      
+      ### 返却
+      
+      **要件**: 司書が貸出の返却を記録する。
+      
+      **詳細**: [返却](spec/return-book.md)
+  - file: "docs/spec.md"
+    heading: "非機能要件"
+    evidence: "エラーハンドリング"
+    body: |-
+      - API と DB の失敗は、サーバーがログに残す。
+      - 値の不正は 4xx、保存の失敗は 5xx とする。
+  - file: "docs/spec.md"
+    heading: "変更に強い点・弱い点"
+    evidence: "設計上の考慮点"
+    body: |-
+      強い点: 貸出と会員を別の行で持つので、会員の連絡先を変えても貸出の記録は変わらない。
+      
+      弱い点: 物理外部キーを置かないので、参照の外れた行が残り得る。同じ蔵書の貸出中が 1 件になることは、一意制約ではなくロックだけで担保する。
+  - file: "docs/spec/README.md"
+    heading: "収録仕様"
+    evidence: "業務フロー"
+    body: |-
+      - [会員の登録](register-member.md) — 司書が会員を登録する（根拠: `1. 会員の登録`）
+      - [貸出](lend-book.md) — 司書が蔵書の貸出を記録する（根拠: `2. 貸出`）
+      - [返却](return-book.md) — 司書が貸出の返却を記録する（根拠: `3. 返却`）
+  - file: "docs/architecture.md"
+    heading: "システム全体構成"
+    evidence: "概要"
+    body: |-
+      ```mermaid
+      flowchart LR
+          Librarian[司書]
+          Terminal[受付端末]
+          Admin[管理画面]
+          API[API]
+          DB[(データベース)]
+          Librarian --> Terminal
+          Terminal --> API
+          Admin --> API
+          API --> DB
+      ```
+      
+      受付端末と管理画面は同じ API を呼ぶ。外部システムとは連携しない。
+  - file: "docs/architecture.md"
+    heading: "ディレクトリ/モジュール責務"
+    evidence: "開発機能一覧"
+    body: |-
+      | モジュール | 責務 |
+      | --- | --- |
+      | API | 会員登録、貸出、返却、貸出一覧の取得 |
+      | 受付端末 | 登録、貸出、返却の操作 |
+      | 管理画面 | 貸出一覧の参照 |
+  - file: "docs/architecture.md"
+    heading: "主要コンポーネント詳細"
+    evidence: "開発機能一覧"
+    body: "API は、貸出の確定で蔵書の行をロックし、貸出中でなければ貸出を保存する。返却は貸出の状態を返却済みにする。"
+  - file: "docs/architecture.md"
+    heading: "依存関係方針"
+    evidence: "概要"
+    body: |-
+      - 受付端末と管理画面は API だけに依存する。
+      - 外部システムには依存しない。
+  - file: "docs/api.md"
+    heading: "API設計概要"
+    evidence: "API設計"
+    body: "受付端末と管理画面は同じ API を呼ぶ。ボディは JSON とする。認証は仕様に無いため付けない。"
+  - file: "docs/api.md"
+    heading: "エンドポイント一覧"
+    evidence: "API設計"
+    body: |-
+      | API | メソッド | パス | 呼び元 |
+      | --- | --- | --- | --- |
+      | 会員登録 | POST | `/members` | 受付端末 |
+      | 貸出 | POST | `/loans` | 受付端末 |
+      | 返却 | PUT | `/loans/{loan_id}/return` | 受付端末 |
+      | 貸出一覧取得 | GET | `/loans` | 管理画面 |
+  - file: "docs/api.md"
+    heading: "エラーハンドリング"
+    evidence: "API設計"
+    body: |-
+      失敗時のボディは `{ "error": "<code>" }` とする。
+      
+      | code | HTTP | 意味 |
+      | --- | --- | --- |
+      | `already_on_loan` | 409 | 蔵書がすでに貸出中である。貸出は保存しない |
+      | `invalid_input` | 400 | 値が不正で保存しない |
+  - file: "docs/api.md"
+    heading: "API 詳細"
+    evidence: "API設計"
+    body: |-
+      会員登録 `POST /members`
+      
+      - request: `name`、`contact`（空にできない）。
+      - response: `member_id`。
+      
+      貸出 `POST /loans`
+      
+      - request: `member_id`、`book_id`。
+      - response: `loan_id`、`due_date`。
+      - 蔵書の行をロックし、貸出中なら `already_on_loan`。
+      
+      返却 `PUT /loans/{loan_id}/return`
+      
+      - request: パスの `loan_id`。
+      - response: `loan_id`、`status`。
+      - すでに返却済みなら書き換えずに成功とする。
+      
+      貸出一覧取得 `GET /loans`
+      
+      - request: クエリ `status`（省略時は貸出中）。
+      - response: 貸出の配列。貸出日の降順、同じ貸出日は `loan_id` の降順。
+  - file: "docs/api.md"
+    heading: "REST 規約"
+    evidence: "contract"
+    body: |-
+      - ボディのフィールド名は snake_case とする。
+      - 日付は `YYYY-MM-DD` とする。
+  - file: "docs/data-models.md"
+    heading: "データベース設計思想"
+    evidence: "設計上の考慮点"
+    body: |-
+      - すべての主キーは `BIGINT` の連番とする。
+      - 外部キーは論理的な関係として使い、物理的には置かない。
+      - 同じ蔵書の貸出中が 1 件になることは、一意制約ではなく、蔵書の行のロックで担保する。
+  - file: "docs/data-models.md"
+    heading: "主要テーブル/コレクション構成"
+    evidence: "データベース設計"
+    body: |-
+      ### members
+      
+      | 列 | 型 | 制約 | 内容 |
+      | --- | --- | --- | --- |
+      | `member_id` | BIGINT | PK | 会員番号 |
+      | `name` | VARCHAR(100) | NOT NULL | 氏名 |
+      | `contact` | VARCHAR(200) | NOT NULL | 連絡先 |
+      
+      ### books
+      
+      | 列 | 型 | 制約 | 内容 |
+      | --- | --- | --- | --- |
+      | `book_id` | BIGINT | PK | 蔵書 |
+      | `title` | VARCHAR(200) | NOT NULL | 書名 |
+      
+      ### loans
+      
+      | 列 | 型 | 制約 | 内容 |
+      | --- | --- | --- | --- |
+      | `loan_id` | BIGINT | PK | 貸出 |
+      | `member_id` | BIGINT | INDEX | 論理参照先 `members.member_id` |
+      | `book_id` | BIGINT | INDEX | 論理参照先 `books.book_id` |
+      | `status` | SMALLINT | NOT NULL | `0` 貸出中、`1` 返却済み |
+      | `due_date` | DATE | NOT NULL | 返却期限 |
+  - file: "docs/data-models.md"
+    heading: "ER図・関係性"
+    evidence: "データベース設計"
+    body: |-
+      ```mermaid
+      erDiagram
+          members ||--o{ loans : borrows
+          books ||--o{ loans : lent_as
+      ```
+  - file: "docs/data-models.md"
+    heading: "データアクセスパターン"
+    evidence: "API設計"
+    body: |-
+      | 処理 | 読み書き |
+      | --- | --- |
+      | 貸出の確定 | 蔵書の行をロックし、`loans` の貸出中を `book_id` で検索してから保存する |
+      | 返却 | `loans` の `status` を更新する |
+      | 貸出一覧 | `loans` を貸出日の降順、同じ貸出日は `loan_id` の降順で読む |
+  - file: "docs/data-models.md"
+    heading: "型と識別子"
+    evidence: "contract"
+    body: |-
+      - 日付は `DATE`、状態は `SMALLINT` で持つ。
+      - 識別子は連番の `BIGINT` とする。
+  - file: "docs/data-models.md"
+    heading: "トランザクションの方式"
+    evidence: "設計上の考慮点"
+    body: |-
+      1. 貸出の確定は単一のトランザクションで行う。
+      2. 蔵書の行を `SELECT ... FOR UPDATE` でロックする。
+      3. その蔵書の貸出中が無いときだけ、貸出を保存する。
+      4. 途中で失敗したときは全体をロールバックする。
+  - file: "docs/workflows.md"
+    heading: "主要ユースケースの処理フロー"
+    evidence: "UML"
+    body: |-
+      ```mermaid
+      sequenceDiagram
+          actor Librarian as 司書
+          participant API
+          participant DB
+          Librarian->>API: 貸出
+          API->>DB: 蔵書の行をロックし、貸出中を検索
+          API->>DB: 貸出を保存
+          API-->>Librarian: loan_id と due_date
+      ```
+      
+      ```mermaid
+      sequenceDiagram
+          actor Librarian as 司書
+          participant API
+          participant DB
+          Librarian->>API: 返却
+          API->>DB: 貸出の状態を返却済みにする
+          API-->>Librarian: loan_id と status
+      ```
+  - file: "docs/workflows.md"
+    heading: "エラーハンドリング・リトライパターン"
+    evidence: "エラーハンドリング"
+    body: |-
+      - API と DB の失敗は、サーバーがログに残し、4xx または 5xx を返す。
+      - 画面は失敗を表示せず、押したボタンを再び押せるように戻す。
+      - 貸出が `already_on_loan` のときは、貸出を保存しない。
+  - file: "docs/workflows.md"
+    heading: "状態管理・状態遷移"
+    evidence: "UML"
+    body: |-
+      ```mermaid
+      stateDiagram-v2
+          [*] --> 貸出中: 貸出
+          貸出中 --> 返却済み: 返却
+          返却済み --> [*]
+      ```
+      
+      | 状態 | 値 | 更新できる先 |
+      | --- | --- | --- |
+      | 貸出中 | `0` | 返却済み |
+      | 返却済み | `1` | なし |
+  - file: "docs/workflows.md"
+    heading: "ローカル開発"
+    evidence: "contract"
+    body: |-
+      1. データベースを起動する。
+      2. スキーマを適用する。
+      3. API を起動する。
+omissions: []
+spec_files:
+  - slug: "register-member"
+    title: "会員の登録"
+    summary: "司書が会員を登録する。"
+    evidence: "1. 会員の登録"
+    body: |-
+      ## 概要
+      
+      司書は、初めて来館した人を会員として登録する。
+      
+      ## 振る舞い
+      
+      1. 司書が氏名と連絡先を入力して「登録」を押す。
+      2. サーバーは会員を保存し、会員番号を返す。
+      
+      ## エラーハンドリング
+      
+      連絡先が空のときは保存しない。画面は失敗を表示せず、「登録」を再び押せるように戻す。
+  - slug: "lend-book"
+    title: "貸出"
+    summary: "司書が蔵書の貸出を記録する。"
+    evidence: "2. 貸出"
+    body: |-
+      ## 概要
+      
+      司書は、会員が選んだ蔵書の貸出を記録する。1 冊につき 1 件の貸出を作る。
+      
+      ## 振る舞い
+      
+      1. 司書が会員番号と蔵書を選び「貸出」を押す。
+      2. サーバーは蔵書の行をロックし、貸出中でなければ貸出を保存する。
+      3. 返却期限は貸出日の 14 日後とする。
+      
+      ## エラーハンドリング
+      
+      蔵書が貸出中のときは保存せず、`already_on_loan` を返す。
+  - slug: "return-book"
+    title: "返却"
+    summary: "司書が貸出の返却を記録する。"
+    evidence: "3. 返却"
+    body: |-
+      ## 概要
+      
+      司書は、返却された蔵書の貸出を完了にする。
+      
+      ## 振る舞い
+      
+      1. 司書が貸出を選び「返却」を押す。
+      2. サーバーは貸出の状態を返却済みにする。
+      
+      ## エラーハンドリング
+      
+      すでに返却済みの貸出は、書き換えずに成功とする。

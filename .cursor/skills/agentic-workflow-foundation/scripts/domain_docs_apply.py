@@ -9,7 +9,13 @@ domain-docs スキルの subagent は docs を直接編集せず、`tmp/domain-d
       Design Doc の検知・状態判定・対象節の列挙。`tmp/domain-docs-targets.yaml` を書く。
   domain_docs_apply.py apply
       fill-only で適用する。本文が器と完全一致する節だけを埋める。
-      `docs/api.md` の契約節（`domain_docs.api_sections`）は、kit の引用を残して `[TODO]` だけを置き換える。
+      契約節（`docs/api.md`、`docs/data-models.md`、`docs/workflows.md` の、契約の
+      `api_sections` / `data_model_sections` / `workflow_sections`）は、kit の引用を残して
+      `[TODO]` だけを置き換える。
+      書込み前に決定論ゲート（`domain_docs_gate.py`、G-DOCFILL-*）を実行し、結果を
+      `tmp/domain-docs-findings.yaml` へ書く。FAIL は検証失敗（exit 1）、WARN は報告だけ。
+  domain_docs_apply.py apply --check
+      書込み・pin・片付けをせず、apply と同じ検証とゲートだけを実行する。
   domain_docs_apply.py apply --refresh
       埋め済みの節との diff と plan digest を表示する（書込みなし）。
   domain_docs_apply.py apply --refresh --approve <digest>
@@ -33,12 +39,14 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Mapping
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 ENGINE_DIR = ROOT / ".cursor" / "skills" / "agentic-workflow-engine" / "scripts"
 sys.path.insert(0, str(ENGINE_DIR))
 sys.path.insert(0, str(HERE))
+import domain_docs_gate as gate  # noqa: E402
 import generate  # noqa: E402
 import genlib  # noqa: E402
 import runtime_plan as rp  # noqa: E402
@@ -55,10 +63,17 @@ DESIGN_DOC_PATHS = (
 )
 TARGETS_RELATIVE = "tmp/domain-docs-targets.yaml"
 RESULT_RELATIVE = "tmp/domain-docs-result.yaml"
+FINDINGS_RELATIVE = "tmp/domain-docs-findings.yaml"
 SPEC_PATH = "docs/spec.md"
 README_PATH = "docs/spec/README.md"
 SPEC_DIR = "docs/spec"
+# targets の schema_version。結果ファイルは v1（evidence のみ）と v2（任意の supporting_evidence）を受け付ける。
 SCHEMA_VERSION = 1
+RESULT_SCHEMA_VERSIONS = (1, 2)
+# 契約節の evidence に使える固定値。guidance だけが根拠で、Design Doc の見出しを持たない節のためである。
+CONTRACT_EVIDENCE = "contract"
+ER_FILE = "docs/data-models.md"
+ER_SECTION = "ER図・関係性"
 
 # domain-docs が書ける節（`## ` を除いた見出し名）。表に無い節への書込みは拒否する。
 OWNERSHIP: dict[str, tuple[str, ...]] = {
@@ -87,6 +102,7 @@ OWNERSHIP: dict[str, tuple[str, ...]] = {
     "docs/data-models.md": (
         "データベース設計思想",
         "主要テーブル/コレクション構成",
+        "ER図・関係性",
         "データアクセスパターン",
     ),
     "docs/workflows.md": (
@@ -96,10 +112,15 @@ OWNERSHIP: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# 契約節（placeholder）を埋められるファイル。このファイルの器にある `domain_docs.api_sections` の節
-# （title が完全一致するもの。`api_section_titles`）だけを対象にする。
-# data-models.md / workflows.md の契約節は、従来どおり書込みを拒否する。
-PLACEHOLDER_FILES = frozenset({"docs/api.md"})
+# 契約節（placeholder）を埋められるファイルと、そのファイルの契約節を宣言する `domain_docs` のキー。
+# 対象は、そのファイルの器にある契約節のうち、title がキーの配列の title と完全一致するものだけである
+# （`contract_section_titles`）。architecture / spec の契約節は対象にしない。
+CONTRACT_SECTION_KEYS = {
+    "docs/api.md": "api_sections",
+    "docs/data-models.md": "data_model_sections",
+    "docs/workflows.md": "workflow_sections",
+}
+PLACEHOLDER_FILES = frozenset(CONTRACT_SECTION_KEYS)
 # kit の器が描く契約節の形: 見出し、引用段落（`> guidance`）、単独行の `[TODO]`。
 PLACEHOLDER_SECTION_RE = re.compile(
     r"\A## [^\n]+\n\n(?P<quote>>[^\n]*(?:\n[^\n]+)*)\n\n\[TODO\]\n*\Z"
@@ -112,6 +133,8 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 SECTION_KEYS = frozenset({"file", "heading", "body", "evidence"})
 OMISSION_KEYS = frozenset({"file", "heading", "reason"})
 SPEC_FILE_KEYS = frozenset({"slug", "title", "summary", "evidence", "body"})
+# v2 だけで使える任意キー（主根拠のほかに取り込んだ Design Doc の見出し）。
+OPTIONAL_KEYS = frozenset({"supporting_evidence"})
 RESULT_KEYS = frozenset({"schema_version", "sections", "omissions", "spec_files"})
 ROW_RE = re.compile(
     r"^- \[(?P<title>[^\]]+)\]\((?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md\)"
@@ -125,6 +148,14 @@ class ApplyError(Exception):
     """結果ファイル・状態の検証失敗。結果ファイルを直して再実行できる（exit 1）。"""
 
 
+class GateError(ApplyError):
+    """決定論ゲート（G-DOCFILL-*）の FAIL。findings を `report` に持つ（exit 1）。"""
+
+    def __init__(self, message: str, report: "gate.Report") -> None:
+        super().__init__(message)
+        self.report = report
+
+
 class FatalError(Exception):
     """入力の曖昧・消失・書込み失敗など（exit 2）。"""
 
@@ -135,6 +166,7 @@ class Plan:
     notes: list[str] = field(default_factory=list)
     diffs: list[str] = field(default_factory=list)
     digest: str = ""
+    report: "gate.Report" = field(default_factory=gate.Report)
 
 
 # --------------------------------------------------------------------------
@@ -308,35 +340,67 @@ def render_skeletons(manifest_path: Path) -> dict[str, str]:
     return skeletons
 
 
-def api_section_titles(manifest_path: Path) -> frozenset[str]:
-    """契約（`domain_docs.api_sections`）が宣言する節の見出し名を返す。"""
+def _resolved_domain_docs(manifest_path: Path) -> dict:
     import run_resolved_engine as resolver  # noqa: WPS433
 
     manifest = resolver.resolved_manifest(str(SEED_MANIFEST), str(manifest_path))
-    sections = (manifest.get("domain_docs") or {}).get("api_sections") or []
-    return frozenset(
-        item["title"] for item in sections if isinstance(item, dict) and isinstance(item.get("title"), str)
-    )
+    return manifest.get("domain_docs") or {}
+
+
+def contract_section_titles(manifest_path: Path) -> dict[str, frozenset[str]]:
+    """契約が宣言する節の見出し名を、ファイルごとに返す。
+
+    `docs/api.md` は `api_sections`、`docs/data-models.md` は `data_model_sections`、
+    `docs/workflows.md` は `workflow_sections` の title である。
+    """
+    domain = _resolved_domain_docs(manifest_path)
+    titles: dict[str, frozenset[str]] = {}
+    for rel, key in CONTRACT_SECTION_KEYS.items():
+        sections = domain.get(key) or []
+        titles[rel] = frozenset(
+            item["title"] for item in sections if isinstance(item, dict) and isinstance(item.get("title"), str)
+        )
+    return titles
+
+
+def contract_guidance_texts(manifest_path: Path) -> list[str]:
+    """契約の `*_sections` の本文（guidance / content）をすべて返す。"""
+    domain = _resolved_domain_docs(manifest_path)
+    texts: list[str] = []
+    for key, sections in domain.items():
+        if not key.endswith("_sections") or not isinstance(sections, list):
+            continue
+        for item in sections:
+            if not isinstance(item, dict):
+                continue
+            for field_name in ("guidance", "content"):
+                if isinstance(item.get(field_name), str):
+                    texts.append(item[field_name])
+    return texts
 
 
 def placeholder_quotes(
-    rel: str, skeleton: str, headings: list[str], titles: frozenset[str] = frozenset()
+    rel: str,
+    skeleton: str,
+    headings: list[str],
+    titles: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, str]:
     """契約節（placeholder）の名前と、kit が器に書く引用段落を返す。
 
-    kit が描画した器だけから求める。`PLACEHOLDER_FILES` の器で、見出し名が `titles`
-    （`domain_docs.api_sections` の title）と完全一致し、所有権表の節でも `参照` でもない節のうち、
+    kit が描画した器だけから求める。`PLACEHOLDER_FILES` の器で、見出し名が `titles[rel]`
+    （そのファイルの契約節の title）と完全一致し、所有権表の節でも `参照` でもない節のうち、
     引用段落と単独行の `[TODO]` だけでできているものが対象である。既存ファイルの手書きの節は対象にならない。
-    `titles` が空なら対象は無い。
+    `titles[rel]` が空なら対象は無い。
     """
     if rel not in PLACEHOLDER_FILES:
         return {}
+    file_titles = (titles or {}).get(rel, frozenset())
     _, sections = generate.split_structural_sections(skeleton, headings, "器")
     owned = set(OWNERSHIP[rel])
     quotes: dict[str, str] = {}
     for heading, section in zip(headings, sections):
         name = _heading_name(heading)
-        if name in owned or name == "参照" or name not in titles:
+        if name in owned or name == "参照" or name not in file_titles:
             continue
         match = PLACEHOLDER_SECTION_RE.match(section)
         if match:
@@ -344,8 +408,15 @@ def placeholder_quotes(
     return quotes
 
 
+def _quote_text(quote: str) -> str:
+    """器の引用段落（`> ...` の連続行）から、`>` を除いた本文を返す。"""
+    return "\n".join(re.sub(r"^>[ \t]?", "", line) for line in quote.splitlines()).strip()
+
+
 def analyze(
-    root: Path, skeletons: dict[str, str], titles: frozenset[str] = frozenset()
+    root: Path,
+    skeletons: dict[str, str],
+    titles: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, dict]:
     """ファイルごとに、構造見出し・存在・器のまま残る節（fillable）を求める。"""
     info: dict[str, dict] = {}
@@ -452,7 +523,7 @@ def build_targets(
     skeletons: dict[str, str],
     *,
     refresh: bool,
-    titles: frozenset[str] = frozenset(),
+    titles: Mapping[str, frozenset[str]] | None = None,
 ) -> dict:
     doc, pin_state = design_doc_state(root, manifest_path)
     if refresh and doc is None:
@@ -472,6 +543,10 @@ def build_targets(
             placeholders = [name for name in sections if name in entry["placeholder_quotes"]]
             if placeholders:
                 item["placeholders"] = placeholders
+                # subagent は docs を読めない。契約節の本文の根拠になる引用（guidance）を targets で渡す。
+                item["guidance"] = {
+                    name: _quote_text(entry["placeholder_quotes"][name]) for name in placeholders
+                }
             if entry["mismatch"]:
                 item["mismatch"] = entry["mismatch"]
             files.append(item)
@@ -521,7 +596,8 @@ def _single_line(value: object, label: str) -> str:
     return value.strip()
 
 
-def _check_body(body: object, label: str) -> str:
+def _check_body(body: object, label: str, *, allow_er: bool = False) -> str:
+    """本文の共通検査。`erDiagram` は `ER図・関係性` 節の本文にだけ許可する（別途、内容を検証する）。"""
     if not isinstance(body, str) or not body.strip():
         raise ApplyError(f"{label}.body は非空文字列が必要です")
     if "{{" in body or "}}" in body:
@@ -530,28 +606,127 @@ def _check_body(body: object, label: str) -> str:
         raise ApplyError(f"{label}.body に [TODO] は書けません（根拠が無い節は omissions に書く）")
     if re.search(r"!\[[^\]]*\]\(", body):
         raise ApplyError(f"{label}.body に画像リンクは書けません")
-    if "erDiagram" in body:
-        raise ApplyError(f"{label}.body に ER 図は書けません")
+    if "erDiagram" in body and not allow_er:
+        raise ApplyError(f"{label}.body に ER 図は書けません（`{ER_SECTION}` 節だけが書ける）")
     return body.strip("\n")
 
 
-def _check_evidence(value: object, label: str, doc_headings: set[str]) -> str:
+def _check_evidence(
+    value: object, label: str, doc_headings: set[str], *, allow_contract: bool = False
+) -> str:
+    """根拠は Design Doc の見出し。契約節だけは固定値 `contract`（guidance が根拠）も使える。"""
     evidence = _single_line(value, f"{label}.evidence")
+    if allow_contract and evidence == CONTRACT_EVIDENCE:
+        return evidence
     if evidence not in doc_headings:
         raise ApplyError(f"{label}.evidence に対応する見出しが Design Doc にありません: {evidence!r}")
     return evidence
 
 
-def _check_keys(item: object, allowed: frozenset[str], label: str) -> dict:
+def _check_supporting_evidence(
+    item: dict, label: str, doc_headings: set[str], schema_version: int
+) -> list[str]:
+    """v2 の任意キー `supporting_evidence`（Design Doc に実在する見出しの配列）を検査する。"""
+    if "supporting_evidence" not in item:
+        return []
+    if schema_version < 2:
+        raise ApplyError(f"{label}.supporting_evidence は schema_version 2 でだけ使えます")
+    raw = item["supporting_evidence"]
+    if not isinstance(raw, list):
+        raise ApplyError(f"{label}.supporting_evidence は配列である必要があります")
+    seen: list[str] = []
+    for index, value in enumerate(raw):
+        name = _single_line(value, f"{label}.supporting_evidence[{index}]")
+        if name not in doc_headings:
+            raise ApplyError(
+                f"{label}.supporting_evidence[{index}] に対応する見出しが Design Doc にありません: {name!r}"
+            )
+        if name in seen:
+            raise ApplyError(f"{label}.supporting_evidence に同じ見出しが重複しています: {name!r}")
+        seen.append(name)
+    return seen
+
+
+def _check_keys(
+    item: object, required: frozenset[str], label: str, optional: frozenset[str] = frozenset()
+) -> dict:
     if not isinstance(item, dict):
         raise ApplyError(f"{label} は mapping である必要があります")
-    unknown = sorted(set(item) - allowed)
+    unknown = sorted(set(item) - required - optional)
     if unknown:
         raise ApplyError(f"{label} に未知キーがあります: {unknown}")
-    missing = sorted(allowed - set(item))
+    missing = sorted(required - set(item))
     if missing:
         raise ApplyError(f"{label} に必須キーがありません: {missing}")
     return item
+
+
+# --------------------------------------------------------------------------
+# ER 図の決定論検証（`ER図・関係性` 節）
+# --------------------------------------------------------------------------
+_ER_FENCE_RE = re.compile(r"```mermaid[ \t]*\n(?P<code>.*?)```", re.DOTALL)
+_ER_RELATION_RE = re.compile(
+    r"^\s*(?P<left>[A-Za-z_][\w-]*)\s+"
+    r"(?:\|\||o\||\|o|\}o|\}\||o\{|\|\{)(?:--|\.\.)(?:\|\||o\||\|o|\}o|\}\||o\{|\|\{)"
+    r"\s+(?P<right>[A-Za-z_][\w-]*)\s*(?::.*)?$"
+)
+_ER_ENTITY_OPEN_RE = re.compile(r"^\s*(?P<name>[A-Za-z_][\w-]*)\s*\{\s*$")
+_ER_SAMPLE_RE = re.compile(r"\bENTITY_[A-Z]\b")
+
+
+def er_entities(body: str) -> tuple[set[str], list[str]]:
+    """`erDiagram` の Mermaid ブロックから、エンティティ名の集合と、解釈できなかった行を返す。"""
+    blocks = [m.group("code") for m in _ER_FENCE_RE.finditer(body) if "erDiagram" in m.group("code")]
+    entities: set[str] = set()
+    unparsed: list[str] = []
+    for code in blocks:
+        inside = False
+        for line in code.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped == "erDiagram" or stripped.startswith("%%"):
+                continue
+            if inside:
+                if stripped == "}":
+                    inside = False
+                continue
+            opened = _ER_ENTITY_OPEN_RE.match(line)
+            if opened:
+                entities.add(opened.group("name"))
+                inside = True
+                continue
+            relation = _ER_RELATION_RE.match(line)
+            if relation:
+                entities.update((relation.group("left"), relation.group("right")))
+                continue
+            if re.fullmatch(r"[A-Za-z_][\w-]*", stripped):
+                entities.add(stripped)
+                continue
+            unparsed.append(stripped)
+    return entities, unparsed
+
+
+def _check_er_section(body: str, reference_text: str, label: str) -> None:
+    """ER 図が、同じファイルの本文（ER 図以外）にあるエンティティだけを使い、雛形名を含まないこと。"""
+    if _ER_SAMPLE_RE.search(body):
+        raise ApplyError(f"{label}.body に ER 図の雛形名（ENTITY_A など）は書けません")
+    if not _ER_FENCE_RE.search(body) or "erDiagram" not in body:
+        raise ApplyError(
+            f"{label}.body には ```mermaid の `erDiagram` ブロックが必要です"
+            "（テーブルの記述が設計書に無いときは omissions で見送る）"
+        )
+    entities, unparsed = er_entities(body)
+    if unparsed:
+        raise ApplyError(f"{label}.body の ER 図に解釈できない行があります: {unparsed[:3]}")
+    if not entities:
+        raise ApplyError(f"{label}.body の ER 図にエンティティがありません")
+    absent = sorted(
+        name for name in entities
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", reference_text) is None
+    )
+    if absent:
+        raise ApplyError(
+            f"{label}.body の ER 図に、`{ER_FILE}` の本文（ER 図以外）に無いエンティティがあります: {absent}"
+        )
 
 
 def spec_file_document(item: dict) -> str:
@@ -657,7 +832,7 @@ def build_plan(
     result: dict,
     *,
     refresh: bool,
-    titles: frozenset[str] = frozenset(),
+    titles: Mapping[str, frozenset[str]] | None = None,
 ) -> Plan:
     _check_targets(targets, refresh=refresh)
     doc = _check_unchanged(root, manifest_path, targets)
@@ -668,8 +843,9 @@ def build_plan(
     unknown = sorted(set(result) - RESULT_KEYS)
     if unknown:
         raise ApplyError(f"結果ファイルに未知キーがあります: {unknown}")
-    if result.get("schema_version", SCHEMA_VERSION) != SCHEMA_VERSION:
-        raise ApplyError("結果ファイルの schema_version が不正です")
+    schema_version = result.get("schema_version", SCHEMA_VERSION)
+    if isinstance(schema_version, bool) or schema_version not in RESULT_SCHEMA_VERSIONS:
+        raise ApplyError(f"結果ファイルの schema_version が不正です（{list(RESULT_SCHEMA_VERSIONS)} のいずれか）")
 
     target_sections = {
         (item["file"], name)
@@ -679,9 +855,10 @@ def build_plan(
 
     # --- sections / omissions -------------------------------------------------
     section_bodies: dict[tuple[str, str], str] = {}
+    section_labels: dict[tuple[str, str], str] = {}
     for index, raw in enumerate(result.get("sections") or []):
         label = f"sections[{index}]"
-        item = _check_keys(raw, SECTION_KEYS, label)
+        item = _check_keys(raw, SECTION_KEYS, label, OPTIONAL_KEYS)
         rel = _single_line(item["file"], f"{label}.file")
         name = _single_line(item["heading"], f"{label}.heading")
         quotes = info[rel]["placeholder_quotes"] if rel in info else {}
@@ -691,8 +868,9 @@ def build_plan(
             raise ApplyError(f"{label}: 契約節は fill-only でだけ書けます（refresh では書けません）: {rel} / {name}")
         if (rel, name) in section_bodies:
             raise ApplyError(f"{label}: 同じ節が重複しています: {rel} / {name}")
-        _check_evidence(item["evidence"], label, doc_headings)
-        body = _check_body(item["body"], label)
+        _check_evidence(item["evidence"], label, doc_headings, allow_contract=name in quotes)
+        _check_supporting_evidence(item, label, doc_headings, schema_version)
+        body = _check_body(item["body"], label, allow_er=(rel, name) == (ER_FILE, ER_SECTION))
         clash = [h for h in generate.structural_headings(body) if h in info[rel]["headings"]]
         if clash:
             raise ApplyError(f"{label}.body が構造見出しと同名の `##` を含みます: {clash}")
@@ -702,6 +880,7 @@ def build_plan(
                 raise ApplyError(f"{label}.body に kit の引用を含められません（引用は apply が保持する）: {rel} / {name}")
             body = f"{quotes[name]}\n\n{body}"
         section_bodies[(rel, name)] = body
+        section_labels[(rel, name)] = label
 
     omitted: set[tuple[str, str]] = set()
     for index, raw in enumerate(result.get("omissions") or []):
@@ -748,6 +927,14 @@ def build_plan(
                 raise ApplyError(f"{rel}: 見出し構成不一致（{exc}）") from exc
             for name in sorted(set(replacements) - set(entry["fillable"])):
                 plan.notes.append(f"KEPT: {rel}#{name} は埋め済みのため書き込みません")
+        if (
+            rel == ER_FILE
+            and ER_SECTION in replacements
+            and (refresh or ER_SECTION in entry["fillable"])
+        ):
+            # ER 図は、適用後の同じファイルの本文（ER 図以外）に実在するエンティティだけを使う。
+            reference = _replace_sections(new_text, headings, {ER_SECTION: ""})
+            _check_er_section(replacements[ER_SECTION], reference, section_labels[(rel, ER_SECTION)])
         if new_text != existing:
             new_texts[rel] = new_text
             if refresh:
@@ -764,9 +951,11 @@ def build_plan(
     new_evidence: dict[str, str] = {}
     seen_slugs: set[str] = set()
     seen_evidence: set[str] = set()
+    flow_headings = gate.business_flow_children(_read_text(doc))
+    spec_bodies: dict[str, str] = {}
     for index, raw in enumerate(result.get("spec_files") or []):
         label = f"spec_files[{index}]"
-        item = _check_keys(raw, SPEC_FILE_KEYS, label)
+        item = _check_keys(raw, SPEC_FILE_KEYS, label, OPTIONAL_KEYS)
         slug = _single_line(item["slug"], f"{label}.slug")
         if not SLUG_RE.fullmatch(slug) or slug in RESERVED_SLUGS:
             raise ApplyError(f"{label}.slug は kebab-case で README 以外である必要があります: {slug!r}")
@@ -776,10 +965,18 @@ def build_plan(
         _single_line(item["title"], f"{label}.title")
         _single_line(item["summary"], f"{label}.summary")
         evidence = _check_evidence(item["evidence"], label, doc_headings)
+        _check_supporting_evidence(item, label, doc_headings, schema_version)
         if evidence in seen_evidence:
             raise ApplyError(f"{label}: 根拠見出しが重複しています: {evidence!r}")
         seen_evidence.add(evidence)
+        if flow_headings and slug not in existing_slugs and evidence not in flow_headings:
+            # 新しい機能仕様の主根拠は、`業務フロー` 直下の見出しに限る（画面・API 単位への細分化を防ぐ）。
+            raise ApplyError(
+                f"{label}.evidence は `業務フロー` 直下の見出しである必要があります: {evidence!r}"
+                f"（候補: {flow_headings}）"
+            )
         body = _check_body(item["body"], label)
+        spec_bodies[f"{SPEC_DIR}/{slug}.md"] = body
         lines = [line.strip() for line in body.splitlines()]
         if "## 概要" not in lines:
             raise ApplyError(f"{label}.body には見出し `## 概要` が必要です")
@@ -832,6 +1029,30 @@ def build_plan(
                     f"ORPHAN: {row['slug']}.md の根拠見出し {row['evidence']!r} は Design Doc にありません（削除しません）"
                 )
 
+    # --- 決定論ゲート（G-DOCFILL-*）--------------------------------------------
+    replaced = {
+        f"{rel}#{name}": body
+        for (rel, name), body in section_bodies.items()
+        if _written(rel, name, info, refresh)
+    }
+    replaced.update({rel: body for rel, body in spec_bodies.items() if rel in new_files})
+    final_texts = {}
+    for rel in gate.GATE_FILES:
+        if rel in new_texts:
+            final_texts[rel] = new_texts[rel]
+        else:
+            path = root / rel
+            final_texts[rel] = _read_text(path) if path.is_file() else ""
+    plan.report = gate.evaluate(
+        _read_text(doc), replaced=replaced, final_texts=final_texts, spec_documents=new_files
+    )
+    if plan.report.fails:
+        raise GateError(
+            "決定論ゲートに失敗しました: "
+            + "; ".join(f"{item['id']} {item['file']}: {item['message']}" for item in plan.report.fails),
+            plan.report,
+        )
+
     # --- pin（fingerprint の更新）--------------------------------------------
     plan.writes.update({rel: text.encode("utf-8") for rel, text in new_texts.items()})
     plan.writes.update({rel: text.encode("utf-8") for rel, text in new_files.items()})
@@ -839,6 +1060,12 @@ def build_plan(
         _plan_pin(root, manifest_path, doc, plan)
     plan.digest = _plan_digest(targets["source_fingerprint"], plan.writes)
     return plan
+
+
+def _written(rel: str, name: str, info: dict, refresh: bool) -> bool:
+    """この節の本文が、今回の計画で実際に書かれる（器のままの節、または refresh）かどうか。"""
+    entry = info.get(rel)
+    return bool(entry) and (refresh or name in entry["fillable"])
 
 
 def _plan_pin(root: Path, manifest_path: Path, doc: Path, plan: Plan) -> None:
@@ -916,7 +1143,7 @@ def cmd_state(args: argparse.Namespace) -> int:
         raise FatalError(f"manifest が存在しません: {manifest_path}")
     skeletons = render_skeletons(manifest_path)
     targets = build_targets(
-        root, manifest_path, skeletons, refresh=args.refresh, titles=api_section_titles(manifest_path)
+        root, manifest_path, skeletons, refresh=args.refresh, titles=contract_section_titles(manifest_path)
     )
     targets_path.parent.mkdir(parents=True, exist_ok=True)
     targets_path.write_text(dump_yaml_text(targets), encoding="utf-8")
@@ -925,7 +1152,38 @@ def cmd_state(args: argparse.Namespace) -> int:
         f"STATE: action={targets['action']} pin={targets['pin']} sections={total} "
         f"targets={targets_path.relative_to(root).as_posix() if targets_path.is_relative_to(root) else targets_path}"
     )
+    _warn_contract_vocabulary(root, manifest_path, targets)
     return 0
+
+
+def _warn_contract_vocabulary(root: Path, manifest_path: Path, targets: dict) -> None:
+    """契約の guidance に Design Doc の識別子が混入していれば報告する（報告専用。exit code は変えない）。"""
+    if not targets.get("design_doc"):
+        return
+    hits = gate.contract_vocabulary_hits(
+        _read_text(root / targets["design_doc"]), contract_guidance_texts(manifest_path)
+    )
+    if hits:
+        print(
+            "WARN: 契約の guidance に Design Doc の識別子が含まれています（業務語彙は契約に入れず、"
+            "Design Doc 由来の本文に書く）: " + ", ".join(hits)
+        )
+
+
+def _findings_path(targets_path: Path) -> Path:
+    return targets_path.parent / Path(FINDINGS_RELATIVE).name
+
+
+def _write_findings(path: Path, report: "gate.Report") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_yaml_text(report.to_dict()), encoding="utf-8")
+
+
+def _print_findings(report: "gate.Report") -> None:
+    for item in report.findings:
+        print(f"{item['level']}: {item['id']} {item['file']}: {item['message']}")
+    for item in report.skipped:
+        print(f"SKIPPED: {item['id']}: {item['reason']}")
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
@@ -936,6 +1194,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
         raise FatalError("--decline は --refresh と併用します")
     if args.approve and args.decline:
         raise FatalError("--approve と --decline は同時に指定できません")
+    if args.check and (args.approve or args.decline):
+        raise FatalError("--check は --approve / --decline と併用できません")
     if not targets_path.is_file():
         raise FatalError("targets がありません。先に state を実行してください")
     targets = _load_yaml(targets_path, FatalError)
@@ -957,16 +1217,28 @@ def cmd_apply(args: argparse.Namespace) -> int:
         raise ApplyError(f"結果ファイルがありません: {result_path}")
     result = _load_yaml(result_path, ApplyError)
     skeletons = render_skeletons(manifest_path)
-    plan = build_plan(
-        root, manifest_path, skeletons, targets, result,
-        refresh=args.refresh, titles=api_section_titles(manifest_path),
-    )
+    findings_path = _findings_path(targets_path)
+    try:
+        plan = build_plan(
+            root, manifest_path, skeletons, targets, result,
+            refresh=args.refresh, titles=contract_section_titles(manifest_path),
+        )
+    except GateError as exc:
+        _write_findings(findings_path, exc.report)
+        _print_findings(exc.report)
+        raise
+    _write_findings(findings_path, plan.report)
 
+    if args.check:
+        _print_findings(plan.report)
+        print(f"CHECK: PASS files={len(plan.writes)} warnings={len(plan.report.warns)} digest={plan.digest}")
+        return 0
     if args.refresh and not args.approve:
         for diff in plan.diffs:
             print(diff, end="" if diff.endswith("\n") else "\n")
         for note in plan.notes:
             print(note)
+        _print_findings(plan.report)
         print(f"PLAN: files={len(plan.writes)} digest={plan.digest}")
         print("承認するには apply --refresh --approve <digest> を実行する（書込みなし）")
         return 0
@@ -974,9 +1246,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
         raise ApplyError("承認した digest が現在の計画と一致しません。計画を再表示してください")
 
     commit(root, plan.writes)
-    _cleanup(targets_path, result_path)
+    _cleanup(targets_path, result_path, findings_path)
     for note in plan.notes:
         print(note)
+    _print_findings(plan.report)
     print(f"PASS: domain-docs 適用完了 files={len(plan.writes)}")
     for rel in sorted(plan.writes):
         print(f"  [write] {rel}")
@@ -997,9 +1270,11 @@ def cmd_pin(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cleanup(targets_path: Path, result_path: Path) -> None:
+def _cleanup(targets_path: Path, result_path: Path, findings_path: Path | None = None) -> None:
     targets_path.unlink(missing_ok=True)
     result_path.unlink(missing_ok=True)
+    if findings_path is not None:
+        findings_path.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1009,6 +1284,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--targets", help="targets ファイル（既定: tmp/domain-docs-targets.yaml）")
     parser.add_argument("--result", help="結果ファイル（既定: tmp/domain-docs-result.yaml）")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--check", action="store_true", help="書込みなしで apply と同じ検証とゲートを実行する")
     parser.add_argument("--approve", metavar="DIGEST")
     parser.add_argument("--decline", action="store_true")
     args = parser.parse_args(argv)

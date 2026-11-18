@@ -1015,6 +1015,8 @@ outputs:
       - "name: domain-docs"
       - "tmp/domain-docs-result.yaml"
       - "## 所有権表"
+      - "## 持ち込む内容"
+      - "## 図の引継ぎ"
       - "docs/spec/{slug}.md"
   # Layer 3 セッション管理スキル群（親 manifest に内包）。
   - path: .cursor/skills/session-planning/SKILL.md

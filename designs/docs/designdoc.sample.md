@@ -4,7 +4,7 @@
 > 2. 完成稿は `designs/docs/designdoc.md` または `designs/docs/design-doc.md` の一方だけに置く。両方あると入力が曖昧になり、初回投影は停止する。この `designdoc.sample.md` は投影の入力にならない。
 > 3. 「複製する」と書いた見出しは、判断テーマ、業務、画面、API、テーブル、状態の数だけ増やす。見本のカフェ固有の名前は、対象システムの言葉に変える。
 > 4. 図は実在するファイルだけを参照する。見本では利用者画面を `../images/enduser-ui/`、管理画面を `../images/manager-ui/`、ER 図を `../schemas/` に置いている。
-> 5. 画面設計、画像、ER 図は Design Doc に書く。初回の Domain docs 投影では、これらは生成物へ転記されない。
+> 5. 画面設計、画像、ER 図は Design Doc に書く。sequence と state の Mermaid 図は Domain docs（`docs/workflows.md`）へ引き継がれる。画像リンクは転記されない。`docs/data-models.md` の ER 図は、画像ではなく「データベース設計」のテーブルの記述（`### 物理名（業務名）` 見出しと列の表、関係の説明）から起こす。
 
 # 概要
 

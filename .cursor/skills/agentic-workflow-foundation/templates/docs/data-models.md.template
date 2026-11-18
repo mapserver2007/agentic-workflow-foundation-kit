@@ -16,12 +16,7 @@
 
 ## ER図・関係性
 
-[TODO] エンティティ間のリレーションを図示する（Mermaid 推奨）。
-
-```mermaid
-erDiagram
-    ENTITY_A ||--o{ ENTITY_B : "has"
-```
+[TODO] エンティティ間のリレーションを図示する（Mermaid の `erDiagram` 推奨）。
 
 ## データアクセスパターン
 

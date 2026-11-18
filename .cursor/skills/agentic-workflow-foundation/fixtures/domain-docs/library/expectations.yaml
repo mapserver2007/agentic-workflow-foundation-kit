@@ -1,0 +1,48 @@
+reference:
+  metrics:
+    diagrams:
+      sequenceDiagram:
+        design: 2
+        docs: 2
+      stateDiagram:
+        design: 1
+        docs: 1
+    tables:
+      design: 3
+      missing: 0
+    endpoints:
+      design: 4
+      missing: 0
+mutations:
+  "drop-column":
+    level: "WARN"
+    id: "G-DOCFILL-003"
+    contains:
+      - "loans"
+      - "due_date"
+  "drop-endpoint":
+    level: "WARN"
+    id: "G-DOCFILL-004"
+    contains:
+      - "PUT /loans/{loan_id}/return"
+  "drop-diagram":
+    level: "WARN"
+    id: "G-DOCFILL-002"
+    contains:
+      - "stateDiagram"
+  "spec-without-error-handling":
+    level: "WARN"
+    id: "G-DOCFILL-005"
+    contains:
+      - "docs/spec/return-book.md"
+  "sample-residue":
+    level: "FAIL"
+    id: "G-DOCFILL-001"
+    contains:
+      - "docs/workflows.md#状態管理・状態遷移"
+      - "state 図の雛形"
+  "drop-table":
+    level: "WARN"
+    id: "G-DOCFILL-003"
+    contains:
+      - "loans"

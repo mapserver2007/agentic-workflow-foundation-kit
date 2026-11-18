@@ -10,17 +10,6 @@
 
 [TODO] 主要な業務フローを記述する（Mermaid シーケンス図推奨）。
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant Service
-    Client->>API: リクエスト
-    API->>Service: 処理委譲
-    Service-->>API: 結果
-    API-->>Client: レスポンス
-```
-
 ## エラーハンドリング・リトライパターン
 
 [TODO] 外部 API 呼び出しのリトライ・タイムアウト方針を記述する。
@@ -28,16 +17,6 @@ sequenceDiagram
 ## 状態管理・状態遷移
 
 [TODO] 主要エンティティの状態遷移を図示する（Mermaid 推奨）。
-
-```mermaid
-stateDiagram-v2
-    [*] --> Created
-    Created --> Processing
-    Processing --> Completed
-    Processing --> Failed
-    Failed --> [*]
-    Completed --> [*]
-```
 
 {{#each domain_docs.workflow_sections}}
 ## {{this.title}}
