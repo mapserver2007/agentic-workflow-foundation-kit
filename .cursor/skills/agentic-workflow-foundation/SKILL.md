@@ -509,10 +509,10 @@ fill-only の規則:
 
 `action: stale` のときの更新（再推論）:
 
-1. `AskQuestion` で更新するかを確認する（推奨: 更新する。Design Doc の変更が docs に反映されないまま残るのを避けるため。見送りなら `apply --refresh --decline`）。
+1. `AskQuestion` で更新するかを確認する（推奨: 更新する。Design Doc の変更が docs に反映されないまま残るのを避けるため。見送りなら `python3 "$apply" state --refresh` → `python3 "$apply" apply --refresh --decline`）。
 2. 更新する場合は `python3 "$apply" state --refresh` → subagent（所有権表の全節を対象に再起案）→ `python3 "$apply" apply --refresh`（diff、ゲートの findings、`PLAN: ... digest=<digest>` を表示。書込みなし）。refresh の再試行は、プレビューがゲートの FAIL または検証失敗（exit 1）のときに限り最大 1 回で、fill 経路の修復と同じ規則とする。WARN は再起案せず、承認時の提示に添える。
 3. diff をユーザーに提示して承認を得る。承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用しない。
-4. 見送る場合は `python3 "$apply" apply --refresh --decline` で docs を変更せず、現在の Design Doc を既読にする。
+4. 見送る場合は `python3 "$apply" state --refresh` → `python3 "$apply" apply --refresh --decline` を実行する。docs は変更せず、現在の Design Doc を既読にする。
 
 ### Phase 3: 監査ゲート
 
