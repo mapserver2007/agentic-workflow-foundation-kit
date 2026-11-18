@@ -21,11 +21,16 @@
 | --- | --- | --- | --- |
 | Domain の seed | `docs/spec.md`、`docs/spec/**`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` | 初回生成後の内容を人間が充実させる | 適用しない |
 | Meta の追記ログ（seed） | `docs/DECISIONS.md`、`docs/GOTCHAS.md` | エントリの直接追記は設計上の正規経路 | 枠組みもエントリも上書きしない |
-| Meta / 生成物（render） | `docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/AGENT_RUNBOOK.md`、`docs/references/context-budget-internals.md`、`docs/agent-tasks/agent-workflow/**` | 直接編集は drift。次回生成で消える | テンプレートから上書きする |
+| スキル設定（seed） | `campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml`、`cross-repository-knowledge-link/config.json` | 初回生成後のモデルや閾値を人間が編集する | 適用しない。denylist でバイト列を保護する |
+| キュー（seed / denylist） | `docs/agent-tasks/reports/**`、`docs/agent-tasks/reviews/**`、`docs/agent-tasks/maintenance-docs/.gitkeep` | キャンペーン成果物と起票を人間が維持する | `reports/**` と `reviews/**` は denylist。`maintenance-docs/.gitkeep` は seed で、既存なら適用しない |
+| Meta / 生成物（render） | `docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/AGENT_RUNBOOK.md`、`docs/references/context-budget-internals.md`、`docs/agent-tasks/agent-workflow/**`、`.cursor/skills/domain-docs/SKILL.md`、`.cursor/skills/campaign-cleanup/SKILL.md`、`bin/quality-gate`、`bin/foundation-gate`、`bin/project-setup`、`.cursor/hooks/session-progress-emitter.sh` | 直接編集は drift。次回生成で消える | テンプレートから上書きする |
 | Domain 名でも render | `docs/tech-stack.md` | 直接編集しない。`tech_stack` を更新して再生成する | 上書きする |
 
 ## 境界
 
 - seed ファイルを削除すると、次の生成でテンプレートの初期骨格が作り直されます。
 - `docs/coding-standards.md` は seed です。既存ファイルがあるあいだ、`domain_docs.coding_standards_sections` の変更は updater 経由では入りません。初期内容は承認済み契約の投影です。
+- `docs/spec/**`、`docs/agent-tasks/reports/**`、`docs/agent-tasks/reviews/**` は denylist です。`reviews/.gitkeep` は `code_review.enabled: true` のときだけ seed で作られます。`maintenance-docs/.gitkeep` と `maintenance-docs/archives/.gitkeep` は `agent_workflow.maintenance_docs.enabled: true` のとき seed です。
+- `.cursor/skills/domain-docs/SKILL.md` と `.cursor/skills/campaign-cleanup/SKILL.md`、`campaign-cleanup.sh` は render です。`campaign-cleanup/config.yaml` は seed かつ denylist です。
+- `bin/quality-gate` は常時の render です。`bin/foundation-gate` と `bin/project-setup` は `foundation.enabled: true` のときだけ render されます。
 - consumer updater の audit は `--skip-seed-required-sections` により、既存 seed の必須見出しを要求しません。kit 自身の `bin/foundation-gate audit` は seed の `required_sections` を検査します。

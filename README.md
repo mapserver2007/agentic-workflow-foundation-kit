@@ -2,7 +2,7 @@
 
 AI エージェント（Cursor Agent など）を開発プロジェクトに組み込むための基盤ファイル群を、**統一設計書 + seed manifest + templates + project manifest** から決定論的に生成・監査するツールキットです。
 
-このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル、GitHub 連携スキル、多角評価スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
+このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル（`session-planning` / `session-handover` / `campaign-cleanup`）、Domain 本文起案スキル（`domain-docs`）、GitHub 連携スキル、多角評価スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
 
 **本リポジトリは dogfooding 構成**です。キット本体（`.cursor/skills/agentic-workflow-foundation` / `agentic-workflow-engine`）に加え、ルート直下に `manifest.yaml` と生成物（`AGENTS.md`、`docs/`、`bin/` 等）が同居しています。生成物の変更は manifest / templates 経由の再生成が正規ルートです。
 
@@ -12,18 +12,18 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | --- | --- |
 | Context / Meta | `AGENTS.md`、`CLAUDE.md`、`docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md` |
 | Constraints | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Capabilities | `session-planning`、`session-handover`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
-| Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（compact 観測・会話ログ含む）、workflow / artifact / archive ゲート |
+| Capabilities | `session-planning`、`session-handover`、`campaign-cleanup`、`domain-docs`、任意の `workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow`、`agent-code-review`、`agent-github-pr`、`agent-github-issue`、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
+| Automation | `.cursor/hooks/*.sh`、`.cursor/hooks.json`、Git write guard、Context Budget Hooks（byte-count helper、progress emitter、review-start 追記 helper、compact 観測、会話ログ）、workflow / artifact / archive / review-start ゲート |
 | Project Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Project Docs (Domain) | `docs/spec.md`、`docs/spec/`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
 | Tech Stack | `docs/tech-stack.md`（Domain 層）、quality gate contract、CodeRabbit / Domain docs の自動解決 |
-| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥）、`docs/agent-tasks/{reports,maintenance-docs}/`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` |
+| Agent Workflow | 任意の `docs/agent-tasks/agent-workflow/**`（6 段階：①〜⑥）、`docs/agent-tasks/{reports,reviews,maintenance-docs}/`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-docs-workflow`、`maintenance-gotchas-workflow` |
 | Multi-perspective | 任意の `.cursor/skills/deep-thinking/**`（A/B 並列分析 + C 統合裁定） |
 | GitHub Wrappers | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh`、`bin/github-git-fetch-safe`、`bin/github-*-safe`、`bin/cross-repo-sync-safe` |
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
 
-`docs/DECISIONS.md`、`docs/GOTCHAS.md` および Domain 層ドキュメント群（`docs/spec.md` 等）は追記ログまたは PO 充実用のため、存在しない場合だけ初期生成する `seed` モードです。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
+`docs/DECISIONS.md`、`docs/GOTCHAS.md`、Domain 層ドキュメント群（`docs/spec.md` 等）、スキル設定（`campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml` と `cross-repository-knowledge-link` の `config.json`）、`docs/agent-tasks/{reports,reviews,maintenance-docs}/.gitkeep` は、存在しない場合だけ初期生成する `seed` モードです。Design Doc（`designs/docs/designdoc.md` または `designs/docs/design-doc.md`）があるとき、Phase 2.1 が Domain 層の空節だけを埋めます。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
 
 ## 現行アーキテクチャ
 
@@ -40,6 +40,7 @@ agentic-workflow-foundation（What）
         ├─ ingest: tech_stack を Domain サマリとして root manifest.yaml へ取り込み
         ├─ contract: tech stack SoT → LLM draft → validate / PO approval → tech_contract pin
         ├─ resolve: 承認済み tech_contract を quality gate / runtime / review / domain docs へ投影
+        ├─ Phase 2.1: Design Doc があるとき domain-docs → domain_docs_apply.py で空節を埋める
         ▼
 run_resolved_engine.py
   seed + upstream metadata + root manifest overlay から
@@ -57,7 +58,7 @@ agentic-workflow-engine（How）
 
 `agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack の事実取り込み、承認済み `tech_contract` の検証・投影を担当します。G-* / runtime / CodeRabbit / Domain docs / Provisioning の技術依存入力は `tech_contract` のみです。
 
-`agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。
+`agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。Design Doc から Domain 層本文を埋める Phase 2.1 は engine の外で、`domain_docs_apply.py` が行います。
 
 ## リポジトリ構成
 
@@ -69,11 +70,17 @@ agentic-workflow-foundation-kit/
 ├── Makefile                           # CLI 依存の install / check
 ├── init.yaml                          # 初期入力 SoT（project / tech stack / context budget / github_access。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
+├── designs/
+│   └── docs/                          # 任意の Design Doc 入力。検知名は designdoc.md または design-doc.md
+│       └── designdoc.sample.md        # 見本（検知対象のファイル名ではない）
 │
 ├── AGENTS.md                          ┐
 ├── CLAUDE.md                          │
 ├── .coderabbit.yaml                   │
 ├── bin/                               │ 生成物（dogfooding）
+│   ├── quality-gate                   │ アプリ品質の公開入口（常時）
+│   ├── foundation-gate                │ 基盤保守の公開入口（foundation.enabled）
+│   ├── project-setup                  │ runtime 計画の提示と適用（foundation.enabled）
 │   ├── _github-auth.sh                │
 │   ├── _github-{app,keychain}-auth.sh │
 │   ├── github-pr-*-safe               │
@@ -88,7 +95,7 @@ agentic-workflow-foundation-kit/
 │   ├── DECISIONS.md / GOTCHAS.md      │
 │   ├── spec.md / spec/                │
 │   ├── architecture.md / api.md / …   │
-│   └── agent-tasks/                   ┘
+│   └── agent-tasks/                   ┘ reports / reviews / maintenance-docs を含む
 │
 └── .cursor/
     ├── docs/
@@ -110,20 +117,24 @@ agentic-workflow-foundation-kit/
         │   │   ├── gitignore.block.template
         │   │   ├── cursorignore.block.template
         │   │   ├── rules/                    # 00-init 〜 02-agent-conduct
-        │   │   ├── hooks/                    # guard-git-write, session-*,
-        │   │   │                             # budget-*, compact-observer, response-tracker
+        │   │   ├── hooks/                    # guard-git-write, session-byte-count,
+        │   │   │                             # session-*, budget-*, progress-emitter,
+        │   │   │                             # progress-append, compact-observer,
+        │   │   │                             # response-tracker
         │   │   ├── docs/                     # AGENT_RUNBOOK, QUALITY_GATE, tech-stack,
         │   │   │                             # CONTEXT_BUDGET, references/, DECISIONS, GOTCHAS,
         │   │   │                             # spec, spec/README, architecture, api,
         │   │   │                             # data-models, coding-standards, workflows,
         │   │   │                             # agent-tasks/**
         │   │   ├── skills/                   # session-planning, session-handover,
+        │   │   │                             # campaign-cleanup, domain-docs,
         │   │   │                             # agent-code-review,
         │   │   │                             # agent-github-pr, agent-github-issue,
         │   │   │                             # workflow-orchestrator, requirement-analysis,
         │   │   │                             # maintenance-*-workflow, cross-repository-
         │   │   │                             # knowledge-link, deep-thinking, agent-kaizen
-        │   │   └── bin/                      # provider auth helpers, github-*-safe,
+        │   │   └── bin/                      # quality-gate, foundation-gate, project-setup,
+        │   │                                 # provider auth helpers, github-*-safe,
         │   │                                 # cross-repo-sync-safe
         │   ├── references/
         │   │   ├── source-mapping.md
@@ -136,13 +147,21 @@ agentic-workflow-foundation-kit/
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
         │       ├── resolve_domain_docs.py
+        │       ├── domain_docs_apply.py
+        │       ├── domain_docs_gate.py
         │       ├── tech_contract.py
+        │       ├── contract_projection.py
         │       ├── provision_runtime.py
         │       ├── runtime_plan.py
         │       ├── materialize_runtime.py
         │       ├── check_tech_stack_conformance.py
         │       ├── validate_deep_thinking.py
         │       ├── validate_requirement_analysis.py
+        │       ├── validate_agent_kaizen.py
+        │       ├── run_all_foundation_tests.py
+        │       ├── yaml_emitter.py
+        │       ├── provision_fixture_runner.py
+        │       ├── _contract_markers.py
         │       └── test_*.py
         ├── agentic-workflow-engine/          # ── キット本体（How）──
         │   ├── SKILL.md
@@ -151,11 +170,19 @@ agentic-workflow-foundation-kit/
         │       ├── generate.py
         │       └── audit.py
         ├── agentic-workflow-update/         # ── ホスト個人スキルへ配置する正本 ──
+        │   ├── README.md                     # 更新責務（手管理）
         │   ├── SKILL.md
-        │   ├── scripts/kit_update.py
+        │   ├── scripts/
+        │   │   ├── kit_update.py
+        │   │   └── host_install.py
         │   └── bin/kit-source-fetch-safe
+        ├── technology-stack-unified-design/  # ── キット同梱（生成しない）──
+        │   ├── SKILL.md                      # 既存実装から技術スタック設計書を起こす
+        │   ├── references/
+        │   └── scripts/
         │
         └── （生成スキル）                     # session-planning, session-handover,
+                                               # campaign-cleanup, domain-docs,
                                                # workflow-orchestrator,
                                                # requirement-analysis, maintenance-*-workflow,
                                                # agent-code-review, agent-github-pr,
@@ -167,16 +194,19 @@ agentic-workflow-foundation-kit/
 
 | スキル | 役割 |
 | --- | --- |
-| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査の orchestration を担う |
+| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査、Design Doc があるときの Phase 2.1 を担う |
 | [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) | 生成・監査エンジン。設定スキルから渡された `manifest.yaml + templates/` を決定論的に変換する |
-| [`agentic-workflow-update`](.cursor/skills/agentic-workflow-update/SKILL.md) | 固定 public URL から kit を取得し、対象アプリの overlay で候補生成・差分承認・安全同期を行う更新専用スキル（ホスト個人スキルとして配置） |
+| [`agentic-workflow-update`](.cursor/skills/agentic-workflow-update/SKILL.md) | 固定 public URL から kit を取得し、対象アプリの overlay で候補生成・差分承認・安全同期を行う更新専用スキル（ホスト個人スキルとして配置）。更新責務は [README](.cursor/skills/agentic-workflow-update/README.md) |
+| [`technology-stack-unified-design`](.cursor/skills/technology-stack-unified-design/SKILL.md) | 既存実装のローカル snapshot から技術スタック統一設計書の reverse-draft を作るキット同梱スキル。foundation の生成物ではない |
 
 生成先プロジェクトで利用可能になるスキル（本リポジトリでは dogfooding 済み）:
 
 | スキル | 役割 |
 | --- | --- |
 | [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{campaign_id}.md`）の作成・更新 |
-| [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive ゲート |
+| [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive・review-start ゲート |
+| [`campaign-cleanup`](.cursor/skills/campaign-cleanup/SKILL.md) | 現在の campaign を保護し、他 campaign の allowlist 内 runtime を削除する |
+| [`domain-docs`](.cursor/skills/domain-docs/SKILL.md) | Design Doc から Domain 層本文を起案し、`tmp/domain-docs-result.yaml` だけを書く |
 | [`workflow-orchestrator`](.cursor/skills/workflow-orchestrator/SKILL.md) | 6 段階標準タスク実行ワークフロー（①〜⑥）の制御 |
 | [`requirement-analysis`](.cursor/skills/requirement-analysis/SKILL.md) | Step ①の要求正規化、3段階ガード、分析深度判定 |
 | [`maintenance-docs-workflow`](.cursor/skills/maintenance-docs-workflow/SKILL.md) | 起票キューから Domain 層 docs を反映する独立パイプライン |
@@ -210,6 +240,7 @@ seed / root `manifest.yaml` では、オプション機能の seed default が�
 | `deep_thinking.enabled` | `true` | `deep-thinking`（`config.yaml` + references） |
 | `cross_repo_knowledge.enabled` | `true` | `cross-repository-knowledge-link`、`bin/cross-repo-sync-safe` |
 | `agent_kaizen.enabled` | `true` | `agent-kaizen`（`SKILL.md` + `config.yaml` + references） |
+| `foundation.enabled` | `true` | `bin/foundation-gate`、`bin/project-setup` |
 
 `bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` は、`code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に共通 backend として生成されます。
 
@@ -231,8 +262,9 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 10. **Phase 1.68**: `materialize_runtime.py --check` で read-only 検査し、必要な書込みは明示承認付き `project-setup --apply` で行う
 11. **Phase 1.7**: 承認済み契約の declarative preflight と実リポジトリの整合をチェックする
 12. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-13. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis の静的契約を監査する
-14. **Phase 4**: 確定値、生成物、ゲート結果を報告する
+13. **Phase 2.1**: Design Doc があるとき、生成済み `domain-docs` が本文を起案し、`domain_docs_apply.py` が Domain 層の空節だけを書く。入力は `designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方
+14. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis / agent-kaizen の静的契約、`agent_workflow` 有効時の Worker Contract を監査する
+15. **Phase 4**: 確定値、生成物、Phase 2.1 の結果、ゲート結果を報告する
 
 ## 適用済みアプリへの kit 更新
 
@@ -323,6 +355,10 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 # Domain 層ドキュメント入力を承認済み tech_contract から投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
 
+# Design Doc があるとき、空節の状態を見てから適用する（手順の正本は foundation SKILL の Phase 2.1）
+python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py state
+python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py apply --check
+
 # runtime action の read-only renderability 検査
 python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py --check
 
@@ -359,28 +395,34 @@ bin/quality-gate verify
 | --- | --- |
 | Context | `AGENTS.md`、`CLAUDE.md` |
 | Cursor Rules | `.cursor/rules/00-init.mdc`、`01-critical-constraints.mdc`、`02-agent-conduct.mdc` |
-| Hooks | `.cursor/hooks/guard-git-write.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-response-tracker.sh`、`session-compact-observer.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
+| Hooks | `.cursor/hooks/guard-git-write.sh`、`session-byte-count.sh`、`session-bootstrap.sh`、`session-budget-tracker.sh`、`session-shell-tracker.sh`、`session-response-tracker.sh`、`session-progress-emitter.sh`、`session-progress-append.sh`、`session-compact-observer.sh`、`session-budget-evaluator.sh`、`.cursor/hooks/README.md`、`.cursor/hooks.json` |
 | Docs (Meta) | `docs/AGENT_RUNBOOK.md`、`docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/references/context-budget-internals.md`、`docs/DECISIONS.md`、`docs/GOTCHAS.md` |
 | Docs (Domain) | `docs/tech-stack.md`、`docs/spec.md`、`docs/spec/README.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/coding-standards.md`、`docs/workflows.md` |
-| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh`、`.cursor/skills/session-handover/scripts/workflow-gate.sh`、`.cursor/skills/session-handover/scripts/archive-gate.sh`、`.cursor/skills/session-handover/scripts/gate-report.py`、`.cursor/skills/session-handover/scripts/gate-adr.py`、`.cursor/skills/session-handover/scripts/gate-artifact.py`、`.cursor/skills/session-handover/scripts/gate-redispatch.py` |
+| Domain Docs Skill | `.cursor/skills/domain-docs/SKILL.md` |
+| Session Skills | `.cursor/skills/session-planning/SKILL.md`、`.cursor/skills/campaign-cleanup/**`、`.cursor/skills/session-handover/SKILL.md`、`.cursor/skills/session-handover/scripts/verification-gate.sh`、`.cursor/skills/session-handover/scripts/session-start-gate.sh`、`.cursor/skills/session-handover/scripts/plan-gate.sh` |
+| Public Wrappers | `bin/quality-gate`、`bin/foundation-gate`、`bin/project-setup` |
 | Shared GitHub Auth | `bin/_github-auth.sh`、`bin/_github-{app,keychain}-auth.sh` |
-| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml` |
+| Optional Review | `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe`、`.coderabbit.yaml`、`docs/agent-tasks/reviews/.gitkeep` |
 | Optional GitHub PR | `.cursor/skills/agent-github-pr/**`、`bin/github-pr-create-safe` |
 | Optional GitHub Issue | `.cursor/skills/agent-github-issue/**`、`bin/github-issue-{create,read}-safe` |
-| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/{reports,maintenance-docs}/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/requirement-analysis/**`、任意の `.cursor/skills/maintenance-{docs,gotchas}-workflow/**` |
+| Optional Agent Workflow | `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/README.md`、`docs/agent-tasks/{reports,maintenance-docs}/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/requirement-analysis/**`、任意の `.cursor/skills/maintenance-{docs,gotchas}-workflow/**`、`.cursor/skills/session-handover/scripts/` の `workflow-gate.sh`、`review-start-gate.sh`、`archive-gate.sh`、`gate-report.py`、`domain_doc_scope.py`、`gate-domain-write-scope.py`、`gate-test.py`、`gate-adr.py`、`gate-artifact.py`、`gate-redispatch.py`、`gate-maintenance-docs.py` |
 | Optional Deep Thinking | `.cursor/skills/deep-thinking/SKILL.md`、`.cursor/skills/deep-thinking/config.yaml`、`.cursor/skills/deep-thinking/README.md`、`.cursor/skills/deep-thinking/references/**` |
 | Optional Cross-Repo | `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Optional Agent Kaizen | `.cursor/skills/agent-kaizen/SKILL.md`、`.cursor/skills/agent-kaizen/config.yaml`、`.cursor/skills/agent-kaizen/references/**` |
 | Ignore Blocks | `.gitignore`、`.cursorignore` |
 
-各オプション出力の条件:
+出力条件:
 
+- `bin/quality-gate` — 常時生成
+- `bin/foundation-gate` と `bin/project-setup` — `foundation.enabled: true` の場合のみ
+- `.cursor/skills/domain-docs/SKILL.md` と `.cursor/skills/campaign-cleanup/**` — 常時生成
 - `bin/_github-auth.sh` と `bin/_github-{app,keychain}-auth.sh` — `code_review.enabled` / `github_pr.enabled` / `github_issue.enabled` / `cross_repo_knowledge.enabled` のいずれかが `true` の場合
 - `.cursor/skills/agent-code-review/**`、`bin/github-git-fetch-safe`、`bin/github-pr-{reviews,comment,reply}-safe` — `code_review.enabled: true` の場合のみ
+- `docs/agent-tasks/reviews/.gitkeep` — `code_review.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-pr/**` と `bin/github-pr-create-safe` — `github_pr.enabled: true` の場合のみ
 - `.cursor/skills/agent-github-issue/**` と `bin/github-issue-{create,read}-safe` — `github_issue.enabled: true` の場合のみ
 - `.coderabbit.yaml` — `coderabbit.enabled: true` の場合のみ
-- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/**`、各種 workflow gate スクリプト — `agent_workflow.enabled: true` の場合のみ
+- `docs/agent-tasks/agent-workflow/**`、`docs/agent-tasks/reports/`、`.cursor/skills/workflow-orchestrator/**`、`.cursor/skills/session-handover/scripts/` の `workflow-gate.sh`、`review-start-gate.sh`、`archive-gate.sh`、`gate-report.py`、`domain_doc_scope.py`、`gate-domain-write-scope.py`、`gate-test.py`、`gate-adr.py`、`gate-artifact.py`、`gate-redispatch.py`、`gate-maintenance-docs.py` — `agent_workflow.enabled: true` の場合のみ
 - `.cursor/skills/requirement-analysis/**` — `agent_workflow.enabled: true` の場合
 - `.cursor/skills/maintenance-docs-workflow/**` — `agent_workflow.maintenance_docs.enabled: true` の場合のみ
 - `.cursor/skills/maintenance-gotchas-workflow/**` — `agent_workflow.maintenance_gotchas.enabled: true` の場合のみ
@@ -388,7 +430,7 @@ bin/quality-gate verify
 - `.cursor/skills/cross-repository-knowledge-link/**` と `bin/cross-repo-sync-safe` — `cross_repo_knowledge.enabled: true` の場合のみ
 - `.cursor/skills/agent-kaizen/**` — `agent_kaizen.enabled: true` の場合のみ
 
-Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。
+Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。Design Doc がある場合、Phase 2.1 は器のままの節だけを埋め、手で書いた節は残します。スキル設定の `config.yaml` / `config.json` も `seed` です。
 
 ## 5層モデル
 
@@ -398,7 +440,7 @@ Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初�
 | --- | --- | --- |
 | 1. Context | 目的・判断基準・運用入口 | `AGENTS.md`、`CLAUDE.md`、`docs/*` |
 | 2. Constraints | 常時適用される制約 | `.cursor/rules/*.mdc` |
-| 3. Capabilities | 必要時に呼び出す専門手順 | `session-*`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-*-workflow`、GitHub 連携、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
+| 3. Capabilities | 必要時に呼び出す専門手順 | `session-*`、`campaign-cleanup`、`domain-docs`、`workflow-orchestrator`、`requirement-analysis`、`maintenance-*-workflow`、GitHub 連携、`cross-repository-knowledge-link`、`deep-thinking`、`agent-kaizen` |
 | 4. Automation | ツール実行前後・セッション境界の自動処理 | `.cursor/hooks/*`、`.cursor/hooks.json` |
 | 5. Delegation | 子エージェントへの委譲 | 本キットでは生成しない。Cursor 組み込み Subagent を利用する |
 
@@ -408,7 +450,7 @@ Meta 層 / Domain 層はドキュメント命名上の 2 層モデルです。La
 
 ### 生成物を直接編集しない
 
-`AGENTS.md`、Rules、Hooks、生成 docs、生成スキル、`bin/` wrapper は出力です。変更は upstream docs、seed `manifest.yaml`、`templates/`、resolver scripts、または root `manifest.yaml` の project 値を更新して再生成します。直接編集は `audit` が drift として検出します。
+`AGENTS.md`、Rules、Hooks、生成 docs、生成スキル、`bin/` wrapper は出力です。`render` の変更は upstream docs、seed `manifest.yaml`、`templates/`、resolver scripts、または root `manifest.yaml` の project 値を更新して再生成します。直接編集は `audit` が drift として検出します。`seed` の Domain 層ドキュメント、ADR / GOTCHAS、スキル設定は初回生成後の編集が正規経路です。
 
 ### root manifest の責務を分ける
 
@@ -424,7 +466,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### Context Budget は Hook で観測する
 
-生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`prompt_count`、`shell_bytes`、compact イベントを proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を使った新規チャット移行を促します。技術詳細は `docs/CONTEXT_BUDGET.md` と `.cursor/hooks/README.md` を参照。
+生成される Hooks は、危険な Git 操作のガードと長時間セッションの引き継ぎ促進を担います。`session-byte-count.sh` は各観測 Hook が source する UTF-8 byte-count の共通ライブラリで、`hooks.json` には登録しません。`session-progress-emitter.sh` が会話ログを `progress.jsonl` へ書き、`session-progress-append.sh` は `review-start-gate.sh` の内部から `kind=review_start` を追記します。`prompt_count`、`shell_bytes`、compact イベントを proxy 指標として Yellow / Red を判定し、必要に応じて handoff manifest（`.cursor/.session/handoff-{session_id}.md`）を使った新規チャット移行を促します。技術詳細は `docs/CONTEXT_BUDGET.md` と `.cursor/hooks/README.md` を参照。
 
 ## 前提条件
 
