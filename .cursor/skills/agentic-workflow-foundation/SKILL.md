@@ -451,7 +451,7 @@ python3 "$apply" apply
 fill-only の規則:
 
 - 本文が器と完全一致する節だけを埋める。手で書いた節と `maintenance-docs-workflow` の反映は変更しない。
-- 書込み先は所有権表（[`domain_docs_apply.py`](scripts/domain_docs_apply.py) の `OWNERSHIP`。生成済み [`domain-docs` SKILL.md](../domain-docs/SKILL.md) に同じ表を持つ）の節と `docs/spec/{slug}.md` だけ。kit 所有の節（`参照`、`ER図・関係性`、`domain_docs.*_sections` の節）は書けない。
+- 書込み先は所有権表（[`domain_docs_apply.py`](scripts/domain_docs_apply.py) の `OWNERSHIP`。生成済み [`domain-docs` SKILL.md](../domain-docs/SKILL.md) に同じ表を持つ）の節、`docs/api.md` の契約節（`domain_docs.api_sections`。kit の引用を残して `[TODO]` だけを置換する）、`docs/spec/{slug}.md` だけ。kit 所有の節（`参照`、`ER図・関係性`、`data_model_sections` と `workflow_sections` の節）は書けない。契約節は fill-only だけで、refresh では書かない。
 - 適用後の `docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/*.md` が同じ機能の集合であることを検証する。
 - `evidence` は Design Doc に実在する ATX 見出し。意味の妥当性までは機械検証しない。
 - 初回の fill-only の成功時に、root `manifest.yaml > design_doc` へ `source_path` と `source_fingerprint` を固定する。`stale` 状態の fill-only は fingerprint を更新しない。旧形式の `design_doc`（`projection` など）は `python3 "$apply" pin` で2キーへ移行する。

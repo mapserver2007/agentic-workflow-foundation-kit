@@ -9,6 +9,7 @@ domain-docs スキルの subagent は docs を直接編集せず、`tmp/domain-d
       Design Doc の検知・状態判定・対象節の列挙。`tmp/domain-docs-targets.yaml` を書く。
   domain_docs_apply.py apply
       fill-only で適用する。本文が器と完全一致する節だけを埋める。
+      `docs/api.md` の契約節（`domain_docs.api_sections`）は、kit の引用を残して `[TODO]` だけを置き換える。
   domain_docs_apply.py apply --refresh
       埋め済みの節との diff と plan digest を表示する（書込みなし）。
   domain_docs_apply.py apply --refresh --approve <digest>
@@ -94,6 +95,15 @@ OWNERSHIP: dict[str, tuple[str, ...]] = {
         "状態管理・状態遷移",
     ),
 }
+
+# 契約節（placeholder）を埋められるファイル。このファイルの器にある `domain_docs.api_sections` の節
+# （title が完全一致するもの。`api_section_titles`）だけを対象にする。
+# data-models.md / workflows.md の契約節は、従来どおり書込みを拒否する。
+PLACEHOLDER_FILES = frozenset({"docs/api.md"})
+# kit の器が描く契約節の形: 見出し、引用段落（`> guidance`）、単独行の `[TODO]`。
+PLACEHOLDER_SECTION_RE = re.compile(
+    r"\A## [^\n]+\n\n(?P<quote>>[^\n]*(?:\n[^\n]+)*)\n\n\[TODO\]\n*\Z"
+)
 
 ATX_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -298,7 +308,45 @@ def render_skeletons(manifest_path: Path) -> dict[str, str]:
     return skeletons
 
 
-def analyze(root: Path, skeletons: dict[str, str]) -> dict[str, dict]:
+def api_section_titles(manifest_path: Path) -> frozenset[str]:
+    """契約（`domain_docs.api_sections`）が宣言する節の見出し名を返す。"""
+    import run_resolved_engine as resolver  # noqa: WPS433
+
+    manifest = resolver.resolved_manifest(str(SEED_MANIFEST), str(manifest_path))
+    sections = (manifest.get("domain_docs") or {}).get("api_sections") or []
+    return frozenset(
+        item["title"] for item in sections if isinstance(item, dict) and isinstance(item.get("title"), str)
+    )
+
+
+def placeholder_quotes(
+    rel: str, skeleton: str, headings: list[str], titles: frozenset[str] = frozenset()
+) -> dict[str, str]:
+    """契約節（placeholder）の名前と、kit が器に書く引用段落を返す。
+
+    kit が描画した器だけから求める。`PLACEHOLDER_FILES` の器で、見出し名が `titles`
+    （`domain_docs.api_sections` の title）と完全一致し、所有権表の節でも `参照` でもない節のうち、
+    引用段落と単独行の `[TODO]` だけでできているものが対象である。既存ファイルの手書きの節は対象にならない。
+    `titles` が空なら対象は無い。
+    """
+    if rel not in PLACEHOLDER_FILES:
+        return {}
+    _, sections = generate.split_structural_sections(skeleton, headings, "器")
+    owned = set(OWNERSHIP[rel])
+    quotes: dict[str, str] = {}
+    for heading, section in zip(headings, sections):
+        name = _heading_name(heading)
+        if name in owned or name == "参照" or name not in titles:
+            continue
+        match = PLACEHOLDER_SECTION_RE.match(section)
+        if match:
+            quotes[name] = match.group("quote")
+    return quotes
+
+
+def analyze(
+    root: Path, skeletons: dict[str, str], titles: frozenset[str] = frozenset()
+) -> dict[str, dict]:
     """ファイルごとに、構造見出し・存在・器のまま残る節（fillable）を求める。"""
     info: dict[str, dict] = {}
     for rel, owned in OWNERSHIP.items():
@@ -311,12 +359,14 @@ def analyze(root: Path, skeletons: dict[str, str]) -> dict[str, dict]:
         if absent:
             raise FatalError(f"所有権表の節がテンプレートに存在しません: {rel} {absent}")
         path = _safe_path(root, rel, "domain-docs file")
+        quotes = placeholder_quotes(rel, skeleton, headings, titles)
         entry = {
             "headings": headings,
             "names": names,
             "exists": path.is_file(),
             "fillable": [],
             "mismatch": "",
+            "placeholder_quotes": quotes,
         }
         if path.is_file():
             try:
@@ -332,7 +382,7 @@ def analyze(root: Path, skeletons: dict[str, str]) -> dict[str, dict]:
                 entry["fillable"] = [
                     name
                     for name, base, current in zip(names, skeleton_sections, current_sections)
-                    if name in owned and base == current
+                    if (name in owned or name in quotes) and base == current
                 ]
         info[rel] = entry
     return info
@@ -402,6 +452,7 @@ def build_targets(
     skeletons: dict[str, str],
     *,
     refresh: bool,
+    titles: frozenset[str] = frozenset(),
 ) -> dict:
     doc, pin_state = design_doc_state(root, manifest_path)
     if refresh and doc is None:
@@ -411,13 +462,16 @@ def build_targets(
     files: list[dict] = []
     spec_files: list[dict] = []
     if doc is not None:
-        info = analyze(root, skeletons)
+        info = analyze(root, skeletons, titles)
         for rel, entry in info.items():
             if refresh:
                 sections = list(OWNERSHIP[rel]) if entry["exists"] and not entry["mismatch"] else []
             else:
                 sections = list(entry["fillable"])
             item = {"file": rel, "exists": entry["exists"], "sections": sections}
+            placeholders = [name for name in sections if name in entry["placeholder_quotes"]]
+            if placeholders:
+                item["placeholders"] = placeholders
             if entry["mismatch"]:
                 item["mismatch"] = entry["mismatch"]
             files.append(item)
@@ -603,11 +657,12 @@ def build_plan(
     result: dict,
     *,
     refresh: bool,
+    titles: frozenset[str] = frozenset(),
 ) -> Plan:
     _check_targets(targets, refresh=refresh)
     doc = _check_unchanged(root, manifest_path, targets)
     doc_headings = heading_names(doc)
-    info = analyze(root, skeletons)
+    info = analyze(root, skeletons, titles)
     plan = Plan()
 
     unknown = sorted(set(result) - RESULT_KEYS)
@@ -629,8 +684,11 @@ def build_plan(
         item = _check_keys(raw, SECTION_KEYS, label)
         rel = _single_line(item["file"], f"{label}.file")
         name = _single_line(item["heading"], f"{label}.heading")
-        if rel not in OWNERSHIP or name not in OWNERSHIP[rel]:
+        quotes = info[rel]["placeholder_quotes"] if rel in info else {}
+        if rel not in OWNERSHIP or (name not in OWNERSHIP[rel] and name not in quotes):
             raise ApplyError(f"{label}: 書込み対象外の節です: {rel} / {name}（所有権表に無い）")
+        if name in quotes and refresh:
+            raise ApplyError(f"{label}: 契約節は fill-only でだけ書けます（refresh では書けません）: {rel} / {name}")
         if (rel, name) in section_bodies:
             raise ApplyError(f"{label}: 同じ節が重複しています: {rel} / {name}")
         _check_evidence(item["evidence"], label, doc_headings)
@@ -638,6 +696,11 @@ def build_plan(
         clash = [h for h in generate.structural_headings(body) if h in info[rel]["headings"]]
         if clash:
             raise ApplyError(f"{label}.body が構造見出しと同名の `##` を含みます: {clash}")
+        if name in quotes:
+            # 契約節の body は `[TODO]` の置換文である。kit の引用は apply が器から復元して残す。
+            if body.lstrip().startswith(">") or quotes[name] in body:
+                raise ApplyError(f"{label}.body に kit の引用を含められません（引用は apply が保持する）: {rel} / {name}")
+            body = f"{quotes[name]}\n\n{body}"
         section_bodies[(rel, name)] = body
 
     omitted: set[tuple[str, str]] = set()
@@ -647,7 +710,8 @@ def build_plan(
         rel = _single_line(item["file"], f"{label}.file")
         name = _single_line(item["heading"], f"{label}.heading")
         _single_line(item["reason"], f"{label}.reason")
-        if rel not in OWNERSHIP or name not in OWNERSHIP[rel]:
+        quotes = info[rel]["placeholder_quotes"] if rel in info else {}
+        if rel not in OWNERSHIP or (name not in OWNERSHIP[rel] and name not in quotes):
             raise ApplyError(f"{label}: 書込み対象外の節です: {rel} / {name}")
         if (rel, name) in section_bodies or (rel, name) in omitted:
             raise ApplyError(f"{label}: 同じ節を sections と omissions に重複して書けません: {rel} / {name}")
@@ -851,7 +915,9 @@ def cmd_state(args: argparse.Namespace) -> int:
     if not manifest_path.is_file():
         raise FatalError(f"manifest が存在しません: {manifest_path}")
     skeletons = render_skeletons(manifest_path)
-    targets = build_targets(root, manifest_path, skeletons, refresh=args.refresh)
+    targets = build_targets(
+        root, manifest_path, skeletons, refresh=args.refresh, titles=api_section_titles(manifest_path)
+    )
     targets_path.parent.mkdir(parents=True, exist_ok=True)
     targets_path.write_text(dump_yaml_text(targets), encoding="utf-8")
     total = sum(len(item["sections"]) for item in targets["files"])
@@ -891,7 +957,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
         raise ApplyError(f"結果ファイルがありません: {result_path}")
     result = _load_yaml(result_path, ApplyError)
     skeletons = render_skeletons(manifest_path)
-    plan = build_plan(root, manifest_path, skeletons, targets, result, refresh=args.refresh)
+    plan = build_plan(
+        root, manifest_path, skeletons, targets, result,
+        refresh=args.refresh, titles=api_section_titles(manifest_path),
+    )
 
     if args.refresh and not args.approve:
         for diff in plan.diffs:

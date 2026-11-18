@@ -45,7 +45,7 @@ Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果�
 
 ## 所有権表
 
-書ける節は次のとおりである。表に無い節、`参照`、`ER図・関係性`、契約由来の節、各ファイルの前文は書かない。
+書ける節は次のとおりである。表に無い節、`参照`、`ER図・関係性`、各ファイルの前文は書かない。契約由来の節は、次の「契約節」で `files[].placeholders` に載ったものだけ書ける。
 
 | file | heading |
 | --- | --- |
@@ -73,6 +73,16 @@ Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果�
 | `docs/workflows.md` | 状態管理・状態遷移 |
 
 targets の `files[].sections` に含まれる節は、`sections` か `omissions` のどちらか一方に必ず書く。同じ節を両方に書かない。
+
+## 契約節
+
+targets の `files[].placeholders` に載った節は、契約（`domain_docs.api_sections`）由来の節で、`docs/api.md` にだけ現れる。`docs/data-models.md` と `docs/workflows.md` の契約節は `placeholders` に載らないので書かない。
+
+- `sections` の要素は、所有権表の節と同じ `file`、`heading`、`body`、`evidence` で書く。`body` は節の `[TODO]` の置換文だけである。節の見出しと、kit が書いた引用段落（`>` で始まる行）は書かない。apply が引用を残す。
+- 書く内容は、Design Doc の本文が明示している JSON の外形と、エラー応答の外形だけにする。`evidence` は、その根拠にした Design Doc の ATX 見出しにする。
+- 書かないもの: 型の定義、シリアライザやゲートウェイの設定、gRPC status、OpenAPI の required、実装のパッケージ名、各 API の JSON 例、データベースの型、画面遷移。同じファイルの所有節（`エラーハンドリング` など）が書く画面の挙動は再記しない。
+- 根拠が無い節は `omissions` に書く。
+- refresh では契約節を書かない。
 
 ## 機能仕様
 

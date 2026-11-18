@@ -139,7 +139,8 @@ consumer 経路でも引き続き失敗とする。
 
 - **SoT**: Design Doc が上流入力、投影後の `docs/*` が日常の Domain 正本である。root `manifest.yaml > design_doc` は `source_path` と `source_fingerprint` の2キーで、Design Doc の変更検知にだけ使う。手で書いた節の更新は `maintenance-docs-workflow` が担う。
 - **推論と書込みの分離**: subagent は docs を直接編集せず、`tmp/domain-docs-result.yaml` だけを返す。書込みは `domain_docs_apply.py` だけが行う。親（foundation）は本文を起案しない。結果ファイルの検証を通らない限り、docs は変更されない。
-- **所有権表**: domain-docs が書ける節は `OWNERSHIP`（`domain_docs_apply.py`）で固定する。`参照`、`ER図・関係性`、`domain_docs.*_sections` の節、各ファイルの前文は kit 所有で、書込みを拒否する。所有権表とテンプレートの見出しは `test_domain_docs_apply.py` が突き合わせる。
+- **所有権表**: domain-docs が書ける節は `OWNERSHIP`（`domain_docs_apply.py`）で固定する。`参照`、`ER図・関係性`、`data_model_sections` と `workflow_sections` の節、各ファイルの前文は kit 所有で、書込みを拒否する。所有権表とテンプレートの見出しは `test_domain_docs_apply.py` が突き合わせる。
+- **契約節の例外（`docs/api.md` の `domain_docs.api_sections`）**: 見出し名は consumer の契約が決めるため、固定の所有権表には入れない。kit が描画した器の `docs/api.md` で、見出し名が `domain_docs.api_sections` の title と完全一致し（resolved manifest から取る）、所有権表の節でも `参照` でもなく、引用段落と単独行の `[TODO]` だけでできている節を契約節（`placeholders`）とする。器から求めるので、既存ファイルの手書きの節は対象にならない。埋めてよいのは fill-only だけで、本文が器と完全一致する節に限る。apply は kit の引用を残して `[TODO]` だけを置換し、結果の `body` に引用を含めることを拒否する。refresh では対象にせず、結果に含めても拒否する。本文は Design Doc に明示された JSON とエラー応答の外形に限り、型・シリアライザ・gRPC status・OpenAPI の required・各 API の JSON 例は書かない（`domain-docs` SKILL の `## 契約節`）。所有権表の22節は変えず、結果ファイルの `schema_version` も 1 のままである（契約節は従来拒否されていたので、旧い結果ファイルの意味は変わらない）。
 - **fill-only が既定**: 本文が kit の器と完全一致する節だけを埋める。手で書いた節と `maintenance-docs-workflow` の反映は変更しない。engine（`generate.py`）は既存の seed を常にスキップし、Design Doc を一切知らない。節の保持は `merge_seed_sections` を `domain_docs_apply.py` が再利用して行う。
 - **更新は承認付き**: Design Doc が pin 後に変わった（stale）ときの再推論は `apply --refresh` で diff と digest を提示し、承認後に `--approve <digest>` で適用する。見送りは `--decline`（docs 不変、fingerprint のみ更新）。fingerprint は、初回の fill-only の成功時と、refresh の承認フロー完了時（採用・見送りを問わない）に更新する。stale 状態の fill-only では更新しない。
 - **機能仕様（docs/spec/*.md）**: 件数と名前は Design Doc ごとに変わるため、seed の `outputs[]` には登録しない。`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様（行ごとに根拠見出しを併記）、`docs/spec/*.md` の3者が一致することを apply が検証する。再実行時は根拠見出しから既存の slug を引き当て、既存ファイルを再作成しない。見出しが消えた機能は ORPHAN として報告し、ファイルを削除しない。
@@ -152,11 +153,12 @@ consumer 経路でも引き続き失敗とする。
 
 ### .cursor/skills/domain-docs/SKILL.md
 
-seed の `outputs[]` から `mode: render` で生成する。feature 条件は付けない。適用スクリプトの書込み範囲は変えない。
+seed の `outputs[]` から `mode: render` で生成する。feature 条件は付けない。適用スクリプトの書込み範囲は、所有権表と契約節（上記の例外）に限る。
 
 - `name: domain-docs`: Cursor skill としての識別子。
 - `tmp/domain-docs-result.yaml`: subagent が書いてよい唯一のファイル。
 - `## 所有権表`: `domain_docs_apply.py` の `OWNERSHIP` と同じ節を手順に持つ。
+- `## 契約節`: `files[].placeholders` の節だけ、`[TODO]` の置換文を外形に限って書く。`data-models.md` / `workflows.md` の契約節は書かない。
 - `docs/spec/{slug}.md`: 機能仕様の出力先。`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様と3者一致させる。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）

@@ -79,6 +79,10 @@ def _expect(exc_type: type, label: str, fn) -> Exception:
     raise AssertionError(f"{label}: {exc_type.__name__} was not raised")
 
 
+# `_skeletons()` の manifest が宣言する `domain_docs.api_sections` の title と同じ集合。
+API_TITLES = frozenset({"proto-first"})
+
+
 def _skeletons() -> dict[str, str]:
     manifest = {
         "domain_docs": {
@@ -158,7 +162,7 @@ def make_repo(
 
 
 def targets_for(root: Path, skeletons: dict[str, str], *, refresh: bool = False) -> dict:
-    return da.build_targets(root, root / "manifest.yaml", skeletons, refresh=refresh)
+    return da.build_targets(root, root / "manifest.yaml", skeletons, refresh=refresh, titles=API_TITLES)
 
 
 def make_result(
@@ -194,7 +198,7 @@ def make_result(
 
 def plan_for(root, skeletons, targets, result, *, refresh=False):
     return da.build_plan(
-        root, root / "manifest.yaml", skeletons, targets, result, refresh=refresh
+        root, root / "manifest.yaml", skeletons, targets, result, refresh=refresh, titles=API_TITLES
     )
 
 
@@ -208,6 +212,7 @@ def apply_fill(root, skeletons, spec_files=None, overrides=None):
 def run_cli(root: Path, skeletons: dict[str, str], *args: str) -> tuple[int, str, str]:
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(da, "render_skeletons", return_value=skeletons), \
+            patch.object(da, "api_section_titles", return_value=API_TITLES), \
             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
         code = da.main([args[0], "--manifest", str(root / "manifest.yaml"), *args[1:]])
     return code, stdout.getvalue(), stderr.getvalue()
@@ -247,6 +252,15 @@ def test_state_table() -> None:
         _assert("API 詳細" in names["docs/api.md"], "API 詳細 must be fillable")
         _assert("ER図・関係性" not in names["docs/data-models.md"], "kit-owned section listed")
         _assert("参照" not in names["docs/api.md"], "kit-owned section listed")
+        # 契約節は api.md の api_sections だけが対象。data-models / workflows の契約節は載らない。
+        _assert("proto-first" in names["docs/api.md"], "api_sections placeholder must be fillable")
+        _assert("スキーマ適用" not in names["docs/data-models.md"], "data_model_sections listed")
+        _assert("ローカル検証" not in names["docs/workflows.md"], "workflow_sections listed")
+        placeholders = {i["file"]: i.get("placeholders", []) for i in targets["files"]}
+        _assert(placeholders == {
+            "docs/spec.md": [], "docs/spec/README.md": [], "docs/architecture.md": [],
+            "docs/api.md": ["proto-first"], "docs/data-models.md": [], "docs/workflows.md": [],
+        }, f"placeholders wrong: {placeholders}")
 
         root = make_repo(base, skeletons, pin="fresh", name="fresh-fill")
         _assert(targets_for(root, skeletons)["action"] == "fill", "fresh with skeleton must fill")
@@ -362,10 +376,16 @@ def test_fill_only_keeps_hand_edits() -> None:
         text = api.read_text(encoding="utf-8")
         _assert("手で書いた一覧。" in text and "上書き候補" not in text, "hand edit was overwritten")
         _assert("API設計概要 の起案本文。" in text, "skeleton section was not filled")
-        _assert("## proto-first" in text and "kit 所有の節" in text, "kit-owned section changed")
+        _assert("## proto-first\n\n> kit 所有の節\n\nproto-first の起案本文。" in text, "placeholder quote lost or body missing")
         headings = generate.structural_headings(skeletons["docs/api.md"])
         _assert(generate.structural_headings(text) == headings, "structural headings changed")
-        _assert("## 参照" in text and "[TODO]" in text, "kit-owned parts lost")
+        _assert("## 参照" in text, "kit-owned parts lost")
+        # 契約節は api.md だけ。data-models / workflows の契約節は器のまま残る。
+        _assert("[TODO]" not in text, "api.md must have no TODO left after fill")
+        _assert("## スキーマ適用\n\n> kit 所有の節\n\n[TODO]" in (root / "docs/data-models.md").read_text(encoding="utf-8"),
+                "data_model_sections placeholder must stay")
+        _assert("## ローカル検証\n\n> kit 所有の節\n\n[TODO]" in (root / "docs/workflows.md").read_text(encoding="utf-8"),
+                "workflow_sections placeholder must stay")
         _assert((root / "docs/architecture.md").read_text(encoding="utf-8") != before_other, "architecture not filled")
         _assert((root / "docs/spec/setup.md").is_file() and (root / "docs/spec/order.md").is_file(), "spec files missing")
         spec_text = (root / "docs/spec/setup.md").read_text(encoding="utf-8")
@@ -399,7 +419,7 @@ def test_rejects_unowned_and_invalid_sections() -> None:
 
         check("ER section", add("docs/data-models.md", "ER図・関係性"))
         check("参照 section", add("docs/api.md", "参照"))
-        check("api_sections section", add("docs/api.md", "proto-first"))
+        check("data_model_sections section", add("docs/data-models.md", "スキーマ適用"))
         check("workflow_sections section", add("docs/workflows.md", "ローカル検証"))
         check("unknown file", add("docs/tech-stack.md", "技術スタック一覧とバージョン方針"))
         check("outside path", add("../outside.md", "x"))
@@ -446,6 +466,109 @@ def test_rejects_unowned_and_invalid_sections() -> None:
         result["sections"].append({
             "file": "docs/architecture.md", "heading": "システム全体構成", "evidence": "概要", "body": "本文"})
         _expect(da.ApplyError, "section mismatch", lambda: plan_for(root, skeletons, new_targets, result))
+
+
+def test_contract_placeholders_fill_only() -> None:
+    """api_sections の契約節だけが、引用を残して `[TODO]` だけ置換される。fill-only 限定。"""
+    skeletons = _skeletons()
+
+    # 検出は器の api_sections 由来の節だけ。data-models / workflows の同形の節は対象外。
+    api_quotes = da.placeholder_quotes(
+        "docs/api.md", skeletons["docs/api.md"], generate.structural_headings(skeletons["docs/api.md"]),
+        API_TITLES)
+    _assert(api_quotes == {"proto-first": "> kit 所有の節"}, f"api placeholders wrong: {api_quotes}")
+    for rel in ("docs/data-models.md", "docs/workflows.md", "docs/spec.md", "docs/architecture.md"):
+        # data-models / workflows の契約節は、title を渡しても対象にならない。
+        found = da.placeholder_quotes(
+            rel, skeletons[rel], generate.structural_headings(skeletons[rel]),
+            API_TITLES | {"スキーマ適用", "ローカル検証"})
+        _assert(found == {}, f"{rel}: must have no placeholders: {found}")
+    # 器の形が一致しても、title が api_sections に無い節は対象にならない。title が空なら対象は無い。
+    api_headings = generate.structural_headings(skeletons["docs/api.md"])
+    for label, titles in (("other title", frozenset({"別の節"})), ("empty titles", frozenset())):
+        found = da.placeholder_quotes("docs/api.md", skeletons["docs/api.md"], api_headings, titles)
+        _assert(found == {}, f"{label}: shape match alone must not be a placeholder: {found}")
+    _assert("参照" not in api_quotes and not set(api_quotes) & set(da.OWNERSHIP["docs/api.md"]),
+            "owned or kit-owned section detected as placeholder")
+    _assert(sum(len(names) for names in da.OWNERSHIP.values()) == 22, "ownership table must not change")
+
+    with tempfile.TemporaryDirectory(prefix="domain-docs-placeholder-") as temp_dir:
+        base = Path(temp_dir)
+
+        # 引用は apply が器から復元する。body に引用を書く結果は拒否する。
+        root = make_repo(base, skeletons, name="quote")
+        targets = targets_for(root, skeletons)
+
+        # title が api_sections に無ければ、器の形が一致しても targets に載らず、結果に含めても拒否される。
+        untitled = da.build_targets(root, root / "manifest.yaml", skeletons, refresh=False, titles=frozenset())
+        untitled_api = next(i for i in untitled["files"] if i["file"] == "docs/api.md")
+        _assert("proto-first" not in untitled_api["sections"] and "placeholders" not in untitled_api,
+                f"untitled shape must not be a target: {untitled_api}")
+        result = make_result(targets)
+        _expect(da.ApplyError, "untitled placeholder", lambda: da.build_plan(
+            root, root / "manifest.yaml", skeletons, untitled, result, refresh=False, titles=frozenset()))
+
+        def with_body(body: str):
+            def mutate(result):
+                for section in result["sections"]:
+                    if section["heading"] == "proto-first":
+                        section["body"] = body
+            return mutate
+
+        for label, body in (
+            ("leading blockquote", "> 別の引用\n\n本文"),
+            ("kit quote repeated", "本文\n\n> kit 所有の節\n\n続き"),
+        ):
+            result = make_result(targets)
+            with_body(body)(result)
+            _expect(da.ApplyError, label, lambda: plan_for(root, skeletons, targets, result))
+
+        # 根拠が無いときは omission で見送れる。引用と `[TODO]` は器のまま残る。
+        result = make_result(targets)
+        result["sections"] = [s for s in result["sections"] if s["heading"] != "proto-first"]
+        result["omissions"] = [{"file": "docs/api.md", "heading": "proto-first", "reason": "根拠が無い"}]
+        plan = plan_for(root, skeletons, targets, result)
+        da.commit(root, plan.writes)
+        text = (root / "docs/api.md").read_text(encoding="utf-8")
+        _assert("## proto-first\n\n> kit 所有の節\n\n[TODO]" in text, "omitted placeholder must stay as skeleton")
+
+        # 手で書いた契約節は対象にならず、結果に含めても上書きされない。
+        root = make_repo(base, skeletons, name="hand")
+        api = root / "docs/api.md"
+        edited = skeletons["docs/api.md"].replace("> kit 所有の節\n\n[TODO]", "> kit 所有の節\n\n手書きの契約。")
+        _assert(edited != skeletons["docs/api.md"], "fixture edit did not apply")
+        api.write_text(edited, encoding="utf-8")
+        targets = targets_for(root, skeletons)
+        api_item = next(i for i in targets["files"] if i["file"] == "docs/api.md")
+        _assert("proto-first" not in api_item["sections"] and "placeholders" not in api_item,
+                f"hand-edited placeholder must not be a target: {api_item}")
+        result = make_result(targets)
+        result["sections"].append({"file": "docs/api.md", "heading": "proto-first", "evidence": "概要", "body": "上書き候補"})
+        plan = plan_for(root, skeletons, targets, result)
+        _assert(any("KEPT: docs/api.md#proto-first" in note for note in plan.notes), f"no KEPT note: {plan.notes}")
+        da.commit(root, plan.writes)
+        text = api.read_text(encoding="utf-8")
+        _assert("手書きの契約。" in text and "上書き候補" not in text, "hand-edited placeholder was overwritten")
+
+        # refresh では契約節を対象にせず、結果に含めても拒否する。引用付きの本文は refresh でも残る。
+        root = make_repo(base, skeletons, pin="fresh", name="refresh")
+        apply_fill(root, skeletons)
+        filled = (root / "docs/api.md").read_text(encoding="utf-8")
+        _assert("## proto-first\n\n> kit 所有の節\n\nproto-first の起案本文。" in filled, "fill did not write placeholder")
+        refresh_targets = targets_for(root, skeletons, refresh=True)
+        refresh_api = next(i for i in refresh_targets["files"] if i["file"] == "docs/api.md")
+        _assert("proto-first" not in refresh_api["sections"] and "placeholders" not in refresh_api,
+                f"refresh must not target placeholders: {refresh_api}")
+        result = make_result(refresh_targets)
+        result["sections"].append({"file": "docs/api.md", "heading": "proto-first", "evidence": "概要", "body": "更新"})
+        _expect(da.ApplyError, "placeholder in refresh", lambda: plan_for(
+            root, skeletons, refresh_targets, result, refresh=True))
+        updated = make_result(refresh_targets, overrides={("docs/api.md", "API設計概要"): "更新後の概要。"})
+        plan = plan_for(root, skeletons, refresh_targets, updated, refresh=True)
+        refreshed = plan.writes["docs/api.md"].decode("utf-8")
+        _assert("更新後の概要。" in refreshed, "refresh did not update the owned section")
+        _assert("## proto-first\n\n> kit 所有の節\n\nproto-first の起案本文。" in refreshed,
+                "refresh changed the placeholder section")
 
 
 def test_spec_file_rules() -> None:
@@ -733,6 +856,11 @@ def test_domain_docs_skill_template_contract() -> None:
         "[TODO]",
         "erDiagram",
         "画像リンク",
+        "## 契約節",
+        "placeholders",
+        "docs/api.md",
+        "data-models.md",
+        "workflows.md",
     ):
         _assert(required in rendered, f"skill contract missing: {required}")
     _assert("field-guide" not in rendered, "field-guide must not be referenced")
@@ -804,10 +932,21 @@ def test_real_repo_docs_keep_structure() -> None:
     manifest_path = ROOT / "manifest.yaml"
     skeletons = da.render_skeletons(manifest_path)
     _assert(set(skeletons) == set(da.OWNERSHIP), f"skeleton set mismatch: {sorted(skeletons)}")
-    info = da.analyze(ROOT, skeletons)
+    # title は resolved manifest から取る（apply の cmd_state / cmd_apply と同じ経路）。
+    titles = da.api_section_titles(manifest_path)
+    domain_docs = genlib.load_manifest(str(manifest_path)).get("domain_docs") or {}
+    _assert(titles == {section["title"] for section in domain_docs.get("api_sections") or []},
+            f"api_section_titles must match root manifest api_sections: {sorted(titles)}")
+    info = da.analyze(ROOT, skeletons, titles)
     for rel, entry in info.items():
         _assert(entry["exists"], f"{rel} is missing")
         _assert(not entry["mismatch"], f"{rel}: {entry['mismatch']}")
+    # 契約節（placeholder）は、契約の api_sections と一致する。他の節や他のファイルへ広がらない。
+    _assert(set(info["docs/api.md"]["placeholder_quotes"]) == titles,
+            f"placeholders must equal api_sections: {sorted(info['docs/api.md']['placeholder_quotes'])} vs {sorted(titles)}")
+    for rel, entry in info.items():
+        if rel != "docs/api.md":
+            _assert(not entry["placeholder_quotes"], f"{rel}: must have no placeholders")
 
 
 def main() -> int:
@@ -818,6 +957,7 @@ def main() -> int:
         ("ownership matches templates", test_ownership_matches_templates),
         ("fill-only keeps hand edits", test_fill_only_keeps_hand_edits),
         ("rejects unowned and invalid sections", test_rejects_unowned_and_invalid_sections),
+        ("contract placeholders are fill-only", test_contract_placeholders_fill_only),
         ("spec file rules", test_spec_file_rules),
         ("direct edit detection", test_direct_edit_detection),
         ("rollback on write failure", test_rollback_on_write_failure),
