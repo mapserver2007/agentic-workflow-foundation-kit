@@ -40,7 +40,9 @@ ENDPOINT = re.compile(r"^([A-Z]+)\s+(/\S*)$")
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$")
 DIAGRAM_KINDS = ("sequenceDiagram", "stateDiagram")
 
-# kit のテンプレートが過去に持っていた偽の図の雛形。起案が写してしまった場合に検知する。
+# kit のテンプレートが過去に持っていた偽の図の雛形。
+# 置換本文にあり、Design Doc に同じパターンが無いときだけ、起案が写した残存とみなす。
+# Design Doc にある遷移は設計書の語なので持ち込む。`[TODO]` はこの緩和をしない。
 SAMPLE_PATTERNS = (
     (re.compile(r"\bENTITY_[A-Z]\b"), "ER 図の雛形名"),
     (re.compile(r"Client\s*->>\s*API\s*:\s*リクエスト"), "sequence 図の雛形"),
@@ -303,7 +305,7 @@ def _word_present(name: str, text: str) -> bool:
 
 
 def _endpoint_present(method: str, path: str, text: str) -> bool:
-    path_re = re.compile(rf"{re.escape(path)}(?![\w/{{}}\-])")
+    path_re = re.compile(rf"(?<![\w/]){re.escape(path)}(?![\w/{{}}\-])")
     method_re = re.compile(rf"(?<![A-Za-z]){re.escape(method)}(?![A-Za-z])")
     for line in text.splitlines():
         if path_re.search(line) and method_re.search(line):
@@ -328,7 +330,7 @@ def evaluate(
     spec_documents: 今回作成・置換する機能仕様の全文（パス → 本文）。G-DOCFILL-005 の対象。
     """
     report = Report()
-    _check_residue(report, replaced)
+    _check_residue(report, replaced, design_text)
     _check_diagrams(report, design_text, final_texts.get(WORKFLOWS_FILE, ""))
     _check_tables(report, design_text, final_texts.get(DATA_MODELS_FILE, ""))
     _check_endpoints(report, design_text, final_texts.get(API_FILE, ""))
@@ -336,14 +338,15 @@ def evaluate(
     return report
 
 
-def _check_residue(report: Report, replaced: Mapping) -> None:
+def _check_residue(report: Report, replaced: Mapping, design_text: str) -> None:
+    """雛形は Design Doc に無いときだけ FAIL にする。`[TODO]` は設計書にあっても FAIL。"""
     for label, body in sorted(replaced.items()):
         lines = body.splitlines()
         mask = fence_mask(lines)
         if any("[TODO]" in line and not fenced for line, fenced in zip(lines, mask)):
             report.add("G-DOCFILL-001", "FAIL", label, "コードフェンスの外に `[TODO]` が残っています")
         for pattern, meaning in SAMPLE_PATTERNS:
-            if pattern.search(body):
+            if pattern.search(body) and not pattern.search(design_text):
                 report.add("G-DOCFILL-001", "FAIL", label, f"{meaning}が残っています（設計書の内容へ置き換える）")
 
 

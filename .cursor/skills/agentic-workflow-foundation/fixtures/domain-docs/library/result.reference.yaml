@@ -116,7 +116,7 @@ sections:
   - file: "docs/api.md"
     heading: "API設計概要"
     evidence: "API設計"
-    body: "受付端末と管理画面は同じ API を呼ぶ。ボディは JSON とする。認証は仕様に無いため付けない。"
+    body: "受付端末と管理画面は同じ API を呼ぶ。ボディは JSON とする。"
   - file: "docs/api.md"
     heading: "エンドポイント一覧"
     evidence: "API設計"

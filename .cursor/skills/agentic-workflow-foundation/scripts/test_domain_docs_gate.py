@@ -152,6 +152,29 @@ def test_residue_is_a_fail() -> None:
         report = gate.evaluate(DESIGN, replaced={"docs/a.md#x": body}, final_texts={}, spec_documents={})
         _assert(report.fails and _ids(report, "FAIL") == ["G-DOCFILL-001"], f"{label}: FAIL expected: {report.findings}")
         _assert(report.to_dict()["status"] == "FAIL", f"{label}: status")
+        if label == "todo":
+            continue
+        # Design Doc に同じパターンがある遷移は、設計書の語として持ち込む。
+        transcribed = gate.evaluate(
+            DESIGN + "\n" + body, replaced={"docs/a.md#x": body}, final_texts={}, spec_documents={}
+        )
+        _assert(not transcribed.fails, f"{label}: design doc pattern must not fail: {transcribed.findings}")
+    # 別の雛形が Design Doc にあっても、本文側の別パターンは FAIL のまま。
+    other = gate.evaluate(
+        DESIGN + "\nCreated --> Processing\n",
+        replaced={"docs/a.md#x": "ENTITY_A"},
+        final_texts={},
+        spec_documents={},
+    )
+    _assert(other.fails and "ER 図の雛形名" in other.findings[0]["message"], f"other sample: {other.findings}")
+    # `[TODO]` は Design Doc にあっても FAIL のまま。
+    todo = gate.evaluate(
+        DESIGN + "\n[TODO] 設計書側\n",
+        replaced={"docs/a.md#x": "本文\n\n[TODO] 後で書く"},
+        final_texts={},
+        spec_documents={},
+    )
+    _assert(todo.fails and "TODO" in todo.findings[0]["message"], f"TODO must still fail: {todo.findings}")
 
 
 def test_structural_warnings_and_skips() -> None:
@@ -191,6 +214,10 @@ def test_structural_warnings_and_skips() -> None:
             f"endpoint must need its own line: {report.findings}")
     report = variant(**{gate.API_FILE: "POST `/things/{thing_id}`\nGET `/things/{thing_id}`\nPUT `/things/{thing_id}/state`"})
     _assert("POST /things" in report.findings[0]["message"], f"prefix path must not satisfy POST /things: {report.findings}")
+    _assert(gate._endpoint_present("GET", "/books", "GET /books"), "exact path")
+    _assert(gate._endpoint_present("GET", "/books", "GET `/books`"), "code span path")
+    _assert(not gate._endpoint_present("GET", "/books", "GET /v2/books"), "suffix path must not satisfy")
+    _assert(not gate._endpoint_present("GET", "/books", "GET `/v2/books`"), "suffix path in a span must not satisfy")
     # 機能仕様の必須見出し。コードフェンス内は数えない。
     report = gate.evaluate(DESIGN, replaced={}, final_texts=full, spec_documents={
         "docs/spec/a.md": "## 概要\n\n本文",

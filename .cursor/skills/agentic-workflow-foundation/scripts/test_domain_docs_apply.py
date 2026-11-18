@@ -474,6 +474,12 @@ def test_rejects_unowned_and_invalid_sections() -> None:
         check("mustache", replace_first(body="本文 {{x}}"))
         check("todo marker", replace_first(body="[TODO] 本文"))
         check("image link", replace_first(body="![図](a.png)"))
+        check("reference image", replace_first(body="![図][image]\n\n[image]: diagram.png"))
+        check("collapsed image", replace_first(body="![図][]\n\n[図]: diagram.png"))
+        check("shortcut image", replace_first(body="![図]\n\n[図]: diagram.png"))
+        linked = make_result(targets)
+        linked["sections"][0]["body"] = "本文。[詳細](https://example.test)\n\n[id]: https://example.test"
+        plan_for(root, skeletons, targets, linked)
         check("er diagram", replace_first(body="```mermaid\nerDiagram\n  A ||--o{ B : has\n```"))
         check("empty body", replace_first(body="  "))
         check("multiline evidence", replace_first(evidence="概要\n業務フロー"))
@@ -769,6 +775,28 @@ def test_rollback_on_write_failure() -> None:
             exc = _expect(da.FatalError, "restore failure", lambda: da.commit(root, plan.writes))
         _assert("戻せない" in str(exc), f"unexpected message: {exc}")
 
+        # 置換が終わった直後の割り込みでも、登録済みのファイルは commit 開始時の内容へ戻す。
+        target_rel = order[0]
+        target = root / target_rel
+        snapshot = {rel: (root / rel).read_bytes() for rel in plan.writes if (root / rel).exists()}
+
+        interrupted = False
+
+        def write_then_interrupt(path: Path, payload: bytes) -> None:
+            nonlocal interrupted
+            original(path, payload)
+            if path == target and not interrupted:
+                interrupted = True
+                raise KeyboardInterrupt()
+
+        with patch.object(da, "_write_bytes", side_effect=write_then_interrupt):
+            exc = _expect(da.FatalError, "interrupt after replace", lambda: da.commit(root, plan.writes))
+        _assert("元へ戻しました" in str(exc), f"unexpected message: {exc}")
+        if target_rel in snapshot:
+            _assert(target.read_bytes() == snapshot[target_rel], "interrupted write was not restored")
+        else:
+            _assert(not target.exists(), "interrupted new file was not removed")
+
 
 def test_cli_fill_flow_and_stale_pin() -> None:
     skeletons = _skeletons()
@@ -1046,6 +1074,11 @@ def test_er_section_validation() -> None:
             f"er_entities wrong: {entities} {unparsed}")
     _assert(da.er_entities("```mermaid\nerDiagram\n    this is not valid\n```")[1] == ["this is not valid"],
             "unparsed line not reported")
+    unclosed_entities, unclosed_unparsed = da.er_entities(
+        "```mermaid\nerDiagram\n    items {\n        bigint item_id PK\n```"
+    )
+    _assert(unclosed_entities == {"items"} and unclosed_unparsed == ["エンティティ宣言の閉じ波括弧がありません"],
+            f"unclosed entity accepted: {unclosed_entities} {unclosed_unparsed}")
     with tempfile.TemporaryDirectory(prefix="domain-docs-er-") as temp_dir:
         root = make_repo(Path(temp_dir), skeletons)
         targets = targets_for(root, skeletons)
@@ -1078,6 +1111,7 @@ def test_er_section_validation() -> None:
         rejected("no diagram", "テーブルの関係を文章で書く。", "erDiagram")
         rejected("no fence", "erDiagram\n    items ||--o{ order_items : has", "erDiagram")
         rejected("unparsed line", fence("    items ||--o{ order_items : has\n    not a relation"), "解釈できない")
+        rejected("unclosed entity", fence("    items {\n        bigint item_id PK"), "閉じ波括弧")
         rejected("image link", "![図](a.png)\n" + fence("    items ||--o{ order_items : has"), "画像リンク")
         # テーブルの記述に無い名前は、ER 図以外の本文が無いと使えない（エンティティの実在検証）。
         exc = _expect(da.ApplyError, "table body without the entity", lambda: build(
@@ -1220,6 +1254,40 @@ def test_check_mode_runs_the_gate_without_writing() -> None:
         _assert(not findings_path.exists() and not (root / da.TARGETS_RELATIVE).exists(), "apply left findings behind")
 
 
+def test_pin_keeps_verified_fingerprint_when_the_doc_changes_before_commit() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-pin-race-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
+        apply_fill(root, skeletons)
+        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc.write_text(DESIGN_DOC.replace("API の説明。", "API の説明（更新）。"), encoding="utf-8")
+        verified = tc.source_fingerprint(doc)
+        _assert(run_cli(root, skeletons, "state", "--refresh")[0] == 0, "refresh state failed")
+        before = (root / "manifest.yaml").read_bytes()
+        original = da._plan_pin
+
+        def change_after_pin(root, manifest_path, doc, plan, fingerprint):
+            original(root, manifest_path, doc, plan, fingerprint)
+            doc.write_text(doc.read_text(encoding="utf-8") + "\n途中変更。\n", encoding="utf-8")
+            _assert(fingerprint == verified, "pin used a fingerprint reread from the changed file")
+
+        with patch.object(da, "_plan_pin", side_effect=change_after_pin):
+            code, _, err = run_cli(root, skeletons, "apply", "--refresh", "--decline")
+        _assert(code == 1 and "変更されました" in err, f"changed doc was pinned: {code} {err}")
+        _assert((root / "manifest.yaml").read_bytes() == before, "decline wrote the manifest after the doc changed")
+
+
+def test_missing_skeleton_template_is_fatal() -> None:
+    missing = Path("/tmp/domain-docs-missing-template.md.template")
+    exc = _expect(da.FatalError, "missing template", lambda: da._read_skeleton_template(missing))
+    _assert("読み込み失敗" in str(exc), f"unexpected message: {exc}")
+    with tempfile.TemporaryDirectory(prefix="domain-docs-bad-template-") as temp_dir:
+        path = Path(temp_dir) / "bad.md.template"
+        path.write_bytes(b"\xff")
+        exc = _expect(da.FatalError, "bad encoding", lambda: da._read_skeleton_template(path))
+        _assert("読み込み失敗" in str(exc), f"unexpected message: {exc}")
+
+
 def test_state_warns_about_vocabulary_in_the_contract() -> None:
     skeletons = _skeletons()
     with tempfile.TemporaryDirectory(prefix="domain-docs-vocab-") as temp_dir:
@@ -1252,6 +1320,8 @@ def main() -> int:
         ("schema v2 supporting evidence", test_schema_v2_supporting_evidence),
         ("new spec evidence is a business flow child", test_new_spec_evidence_is_business_flow_child),
         ("check mode runs the gate without writing", test_check_mode_runs_the_gate_without_writing),
+        ("pin keeps the verified fingerprint", test_pin_keeps_verified_fingerprint_when_the_doc_changes_before_commit),
+        ("missing skeleton template is fatal", test_missing_skeleton_template_is_fatal),
         ("state warns about vocabulary in the contract", test_state_warns_about_vocabulary_in_the_contract),
         ("direct edit detection", test_direct_edit_detection),
         ("rollback on write failure", test_rollback_on_write_failure),

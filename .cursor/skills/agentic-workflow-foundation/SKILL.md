@@ -490,6 +490,7 @@ python3 "$apply" apply
 | `G-DOCFILL-005` | WARN | 今回作成・置換する機能仕様に `## エラーハンドリング` がある |
 
 - 検査対象は今回置換する本文だけ。omissions で器のまま残る節の `[TODO]` と、`docs/spec/README.md` の作成手順の見本は対象外。
+- 雛形名は、Design Doc に同じパターンが無いときだけ残存とみなす。Design Doc にある遷移は持ち込む。`[TODO]` は Design Doc にあっても FAIL にする。
 - Design Doc が標準の見出し構造（`業務フロー` / `データベース設計` / `API設計`）を持たず抽出できない検査は `skipped` とし、理由を findings に書く。
 - 数値の閾値や割合の指標は持たない（`docs/QUALITY_GATE.md` の「数値スコアリングをしない」に合わせる）。意味の食い違いは検出できない。
 

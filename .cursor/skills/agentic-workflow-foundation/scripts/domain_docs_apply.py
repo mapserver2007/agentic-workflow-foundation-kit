@@ -127,6 +127,11 @@ PLACEHOLDER_SECTION_RE = re.compile(
 )
 
 ATX_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$")
+# インライン `![alt](url)`、完全参照 `![alt][id]`、折りたたみ参照 `![alt][]`、短縮参照 `![alt]`。
+# テキストリンク `[alt](url)` / `[alt][id]` は `!` が無いので対象外。
+_IMAGE_LINK_RE = re.compile(
+    r"!\[[^\]\n]*\](?:\([^)\n]*\)|\[[^\]\n]*\]|(?![\[(]))"
+)
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 RESERVED_SLUGS = frozenset({"readme"})
 HEX64 = re.compile(r"[0-9a-f]{64}")
@@ -326,6 +331,14 @@ def design_doc_state(root: Path, manifest_path: Path) -> tuple[Path | None, str]
 # --------------------------------------------------------------------------
 # 器（kit テンプレートの描画結果）と節の解析
 # --------------------------------------------------------------------------
+def _read_skeleton_template(path: Path) -> str:
+    """器テンプレートの読み失敗は入力の消失として致命的エラーにする（exit 2）。"""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise FatalError(f"器テンプレートの読み込み失敗 ({path.name}): {exc}") from exc
+
+
 def render_skeletons(manifest_path: Path) -> dict[str, str]:
     """所有権表のファイルについて、kit が書く器（投影なしの描画結果）を返す。"""
     import run_resolved_engine as resolver  # noqa: WPS433
@@ -335,7 +348,7 @@ def render_skeletons(manifest_path: Path) -> dict[str, str]:
     for out in manifest.get("outputs") or []:
         rel = out.get("path")
         if rel in OWNERSHIP:
-            template = (TEMPLATES_DIR / out["template"]).read_text(encoding="utf-8")
+            template = _read_skeleton_template(TEMPLATES_DIR / out["template"])
             skeletons[rel] = genlib.render(template, manifest)
     return skeletons
 
@@ -604,7 +617,7 @@ def _check_body(body: object, label: str, *, allow_er: bool = False) -> str:
         raise ApplyError(f"{label}.body に Mustache 構文は許可されません")
     if "[TODO]" in body:
         raise ApplyError(f"{label}.body に [TODO] は書けません（根拠が無い節は omissions に書く）")
-    if re.search(r"!\[[^\]]*\]\(", body):
+    if _IMAGE_LINK_RE.search(body):
         raise ApplyError(f"{label}.body に画像リンクは書けません")
     if "erDiagram" in body and not allow_er:
         raise ApplyError(f"{label}.body に ER 図は書けません（`{ER_SECTION}` 節だけが書ける）")
@@ -702,6 +715,8 @@ def er_entities(body: str) -> tuple[set[str], list[str]]:
                 entities.add(stripped)
                 continue
             unparsed.append(stripped)
+        if inside:
+            unparsed.append("エンティティ宣言の閉じ波括弧がありません")
     return entities, unparsed
 
 
@@ -1057,7 +1072,7 @@ def build_plan(
     plan.writes.update({rel: text.encode("utf-8") for rel, text in new_texts.items()})
     plan.writes.update({rel: text.encode("utf-8") for rel, text in new_files.items()})
     if refresh or targets["pin"] == "unpinned":
-        _plan_pin(root, manifest_path, doc, plan)
+        _plan_pin(root, manifest_path, doc, plan, targets["source_fingerprint"])
     plan.digest = _plan_digest(targets["source_fingerprint"], plan.writes)
     return plan
 
@@ -1068,10 +1083,11 @@ def _written(rel: str, name: str, info: dict, refresh: bool) -> bool:
     return bool(entry) and (refresh or name in entry["fillable"])
 
 
-def _plan_pin(root: Path, manifest_path: Path, doc: Path, plan: Plan) -> None:
+def _plan_pin(root: Path, manifest_path: Path, doc: Path, plan: Plan, fingerprint: str) -> None:
+    """検証済みの fingerprint を pin に使う。ここでは Design Doc を読み直さない。"""
     relative = manifest_path.relative_to(root).as_posix()
     updated = pinned_manifest_bytes(
-        manifest_path, doc.relative_to(root).as_posix(), tc.source_fingerprint(doc)
+        manifest_path, doc.relative_to(root).as_posix(), fingerprint
     )
     if updated != manifest_path.read_bytes():
         plan.writes[relative] = updated
@@ -1106,8 +1122,8 @@ def commit(root: Path, writes: dict[str, bytes]) -> None:
         for rel, payload in writes.items():
             path = _safe_path(root, rel, "write path")
             originals[path] = path.read_bytes() if path.exists() else None
-            _write_bytes(path, payload)
             done.append(path)
+            _write_bytes(path, payload)
     except BaseException as exc:  # noqa: BLE001 - 失敗は戻したうえで致命的エラーとして報告する
         unrestored = []
         for path in reversed(done):
@@ -1207,7 +1223,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if args.decline:
         doc = _check_unchanged(root, manifest_path, targets)
         plan = Plan()
-        _plan_pin(root, manifest_path, doc, plan)
+        _plan_pin(root, manifest_path, doc, plan, targets["source_fingerprint"])
+        _check_unchanged(root, manifest_path, targets)
         commit(root, plan.writes)
         _cleanup(targets_path, result_path)
         print("PASS: refresh を見送り、Design Doc を既読にしました（docs は変更なし）")
@@ -1245,6 +1262,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     if args.refresh and args.approve != plan.digest:
         raise ApplyError("承認した digest が現在の計画と一致しません。計画を再表示してください")
 
+    _check_unchanged(root, manifest_path, targets)
     commit(root, plan.writes)
     _cleanup(targets_path, result_path, findings_path)
     for note in plan.notes:
@@ -1264,7 +1282,10 @@ def cmd_pin(args: argparse.Namespace) -> int:
     if doc is None:
         raise FatalError("Design Doc がありません")
     plan = Plan()
-    _plan_pin(root, manifest_path, doc, plan)
+    fingerprint = tc.source_fingerprint(doc)
+    _plan_pin(root, manifest_path, doc, plan, fingerprint)
+    if tc.source_fingerprint(doc) != fingerprint:
+        raise FatalError("pin の直前に Design Doc が変更されました。やり直してください")
     commit(root, plan.writes)
     print(f"PASS: design_doc を固定しました source_path={doc.relative_to(root).as_posix()}")
     return 0
