@@ -1075,6 +1075,28 @@ def test_design_doc_selection_constraints() -> None:
         targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
         _assert(code == 0 and targets["design_doc"] == "designs/docs/project-b.md", "selected doc was not used")
 
+        # 親ディレクトリがシンボリックリンクのときも、通常ファイルに見えても拒否する。
+        external = base / "external-tree"
+        (external / "docs").mkdir(parents=True)
+        (external / "docs" / "private.md").write_text(DESIGN_DOC, encoding="utf-8")
+        outside_docs = base / "outside-docs"
+        outside_docs.mkdir()
+        (outside_docs / "private.md").write_text(DESIGN_DOC, encoding="utf-8")
+        parent_links = (
+            ("designs symlink", "linked-designs", lambda repo: (repo / "designs").symlink_to(external, target_is_directory=True)),
+            ("docs symlink", "linked-docs", lambda repo: (
+                (repo / "designs").mkdir(),
+                (repo / "designs" / "docs").symlink_to(outside_docs, target_is_directory=True),
+            )),
+        )
+        for label, name, link in parent_links:
+            linked = make_repo(base, skeletons, name=name, design=False)
+            link(linked)
+            for command in ("state", "pin"):
+                code, _, err = run_cli(linked, skeletons, command, "--design-doc", "designs/docs/private.md")
+                _assert(code == 2 and "シンボリックリンク" in err, f"{command} / {label}: expected exit 2, got {code} {err}")
+            _assert(not (linked / da.TARGETS_RELATIVE).exists(), f"{label}: targets were written")
+
 
 def test_switched_design_doc_updates_with_approval() -> None:
     skeletons = _skeletons()
@@ -1234,6 +1256,17 @@ def test_update_supplements_existing_spec_with_supporting_evidence() -> None:
         _assert(any("別の Design Doc で足した記述。" in diff for diff in plan.diffs), "diff missing the supplement")
         readme = plan.writes.get(da.README_PATH)
         _assert(readme is None or "（根拠: `1. 設置`）" in readme.decode("utf-8"), "the row's evidence must stay")
+
+        # 拒否: spec の主根拠は既存行のままなのに、最終 README だけ別見出しへ変える。
+        drifted = make_result(targets, SPEC_FILES)
+        drifted["spec_files"] = [supplement()]
+        drifted["schema_version"] = 2
+        for section in drifted["sections"]:
+            if (section["file"], section["heading"]) == (da.README_PATH, "収録仕様"):
+                section["body"] = section["body"].replace("（根拠: `1. 設置`）", "（根拠: `1. 設置（改）`）")
+        exc = _expect(da.ApplyError, "readme evidence drift", lambda: plan_for(
+            root, skeletons, targets, drifted, refresh=True))
+        _assert("setup" in str(exc) and "1. 設置" in str(exc), f"unexpected message: {exc}")
 
         # 拒否: supporting_evidence が無い / 今回の Design Doc に無い見出し / v1。
         exc = _expect(da.ApplyError, "no supporting evidence", lambda: build(

@@ -336,8 +336,15 @@ def resolve_design_doc(root: Path, value: str | None) -> Path:
     if name.endswith(DESIGN_DOC_SAMPLE_SUFFIX):
         raise FatalError(f"--design-doc に見本（*{DESIGN_DOC_SAMPLE_SUFFIX}）は選べません: {value}")
     path = root / relative
-    if path.is_symlink():
-        raise FatalError(f"--design-doc にシンボリックリンクは選べません: {value}")
+    # 最終ファイルだけでなく、root からそこまでの各要素も見る。親がリンクだと
+    # is_file() が辿り、リポジトリ外の通常ファイルを受理してしまう。
+    cursor = root
+    for part in relative.parts:
+        if part == ".":
+            continue
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise FatalError(f"--design-doc にシンボリックリンクは選べません: {value}")
     if not path.is_file():
         raise FatalError(f"選んだ Design Doc が存在しません: {relative.as_posix()}")
     return path
@@ -1111,7 +1118,18 @@ def build_plan(
             SPEC_PATH, _read_text(spec_path) if spec_path.is_file() else ""
         )
         final_slugs = existing_slugs | {Path(rel).stem for rel in new_files}
-        errors = _consistency_errors(final_readme, final_spec, final_slugs, new_evidence)
+        # 新規 slug だけでなく、既存の非空な主根拠も最終 README と照合する。
+        # 補足更新は spec 側の根拠を既存行のままにするので、README だけ書き換えると
+        # 次の state が別の見出しを主根拠として読んでしまう。
+        expected_evidence = {
+            slug: row["evidence"]
+            for slug, row in row_by_slug.items()
+            if row["evidence"]
+        }
+        expected_evidence.update(new_evidence)
+        errors = _consistency_errors(
+            final_readme, final_spec, final_slugs, expected_evidence
+        )
         if errors:
             raise ApplyError("; ".join(errors))
 
