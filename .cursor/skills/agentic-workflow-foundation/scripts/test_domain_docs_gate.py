@@ -21,6 +21,8 @@ import domain_docs_gate as gate  # noqa: E402
 import genlib  # noqa: E402
 
 FIXTURE = HERE.parent / "fixtures" / "domain-docs" / "library"
+# domain_docs_apply は Design Doc を自動検知しない。テストでは PO が選んだ体で、このパスを明示する。
+DOC_PATH = Path("designs/docs/designdoc.md")
 
 # 設計書の標準構造を持つ、最小の Design Doc。
 DESIGN = """\
@@ -275,7 +277,7 @@ def _library_skeletons() -> dict[str, str]:
 def _library_repo(base: Path, skeletons: dict[str, str], name: str) -> Path:
     root = base / name
     (root / "designs/docs").mkdir(parents=True)
-    (root / da.DESIGN_DOC_PATHS[0]).write_text((FIXTURE / "designdoc.md").read_text(encoding="utf-8"), encoding="utf-8")
+    (root / DOC_PATH).write_text((FIXTURE / "designdoc.md").read_text(encoding="utf-8"), encoding="utf-8")
     (root / "manifest.yaml").write_text("project:\n  name: library\n", encoding="utf-8")
     for rel, text in skeletons.items():
         path = root / rel
@@ -285,7 +287,8 @@ def _library_repo(base: Path, skeletons: dict[str, str], name: str) -> Path:
 
 
 def _library_plan(root: Path, skeletons: dict[str, str], result: dict):
-    targets = da.build_targets(root, root / "manifest.yaml", skeletons, refresh=False, titles=LIBRARY_TITLES)
+    targets = da.build_targets(
+        root, root / "manifest.yaml", skeletons, root / DOC_PATH, refresh=False, titles=LIBRARY_TITLES)
     return targets, da.build_plan(
         root, root / "manifest.yaml", skeletons, targets, result, refresh=False, titles=LIBRARY_TITLES)
 
@@ -365,7 +368,8 @@ def test_second_app_reference_passes_the_gate() -> None:
         _assert("[TODO]" not in workflows, "workflows still has TODO")
         for slug in ("register-member", "lend-book", "return-book"):
             _assert((root / "docs/spec" / f"{slug}.md").is_file(), f"spec file missing: {slug}")
-        again = da.build_targets(root, root / "manifest.yaml", skeletons, refresh=False, titles=LIBRARY_TITLES)
+        again = da.build_targets(
+            root, root / "manifest.yaml", skeletons, root / DOC_PATH, refresh=False, titles=LIBRARY_TITLES)
         _assert(again["action"] == "skip", f"filled library repo must skip: {again['action']}")
 
 
@@ -399,7 +403,7 @@ def test_gate_skips_for_a_design_doc_without_the_standard_structure() -> None:
     reference = genlib.load_manifest(str(FIXTURE / "result.reference.yaml"))
     with tempfile.TemporaryDirectory(prefix="domain-docs-library-plain-") as temp_dir:
         root = _library_repo(Path(temp_dir), skeletons, "plain")
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc = root / DOC_PATH
         # 標準の見出し（業務フロー / データベース設計 / API設計）を別の名前にする。
         text = (FIXTURE / "designdoc.md").read_text(encoding="utf-8")
         for old, new in (("# 業務フロー", "# 流れ"), ("## データベース設計", "## 保存"), ("## API設計", "## 呼び出し")):

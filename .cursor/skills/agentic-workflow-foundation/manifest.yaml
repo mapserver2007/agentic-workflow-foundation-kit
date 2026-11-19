@@ -957,7 +957,7 @@ outputs:
   # resolve_domain_docs.py（Phase 1.67）が承認済み tech_contract.domain_docs.resolved を投影し、
   # テンプレート内の {{#each}} で契約済みセクションを展開する。
   # Design Doc 由来の本文は本カタログの対象外。kit は器（見出し・節順・[TODO]）だけを書き、
-  # 本文は domain-docs スキルの結果を domain_docs_apply.py が埋める（SKILL.md Phase 2.1）。
+  # 本文は、単独起動の domain-docs スキルの結果を domain_docs_apply.py が埋める（生成プロセスの外）。
   # 既存ファイルは seed として上書きしない。
   - path: docs/spec.md
     template: docs/spec.md.template

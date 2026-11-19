@@ -1,32 +1,41 @@
 #!/usr/bin/env python3
 """Design Doc 由来の Domain docs 本文を、結果ファイルから決定論的に適用する。
 
-domain-docs スキルの subagent は docs を直接編集せず、`tmp/domain-docs-result.yaml`
-だけを返す。本スクリプトが所有権表・根拠見出し・整合性を検証し、全ファイルを atomic に書く。
+domain-docs スキルを起動したエージェントは docs を直接編集せず、`tmp/domain-docs-result.yaml`
+だけを書く。本スクリプトが所有権表・根拠見出し・整合性を検証し、全ファイルを atomic に書く。
+Design Doc は自動検知しない。PO が `designs/docs/` 直下の `*.md` から選び、`--design-doc` で渡す。
+（`--design-doc` は `tech_contract.py` の `--design-doc`（`.cursor/docs/` の技術スタック設計書）とは別物である。）
 
 使い方:
-  domain_docs_apply.py state [--refresh]
-      Design Doc の検知・状態判定・対象節の列挙。`tmp/domain-docs-targets.yaml` を書く。
+  domain_docs_apply.py state --design-doc designs/docs/<name>.md [--refresh]
+      選んだ Design Doc の状態判定と対象節の列挙。`tmp/domain-docs-targets.yaml` を書く。
+      状態（pin）は unpinned / fresh / stale / switched（固定済みと別のファイルを選んだ）。
+      action は skip / fill / update。
+        fill   = 器のままの節だけを埋める（mode: fill）。
+        update = 所有権表の全節と既存の機能仕様を、再起案した本文でマージして更新する（mode: refresh）。
+                 stale / switched、pin が無く埋め済みの docs、または --refresh の指定で選ばれる。
   domain_docs_apply.py apply
-      fill-only で適用する。本文が器と完全一致する節だけを埋める。
+      fill で適用する。本文が器と完全一致する節だけを埋める。
       契約節（`docs/api.md`、`docs/data-models.md`、`docs/workflows.md` の、契約の
       `api_sections` / `data_model_sections` / `workflow_sections`）は、kit の引用を残して
       `[TODO]` だけを置き換える。
       書込み前に決定論ゲート（`domain_docs_gate.py`、G-DOCFILL-*）を実行し、結果を
       `tmp/domain-docs-findings.yaml` へ書く。FAIL は検証失敗（exit 1）、WARN は報告だけ。
-  domain_docs_apply.py apply --check
+  domain_docs_apply.py apply --check [--refresh]
       書込み・pin・片付けをせず、apply と同じ検証とゲートだけを実行する。
+      action が update のとき（targets の mode が refresh のとき）は --refresh を付ける。
   domain_docs_apply.py apply --refresh
-      埋め済みの節との diff と plan digest を表示する（書込みなし）。
+      update の計画（既存 docs との diff と plan digest）を表示する（書込みなし）。
   domain_docs_apply.py apply --refresh --approve <digest>
       承認済みの計画だけを適用する。
   domain_docs_apply.py apply --refresh --decline
-      docs を変更せず、現在の Design Doc を既読にする（fingerprint のみ更新）。
-  domain_docs_apply.py pin
+      同じ Design Doc の stale だけが対象。docs を変更せず、fingerprint のみ更新する。
+      switched / pin なし / 強制 update では使えない（exit 2）。見送りは apply を実行しないことで表す。
+  domain_docs_apply.py pin --design-doc designs/docs/<name>.md
       root manifest の design_doc ブロックを2キーで書く（旧形式の移行にも使う）。
 
 exit code:
-  0 = 成功 / 対象なし / refresh の計画表示
+  0 = 成功 / 対象なし / update の計画表示
   1 = 検証失敗（結果ファイルを直して再実行する）
   2 = 致命的（入力が曖昧・消失、書込み失敗）
 """
@@ -35,6 +44,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -57,10 +67,9 @@ SKILL_DIR = HERE.parent
 SEED_MANIFEST = SKILL_DIR / "manifest.yaml"
 TEMPLATES_DIR = SKILL_DIR / "templates"
 
-DESIGN_DOC_PATHS = (
-    Path("designs/docs/designdoc.md"),
-    Path("designs/docs/design-doc.md"),
-)
+# PO が選べる Design Doc の置き場。直下の `*.md` だけで、見本（`*.sample.md`）は除く。
+DESIGN_DOC_DIR_PARTS = ("designs", "docs")
+DESIGN_DOC_SAMPLE_SUFFIX = ".sample.md"
 TARGETS_RELATIVE = "tmp/domain-docs-targets.yaml"
 RESULT_RELATIVE = "tmp/domain-docs-result.yaml"
 FINDINGS_RELATIVE = "tmp/domain-docs-findings.yaml"
@@ -294,38 +303,72 @@ def pinned_manifest_bytes(manifest_path: Path, source_path: str, fingerprint: st
 
 
 # --------------------------------------------------------------------------
-# Design Doc の検知と状態判定
+# Design Doc の選択（PO が指定）と状態判定
 # --------------------------------------------------------------------------
-def detect_design_doc(root: Path) -> Path | None:
-    matches = [root / rel for rel in DESIGN_DOC_PATHS if (root / rel).is_file()]
-    if len(matches) > 1:
-        joined = ", ".join(path.relative_to(root).as_posix() for path in matches)
-        raise FatalError(f"Design Doc が複数存在します: {joined}")
-    return matches[0] if matches else None
+def resolve_design_doc(root: Path, value: str | None) -> Path:
+    """PO が選んだ Design Doc を検証して返す。自動検知はしない。
+
+    許可: `designs/docs/` 直下の `*.md`（`*.sample.md` を除く）。相対パス、または root 配下の絶対パス。
+    拒否: `..` を含むパス、`designs/docs/` 直下以外、`.md` 以外、見本、シンボリックリンク、存在しないファイル（exit 2）。
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise FatalError("--design-doc は必須です（designs/docs/ 直下の *.md を PO が選んで指定する）")
+    candidate = Path(value.strip())
+    if candidate.is_absolute():
+        # 親ディレクトリだけを実体化し、ファイル自体がシンボリックリンクかどうかは後で検査する。
+        resolved_parent = Path(os.path.realpath(candidate.parent))
+        try:
+            relative = (resolved_parent / candidate.name).relative_to(Path(os.path.realpath(root)))
+        except ValueError:
+            raise FatalError(f"--design-doc がリポジトリ外です: {value}") from None
+    else:
+        relative = candidate
+    parts = relative.parts
+    if ".." in parts:
+        raise FatalError(f"--design-doc に `..` は使えません: {value}")
+    if len(parts) != len(DESIGN_DOC_DIR_PARTS) + 1 or parts[:-1] != DESIGN_DOC_DIR_PARTS:
+        raise FatalError(
+            f"--design-doc は {'/'.join(DESIGN_DOC_DIR_PARTS)}/ 直下のファイルである必要があります: {value}"
+        )
+    name = parts[-1]
+    if not name.endswith(".md"):
+        raise FatalError(f"--design-doc は .md ファイルである必要があります: {value}")
+    if name.endswith(DESIGN_DOC_SAMPLE_SUFFIX):
+        raise FatalError(f"--design-doc に見本（*{DESIGN_DOC_SAMPLE_SUFFIX}）は選べません: {value}")
+    path = root / relative
+    # 最終ファイルだけでなく、root からそこまでの各要素も見る。親がリンクだと
+    # is_file() が辿り、リポジトリ外の通常ファイルを受理してしまう。
+    cursor = root
+    for part in relative.parts:
+        if part == ".":
+            continue
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise FatalError(f"--design-doc にシンボリックリンクは選べません: {value}")
+    if not path.is_file():
+        raise FatalError(f"選んだ Design Doc が存在しません: {relative.as_posix()}")
+    return path
 
 
-def design_doc_state(root: Path, manifest_path: Path) -> tuple[Path | None, str]:
-    """(Design Doc, 状態) を返す。状態は none / unpinned / fresh / stale。"""
-    doc = detect_design_doc(root)
+def design_doc_state(root: Path, manifest_path: Path, doc: Path) -> str:
+    """選んだ Design Doc と pin を比べた状態を返す。unpinned / fresh / stale / switched。
+
+    switched は、固定済みの `source_path` と別のファイルを選んだ状態である（pin の指すファイルが
+    消えていても、別のファイルを選べば switched になる）。
+    """
     manifest = _load_yaml(manifest_path, FatalError) if manifest_path.is_file() else {}
     pinned = manifest.get("design_doc")
-    if doc is None:
-        if pinned is not None:
-            raise FatalError("固定済み design_doc の入力ファイルが消失しています")
-        return None, "none"
     if pinned is None:
-        return doc, "unpinned"
+        return "unpinned"
     if not isinstance(pinned, dict):
         raise FatalError("manifest.design_doc は mapping である必要があります")
     relative = doc.relative_to(root).as_posix()
     if pinned.get("source_path") != relative:
-        raise FatalError(
-            f"design_doc.source_path {pinned.get('source_path')!r} が検出済みパス {relative!r} と一致しません"
-        )
+        return "switched"
     fingerprint = pinned.get("source_fingerprint")
     if not isinstance(fingerprint, str) or not HEX64.fullmatch(fingerprint):
         raise FatalError("design_doc.source_fingerprint が不正です")
-    return doc, ("fresh" if fingerprint == tc.source_fingerprint(doc) else "stale")
+    return "fresh" if fingerprint == tc.source_fingerprint(doc) else "stale"
 
 
 # --------------------------------------------------------------------------
@@ -530,66 +573,86 @@ def _digests(root: Path, doc: Path | None, manifest_path: Path) -> dict[str, str
 # --------------------------------------------------------------------------
 # state
 # --------------------------------------------------------------------------
+def _has_filled_sections(info: dict[str, dict]) -> bool:
+    """所有権表の節に、本文が器と一致しない（＝埋め済み、または手で書いた）ものがあるか。
+
+    存在し、見出し構成が器と一致するファイルだけを見る。契約節は数えない。
+    """
+    for rel, entry in info.items():
+        if not entry["exists"] or entry["mismatch"]:
+            continue
+        if any(name not in entry["fillable"] for name in OWNERSHIP[rel]):
+            return True
+    return False
+
+
 def build_targets(
     root: Path,
     manifest_path: Path,
     skeletons: dict[str, str],
+    design_doc: Path,
     *,
-    refresh: bool,
+    refresh: bool = False,
     titles: Mapping[str, frozenset[str]] | None = None,
 ) -> dict:
-    doc, pin_state = design_doc_state(root, manifest_path)
-    if refresh and doc is None:
-        raise FatalError("refresh には Design Doc が必要です")
-    if refresh and pin_state == "unpinned":
-        raise FatalError("refresh には固定済みの design_doc が必要です（先に fill を実行してください）")
+    """選んだ Design Doc に対する対象節と action を求める。
+
+    action: skip（対象なし）/ fill（器のままの節だけ。mode: fill）/
+    update（所有権表の全節をマージして更新。mode: refresh）。
+    update になる条件: pin が stale / switched、pin が無く埋め済みの docs、または `refresh`（強制）。
+    """
+    doc = design_doc
+    pin_state = design_doc_state(root, manifest_path, doc)
+    info = analyze(root, skeletons, titles)
+    if refresh:
+        action_update = True
+    elif pin_state in ("stale", "switched"):
+        action_update = True
+    elif pin_state == "unpinned":
+        action_update = _has_filled_sections(info)
+    else:
+        action_update = False
     files: list[dict] = []
     spec_files: list[dict] = []
-    if doc is not None:
-        info = analyze(root, skeletons, titles)
-        for rel, entry in info.items():
-            if refresh:
-                sections = list(OWNERSHIP[rel]) if entry["exists"] and not entry["mismatch"] else []
-            else:
-                sections = list(entry["fillable"])
-            item = {"file": rel, "exists": entry["exists"], "sections": sections}
-            placeholders = [name for name in sections if name in entry["placeholder_quotes"]]
-            if placeholders:
-                item["placeholders"] = placeholders
-                # subagent は docs を読めない。契約節の本文の根拠になる引用（guidance）を targets で渡す。
-                item["guidance"] = {
-                    name: _quote_text(entry["placeholder_quotes"][name]) for name in placeholders
-                }
-            if entry["mismatch"]:
-                item["mismatch"] = entry["mismatch"]
-            files.append(item)
-        readme = root / README_PATH
-        rows = readme_rows(_read_text(readme)) if readme.is_file() else []
-        by_slug = {row["slug"]: row["evidence"] for row in rows}
-        for slug in sorted(_existing_slugs(root) | set(by_slug)):
-            spec_files.append({
-                "slug": slug,
-                "exists": (root / SPEC_DIR / f"{slug}.md").is_file(),
-                "evidence": by_slug.get(slug, ""),
-            })
+    for rel, entry in info.items():
+        if action_update:
+            sections = list(OWNERSHIP[rel]) if entry["exists"] and not entry["mismatch"] else []
+        else:
+            sections = list(entry["fillable"])
+        item = {"file": rel, "exists": entry["exists"], "sections": sections}
+        placeholders = [name for name in sections if name in entry["placeholder_quotes"]]
+        if placeholders:
+            item["placeholders"] = placeholders
+            # 契約節の本文の根拠になる引用（guidance）を targets で渡す。
+            item["guidance"] = {
+                name: _quote_text(entry["placeholder_quotes"][name]) for name in placeholders
+            }
+        if entry["mismatch"]:
+            item["mismatch"] = entry["mismatch"]
+        files.append(item)
+    readme = root / README_PATH
+    rows = readme_rows(_read_text(readme)) if readme.is_file() else []
+    by_slug = {row["slug"]: row["evidence"] for row in rows}
+    for slug in sorted(_existing_slugs(root) | set(by_slug)):
+        spec_files.append({
+            "slug": slug,
+            "exists": (root / SPEC_DIR / f"{slug}.md").is_file(),
+            "evidence": by_slug.get(slug, ""),
+        })
     total = sum(len(item["sections"]) for item in files)
-    if doc is None:
-        action = "skip"
-    elif refresh:
-        action = "refresh"
-    elif pin_state == "stale":
-        action = "stale"
+    if action_update:
+        action = "update"
     elif total > 0:
         action = "fill"
     else:
         action = "skip"
     return {
         "schema_version": SCHEMA_VERSION,
-        "mode": "refresh" if refresh else "fill",
+        "mode": "refresh" if action_update else "fill",
         "action": action,
         "pin": pin_state,
-        "design_doc": doc.relative_to(root).as_posix() if doc is not None else "",
-        "source_fingerprint": tc.source_fingerprint(doc) if doc is not None else "",
+        "design_doc": doc.relative_to(root).as_posix(),
+        "source_fingerprint": tc.source_fingerprint(doc),
         "files": files,
         "spec_files": spec_files,
         "digests": _digests(root, doc, manifest_path),
@@ -794,9 +857,10 @@ def _check_targets(targets: dict, *, refresh: bool) -> None:
 
 
 def _check_unchanged(root: Path, manifest_path: Path, targets: dict) -> Path:
-    doc = detect_design_doc(root)
-    if doc is None or doc.relative_to(root).as_posix() != targets["design_doc"]:
-        raise ApplyError("state の後に Design Doc の検出結果が変わりました。state を再実行してください")
+    selected = targets["design_doc"]
+    if not isinstance(selected, str) or not (root / selected).is_file():
+        raise ApplyError("state の後に、選んだ Design Doc が見つからなくなりました。state を再実行してください")
+    doc = resolve_design_doc(root, selected)
     if tc.source_fingerprint(doc) != targets["source_fingerprint"]:
         raise ApplyError("state の後に Design Doc が変更されました。state を再実行してください")
     current = _digests(root, doc, manifest_path)
@@ -806,7 +870,7 @@ def _check_unchanged(root: Path, manifest_path: Path, targets: dict) -> Path:
     )
     if changed:
         raise ApplyError(
-            "state の後に変更されたファイルがあります（subagent による直接編集の疑い）: "
+            "state の後に変更されたファイルがあります（結果ファイル以外の直接編集の疑い）: "
             + ", ".join(changed)
         )
     return doc
@@ -979,8 +1043,27 @@ def build_plan(
         seen_slugs.add(slug)
         _single_line(item["title"], f"{label}.title")
         _single_line(item["summary"], f"{label}.summary")
-        evidence = _check_evidence(item["evidence"], label, doc_headings)
-        _check_supporting_evidence(item, label, doc_headings, schema_version)
+        supporting = _check_supporting_evidence(item, label, doc_headings, schema_version)
+        existing_row = row_by_slug.get(slug)
+        claimed = item["evidence"].strip() if isinstance(item["evidence"], str) else ""
+        if (
+            refresh
+            and slug in existing_slugs
+            and existing_row is not None
+            and existing_row["evidence"]
+            and claimed == existing_row["evidence"]
+            and claimed not in doc_headings
+        ):
+            # update での既存機能仕様の補足。根拠は既存行のまま（別の Design Doc 由来）で、
+            # 今回の Design Doc の見出しは supporting_evidence で示す（実在は上で検査済み）。
+            if not supporting:
+                raise ApplyError(
+                    f"{label}: 既存の {slug}.md の根拠 {claimed!r} は今回の Design Doc にありません。"
+                    "補足には supporting_evidence（schema_version 2）に今回の Design Doc の見出しを1件以上書く"
+                )
+            evidence = _single_line(item["evidence"], f"{label}.evidence")
+        else:
+            evidence = _check_evidence(item["evidence"], label, doc_headings)
         if evidence in seen_evidence:
             raise ApplyError(f"{label}: 根拠見出しが重複しています: {evidence!r}")
         seen_evidence.add(evidence)
@@ -1035,14 +1118,20 @@ def build_plan(
             SPEC_PATH, _read_text(spec_path) if spec_path.is_file() else ""
         )
         final_slugs = existing_slugs | {Path(rel).stem for rel in new_files}
-        errors = _consistency_errors(final_readme, final_spec, final_slugs, new_evidence)
+        # 新規 slug だけでなく、既存の非空な主根拠も最終 README と照合する。
+        # 補足更新は spec 側の根拠を既存行のままにするので、README だけ書き換えると
+        # 次の state が別の見出しを主根拠として読んでしまう。
+        expected_evidence = {
+            slug: row["evidence"]
+            for slug, row in row_by_slug.items()
+            if row["evidence"]
+        }
+        expected_evidence.update(new_evidence)
+        errors = _consistency_errors(
+            final_readme, final_spec, final_slugs, expected_evidence
+        )
         if errors:
             raise ApplyError("; ".join(errors))
-        for row in readme_rows(final_readme):
-            if row["evidence"] and row["evidence"] not in doc_headings:
-                plan.notes.append(
-                    f"ORPHAN: {row['slug']}.md の根拠見出し {row['evidence']!r} は Design Doc にありません（削除しません）"
-                )
 
     # --- 決定論ゲート（G-DOCFILL-*）--------------------------------------------
     replaced = {
@@ -1157,9 +1246,11 @@ def cmd_state(args: argparse.Namespace) -> int:
     root, manifest_path, targets_path, _ = _paths(args)
     if not manifest_path.is_file():
         raise FatalError(f"manifest が存在しません: {manifest_path}")
+    doc = resolve_design_doc(root, args.design_doc)
     skeletons = render_skeletons(manifest_path)
     targets = build_targets(
-        root, manifest_path, skeletons, refresh=args.refresh, titles=contract_section_titles(manifest_path)
+        root, manifest_path, skeletons, doc,
+        refresh=args.refresh, titles=contract_section_titles(manifest_path),
     )
     targets_path.parent.mkdir(parents=True, exist_ok=True)
     targets_path.write_text(dump_yaml_text(targets), encoding="utf-8")
@@ -1221,13 +1312,20 @@ def cmd_apply(args: argparse.Namespace) -> int:
         return 0
 
     if args.decline:
+        # 見送りは、同じ Design Doc の stale だけに許す。switched / pin なし / 強制 update では、
+        # 反映していない Design Doc を既読にしないため使えない（apply を実行しないことで見送りを表す）。
+        if targets.get("pin") != "stale":
+            raise FatalError(
+                f"--decline は同じ Design Doc の stale にだけ使えます（pin={targets.get('pin')}）。"
+                "見送るときは apply を実行しない（pin は動かず、次回の state でも update として再提示される）"
+            )
         doc = _check_unchanged(root, manifest_path, targets)
         plan = Plan()
         _plan_pin(root, manifest_path, doc, plan, targets["source_fingerprint"])
         _check_unchanged(root, manifest_path, targets)
         commit(root, plan.writes)
         _cleanup(targets_path, result_path)
-        print("PASS: refresh を見送り、Design Doc を既読にしました（docs は変更なし）")
+        print("PASS: update を見送り、Design Doc を既読にしました（docs は変更なし）")
         return 0
 
     if not result_path.is_file():
@@ -1278,9 +1376,7 @@ def cmd_pin(args: argparse.Namespace) -> int:
     root, manifest_path, _, _ = _paths(args)
     if not manifest_path.is_file():
         raise FatalError(f"manifest が存在しません: {manifest_path}")
-    doc = detect_design_doc(root)
-    if doc is None:
-        raise FatalError("Design Doc がありません")
+    doc = resolve_design_doc(root, args.design_doc)
     plan = Plan()
     fingerprint = tc.source_fingerprint(doc)
     _plan_pin(root, manifest_path, doc, plan, fingerprint)
@@ -1302,9 +1398,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="domain-docs の state / apply / pin")
     parser.add_argument("command", choices=("state", "apply", "pin"))
     parser.add_argument("--manifest", default=str(ROOT / "manifest.yaml"))
+    parser.add_argument(
+        "--design-doc",
+        metavar="PATH",
+        help="state / pin で必須。PO が選んだ designs/docs/ 直下の *.md（見本 *.sample.md は不可）。"
+        "tech_contract.py の --design-doc（技術スタック設計書）とは別物",
+    )
     parser.add_argument("--targets", help="targets ファイル（既定: tmp/domain-docs-targets.yaml）")
     parser.add_argument("--result", help="結果ファイル（既定: tmp/domain-docs-result.yaml）")
-    parser.add_argument("--refresh", action="store_true")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="state: 強制 update（mode: refresh）。apply: targets の mode が refresh（action が update）のとき付ける",
+    )
     parser.add_argument("--check", action="store_true", help="書込みなしで apply と同じ検証とゲートを実行する")
     parser.add_argument("--approve", metavar="DIGEST")
     parser.add_argument("--decline", action="store_true")

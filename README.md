@@ -2,7 +2,7 @@
 
 AI エージェント（Cursor Agent など）を開発プロジェクトに組み込むための基盤ファイル群を、**統一設計書 + seed manifest + templates + project manifest** から決定論的に生成・監査するツールキットです。
 
-このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル（`session-planning` / `session-handover` / `campaign-cleanup`）、Domain 本文起案スキル（`domain-docs`）、GitHub 連携スキル、多角評価スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
+このリポジトリは「生成される基盤」そのものではなく、基盤を生成するための **Cursor Skill と Python エンジン一式**です。対象プロジェクトで `agentic-workflow-foundation` を実行すると、`AGENTS.md`、Cursor Rules、Hooks、運用 docs、Domain 層ドキュメント、セッション管理スキル（`session-planning` / `session-handover` / `campaign-cleanup`）、Domain 本文起案スキル（`domain-docs`。単独で起動する）、GitHub 連携スキル、多角評価スキル、wrapper スクリプト、任意の CodeRabbit / review スキル設定がワークスペース直下に展開されます。
 
 **本リポジトリは dogfooding 構成**です。キット本体（`.cursor/skills/agentic-workflow-foundation` / `agentic-workflow-engine`）に加え、ルート直下に `manifest.yaml` と生成物（`AGENTS.md`、`docs/`、`bin/` 等）が同居しています。生成物の変更は manifest / templates 経由の再生成が正規ルートです。
 
@@ -23,7 +23,7 @@ AI エージェント（Cursor Agent など）を開発プロジェクトに組�
 | Cross-Repo | 任意の `.cursor/skills/cross-repository-knowledge-link/**`、`bin/cross-repo-sync-safe` |
 | Review Integration | 任意の `.coderabbit.yaml` と CodeRabbit path instructions |
 
-`docs/DECISIONS.md`、`docs/GOTCHAS.md`、Domain 層ドキュメント群（`docs/spec.md` 等）、スキル設定（`campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml` と `cross-repository-knowledge-link` の `config.json`）、`docs/agent-tasks/{reports,reviews,maintenance-docs}/.gitkeep` は、存在しない場合だけ初期生成する `seed` モードです。Design Doc（`designs/docs/designdoc.md` または `designs/docs/design-doc.md`）があるとき、Phase 2.1 が Domain 層の空節だけを埋めます。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
+`docs/DECISIONS.md`、`docs/GOTCHAS.md`、Domain 層ドキュメント群（`docs/spec.md` 等）、スキル設定（`campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml` と `cross-repository-knowledge-link` の `config.json`）、`docs/agent-tasks/{reports,reviews,maintenance-docs}/.gitkeep` は、存在しない場合だけ初期生成する `seed` モードです。Domain 層ドキュメントの本文は、foundation の生成では埋めません（器だけを作ります）。Design Doc はプロジェクトごとに作られ、その都度 Domain docs を更新するため、`domain-docs` スキルを単独で起動し、`designs/docs/*.md` から使うファイルを PO が選んで埋めます。`.gitignore` と `.cursorignore` は既存内容を保持し、`marker_id: agentic-foundation` の管理ブロックだけを更新します。
 
 ## 現行アーキテクチャ
 
@@ -40,7 +40,6 @@ agentic-workflow-foundation（What）
         ├─ ingest: tech_stack を Domain サマリとして root manifest.yaml へ取り込み
         ├─ contract: tech stack SoT → LLM draft → validate / PO approval → tech_contract pin
         ├─ resolve: 承認済み tech_contract を quality gate / runtime / review / domain docs へ投影
-        ├─ Phase 2.1: Design Doc があるとき domain-docs → domain_docs_apply.py で空節を埋める
         ▼
 run_resolved_engine.py
   seed + upstream metadata + root manifest overlay から
@@ -58,7 +57,7 @@ agentic-workflow-engine（How）
 
 `agentic-workflow-foundation` は、どのファイルをどの内容で出すかを持つ設定スキルです。統一設計書、seed `manifest.yaml`、`templates/`、project manifest の重ね合わせ、tech stack の事実取り込み、承認済み `tech_contract` の検証・投影を担当します。G-* / runtime / CodeRabbit / Domain docs / Provisioning の技術依存入力は `tech_contract` のみです。
 
-`agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。Design Doc から Domain 層本文を埋める Phase 2.1 は engine の外で、`domain_docs_apply.py` が行います。
+`agentic-workflow-engine` は、解決済みの `manifest.yaml + templates/` だけを受け取る生成・監査エンジンです。統一設計書や root `manifest.yaml` を直接読まず、`render` / `seed` / `marker` モードでファイルをバイト一致再現します。Design Doc から Domain 層本文を埋める作業は、foundation の生成プロセスにも engine にも含まれず、単独起動の `domain-docs`（`domain_docs_apply.py`）が行います。
 
 ## リポジトリ構成
 
@@ -71,8 +70,8 @@ agentic-workflow-foundation-kit/
 ├── init.yaml                          # 初期入力 SoT（project / tech stack / context budget / github_access。生成対象外）
 ├── manifest.yaml                      # 正式 project manifest（スキル実行で生成）
 ├── designs/
-│   └── docs/                          # 任意の Design Doc 入力。検知名は designdoc.md または design-doc.md
-│       └── designdoc.sample.md        # 見本（検知対象のファイル名ではない）
+│   └── docs/                          # Design Doc の置き場。domain-docs 起動時に PO が *.md から選ぶ
+│       └── designdoc.sample.md        # 見本（*.sample.md は選択候補から除外される）
 │
 ├── AGENTS.md                          ┐
 ├── CLAUDE.md                          │
@@ -194,7 +193,7 @@ agentic-workflow-foundation-kit/
 
 | スキル | 役割 |
 | --- | --- |
-| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査、Design Doc があるときの Phase 2.1 を担う |
+| [`agentic-workflow-foundation`](.cursor/skills/agentic-workflow-foundation/SKILL.md) | 基盤の設定スキル。root `manifest.yaml` の生成、tech stack 事実取り込み、`tech_contract` の承認・投影、明示承認付き Provisioning、一時 resolved skill-dir 作成、生成・監査を担う（Domain 層本文の充填は担わない） |
 | [`agentic-workflow-engine`](.cursor/skills/agentic-workflow-engine/SKILL.md) | 生成・監査エンジン。設定スキルから渡された `manifest.yaml + templates/` を決定論的に変換する |
 | [`agentic-workflow-update`](.cursor/skills/agentic-workflow-update/SKILL.md) | 固定 public URL から kit を取得し、対象アプリの overlay で候補生成・差分承認・安全同期を行う更新専用スキル（ホスト個人スキルとして配置）。更新責務は [README](.cursor/skills/agentic-workflow-update/README.md) |
 | [`technology-stack-unified-design`](.cursor/skills/technology-stack-unified-design/SKILL.md) | 既存実装のローカル snapshot から技術スタック統一設計書の reverse-draft を作るキット同梱スキル。foundation の生成物ではない |
@@ -206,7 +205,7 @@ agentic-workflow-foundation-kit/
 | [`session-planning`](.cursor/skills/session-planning/SKILL.md) | 追跡ドキュメント（`.cursor/.tracking/tracker-{campaign_id}.md`）の作成・更新 |
 | [`session-handover`](.cursor/skills/session-handover/SKILL.md) | セッション開始/終了、handoff、検証・artifact・archive・review-start ゲート |
 | [`campaign-cleanup`](.cursor/skills/campaign-cleanup/SKILL.md) | 現在の campaign を保護し、他 campaign の allowlist 内 runtime を削除する |
-| [`domain-docs`](.cursor/skills/domain-docs/SKILL.md) | Design Doc から Domain 層本文を起案し、`tmp/domain-docs-result.yaml` だけを書く |
+| [`domain-docs`](.cursor/skills/domain-docs/SKILL.md) | 単独で起動する。PO が選んだ Design Doc から Domain 層本文を、既存 docs とマージして起案し、`tmp/domain-docs-result.yaml` だけを書く |
 | [`workflow-orchestrator`](.cursor/skills/workflow-orchestrator/SKILL.md) | 6 段階標準タスク実行ワークフロー（①〜⑥）の制御 |
 | [`requirement-analysis`](.cursor/skills/requirement-analysis/SKILL.md) | Step ①の要求正規化、3段階ガード、分析深度判定 |
 | [`maintenance-docs-workflow`](.cursor/skills/maintenance-docs-workflow/SKILL.md) | 起票キューから Domain 層 docs を反映する独立パイプライン |
@@ -262,9 +261,8 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 10. **Phase 1.68**: `materialize_runtime.py --check` で read-only 検査し、必要な書込みは明示承認付き `project-setup --apply` で行う
 11. **Phase 1.7**: 承認済み契約の declarative preflight と実リポジトリの整合をチェックする
 12. **Phase 2**: 一時 resolved skill-dir から基盤ファイル群を生成する
-13. **Phase 2.1**: Design Doc があるとき、生成済み `domain-docs` が本文を起案し、`domain_docs_apply.py` が Domain 層の空節だけを書く。入力は `designs/docs/designdoc.md` または `designs/docs/design-doc.md` の片方
-14. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis / agent-kaizen の静的契約、`agent_workflow` 有効時の Worker Contract を監査する
-15. **Phase 4**: 確定値、生成物、Phase 2.1 の結果、ゲート結果を報告する
+13. **Phase 3**: 冪等性、required sections、deep-thinking / requirement-analysis / agent-kaizen の静的契約、`agent_workflow` 有効時の Worker Contract を監査する
+14. **Phase 4**: 確定値、生成物、ゲート結果を報告する（Domain 層本文は未充填で、`domain-docs` を単独で起動して埋める旨を案内する）
 
 ## 適用済みアプリへの kit 更新
 
@@ -355,9 +353,10 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_coderabbit.py
 # Domain 層ドキュメント入力を承認済み tech_contract から投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_domain_docs.py
 
-# Design Doc があるとき、空節の状態を見てから適用する（手順の正本は foundation SKILL の Phase 2.1）
-python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py state
-python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py apply --check
+# Domain 層本文の充填は生成プロセスの外。domain-docs スキルを単独で起動し、PO が選んだ Design Doc で実行する
+# （手順の正本は生成された .cursor/skills/domain-docs/SKILL.md）
+python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py state --design-doc designs/docs/<選んだファイル>.md
+python3 .cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py apply --check   # action が update のときは --refresh も付ける
 
 # runtime action の read-only renderability 検査
 python3 .cursor/skills/agentic-workflow-foundation/scripts/materialize_runtime.py --check
@@ -430,7 +429,7 @@ bin/quality-gate verify
 - `.cursor/skills/cross-repository-knowledge-link/**` と `bin/cross-repo-sync-safe` — `cross_repo_knowledge.enabled: true` の場合のみ
 - `.cursor/skills/agent-kaizen/**` — `agent_kaizen.enabled: true` の場合のみ
 
-Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。Design Doc がある場合、Phase 2.1 は器のままの節だけを埋め、手で書いた節は残します。スキル設定の `config.yaml` / `config.json` も `seed` です。
+Domain 層ドキュメント（`docs/spec.md` 等）は `seed` モードで初回のみ生成し、以降は PO が内容を充実させます。本文は `domain-docs` を単独で起動して埋めます。fill は器のままの節だけを埋め、update（別の Design Doc の選択、Design Doc の変更など）は承認を得て既存本文とマージします。スキル設定の `config.yaml` / `config.json` も `seed` です。
 
 ## 5層モデル
 
