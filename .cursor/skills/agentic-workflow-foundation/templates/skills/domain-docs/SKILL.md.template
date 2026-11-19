@@ -1,9 +1,11 @@
 ---
 name: domain-docs
 description: >-
-  Design Doc から Domain 層ドキュメントの本文を起案し、結果ファイル
-  tmp/domain-docs-result.yaml だけを書く。docs と manifest は編集しない。
-  agentic-workflow-foundation の Phase 2.1 から起動する。
+  単独で起動する。designs/docs/ の *.md から PO が AskQuestion で選んだ Design Doc を読み、
+  Domain 層ドキュメント（docs/spec.md ほか）の本文を、既存 docs とマージして起案する。
+  コードベースがあれば整合を確認する。起動したエージェントは結果ファイル
+  tmp/domain-docs-result.yaml だけを書き、docs への書込みは domain_docs_apply.py が行う。
+  agentic-workflow-foundation の生成プロセスからは起動しない。
 disable-model-invocation: true
 ---
 
@@ -11,21 +13,68 @@ disable-model-invocation: true
 
 # domain-docs
 
-Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果ファイルへ起案する。書込みは `domain_docs_apply.py` が行う。このスキルは本文を docs へ直接書かない。
+PO が選んだ Design Doc を読み、Domain 層ドキュメントへ入れる本文を結果ファイルへ起案する。起案は、このスキルを起動したエージェント自身が行う。書込みは `domain_docs_apply.py` が行い、このスキルは本文を docs へ直接書かない。
+
+Design Doc はプロジェクトごとに作られ、その都度 Domain docs を更新する。基盤の生成（`agentic-workflow-foundation`）は器（見出し・節順・`[TODO]`）だけを作り、本文はこのスキルを単独で起動して、何度でも更新する。
+
+## 起動手順
+
+`apply` は次のスクリプトである。以降、`$apply` と書く。
+
+```bash
+apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
+```
+
+1. 実行は、キャンペーン外か、実装開始前に限る。workflow の Step③〜⑥の間は、`G-WRITE-SCOPE-DOMAIN-001` が Domain docs の変更を拒否するので実行しない。
+2. 候補を作る。`designs/docs/*.md` を Glob で列挙し、見本（`*.sample.md`）を除く。root `manifest.yaml` の `design_doc.source_path` を読み、固定済みのファイルに印を付ける。候補に `PRD.md` など Design Doc でない文書が混じるときは、選択肢にその旨を注記する。
+3. `AskQuestion` で、使う Design Doc を PO に1つ選ばせる。自動で選ばない。推奨案を必ず1つ添える。固定済みのファイルが変わっている（stale）ならそれを推奨する。そうでなければ、固定済み以外で最終更新が新しい1件を推奨する（更新日時は checkout で変わるため参考値とし、PO が確認する）。トレードオフを1〜2行で示す。
+4. 状態を求める。
+
+   ```bash
+   python3 "$apply" state --design-doc designs/docs/<選んだファイル>.md
+   ```
+
+   `--design-doc` は、`designs/docs/` 直下の `*.md` だけを受け付ける（`..`、見本、シンボリックリンク、存在しないファイルは exit 2）。`tech_contract.py` の `--design-doc`（`.cursor/docs/` の技術スタック設計書）とは別物である。`state` は `tmp/domain-docs-targets.yaml` を書き、`STATE: action=... pin=...` を表示する。
+
+   | action | 意味 | 動作 |
+   | --- | --- | --- |
+   | `skip` | 埋める節が無く、固定済みの Design Doc と同じ | 起案せず終了する |
+   | `fill` | 器のままの節がある | 器のままの節だけを埋める（targets の `mode: fill`） |
+   | `update` | 固定済みと別のファイルを選んだ（`pin=switched`）、固定済みのファイルが変わった（`pin=stale`）、固定が無く docs が埋め済み、または `state --refresh` の指定 | 所有権表の全節と既存の機能仕様を、マージして更新する（targets の `mode: refresh`） |
+
+   `state --refresh` は、選んだ Design Doc での強制 update である（品質改善後の再起案に使う）。
+5. 起案する。`## マージとコード整合` に従い、結果ファイル `tmp/domain-docs-result.yaml` だけを書く。
+6. 検証する。書込みなしで、`apply` と同じ検証と決定論ゲート（`G-DOCFILL-*`）を実行する。`update` のときは `--refresh` を付ける。
+
+   ```bash
+   python3 "$apply" apply --check            # fill
+   python3 "$apply" apply --check --refresh  # update
+   ```
+
+   - exit 0: PASS。WARN があってもよい。WARN は再起案せず、最後の報告に載せる。
+   - exit 1: 検証失敗、またはゲートの FAIL。docs は変更されない。メッセージと `tmp/domain-docs-findings.yaml` を読み、結果ファイルを**最大 1 回だけ**直して `--check` を再実行する。2 回目も exit 1 なら、PO に報告して停止する。
+   - exit 2: 致命的（入力が曖昧・消失、書込み失敗）。中断して PO に報告する。
+7. 適用する。
+   - `fill`: `python3 "$apply" apply` を実行する。
+   - `update`: `python3 "$apply" apply --refresh` で計画（diff、findings、`PLAN: ... digest=<digest>`）を表示する（書込みなし）。次の2つを要約して PO に提示し、`AskQuestion` で承認を得る（推奨: 承認する。diff に意図しない `-` 行が無いことを確認したうえで）。
+     - diff の `-` 行（削除・置換される旧記述）。
+     - 旧世代のまま残る契約節の件数と名前。すでに埋まった契約節（`## 契約節` を参照）は update で変わらない。
+     承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用されない。
+   - 見送り: 同じ Design Doc の stale だけは、`python3 "$apply" apply --refresh --decline` で docs を変えずに既読にできる。switched、固定が無い場合、強制 update では `--decline` は使えない（exit 2）。見送りは `apply` を実行しないことで表す（固定は動かず、次回の `state` でも update として再提示される）。
+8. update の適用後に、同じ `--design-doc` で `state` を再実行する。`fill` が出たら（器のままの契約節、または update で `omissions` にした節）、続けて起案から繰り返す。`skip` になったら終了する。
+9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節を報告する。
 
 ## 入力と出力
 
-読んでよいファイルは次の2つだけである。
+読んでよいものは次のとおりである。
 
-- `designs/docs/designdoc.md` または `designs/docs/design-doc.md`（targets の `design_doc` が指す方）
+- PO が選んだ Design Doc（targets の `design_doc` が指すファイル）
 - `tmp/domain-docs-targets.yaml`
+- 既存の Domain docs（`docs/spec.md`、`docs/spec/*.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/workflows.md`）。既存本文を起点にマージし、ファイル間の食い違いを避けるために読む。
+- コードベース（`## マージとコード整合` の照合に使う）
+- 修復のとき（`apply --check` が exit 1 のとき）は、`tmp/domain-docs-findings.yaml`（ゲートの findings）と `tmp/domain-docs-result.yaml`（前回の結果。直す元）
 
-修復を頼まれたとき（親が `apply --check` の失敗を渡したとき）に限り、次の2つも読んでよい。
-
-- `tmp/domain-docs-findings.yaml`（ゲートの findings）
-- `tmp/domain-docs-result.yaml`（前回の結果。直す元）
-
-書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets、findings を変更しない。
+書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets、findings を直接変更しない。`state` の後に docs などが変わると、`apply` は digest 不一致で拒否する。
 
 ## 結果ファイル
 
@@ -33,7 +82,7 @@ Design Doc を読み、Domain 層ドキュメントへ埋める本文を結果�
 
 `sections` の各要素は `file`、`heading`、`body`、`evidence` をすべて持つ。`schema_version: 2` では、任意の `supporting_evidence`（Design Doc の見出しの配列）を足せる。
 
-`omissions` の各要素は `file`、`heading`、`reason` をすべて持つ。根拠が無い対象節だけを書く。
+`omissions` の各要素は `file`、`heading`、`reason` をすべて持つ。根拠が無い対象節、または今回は更新しない対象節だけを書く（既存本文が保たれる）。
 
 `spec_files` の各要素は `slug`、`title`、`summary`、`evidence`、`body` をすべて持つ。`schema_version: 2` では、任意の `supporting_evidence` を足せる。
 
@@ -85,7 +134,7 @@ targets の `files[].sections` に含まれる節は、`sections` か `omissions
 
 ## 持ち込む内容
 
-Design Doc に記載があるものは、落とさずに持ち込む。記載が無いものは書かない（推測で補わない）。節ごとに書くものが無ければ `omissions` に理由を書く。Design Doc の PoC 上の割り切りや既知の弱点は、塞がずにそのまま書く。
+Design Doc に記載があるものは、落とさずに持ち込む。記載が無いものは書かない（推測で補わない）。節ごとに書くものが無ければ `omissions` に理由を書く。Design Doc の PoC 上の割り切りや既知の弱点は、塞がずにそのまま書く。`update` のときは、既存本文との統合を `## マージとコード整合` に従って行う。
 
 - `docs/spec.md`: 目的・課題・解決方針・対象外、全ステータス値とその意味、採番の開始値・単位・境界（日付の区切りなど）、不変の設計原則（ロック、採番、スナップショット、原子性など、変えてはならない規則を1つずつ）、既知の弱点と、失敗したときに残る状態・復旧手順。
 - `docs/api.md`: 全エンドポイントの呼び元、request、response、条件付きで返す項目、並び順と同値のときの順序、既定値、検証失敗の分類とエラーコード、同じ値の再送の扱い、冪等性の有無。
@@ -95,12 +144,23 @@ Design Doc に記載があるものは、落とさずに持ち込む。記載が
 
 ## 矛盾する記述の扱い
 
-Design Doc の中で、同じ事項の記述が食い違うことがある（画面設計と DB 設計で、一覧の範囲や並びが違うなど）。次のとおりにする。
+Design Doc の中で、同じ事項の記述が食い違うことがある（画面設計と DB 設計で、一覧の範囲や並びが違うなど）。次のとおりにする。docs と Design Doc の食い違いは、`## マージとコード整合` に従う。
 
 - 「どちらも残す」「併記する」「両案を残す」と書かない。docs の読み手は、契約を1つに決められなくなる。
 - Design Doc が「振る舞いの正」と指す節（業務フロー、画面設計）の側を、契約として書く。もう一方が索引の読み方など実装上の説明であるときは、同じ事項の別契約として持ち込まない。
 - 正を決められないときは、その事項を扱う節の1か所にだけ「未決。実装しない」と書く。ほかのファイルには書かず、その節へのリンクで参照する。
 - 契約の引用が断定している内容を、本文で限定したり打ち消したりしない。引用と Design Doc に差があるときは、「書かれていない」「留保する」と本文に書かず、Design Doc が明示している事実だけを書く。
+
+## マージとコード整合
+
+`update` は、既存の Domain docs を消さずにマージして更新する。`fill` も、既存 docs と食い違わないように書く。
+
+- 既存本文を起点にして、新しい Design Doc の記述を足す・更新する。旧記述は、新しい Design Doc に根拠のある差分を除いて保持する。「追加のみ」とは書かない（ステータス値の変更など、新しい Design Doc が改める記述は更新する）。結果の `body` は、節ごとの置換文なので、保持する旧記述を含めた全文で書く。今回は更新しない節は `omissions` に理由を書き、既存本文を保つ。
+- 新しい Design Doc の内容を、どの既存機能へ対応させるかは、起案するエージェントが判断する。対応づけに迷うときは、承認時の提示に理由を添える。
+- 既存の機能仕様（`docs/spec/{slug}.md`）を新しい Design Doc の内容で補足するときは、結果の `spec_files` に `schema_version: 2` で書く。`evidence` には収録仕様の既存行の根拠をそのまま、`supporting_evidence` には新しい Design Doc の見出しを1件以上書く。`body` は、旧本文に新しい記述を足した全文にする。収録仕様の既存行の根拠が空のときは、この書き方は使えず、`evidence` を新しい Design Doc の見出しにする。
+- docs と新しい Design Doc の記述が矛盾したときは、推測で決めない。「併記する」「両方残す」とも書かない。推奨案を添えて `AskQuestion` で PO に確認し、決まった内容で起案する。PO が「未決」とするときだけ、前節の「未決。実装しない」の書き方を使う。
+- コードベースがあれば、関連する実装（API、スキーマ、状態遷移）を読み、docs と照合する。照合は食い違いの報告に限る。コード由来の事実を本文に書かない（本文の出典は Design Doc と契約の guidance だけである）。Design Doc とコードが食い違うときも、推奨案を添えて `AskQuestion` で PO に確認する。食い違いが多いときは、一覧にまとめて1回で確認する。
+- `update` の承認時には、削除・置換される旧記述（diff の `-` 行）と、旧世代のまま残る契約節の件数と名前を、要約して添える。
 
 ## 図の引継ぎ
 
@@ -119,7 +179,7 @@ Design Doc の中で、同じ事項の記述が食い違うことがある（画
 
 ## 契約節
 
-targets の `files[].placeholders` に載った節は、契約の `api_sections`（`docs/api.md`）、`data_model_sections`（`docs/data-models.md`）、`workflow_sections`（`docs/workflows.md`）由来の節である。節ごとの引用の本文（技術スタック由来の規約）は、targets の `files[].guidance`（節名 → 本文）にある。docs は読めないので、本文の根拠にする規約は `files[].guidance` から読む。
+targets の `files[].placeholders` に載った節は、契約の `api_sections`（`docs/api.md`）、`data_model_sections`（`docs/data-models.md`）、`workflow_sections`（`docs/workflows.md`）由来の節である。節ごとの引用の本文（技術スタック由来の規約）は、targets の `files[].guidance`（節名 → 本文）にある。本文の根拠にする規約は `files[].guidance` から読む。
 
 - `sections` の要素は、所有権表の節と同じ `file`、`heading`、`body`、`evidence` で書く。`body` は節の `[TODO]` の置換文だけである。節の見出しと、kit が書いた引用段落（`>` で始まる行）は書かない。apply が引用を残す。引用は技術スタック由来の規約であり、`body` で言い換えて繰り返さない。
 - `docs/api.md` の契約節: Design Doc の本文が明示している JSON の外形と、エラー応答の外形だけを書く。型の定義、シリアライザやゲートウェイの設定、gRPC status、OpenAPI の required、実装のパッケージ名、各 API の JSON 例、データベースの型、画面遷移は書かない。同じファイルの所有節（`エラーハンドリング` など）が書く画面の挙動は再記しない。「素案である」「振る舞いの正は …」のように、正を docs の外へ戻す文は契約節の本文に書かない。正本の宣言は引用の1つだけにする。エラーコードの表は、`エラーハンドリング` と重ねて書かない。
@@ -127,7 +187,7 @@ targets の `files[].placeholders` に載った節は、契約の `api_sections`
 - `docs/workflows.md` の契約節: 引用の手順（起動、適用、変更の順序、品質ゲート）を、番号付きの手順に写す。Design Doc に根拠があれば補う。引用に無いコマンド、版、手順は作らない。ただし `変更手順` の API 変更と DB 変更は、引用が Domain docs の更新を含まないとき、先頭に「`docs/api.md`（DB 変更では `docs/data-models.md`）を、proto（DB 変更では `schema/*.sql`）と同じ変更単位で更新する」を1手順として足す。仕様の正は docs だからである。この手順の `evidence` は `contract` とする。
 - `evidence`: Design Doc の見出しを根拠にしたときはその見出しを、引用だけが根拠のときは `contract` を書く。所有権表の節には `contract` を使えない。
 - 根拠が無い節は `omissions` に書く。
-- refresh では契約節を書かない。
+- 契約節は fill（`mode: fill`）でだけ書く。update（`mode: refresh`）では書かない。器のまま（`[TODO]`）の契約節は、update の適用後に `state` を再実行して `fill` で埋める。すでに埋まった契約節は変更されず、旧世代の内容が残る。
 
 ## 機能仕様
 
@@ -140,20 +200,21 @@ targets の `files[].placeholders` に載った節は、契約の `api_sections`
 - 機能仕様には、設計書にある限り、次を書く。`## 概要`（必須）、前提条件、振る舞い・処理フロー（番号付きの手順、分岐の表）、`## エラーハンドリング`（業務としての失敗時の挙動）、制約・割り切り。見出し名は Design Doc の語に合わせてよいが、`## エラーハンドリング` は付ける。エラーの記述が Design Doc に無い機能は、無いことを1行で書く。
 - HTTP のフィールド定義は api、テーブルと排他は data-models、機能をまたぐ時系列と状態遷移は workflows に集約する。機能仕様では契約値を再掲せず、リンクで参照する。ただしテストに必要な境界値は、機能仕様に書いてよい。
 - 機能仕様に書かないもの: エラーコードの表、リクエストとレスポンスの項目の列挙、状態遷移の表、採番とロックの番号付き手順。これらは api、data-models、workflows が持つ。書くもの: その機能の業務としての流れ、画面の振る舞い、テストに必要な境界値、その機能固有の割り切りと残存状態。流れの手順に、API 名とフィールド名を並べない。
-- 件数は、Design Doc の `業務フロー` 直下の見出しの数を既定とする。主根拠（`evidence`）は、新しい機能仕様では `業務フロー` 直下の見出しに限る。画面や API の単位に細分化しない。画面設計やエラーハンドリングなど、ほかの見出しは `supporting_evidence`（`schema_version: 2`）で取り込む。
+- 新しい機能仕様の件数は、Design Doc の `業務フロー` 直下の見出しのうち、既存の機能仕様に対応しないものの数を既定とする。主根拠（`evidence`）は、新しい機能仕様では `業務フロー` 直下の見出しに限る。画面や API の単位に細分化しない。画面設計やエラーハンドリングなど、ほかの見出しは `supporting_evidence`（`schema_version: 2`）で取り込む。
 - 1つの主根拠見出しは1つの slug にだけ使う。
-- refresh では、targets の既存 `spec_files` と同じ根拠見出しに同じ slug を使う。根拠見出しを変えて別の slug を割り当てない。
-- 既存ファイルを結果から外しても apply は削除しない。収録仕様と機能仕様には、残す既存行を維持する。
+- `update` では、targets の既存 `spec_files` と同じ根拠見出しに同じ slug を使う。根拠見出しを変えて別の slug を割り当てない。既存の機能仕様の補足は `## マージとコード整合` に従う。
+- 既存ファイルを結果から外しても apply は変更も削除もしない。収録仕様と機能仕様には、残す既存行を維持する。別の Design Doc を根拠にした既存行は、今回の Design Doc に根拠の見出しが無くても、正常な状態として保持する。
 
-## 手順
+## 起案の手順
 
-1. targets の `mode`、`action`、対象節、既存 spec の slug と evidence を読む。
-2. Design Doc から、対象節の本文と機能仕様を起案する。「持ち込む内容」「図の引継ぎ」を満たす。
-3. `tmp/domain-docs-result.yaml` だけを書く。
-4. docs を直接編集せず終了する。検証と書込みは親が `domain_docs_apply.py apply --check` と `apply` で行う。
+1. targets の `mode`、`action`、`pin`、対象節、既存 spec の slug と evidence を読む。
+2. Design Doc と既存の Domain docs（必要ならコードベース）を読む。
+3. 「持ち込む内容」「図の引継ぎ」「マージとコード整合」を満たして、対象節の本文と機能仕様を起案する。
+4. `tmp/domain-docs-result.yaml` だけを書く。docs を直接編集しない。
+5. `## 起動手順` の検証（`apply --check`）へ進む。
 
-修復を頼まれたときは、次のとおりにする。
+修復のときは、次のとおりにする。
 
 1. `tmp/domain-docs-findings.yaml` と、`apply --check` が出したエラー、前回の `tmp/domain-docs-result.yaml` を読む。
 2. 指摘された点だけを直す。指摘の無い節を書き直さない。指摘が WARN だけのときは、直せる範囲で直す。
-3. 結果ファイルだけを書き直して終了する。
+3. 結果ファイルだけを書き直して、`apply --check` を再実行する。修復は最大 1 回である。

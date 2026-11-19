@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""domain_docs_apply.py の状態表・所有権・fill-only・refresh・ロールバックを回帰検査する。"""
+"""domain_docs_apply.py の状態表・所有権・fill / update・Design Doc の選択・ロールバックを回帰検査する。"""
 from __future__ import annotations
 
 import contextlib
@@ -20,6 +20,9 @@ import generate  # noqa: E402
 import genlib  # noqa: E402
 import tech_contract as tc  # noqa: E402
 from yaml_emitter import dump_yaml_text  # noqa: E402
+
+# PO が選んだ体で、Design Doc のパスを明示する（自動検知はしない）。
+DOC_PATH = Path("designs/docs/designdoc.md")
 
 DESIGN_DOC = """\
 # Design
@@ -142,7 +145,7 @@ def make_repo(
 ) -> Path:
     root = base / name
     root.mkdir(parents=True)
-    doc = root / da.DESIGN_DOC_PATHS[0]
+    doc = root / DOC_PATH
     if design:
         doc.parent.mkdir(parents=True)
         doc.write_text(DESIGN_DOC, encoding="utf-8")
@@ -151,13 +154,13 @@ def make_repo(
         fingerprint = tc.source_fingerprint(doc) if design else "1" * 64
         manifest += (
             "design_doc:\n"
-            f"  source_path: \"{da.DESIGN_DOC_PATHS[0].as_posix()}\"\n"
+            f"  source_path: \"{DOC_PATH.as_posix()}\"\n"
             f"  source_fingerprint: \"{fingerprint}\"\n"
         )
     elif pin == "stale":
         manifest += (
             "design_doc:\n"
-            f"  source_path: \"{da.DESIGN_DOC_PATHS[0].as_posix()}\"\n"
+            f"  source_path: \"{DOC_PATH.as_posix()}\"\n"
             f"  source_fingerprint: \"{'0' * 64}\"\n"
         )
     elif pin == "old":
@@ -172,8 +175,11 @@ def make_repo(
     return root
 
 
-def targets_for(root: Path, skeletons: dict[str, str], *, refresh: bool = False) -> dict:
-    return da.build_targets(root, root / "manifest.yaml", skeletons, refresh=refresh, titles=TITLES)
+def targets_for(
+    root: Path, skeletons: dict[str, str], *, refresh: bool = False, doc: Path | str | None = None
+) -> dict:
+    selected = root / (doc if doc is not None else DOC_PATH)
+    return da.build_targets(root, root / "manifest.yaml", skeletons, selected, refresh=refresh, titles=TITLES)
 
 
 def make_result(
@@ -233,6 +239,15 @@ def apply_fill(root, skeletons, spec_files=None, overrides=None):
 
 
 def run_cli(root: Path, skeletons: dict[str, str], *args: str) -> tuple[int, str, str]:
+    """CLI を実行する。state / pin には、PO が選んだ体で `--design-doc` を補う（`--design-doc` 指定済み、
+    または `--no-design-doc` を渡したときは補わない）。"""
+    args = list(args)
+    inject = args[0] in ("state", "pin") and "--design-doc" not in args
+    if "--no-design-doc" in args:
+        args.remove("--no-design-doc")
+        inject = False
+    if inject:
+        args += ["--design-doc", DOC_PATH.as_posix()]
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(da, "render_skeletons", return_value=skeletons), \
             patch.object(da, "contract_section_titles", return_value=TITLES), \
@@ -257,16 +272,29 @@ def test_state_table() -> None:
     with tempfile.TemporaryDirectory(prefix="domain-docs-state-") as temp_dir:
         base = Path(temp_dir)
 
+        # 選んだファイル自体が無いときだけ、入力消失として致命的エラーにする。
         root = make_repo(base, skeletons, design=False, name="none")
-        targets = targets_for(root, skeletons)
-        _assert((targets["action"], targets["pin"]) == ("skip", "none"), "none/none must skip")
+        code, _, err = run_cli(root, skeletons, "state")
+        _assert(code == 2 and "存在しません" in err, f"missing selected doc must be exit 2: {code} {err}")
+        _assert(not (root / da.TARGETS_RELATIVE).exists(), "missing doc must not write targets")
 
+        # 固定済みの Design Doc が消えていても、別のファイルを選べば switched として扱える。
         root = make_repo(base, skeletons, design=False, pin="fresh", name="lost")
-        _expect(da.FatalError, "none/pin", lambda: targets_for(root, skeletons))
+        code, _, err = run_cli(root, skeletons, "state")
+        _assert(code == 2 and "存在しません" in err, f"pinned-but-missing selection must be exit 2: {code} {err}")
+        other = root / "designs/docs/other-project.md"
+        other.parent.mkdir(parents=True)
+        other.write_text(DESIGN_DOC, encoding="utf-8")
+        targets = targets_for(root, skeletons, doc="designs/docs/other-project.md")
+        _assert((targets["action"], targets["pin"], targets["mode"]) == ("update", "switched", "refresh"),
+                f"switched must update: {targets['action']} {targets['pin']} {targets['mode']}")
 
+        # 2ファイルが共存しても曖昧にならない。PO が選んだ1つだけを使う。
         root = make_repo(base, skeletons, name="both")
-        (root / da.DESIGN_DOC_PATHS[1]).write_text(DESIGN_DOC, encoding="utf-8")
-        _expect(da.FatalError, "both docs", lambda: targets_for(root, skeletons))
+        (root / "designs/docs/design-doc.md").write_text(DESIGN_DOC, encoding="utf-8")
+        chosen = targets_for(root, skeletons, doc="designs/docs/design-doc.md")
+        _assert(chosen["design_doc"] == "designs/docs/design-doc.md" and chosen["action"] == "fill",
+                f"selected doc must be used: {chosen['design_doc']} {chosen['action']}")
 
         root = make_repo(base, skeletons, name="unpinned")
         targets = targets_for(root, skeletons)
@@ -300,27 +328,53 @@ def test_state_table() -> None:
 
         root = make_repo(base, skeletons, pin="stale", name="stale")
         targets = targets_for(root, skeletons)
-        _assert((targets["action"], targets["pin"]) == ("stale", "stale"), "stale must be reported")
+        _assert((targets["action"], targets["pin"], targets["mode"]) == ("update", "stale", "refresh"),
+                "stale must update in refresh mode")
+        owned_total = sum(len(v) for v in da.OWNERSHIP.values())
+        _assert(sum(len(i["sections"]) for i in targets["files"]) == owned_total, "update must list all owned sections")
+        _assert(not any(i.get("placeholders") for i in targets["files"]), "update must not target contract sections")
 
-        # すべて埋め済みなら skip。
+        # すべて埋め済みなら skip。state --refresh は、選んだ Design Doc での強制 update。
         root = make_repo(base, skeletons, pin="fresh", name="filled")
         apply_fill(root, skeletons)
         targets = targets_for(root, skeletons)
         _assert(targets["action"] == "skip", f"filled docs must skip: {targets['action']}")
-        refresh = targets_for(root, skeletons, refresh=True)
-        _assert(refresh["action"] == "refresh", "refresh action missing")
-        _expect(da.FatalError, "refresh unpinned", lambda: targets_for(
-            make_repo(base, skeletons, name="refresh-unpinned"), skeletons, refresh=True))
+        forced = targets_for(root, skeletons, refresh=True)
+        _assert((forced["action"], forced["pin"], forced["mode"]) == ("update", "fresh", "refresh"),
+                "forced refresh must update")
 
+        # pin が無くても、state --refresh は致命的エラーにならず update になる。
+        unpinned_refresh = targets_for(make_repo(base, skeletons, name="refresh-unpinned"), skeletons, refresh=True)
+        _assert((unpinned_refresh["action"], unpinned_refresh["pin"]) == ("update", "unpinned"),
+                "refresh without a pin must update")
+
+        # pin が無く、所有権表の節が埋め済み（手で書いた節を含む）なら update。器だけなら fill。
+        root = make_repo(base, skeletons, name="unpinned-filled")
+        apply_fill(root, skeletons)
+        (root / "manifest.yaml").write_text("project:\n  name: test\n", encoding="utf-8")
+        targets = targets_for(root, skeletons)
+        _assert((targets["action"], targets["pin"], targets["mode"]) == ("update", "unpinned", "refresh"),
+                f"unpinned filled docs must update: {targets['action']} {targets['pin']}")
+        root = make_repo(base, skeletons, name="unpinned-hand")
+        hand = (root / "docs/api.md")
+        hand.write_text(skeletons["docs/api.md"].replace(
+            "## エンドポイント一覧\n\n[TODO] 主要エンドポイントのパス・メソッド・概要を記述する。",
+            "## エンドポイント一覧\n\n手で書いた一覧。"), encoding="utf-8")
+        targets = targets_for(root, skeletons)
+        _assert((targets["action"], targets["mode"]) == ("update", "refresh"),
+                "a hand-written owned section without a pin must update")
+
+        # 固定済みと別のファイルを選ぶと switched。source_path の不一致は致命的エラーではない。
         root = make_repo(base, skeletons, pin="fresh", name="bad-path")
         text = (root / "manifest.yaml").read_text(encoding="utf-8").replace(
             "designs/docs/designdoc.md", "designs/docs/other.md")
         (root / "manifest.yaml").write_text(text, encoding="utf-8")
-        _expect(da.FatalError, "source_path mismatch", lambda: targets_for(root, skeletons))
+        targets = targets_for(root, skeletons)
+        _assert((targets["action"], targets["pin"]) == ("update", "switched"), "source_path mismatch must be switched")
 
         root = make_repo(base, skeletons, pin="fresh", name="bad-fp")
         text = (root / "manifest.yaml").read_text(encoding="utf-8")
-        text = text.replace(tc.source_fingerprint(root / da.DESIGN_DOC_PATHS[0]), "xyz")
+        text = text.replace(tc.source_fingerprint(root / DOC_PATH), "xyz")
         (root / "manifest.yaml").write_text(text, encoding="utf-8")
         _expect(da.FatalError, "bad fingerprint", lambda: targets_for(root, skeletons))
 
@@ -351,7 +405,7 @@ def test_pin_preserves_following_keys_and_migrates_old_format() -> None:
         _assert(
             loaded["design_doc"] == {
                 "source_path": "designs/docs/designdoc.md",
-                "source_fingerprint": tc.source_fingerprint(root / da.DESIGN_DOC_PATHS[0]),
+                "source_fingerprint": tc.source_fingerprint(root / DOC_PATH),
             },
             f"old keys not dropped: {loaded['design_doc']}",
         )
@@ -391,7 +445,9 @@ def test_ownership_matches_templates() -> None:
 def test_fill_only_keeps_hand_edits() -> None:
     skeletons = _skeletons()
     with tempfile.TemporaryDirectory(prefix="domain-docs-fill-") as temp_dir:
-        root = make_repo(Path(temp_dir), skeletons)
+        # fill-only の保証は fill 経路（固定済みの Design Doc と同じファイル）に残る。
+        # 固定が無く手で書いた節がある docs は update になる（test_state_table）。
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
         api = root / "docs/api.md"
         edited = skeletons["docs/api.md"].replace(
             "## エンドポイント一覧\n\n[TODO] 主要エンドポイントのパス・メソッド・概要を記述する。",
@@ -556,7 +612,7 @@ def test_contract_placeholders_fill_only() -> None:
         targets = targets_for(root, skeletons)
 
         # title が契約に無ければ、器の形が一致しても targets に載らず、結果に含めても拒否される。
-        untitled = da.build_targets(root, root / "manifest.yaml", skeletons, refresh=False, titles={})
+        untitled = da.build_targets(root, root / "manifest.yaml", skeletons, root / DOC_PATH, refresh=False, titles={})
         for rel, name in (("docs/api.md", "proto-first"), ("docs/data-models.md", "スキーマ適用"),
                           ("docs/workflows.md", "ローカル検証")):
             item = next(i for i in untitled["files"] if i["file"] == rel)
@@ -722,7 +778,7 @@ def test_direct_edit_detection() -> None:
             "owned doc": lambda root: (root / "docs/api.md").write_text("changed\n", encoding="utf-8"),
             "new spec file": lambda root: ((root / "docs/spec").mkdir(exist_ok=True),
                                            (root / "docs/spec/extra.md").write_text("# x\n", encoding="utf-8")),
-            "design doc": lambda root: (root / da.DESIGN_DOC_PATHS[0]).write_text(DESIGN_DOC + "\n追記\n", encoding="utf-8"),
+            "design doc": lambda root: (root / DOC_PATH).write_text(DESIGN_DOC + "\n追記\n", encoding="utf-8"),
             "manifest": lambda root: (root / "manifest.yaml").write_text("project:\n  name: other\n", encoding="utf-8"),
         }
         for label, edit in cases.items():
@@ -803,12 +859,12 @@ def test_cli_fill_flow_and_stale_pin() -> None:
     with tempfile.TemporaryDirectory(prefix="domain-docs-cli-") as temp_dir:
         base = Path(temp_dir)
 
-        # Design Doc が無いときは skip し、targets だけを書く。
+        # 選んだ Design Doc が無いときは致命的エラー（exit 2）。targets は書かれず、apply も進めない。
         root = make_repo(base, skeletons, design=False, name="nodoc")
-        code, out, _ = run_cli(root, skeletons, "state")
-        _assert(code == 0 and "action=skip" in out, f"nodoc state: {code} {out}")
-        code, out, _ = run_cli(root, skeletons, "apply")
-        _assert(code == 0 and "対象なし" in out, f"nodoc apply: {code} {out}")
+        code, _, err = run_cli(root, skeletons, "state")
+        _assert(code == 2 and "FATAL" in err, f"nodoc state: {code} {err}")
+        code, _, _ = run_cli(root, skeletons, "apply")
+        _assert(code == 2, f"nodoc apply without targets must be exit 2: {code}")
 
         # 初回 fill: fingerprint を固定し、targets と result を片付ける。
         root = make_repo(base, skeletons, name="first")
@@ -820,7 +876,7 @@ def test_cli_fill_flow_and_stale_pin() -> None:
         _assert(code == 0 and "適用完了" in out, f"first apply: {code} {out} {err}")
         _assert(not (root / da.TARGETS_RELATIVE).exists() and not (root / da.RESULT_RELATIVE).exists(),
                 "targets/result must be removed")
-        _assert(manifest_design_doc(root)["source_fingerprint"] == tc.source_fingerprint(root / da.DESIGN_DOC_PATHS[0]),
+        _assert(manifest_design_doc(root)["source_fingerprint"] == tc.source_fingerprint(root / DOC_PATH),
                 "fingerprint not pinned")
 
         # 結果ファイル不足と検証失敗は exit 1、targets 無しは exit 2。
@@ -835,14 +891,16 @@ def test_cli_fill_flow_and_stale_pin() -> None:
         _assert(run_cli(root2, skeletons, "apply", "--approve", "x")[0] == 2, "--approve without --refresh")
         _assert(run_cli(root2, skeletons, "apply", "--refresh")[0] == 2, "mode mismatch must be exit 2")
 
-        # stale の fill-only は fingerprint を更新しない。
-        root3 = make_repo(base, skeletons, pin="stale", name="stale-fill")
+        # stale は update（mode: refresh）になる。fill-only の apply（--refresh なし）は mode 不一致で exit 2 とし、
+        # fingerprint を更新しない。
+        root3 = make_repo(base, skeletons, pin="stale", name="stale-update")
         code, out, _ = run_cli(root3, skeletons, "state")
-        _assert("action=stale" in out, f"stale state: {out}")
+        _assert("action=update" in out and "pin=stale" in out, f"stale state: {out}")
         targets = genlib.load_manifest(str(root3 / da.TARGETS_RELATIVE))
+        _assert(targets["mode"] == "refresh", f"stale targets mode: {targets['mode']}")
         write_result(root3, make_result(targets))
-        _assert(run_cli(root3, skeletons, "apply")[0] == 0, "stale fill failed")
-        _assert(manifest_design_doc(root3)["source_fingerprint"] == "0" * 64, "stale fill updated the fingerprint")
+        _assert(run_cli(root3, skeletons, "apply")[0] == 2, "update targets must reject apply without --refresh")
+        _assert(manifest_design_doc(root3)["source_fingerprint"] == "0" * 64, "mode mismatch updated the fingerprint")
 
 
 def test_cli_refresh_requires_approval() -> None:
@@ -852,13 +910,13 @@ def test_cli_refresh_requires_approval() -> None:
         root = make_repo(base, skeletons, pin="fresh")
         apply_fill(root, skeletons)
         # Design Doc を更新して stale にする。
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc = root / DOC_PATH
         doc.write_text(DESIGN_DOC.replace("API の説明。", "API の説明（更新）。"), encoding="utf-8")
         code, out, _ = run_cli(root, skeletons, "state")
-        _assert("action=stale" in out and "sections=0" in out, f"stale state: {out}")
+        _assert("action=update" in out and "pin=stale" in out, f"stale state: {out}")
 
         code, out, _ = run_cli(root, skeletons, "state", "--refresh")
-        _assert(code == 0 and "action=refresh" in out, f"refresh state: {out}")
+        _assert(code == 0 and "action=update" in out, f"refresh state: {out}")
         targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
         owned_total = sum(len(v) for v in da.OWNERSHIP.values())
         _assert(sum(len(i["sections"]) for i in targets["files"]) == owned_total, "refresh must list all owned sections")
@@ -886,7 +944,7 @@ def test_cli_refresh_requires_approval() -> None:
 
         # 見送り: docs は変えず、fingerprint だけ更新する。
         doc.write_text(DESIGN_DOC.replace("API の説明。", "API の説明（再更新）。"), encoding="utf-8")
-        _assert("action=stale" in run_cli(root, skeletons, "state")[1], "second stale missing")
+        _assert("action=update" in run_cli(root, skeletons, "state")[1], "second stale missing")
         _assert(run_cli(root, skeletons, "state", "--refresh")[0] == 0, "second refresh state failed")
         snapshot = {rel: (root / rel).read_bytes() for rel in da.OWNERSHIP}
         code, out, err = run_cli(root, skeletons, "apply", "--refresh", "--decline")
@@ -913,8 +971,8 @@ def test_refresh_replaces_existing_spec_files() -> None:
         _assert(any("更新した概要。" in diff for diff in plan.diffs), "diff missing")
         _assert(setup.read_text(encoding="utf-8") == before, "plan wrote the file")
 
-        # 見出しが消えた機能は ORPHAN として報告するだけ。
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        # 見出しが消えた機能は、別の Design Doc 由来として保持する（ORPHAN の注記は出さない）。
+        doc = root / DOC_PATH
         doc.write_text(DESIGN_DOC.replace("### 2. 注文 ###", "### 2. 別の見出し"), encoding="utf-8")
         orphan_targets = targets_for(root, skeletons, refresh=True)
         only_setup = [dict(SPEC_FILES[0])]
@@ -922,7 +980,7 @@ def test_refresh_replaces_existing_spec_files() -> None:
         result["spec_files"] = only_setup
         _expect(da.ApplyError, "orphan row left in README", lambda: plan_for(
             root, skeletons, orphan_targets, result, refresh=True))
-        # 消えた見出しの機能は、収録仕様と機能仕様に残したまま ORPHAN として報告される。
+        # 消えた見出しの機能は、収録仕様と機能仕様に残したまま、削除も注記もされない。
         keep_rows = make_result(orphan_targets, SPEC_FILES, {
             (da.README_PATH, "収録仕様"): (
                 "- [設置](setup.md) — 設置する。（根拠: `1. 設置`）\n"
@@ -931,8 +989,316 @@ def test_refresh_replaces_existing_spec_files() -> None:
         })
         keep_rows["spec_files"] = [dict(SPEC_FILES[0])]
         plan = plan_for(root, skeletons, orphan_targets, keep_rows, refresh=True)
-        _assert(any(note.startswith("ORPHAN:") and "order.md" in note for note in plan.notes), f"no ORPHAN note: {plan.notes}")
-        _assert((root / "docs/spec/order.md").is_file(), "orphan file must not be deleted")
+        _assert(not any("ORPHAN" in note for note in plan.notes), f"ORPHAN note must be gone: {plan.notes}")
+        _assert("docs/spec/order.md" not in plan.writes, "retained spec file must not be rewritten")
+        _assert((root / "docs/spec/order.md").is_file(), "retained file must not be deleted")
+
+
+def write_doc(root: Path, name: str, text: str) -> str:
+    """`designs/docs/<name>` に Design Doc を置き、相対パスを返す。"""
+    path = root / "designs/docs" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return f"designs/docs/{name}"
+
+
+def doc_snapshot(root: Path) -> dict[str, bytes]:
+    paths = set(da.OWNERSHIP) | set(da._spec_md_files(root)) | {"manifest.yaml"}
+    return {rel: (root / rel).read_bytes() for rel in sorted(paths) if (root / rel).exists()}
+
+
+def cli_update(root: Path, skeletons: dict, doc_rel: str, build_result, *, approve: bool = True):
+    """update の一連（state → 結果 → apply --refresh の計画 → --approve）を CLI で実行する。"""
+    code, out, err = run_cli(root, skeletons, "state", "--design-doc", doc_rel)
+    _assert(code == 0 and "action=update" in out, f"update state: {code} {out} {err}")
+    targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+    write_result(root, build_result(targets))
+    code, out, err = run_cli(root, skeletons, "apply", "--refresh")
+    _assert(code == 0 and "PLAN:" in out, f"update preview: {code} {out} {err}")
+    digest = out.split("digest=")[1].split()[0]
+    if approve:
+        code, approved, err = run_cli(root, skeletons, "apply", "--refresh", "--approve", digest)
+        _assert(code == 0, f"update approve: {code} {approved} {err}")
+    return targets, out, digest
+
+
+def test_design_doc_selection_constraints() -> None:
+    """Design Doc は自動検知せず、PO が選んだ `designs/docs/` 直下の `*.md` だけを受け付ける。"""
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-select-") as temp_dir:
+        base = Path(temp_dir)
+        root = make_repo(base, skeletons, name="select")
+        docs_dir = root / "designs/docs"
+        (docs_dir / "designdoc.sample.md").write_text(DESIGN_DOC, encoding="utf-8")
+        (docs_dir / "notes.txt").write_text("x", encoding="utf-8")
+        (docs_dir / "sub").mkdir()
+        (docs_dir / "sub/nested.md").write_text(DESIGN_DOC, encoding="utf-8")
+        (root / "designs/other").mkdir()
+        (root / "designs/other/x.md").write_text(DESIGN_DOC, encoding="utf-8")
+        (root / "outside.md").write_text(DESIGN_DOC, encoding="utf-8")
+        (docs_dir / "link.md").symlink_to(root / "outside.md")
+        before = doc_snapshot(root)
+
+        rejected = (
+            ("parent traversal", "designs/docs/../docs/designdoc.md"),
+            ("other directory", "designs/other/x.md"),
+            ("nested directory", "designs/docs/sub/nested.md"),
+            ("not markdown", "designs/docs/notes.txt"),
+            ("sample", "designs/docs/designdoc.sample.md"),
+            ("symlink", "designs/docs/link.md"),
+            ("repository root file", "outside.md"),
+            ("missing file", "designs/docs/missing.md"),
+            ("empty value", "  "),
+            ("absolute path outside the repository", str(base / "elsewhere.md")),
+        )
+        for label, value in rejected:
+            for command in ("state", "pin"):
+                code, _, err = run_cli(root, skeletons, command, "--design-doc", value)
+                _assert(code == 2 and "FATAL" in err, f"{command} / {label}: expected exit 2, got {code} {err}")
+            _assert(not (root / da.TARGETS_RELATIVE).exists(), f"{label}: targets were written")
+        _assert(doc_snapshot(root) == before, "a rejected selection changed the repository")
+
+        # `--design-doc` の指定が無いときは、検知で補わずに致命的エラーにする。
+        for command in ("state", "pin"):
+            code, _, err = run_cli(root, skeletons, command, "--no-design-doc")
+            _assert(code == 2 and "--design-doc" in err, f"{command} without --design-doc: {code} {err}")
+
+        # 受け付けるもの: `designs/docs/` 直下の任意名の `*.md`（ファイル名は自由）、root 配下の絶対パス、`./` 付き。
+        write_doc(root, "project-b.md", DESIGN_DOC)
+        for value in ("designs/docs/project-b.md", "./designs/docs/designdoc.md", str(root / "designs/docs/designdoc.md")):
+            code, out, err = run_cli(root, skeletons, "state", "--design-doc", value)
+            _assert(code == 0, f"accepted selection failed: {value}: {code} {err}")
+        targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+        _assert(targets["design_doc"] == "designs/docs/designdoc.md", f"absolute path not normalized: {targets['design_doc']}")
+        # 2ファイルが並んでいても曖昧にならない。選んだファイルだけが targets の入力になる。
+        code, _, _ = run_cli(root, skeletons, "state", "--design-doc", "designs/docs/project-b.md")
+        targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+        _assert(code == 0 and targets["design_doc"] == "designs/docs/project-b.md", "selected doc was not used")
+
+
+def test_switched_design_doc_updates_with_approval() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-switch-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
+        apply_fill(root, skeletons)
+        other = write_doc(root, "project-b.md", DESIGN_DOC.replace("API の説明。", "プロジェクト B の API の説明。"))
+        code, out, err = run_cli(root, skeletons, "state", "--design-doc", other)
+        _assert(code == 0 and "action=update" in out and "pin=switched" in out, f"switched state: {out} {err}")
+        targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+        _assert(targets["mode"] == "refresh" and targets["design_doc"] == other, f"targets: {targets['mode']}")
+        write_result(root, make_result(targets, overrides={("docs/api.md", "API設計概要"): "B の概要。"}))
+        before = doc_snapshot(root)
+
+        # 承認なしでは書かない。mode 不一致（--refresh なし）は exit 2。
+        _assert(run_cli(root, skeletons, "apply", "--check", "--refresh")[0] == 0, "check failed")
+        _assert(run_cli(root, skeletons, "apply")[0] == 2, "update targets must reject apply without --refresh")
+        code, out, _ = run_cli(root, skeletons, "apply", "--refresh")
+        _assert(code == 0 and "PLAN:" in out and "B の概要。" in out, f"preview: {out}")
+        _assert(doc_snapshot(root) == before, "preview wrote files")
+        _assert(manifest_design_doc(root)["source_path"] == "designs/docs/designdoc.md", "preview moved the pin")
+        digest = out.split("digest=")[1].split()[0]
+        _assert(run_cli(root, skeletons, "apply", "--refresh", "--approve", "0" * 64)[0] == 1, "wrong digest accepted")
+        _assert(doc_snapshot(root) == before, "wrong digest wrote files")
+
+        code, _, err = run_cli(root, skeletons, "apply", "--refresh", "--approve", digest)
+        _assert(code == 0, f"approve failed: {err}")
+        pinned = manifest_design_doc(root)
+        _assert(pinned["source_path"] == other and pinned["source_fingerprint"] == tc.source_fingerprint(root / other),
+                f"pin was not moved to the selected doc: {pinned}")
+        _assert("B の概要。" in (root / "docs/api.md").read_text(encoding="utf-8"), "approved body missing")
+        _assert("action=skip" in run_cli(root, skeletons, "state", "--design-doc", other)[1], "state after update must skip")
+        # 元の Design Doc を選び直すと、また switched。
+        code, out, _ = run_cli(root, skeletons, "state", "--design-doc", DOC_PATH.as_posix())
+        _assert("action=update" in out and "pin=switched" in out, f"re-selection must be switched: {out}")
+
+
+def test_unpinned_filled_docs_update_then_pin() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-unpinned-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons)
+        apply_fill(root, skeletons)
+        (root / "manifest.yaml").write_text("project:\n  name: test\n", encoding="utf-8")
+        _assert(manifest_design_doc(root) is None, "fixture still has a pin")
+        cli_update(root, skeletons, DOC_PATH.as_posix(), lambda t: make_result(
+            t, overrides={("docs/api.md", "API設計概要"): "pin 後の概要。"}))
+        pinned = manifest_design_doc(root)
+        _assert(pinned and pinned["source_path"] == DOC_PATH.as_posix(), f"update did not pin: {pinned}")
+        _assert("pin 後の概要。" in (root / "docs/api.md").read_text(encoding="utf-8"), "update body missing")
+        _assert("action=skip" in run_cli(root, skeletons, "state")[1], "state after update must skip")
+
+
+def test_decline_is_limited_to_stale_of_the_same_doc() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-decline-") as temp_dir:
+        base = Path(temp_dir)
+
+        def refused(root: Path, label: str) -> None:
+            before = doc_snapshot(root)
+            code, _, err = run_cli(root, skeletons, "apply", "--refresh", "--decline")
+            _assert(code == 2 and "FATAL" in err and "stale" in err, f"{label}: decline must be exit 2: {code} {err}")
+            _assert(doc_snapshot(root) == before, f"{label}: a refused decline changed files")
+            _assert((root / da.TARGETS_RELATIVE).is_file(), f"{label}: a refused decline removed the targets")
+
+        # switched: 見送りは apply を実行しないことで表す。pin は動かない。
+        root = make_repo(base, skeletons, pin="fresh", name="switched")
+        apply_fill(root, skeletons)
+        other = write_doc(root, "project-b.md", DESIGN_DOC + "\n追記。\n")
+        _assert("pin=switched" in run_cli(root, skeletons, "state", "--design-doc", other)[1], "switched state missing")
+        refused(root, "switched")
+        _assert(manifest_design_doc(root)["source_path"] == DOC_PATH.as_posix(), "decline moved the pin")
+
+        # 固定が無い（埋め済み）。
+        root = make_repo(base, skeletons, name="unpinned")
+        apply_fill(root, skeletons)
+        (root / "manifest.yaml").write_text("project:\n  name: test\n", encoding="utf-8")
+        _assert("pin=unpinned" in run_cli(root, skeletons, "state")[1], "unpinned state missing")
+        refused(root, "unpinned")
+
+        # 強制 update（fresh のまま state --refresh）。
+        root = make_repo(base, skeletons, pin="fresh", name="forced")
+        apply_fill(root, skeletons)
+        _assert("pin=fresh" in run_cli(root, skeletons, "state", "--refresh")[1], "forced state missing")
+        refused(root, "forced update")
+
+        # 同じ Design Doc の stale だけは見送れる（docs 不変、fingerprint のみ更新）。
+        root = make_repo(base, skeletons, pin="fresh", name="stale")
+        apply_fill(root, skeletons)
+        doc = root / DOC_PATH
+        doc.write_text(DESIGN_DOC.replace("API の説明。", "API の説明（変更）。"), encoding="utf-8")
+        _assert("pin=stale" in run_cli(root, skeletons, "state")[1], "stale state missing")
+        docs_before = {rel: (root / rel).read_bytes() for rel in da.OWNERSHIP}
+        code, out, err = run_cli(root, skeletons, "apply", "--refresh", "--decline")
+        _assert(code == 0 and "見送り" in out, f"stale decline failed: {code} {out} {err}")
+        _assert({rel: (root / rel).read_bytes() for rel in da.OWNERSHIP} == docs_before, "stale decline wrote docs")
+        _assert(manifest_design_doc(root)["source_fingerprint"] == tc.source_fingerprint(doc), "stale decline did not pin")
+
+
+def test_update_keeps_spec_files_from_the_previous_doc() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-keep-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
+        apply_fill(root, skeletons)
+        setup_before = (root / "docs/spec/setup.md").read_bytes()
+        order_before = (root / "docs/spec/order.md").read_bytes()
+        # 別の Design Doc には、前の Design Doc の「2. 注文」が無く、新しい「3. 返品」がある。
+        other = write_doc(root, "project-b.md", DESIGN_DOC.replace("### 2. 注文 ###", "### 3. 返品"))
+        new_spec = {"slug": "return", "title": "返品", "summary": "返品する。", "evidence": "3. 返品",
+                    "body": "## 概要\n\n返品の概要。"}
+        targets = targets_for(root, skeletons, doc=other)
+        _assert({s["slug"] for s in targets["spec_files"]} == {"setup", "order"}, "existing specs not listed in targets")
+        # 収録仕様と機能仕様には既存の行を残し、結果の spec_files には新しい機能だけを書く。
+        result = make_result(targets, SPEC_FILES + [new_spec])
+        result["spec_files"] = [dict(new_spec)]
+        plan = plan_for(root, skeletons, targets, result, refresh=True)
+        _assert("docs/spec/return.md" in plan.writes, "new spec file not planned")
+        _assert("docs/spec/setup.md" not in plan.writes and "docs/spec/order.md" not in plan.writes,
+                "spec files left out of the result must not be rewritten")
+        _assert(not any("ORPHAN" in note for note in plan.notes), f"ORPHAN note must be gone: {plan.notes}")
+        da.commit(root, plan.writes)
+        _assert((root / "docs/spec/setup.md").read_bytes() == setup_before, "setup.md changed")
+        _assert((root / "docs/spec/order.md").read_bytes() == order_before, "order.md changed")
+        readme = (root / da.README_PATH).read_text(encoding="utf-8")
+        _assert("（根拠: `2. 注文`）" in readme and "（根拠: `3. 返品`）" in readme, "README rows were not kept and added")
+        _assert("spec/order.md" in (root / da.SPEC_PATH).read_text(encoding="utf-8"), "spec.md lost the previous link")
+        # 既存の機能を結果から外したまま、収録仕様の行まで消すと 3者が一致せず拒否する。
+        drop = make_result(targets, [new_spec])
+        _expect(da.ApplyError, "dropping existing rows", lambda: plan_for(
+            root, skeletons, targets_for(root, skeletons, doc=other, refresh=True), drop, refresh=True))
+
+
+def test_update_supplements_existing_spec_with_supporting_evidence() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-supplement-") as temp_dir:
+        base = Path(temp_dir)
+        root = make_repo(base, skeletons, pin="fresh", name="update")
+        apply_fill(root, skeletons)
+        # 別の Design Doc では、既存の機能仕様の根拠「1. 設置」の見出しが「1. 設置（改）」に変わっている。
+        other = write_doc(root, "project-b.md", DESIGN_DOC.replace("### 1. 設置", "### 1. 設置（改）"))
+        targets = targets_for(root, skeletons, doc=other)
+        body = "## 概要\n\n設置の概要。\n\n## 追加\n\n別の Design Doc で足した記述。"
+
+        def supplement(**changes) -> dict:
+            item = {**SPEC_FILES[0], "body": body, "supporting_evidence": ["1. 設置（改）"]}
+            item.update(changes)
+            return item
+
+        def build(spec: dict, *, version: int = 2, refresh: bool = True, targets=targets, root=root):
+            result = make_result(targets, SPEC_FILES)
+            result["spec_files"] = [spec]
+            result["schema_version"] = version
+            return plan_for(root, skeletons, targets, result, refresh=refresh)
+
+        # 成功: 根拠は既存行のまま、今回の見出しは supporting_evidence。本文が補足され、diff に出る。
+        plan = build(supplement())
+        _assert("別の Design Doc で足した記述。" in plan.writes["docs/spec/setup.md"].decode("utf-8"), "not supplemented")
+        _assert(any("別の Design Doc で足した記述。" in diff for diff in plan.diffs), "diff missing the supplement")
+        readme = plan.writes.get(da.README_PATH)
+        _assert(readme is None or "（根拠: `1. 設置`）" in readme.decode("utf-8"), "the row's evidence must stay")
+
+        # 拒否: supporting_evidence が無い / 今回の Design Doc に無い見出し / v1。
+        exc = _expect(da.ApplyError, "no supporting evidence", lambda: build(
+            {k: v for k, v in supplement().items() if k != "supporting_evidence"}))
+        _assert("supporting_evidence" in str(exc), f"unexpected message: {exc}")
+        _expect(da.ApplyError, "supporting heading absent", lambda: build(supplement(supporting_evidence=["存在しない"])))
+        _expect(da.ApplyError, "schema v1", lambda: build(supplement(), version=1))
+        # 拒否: evidence が既存行と違う（別の機能の根拠を名乗る）。
+        _expect(da.ApplyError, "evidence differs from the row", lambda: build(supplement(evidence="2. 注文")))
+
+        # 既存行の根拠が空のときは免除せず、従来どおり evidence が今回の Design Doc の見出しである必要がある。
+        legacy = make_repo(base, skeletons, pin="fresh", name="legacy-row")
+        apply_fill(legacy, skeletons)
+        readme_path = legacy / da.README_PATH
+        readme_path.write_text(
+            readme_path.read_text(encoding="utf-8").replace("（根拠: `1. 設置`）", ""), encoding="utf-8")
+        legacy_other = write_doc(legacy, "project-b.md", DESIGN_DOC.replace("### 1. 設置", "### 1. 設置（改）"))
+        legacy_targets = targets_for(legacy, skeletons, doc=legacy_other)
+        exc = _expect(da.ApplyError, "empty row evidence", lambda: build(
+            supplement(), targets=legacy_targets, root=legacy))
+        _assert("見出し" in str(exc), f"unexpected message: {exc}")
+
+        # fill では免除を使わない（既存行の根拠が今回の Design Doc に無ければ従来どおり拒否する）。
+        fill_root = make_repo(base, skeletons, pin="fresh", name="fill-mode")
+        apply_fill(fill_root, skeletons)
+        fill_other = write_doc(fill_root, "project-b.md", DESIGN_DOC.replace("### 1. 設置", "### 1. 設置（改）"))
+        (fill_root / "docs/api.md").write_text(skeletons["docs/api.md"], encoding="utf-8")
+        _assert(run_cli(fill_root, skeletons, "pin", "--design-doc", fill_other)[0] == 0, "pin failed")
+        fill_targets = targets_for(fill_root, skeletons, doc=fill_other)
+        _assert((fill_targets["action"], fill_targets["mode"]) == ("fill", "fill"), f"fixture is not a fill: {fill_targets['action']}")
+        _expect(da.ApplyError, "exemption in fill", lambda: build(
+            supplement(), refresh=False, targets=fill_targets, root=fill_root))
+
+
+def test_update_leaves_filled_contract_sections_and_fill_completes_the_rest() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-contract-update-") as temp_dir:
+        root = make_repo(Path(temp_dir), skeletons, pin="fresh")
+        # 契約節 proto-first は根拠が無いとして器のまま残し、ほかの契約節は埋める。
+        apply_fill(root, skeletons, overrides={("docs/api.md", "proto-first"): None})
+        data_models_before = (root / "docs/data-models.md").read_text(encoding="utf-8")
+        _assert("## proto-first\n\n> kit 所有の節\n\n[TODO]" in (root / "docs/api.md").read_text(encoding="utf-8"),
+                "fixture: proto-first must stay a skeleton")
+        other = write_doc(root, "project-b.md", DESIGN_DOC + "\n追記。\n")
+        cli_update(root, skeletons, other, make_result)
+        data_models = (root / "docs/data-models.md").read_text(encoding="utf-8")
+        _assert("## スキーマ適用\n\n> kit 所有の節\n\nスキーマ適用 の起案本文。" in data_models,
+                "update changed a filled contract section")
+        _assert(data_models_before.count("スキーマ適用 の起案本文。") == data_models.count("スキーマ適用 の起案本文。"),
+                "filled contract section was duplicated or dropped")
+
+        # 承認後の再 state は、器のままの契約節だけを fill にする。
+        code, out, err = run_cli(root, skeletons, "state", "--design-doc", other)
+        _assert(code == 0 and "action=fill" in out and "pin=fresh" in out, f"state after update: {out} {err}")
+        targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+        placeholders = {i["file"]: i.get("placeholders", []) for i in targets["files"]}
+        _assert(placeholders["docs/api.md"] == ["proto-first"], f"remaining placeholders wrong: {placeholders}")
+        _assert(not placeholders["docs/data-models.md"] and not placeholders["docs/workflows.md"],
+                "filled contract sections must not be targets")
+        write_result(root, make_result(targets))
+        code, out, err = run_cli(root, skeletons, "apply")
+        _assert(code == 0 and "適用完了" in out, f"fill after update failed: {code} {out} {err}")
+        _assert("## proto-first\n\n> kit 所有の節\n\nproto-first の起案本文。" in (root / "docs/api.md").read_text(encoding="utf-8"),
+                "remaining contract section was not filled")
+        _assert("action=skip" in run_cli(root, skeletons, "state", "--design-doc", other)[1], "final state must skip")
 
 
 def test_domain_docs_skill_template_contract() -> None:
@@ -967,8 +1333,18 @@ def test_domain_docs_skill_template_contract() -> None:
         "apply --check",
         "業務フロー",
         "## エラーハンドリング",
+        # 単独起動: PO が AskQuestion で Design Doc を選ぶ。起案は起動したエージェント自身が行い、docs とコードを読める。
+        "## 起動手順",
+        "AskQuestion",
+        "--design-doc",
+        "## マージとコード整合",
+        "apply --check --refresh",
+        "apply --refresh --approve",
+        "pin=switched",
     ):
         _assert(required in rendered, f"skill contract missing: {required}")
+    for stale in ("Phase 2.1", "subagent", "docs は読めない", "自動検知"):
+        _assert(stale not in rendered, f"skill must not keep the old launch model: {stale}")
     _assert("field-guide" not in rendered, "field-guide must not be referenced")
     for rel, owned in da.OWNERSHIP.items():
         _assert(rel in rendered, f"ownership file missing: {rel}")
@@ -1000,7 +1376,10 @@ def test_generated_skill_is_cataloged_and_linked() -> None:
     skill_text = (da.SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     _assert("(../domain-docs/SKILL.md)" in skill_text, "foundation SKILL.md must link the generated skill")
     _assert("field-guide" not in skill_text, "foundation SKILL.md must not reference field-guide")
-    _assert("独立スキル [`domain-docs`]" not in skill_text, "domain-docs must not be described as independent")
+    # 方針転換: domain-docs は foundation の生成プロセス（Phase 2.1）から起動しない。単独起動である。
+    _assert("Phase 2.1" not in skill_text, "foundation SKILL.md must not run domain-docs as Phase 2.1")
+    _assert("単独で起動" in skill_text, "foundation SKILL.md must say domain-docs runs standalone")
+    _assert("subagent を起動" not in skill_text, "foundation SKILL.md must not launch a domain-docs subagent")
 
     generated = ROOT / ".cursor" / "skills" / "domain-docs" / "SKILL.md"
     _assert(generated.is_file(), "generated domain-docs SKILL.md is missing; run generate")
@@ -1033,7 +1412,7 @@ def test_refresh_invalid_result_does_not_write() -> None:
         apply_fill(root, skeletons)
         before = {rel: (root / rel).read_bytes() for rel in da.OWNERSHIP}
         code, out, err = run_cli(root, skeletons, "state", "--refresh")
-        _assert(code == 0 and "action=refresh" in out, f"refresh state: {out} {err}")
+        _assert(code == 0 and "action=update" in out, f"refresh state: {out} {err}")
         write_result(root, {"sections": [{"file": "docs/api.md", "heading": "参照", "evidence": "概要", "body": "x"}]})
         code, _, err = run_cli(root, skeletons, "apply", "--refresh")
         _assert(code == 1 and "ERROR" in err, f"invalid refresh accepted: {code} {err}")
@@ -1185,7 +1564,7 @@ def test_new_spec_evidence_is_business_flow_child() -> None:
 
         # 業務フロー見出しが無い設計書では、この検査を行わない。
         root = make_repo(base, skeletons, name="no-flow")
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc = root / DOC_PATH
         doc.write_text(DESIGN_DOC.replace("## 業務フロー", "## 流れ"), encoding="utf-8")
         targets = targets_for(root, skeletons)
         plan_for(root, skeletons, targets, make_result(targets, wrong))
@@ -1259,7 +1638,7 @@ def test_pin_keeps_verified_fingerprint_when_the_doc_changes_before_commit() -> 
     with tempfile.TemporaryDirectory(prefix="domain-docs-pin-race-") as temp_dir:
         root = make_repo(Path(temp_dir), skeletons, pin="fresh")
         apply_fill(root, skeletons)
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc = root / DOC_PATH
         doc.write_text(DESIGN_DOC.replace("API の説明。", "API の説明（更新）。"), encoding="utf-8")
         verified = tc.source_fingerprint(doc)
         _assert(run_cli(root, skeletons, "state", "--refresh")[0] == 0, "refresh state failed")
@@ -1292,7 +1671,7 @@ def test_state_warns_about_vocabulary_in_the_contract() -> None:
     skeletons = _skeletons()
     with tempfile.TemporaryDirectory(prefix="domain-docs-vocab-") as temp_dir:
         root = make_repo(Path(temp_dir), skeletons)
-        doc = root / da.DESIGN_DOC_PATHS[0]
+        doc = root / DOC_PATH
         doc.write_text(DESIGN_DOC + "\n失敗は `conflict_dining` を返す。ファイルは `item.go`。\n", encoding="utf-8")
         try:
             GUIDANCE_TEXTS[:] = ["失敗時は conflict_dining は 409 とする。", "Go の規約。"]
@@ -1328,6 +1707,13 @@ def main() -> int:
         ("cli fill flow and stale pin", test_cli_fill_flow_and_stale_pin),
         ("cli refresh requires approval", test_cli_refresh_requires_approval),
         ("refresh replaces existing spec files", test_refresh_replaces_existing_spec_files),
+        ("design doc selection constraints", test_design_doc_selection_constraints),
+        ("switched design doc updates with approval", test_switched_design_doc_updates_with_approval),
+        ("unpinned filled docs update then pin", test_unpinned_filled_docs_update_then_pin),
+        ("decline is limited to stale of the same doc", test_decline_is_limited_to_stale_of_the_same_doc),
+        ("update keeps spec files from the previous doc", test_update_keeps_spec_files_from_the_previous_doc),
+        ("update supplements existing spec with supporting evidence", test_update_supplements_existing_spec_with_supporting_evidence),
+        ("update leaves filled contract sections; fill completes the rest", test_update_leaves_filled_contract_sections_and_fill_completes_the_rest),
         ("domain-docs skill template contract", test_domain_docs_skill_template_contract),
         ("generated skill is cataloged and linked", test_generated_skill_is_cataloged_and_linked),
         ("zero state e2e ends skip fresh", test_zero_state_e2e_ends_skip_fresh),
