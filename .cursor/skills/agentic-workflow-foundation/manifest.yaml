@@ -981,6 +981,11 @@ outputs:
       - "## 収録仕様"
       - "## 命名規約"
       - "## テンプレート"
+  # 「技術ブループリントの適用」（束縛節）は所有権表の対象外で、domain-docs が結果ファイルの `binding` で
+  # fill だけ書く（scripts/domain_docs_apply.py）。版は kit の生成が正本の frontmatter から転記し、
+  # プレースホルダの具体値・名前決定表・ツリー・担当範囲・方針は、Design Doc と規則から自動で決める
+  # （承認の対話は無い。確認は事後の git diff）。kit 自身の生成仕様の変更なので ADR は起票しない
+  # （docs/DECISIONS.md の「起票しないケース」。根拠は references/design-conformance.md）。
   - path: docs/architecture.md
     template: docs/architecture.md.template
     mode: seed

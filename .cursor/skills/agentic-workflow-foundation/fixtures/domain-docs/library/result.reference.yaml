@@ -289,6 +289,69 @@ sections:
       2. スキーマを適用する。
       3. API を起動する。
 omissions: []
+binding:
+  app: "city-library"
+  app_evidence: "概要"
+  features:
+    - name: "member"
+      evidence: "members（会員）"
+    - name: "book"
+      evidence: "books（蔵書）"
+    - name: "loan"
+      evidence: "loans（貸出）"
+  callers:
+    - name: "librarian"
+      evidence: "管理画面"
+  usecase_groups:
+    - name: "register_member"
+      evidence: "1. 会員の登録"
+    - name: "lend_book"
+      evidence: "2. 貸出"
+    - name: "return_book"
+      evidence: "3. 返却"
+  names:
+    - kind: "Entity"
+      name: "member_entity"
+      path: "internal/domain/entity/member_entity/"
+      evidence: "members（会員）"
+    - kind: "Entity"
+      name: "book_entity"
+      path: "internal/domain/entity/book_entity/"
+      evidence: "books（蔵書）"
+    - kind: "Entity"
+      name: "loan_entity"
+      path: "internal/domain/entity/loan_entity/"
+      evidence: "loans（貸出）"
+    - kind: "UseCase"
+      name: "librarian / register_member"
+      path: "internal/usecase/librarian/register_member_usecase/"
+      evidence: "1. 会員の登録"
+    - kind: "UseCase"
+      name: "librarian / lend_book"
+      path: "internal/usecase/librarian/lend_book_usecase/"
+      evidence: "2. 貸出"
+    - kind: "UseCase"
+      name: "librarian / return_book"
+      path: "internal/usecase/librarian/return_book_usecase/"
+      evidence: "3. 返却"
+  tree: |-
+    city-library/
+    ├── cmd/city-library/main.go
+    └── internal/
+        ├── domain/entity/member_entity/
+        ├── domain/entity/book_entity/
+        ├── domain/entity/loan_entity/
+        └── usecase/librarian/
+            ├── register_member_usecase/
+            ├── lend_book_usecase/
+            └── return_book_usecase/
+  scope: |-
+    - 採用した見出し: 概要、業務フロー、設計 > API設計、データベース設計。
+    - 除外した見出し: なし。
+  policies:
+    - item: "認証"
+      policy: "設計書は認証を定めないため、無い。"
+      evidence: "管理画面"
 spec_files:
   - slug: "register-member"
     title: "会員の登録"

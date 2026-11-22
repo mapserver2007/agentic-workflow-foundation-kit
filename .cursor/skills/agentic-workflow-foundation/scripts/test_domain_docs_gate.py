@@ -461,6 +461,38 @@ def test_kit_sources_carry_no_design_vocabulary() -> None:
     _assert(not offenders, "design vocabulary leaked into kit sources: " + "; ".join(offenders))
 
 
+def test_binding_gate() -> None:
+    """G-DOCFILL-006: 束縛節の整合。apply が渡す名前の一覧だけで検査し、語彙は持たない。"""
+    good = {
+        "file": "docs/arch.md", "section": "束縛", "text": "本文",
+        "placeholder_rows": {"app": "`sample-app`", "module": "`github.com/acme/sample-app`"},
+        "names_text": "| Entity | `item_entity` | `internal/item_entity/` |\n| UseCase | `web / order` | `x` |",
+        "tree_text": "sample-app/\n├── item_entity/\n└── web/order_usecase/",
+        "required_names": ["item", "order", "web"],
+        "app": "sample-app",
+    }
+    clean = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=good)
+    _assert(not [f for f in clean.findings if f["id"] == "G-DOCFILL-006"], f"good binding must pass: {clean.findings}")
+    _assert(clean.metrics.get("binding") == {"placeholders": 2, "names": 3}, f"metrics wrong: {clean.metrics}")
+    # 束縛節を書かないときは、何も検査せず、skipped にも出さない。
+    none = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=None)
+    _assert("binding" not in none.metrics and not [s for s in none.skipped if s["id"] == "G-DOCFILL-006"],
+            f"no binding must be silent: {none.metrics} {none.skipped}")
+    cases = {
+        "unfilled row": ({"placeholder_rows": {"app": "[TODO]", "module": "`m`"}}, "プレースホルダの具体値が未記入: app"),
+        "empty row": ({"placeholder_rows": {"app": "  "}}, "プレースホルダの具体値が未記入: app"),
+        "name missing in names": ({"names_text": "| Entity | `item_entity` | `p` |"}, "名前決定表に現れない名前: order, web"),
+        "name missing in tree": ({"tree_text": "sample-app/\n└── item_entity/"}, "ディレクトリツリーに現れない名前: order, web"),
+        "app missing in tree": ({"tree_text": "item order web"}, "ディレクトリツリーに現れない名前: sample-app"),
+    }
+    for label, (change, message) in cases.items():
+        report = gate.evaluate(
+            DESIGN, replaced={}, final_texts={}, spec_documents={}, binding={**good, **change})
+        found = [f for f in report.fails if f["id"] == "G-DOCFILL-006"]
+        _assert(len(found) == 1 and message in found[0]["message"], f"{label}: wrong findings: {report.findings}")
+        _assert(found[0]["file"] == "docs/arch.md#束縛", f"{label}: wrong label: {found[0]['file']}")
+
+
 def main() -> int:
     tests = (
         ("design doc extraction", test_design_doc_extraction),
@@ -470,6 +502,7 @@ def main() -> int:
         ("second app mutations are detected", test_second_app_mutations_are_detected),
         ("gate skips for a design doc without the standard structure",
          test_gate_skips_for_a_design_doc_without_the_standard_structure),
+        ("binding gate", test_binding_gate),
         ("kit sources carry no design vocabulary", test_kit_sources_carry_no_design_vocabulary),
     )
     for label, test in tests:

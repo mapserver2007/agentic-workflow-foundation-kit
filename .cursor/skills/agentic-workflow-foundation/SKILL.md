@@ -84,7 +84,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `scripts/resolve_coderabbit.py` | 承認済み `tech_contract.review.coderabbit` を投影 |
 | `scripts/resolve_domain_docs.py` | 承認済み `tech_contract.domain_docs.resolved` を投影 |
 | `scripts/domain_docs_apply.py` | domain-docs（単独起動）が使う。PO が選んだ Design Doc の状態判定（`state --design-doc`）、結果ファイルの検証と atomic 適用（`apply` / `apply --check` / `apply --refresh`）、`design_doc` の2キー固定（`pin --design-doc`）。foundation の生成プロセスからは呼ばない |
-| `scripts/domain_docs_gate.py` | domain-docs の決定論ゲート（`G-DOCFILL-001`〜`005`）。apply が書込み前に呼び、`tmp/domain-docs-findings.yaml` を書く。標準ライブラリのみ |
+| `scripts/domain_docs_gate.py` | domain-docs の決定論ゲート（`G-DOCFILL-001`〜`006`）。apply が書込み前に呼び、`tmp/domain-docs-findings.yaml` を書く。標準ライブラリのみ |
 | [`../domain-docs/SKILL.md`](../domain-docs/SKILL.md) | seed の `outputs[]` から生成する、単独起動の domain-docs の手順（Design Doc の選択・起案・マージ・承認、所有権表・結果ファイル形式・分割規則） |
 | `scripts/run_resolved_engine.py` | immutable design docs + seed manifest + root `manifest.yaml` の per-project 値から一時 resolved skill-dir を作り、engine を呼び出す stateless resolver。`bootstrap` サブコマンドで root `manifest.yaml` の `framework:` ブロックを seed から単一 SoT として生成/同期する |
 

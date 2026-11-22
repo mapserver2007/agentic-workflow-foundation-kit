@@ -12,6 +12,8 @@ Design Doc の標準的な見出し構造から取り出せる事実が落ちて
   G-DOCFILL-003 WARN  設計書のデータベース設計にあるテーブル名と列名が data-models にある
   G-DOCFILL-004 WARN  設計書の API 設計の「メソッドとパス」表にあるエンドポイントが api にある
   G-DOCFILL-005 WARN  新しい機能仕様に `## エラーハンドリング` がある
+  G-DOCFILL-006 FAIL  束縛節（技術ブループリントの適用）で、プレースホルダの行がすべて埋まり、
+                      決めた名前が名前決定表とディレクトリツリーに現れ、製品名がツリーに現れる
 
 FAIL は呼び出し側（apply）が検証失敗として扱う。WARN は報告だけで、修復を起動しない。
 設計書が標準の見出し構造を持たず抽出できない検査は skipped として理由を残す。
@@ -322,12 +324,14 @@ def evaluate(
     replaced: Mapping,
     final_texts: Mapping,
     spec_documents: Mapping,
+    binding: Mapping | None = None,
 ) -> Report:
     """書込み計画を検査する。
 
     replaced: 今回置換する本文（ラベル → 本文）。G-DOCFILL-001 の対象。
     final_texts: 適用後の docs の全文（`GATE_FILES` のパス → 本文。ファイルが無ければ空文字）。
     spec_documents: 今回作成・置換する機能仕様の全文（パス → 本文）。G-DOCFILL-005 の対象。
+    binding: 束縛節を今回書くときの、適用後の情報（apply が組む）。G-DOCFILL-006 の対象。無ければ検査しない。
     """
     report = Report()
     _check_residue(report, replaced, design_text)
@@ -335,7 +339,41 @@ def evaluate(
     _check_tables(report, design_text, final_texts.get(DATA_MODELS_FILE, ""))
     _check_endpoints(report, design_text, final_texts.get(API_FILE, ""))
     _check_spec_error_handling(report, spec_documents)
+    _check_binding(report, binding)
     return report
+
+
+def _check_binding(report: Report, binding: Mapping | None) -> None:
+    """束縛節の整合。名前の語彙は持たず、apply が渡した名前の一覧だけを使う。"""
+    if not binding:
+        return
+    label = f"{binding['file']}#{binding['section']}"
+    rows = binding.get("placeholder_rows") or {}
+    unfilled = sorted(name for name, value in rows.items() if not value.strip() or "[TODO]" in value)
+    if unfilled:
+        report.add(
+            "G-DOCFILL-006", "FAIL", label,
+            "プレースホルダの具体値が未記入: " + ", ".join(unfilled),
+        )
+    names_text = binding.get("names_text") or ""
+    tree_text = binding.get("tree_text") or ""
+    loose = lambda name, text: (  # noqa: E731
+        re.search(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", text) is not None
+    )
+    required = list(binding.get("required_names") or [])
+    if names_text:
+        absent = [name for name in required if not loose(name, names_text)]
+        if absent:
+            report.add("G-DOCFILL-006", "FAIL", label, "名前決定表に現れない名前: " + ", ".join(absent))
+    if tree_text:
+        wanted = required + ([binding["app"]] if binding.get("app") else [])
+        absent = [name for name in wanted if not loose(name, tree_text)]
+        if absent:
+            report.add(
+                "G-DOCFILL-006", "FAIL", label,
+                "ディレクトリツリーに現れない名前: " + ", ".join(absent),
+            )
+    report.metrics["binding"] = {"placeholders": len(rows), "names": len(required)}
 
 
 def _check_residue(report: Report, replaced: Mapping, design_text: str) -> None:

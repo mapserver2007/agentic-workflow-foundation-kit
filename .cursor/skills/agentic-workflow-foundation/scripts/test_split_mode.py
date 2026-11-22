@@ -362,6 +362,40 @@ def test_seed_template_receives_split_context() -> None:
         _assert("{{app}}" not in (root / "docs" / "arch.md").read_text(encoding="utf-8"), "split なしで記入欄が作られた")
 
 
+def test_architecture_template_copies_blueprint_version() -> None:
+    """実物の architecture テンプレートの「版」の行が、正本の frontmatter から版と状態を転記する。
+
+    版が空のときは空欄にせず「正本に版の記載なし」を出す。`_split` が無い描画でも失敗しない。
+    """
+    template_path = HERE.parent / "templates" / "docs" / "architecture.md.template"
+    rows = [line for line in template_path.read_text(encoding="utf-8").splitlines() if line.startswith("| 版 |")]
+    _assert(len(rows) == 1, f"テンプレートに「版」の行が 1 つだけ必要: {rows}")
+    _assert("[TODO]" not in rows[0], f"版の行が [TODO] のまま: {rows[0]}")
+    arch_template = "# arch\n\n## 束縛\n\n" + rows[0] + "\n\n## 参照\n"
+    cases = (
+        ("版と状態", blueprint(), "| 版 | 0.1（状態: draft） |"),
+        ("版のみ", blueprint().replace("status: draft\n", ""), "| 版 | 0.1 |"),
+        ("版なし", blueprint().replace("version: 0.1\n", ""), "| 版 | 正本に版の記載なし |"),
+    )
+    for label, source, expected in cases:
+        with tempfile.TemporaryDirectory(prefix="split-version-") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            skill_dir = _make_repo(root, source, arch=None, arch_template=arch_template)
+            _assert(_generate(skill_dir)[0] == 0, f"生成に失敗: {label}")
+            arch = (root / "docs" / "arch.md").read_text(encoding="utf-8")
+            _assert(expected in arch, f"版の転記が期待と違う（{label}）: {arch!r}")
+    # `_split` が無い描画（split のエントリがない manifest）でも、フォールバックの文言で成功する
+    plain = "marker_id: plain\noutputs:\n  - path: \"docs/arch.md\"\n    mode: seed\n    template: \"arch.template\"\n"
+    with tempfile.TemporaryDirectory(prefix="split-version-plain-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir = _make_repo(root, blueprint(), manifest=plain, arch=None, arch_template=arch_template)
+        _assert(_generate(skill_dir)[0] == 0, "split なしの描画に失敗")
+        _assert(
+            "| 版 | 正本に版の記載なし |" in (root / "docs" / "arch.md").read_text(encoding="utf-8"),
+            "split なしの版がフォールバックにならない",
+        )
+
+
 def test_generate_safety_and_input_errors() -> None:
     # symlink が出力ディレクトリにあると、何も削除せず exit 2
     with tempfile.TemporaryDirectory(prefix="split-safe-") as temp_dir:
@@ -424,6 +458,7 @@ def main() -> int:
         ("generate/audit cycle", test_generate_audit_cycle),
         ("audit detects violations", test_audit_detects_contract_violations),
         ("seed template receives split context", test_seed_template_receives_split_context),
+        ("architecture template copies blueprint version", test_architecture_template_copies_blueprint_version),
         ("generate safety and input errors", test_generate_safety_and_input_errors),
     )
     for label, test in tests:
