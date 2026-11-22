@@ -951,8 +951,10 @@ outputs:
     index_path: docs/tech-stack.md
     source_dir: .cursor/docs
     source_key: project.tech_stack_design_filename
-    max_bytes: 4096
-    min_bytes: 800
+    # 上限・下限は、タスクごとに読むファイルの数と読込量のバランスで決めた値（PO 確定）。
+    # 区切りは見出し（内容の境界）で決め、サイズは分割の深さを決める上限としてだけ使う。
+    max_bytes: 16384
+    min_bytes: 3200
     placeholder_check:
       path: docs/architecture.md
       heading: 技術ブループリントの適用

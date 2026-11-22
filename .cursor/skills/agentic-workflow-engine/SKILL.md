@@ -75,8 +75,8 @@ Agentic Workflow 基盤の **生成/監査エンジン（How）** を提供す�
   index_path: docs/tech-stack.md          # 索引の出力先（出力ディレクトリの外）
   source_dir: .cursor/docs                # 正本の置き場（root 相対）
   source_key: project.tech_stack_design_filename   # 正本のファイル名（basename の .md）を持つ manifest のキー
-  max_bytes: 4096                         # 分割ファイルの本文サイズの上限（UTF-8 のバイト数。ヘッダ行を除く）
-  min_bytes: 800                          # 下限（これ未満の節は、隣の節と結合する）
+  max_bytes: 16384                        # 分割ファイルの本文サイズの上限（UTF-8 のバイト数。ヘッダ行を除く）
+  min_bytes: 3200                         # 下限（これ未満の節は、隣の節と結合する）
   placeholder_check:                      # 任意。正本の `{{...}}` が、このファイルの節に存在するか照合する
     path: docs/architecture.md
     heading: 技術ブループリントの適用
