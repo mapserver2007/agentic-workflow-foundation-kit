@@ -16,8 +16,12 @@ set -u
 #   lint     — 下流 G-LINT（backend lint_cmd を実行）
 #   test     — 下流 G-TEST（backend test_cmd を実行）
 #   verify   — 下流 build → lint → test（G-GEN を含めない）。
-#              make ターゲットが無い段は省略して次へ進む。
-#              ターゲットが実在して検査が失敗した段で停止する。
+#
+# make ターゲットが無い段の扱い（全サブコマンド共通）:
+#   backend が `make <target>` で、そのターゲットが Makefile に無いときは、
+#   エラーにせず SKIP を表示して exit 0 とする（プロジェクトによっては gen などが無いことが普通にある）。
+#   ターゲットが実在して検査が失敗した段、依存の欠落（needed by）は、省略せず失敗として扱う。
+#   verify は省略した段を飛ばして次へ進み、実在して失敗した段で停止する。
 #
 # Exit codes:
 #   0 = PASS
@@ -81,8 +85,9 @@ _make_target_missing() {
   return 1
 }
 
-# verify だけが使う。make ターゲットが無ければ実行せず次へ進む。
-_verify_step() {
+# 全サブコマンド（gen / build / lint / test / verify）が使う。
+# make ターゲットが無ければ実行せず SKIP（exit 0）とする。
+_gate_step() {
   if [[ "${1:-}" == "make" && "$#" -eq 2 ]] && _make_target_missing "$2"; then
     echo "SKIP: make target '$2' が無いため省略します"
     return 0
@@ -122,19 +127,19 @@ _preflight() {
 case "$SUBCMD" in
   gen)
     cmd=({{#each tech_contract.quality_gate.gen.argv}} "{{this}}"{{/each}} )
-    _contract_status && _preflight && _run_backend "${cmd[@]}"
+    _contract_status && _preflight && _gate_step "${cmd[@]}"
     ;;
   build)
     cmd=({{#each tech_contract.quality_gate.build.argv}} "{{this}}"{{/each}} )
-    _contract_status && _preflight && _run_backend "${cmd[@]}"
+    _contract_status && _preflight && _gate_step "${cmd[@]}"
     ;;
   lint)
     cmd=({{#each tech_contract.quality_gate.lint.argv}} "{{this}}"{{/each}} )
-    _contract_status && _preflight && _run_backend "${cmd[@]}"
+    _contract_status && _preflight && _gate_step "${cmd[@]}"
     ;;
   test)
     cmd=({{#each tech_contract.quality_gate.test.argv}} "{{this}}"{{/each}} )
-    _contract_status && _preflight && _run_backend "${cmd[@]}"
+    _contract_status && _preflight && _gate_step "${cmd[@]}"
     ;;
   verify)
     echo "=== quality-gate verify ==="
@@ -142,9 +147,9 @@ case "$SUBCMD" in
     lint_cmd=({{#each tech_contract.quality_gate.lint.argv}} "{{this}}"{{/each}} )
     test_cmd=({{#each tech_contract.quality_gate.test.argv}} "{{this}}"{{/each}} )
     _contract_status && _preflight && \
-    _verify_step "${build_cmd[@]}" && \
-    _verify_step "${lint_cmd[@]}" && \
-    _verify_step "${test_cmd[@]}"
+    _gate_step "${build_cmd[@]}" && \
+    _gate_step "${lint_cmd[@]}" && \
+    _gate_step "${test_cmd[@]}"
     ;;
   audit|check|scripts|self|adr)
     echo "ERROR: '$SUBCMD' は bin/quality-gate から削除されました（ADR-0001）。" >&2

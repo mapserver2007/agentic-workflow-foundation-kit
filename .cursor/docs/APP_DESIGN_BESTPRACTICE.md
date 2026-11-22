@@ -1,8 +1,8 @@
 ---
 title: Go + gRPC アプリケーション 構成ベストプラクティス
 created_at: 2026-11-20
-version: 0.2（ドラフト）
-status: ドラフト
+version: 1.0
+status: 正式版
 ---
 
 # Go + gRPC アプリケーション 構成ベストプラクティス
