@@ -38,6 +38,7 @@ TESTS_IN_ORDER = [
     "test_apply_kit_init.py",
     "test_github_auth_runtime.py",
     "test_tech_contract.py",
+    "test_contract_state.py",
     "test_contract_lifecycle_e2e.py",
     "test_contract_loop4.py",
     "test_contract_loop5.py",

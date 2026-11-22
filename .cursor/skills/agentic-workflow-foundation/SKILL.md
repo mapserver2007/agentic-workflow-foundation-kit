@@ -42,6 +42,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
        ├─ Phase 1.5: init.yaml → apply_kit_init.py → root manifest.yaml の project.*
        ├─ Phase 1.55: min_context_window_tokens → budget_thresholds 算出
        │
+       ├─ Phase 1.6: tech_contract status → (未承認/stale なら) draft-skeleton → 記入 → validate/apply で pin
        ├─ Phase 1.65–1.67: 承認済み tech_contract → quality_gate / coderabbit / domain_docs 投影
        ├─ Phase 1.68: materialize_runtime --check → provision_runtime --plan/--apply
        │
@@ -76,6 +77,7 @@ seed schema/default(.cursor/skills/agentic-workflow-foundation/manifest.yaml + t
 | `references/design-conformance.md` | audit 判定の設計根拠 |
 | `templates/*` | 出力ファイルのテンプレート |
 | `templates/bin/*` | wrapper スクリプトのテンプレート。`_github-auth.sh` が `github_app` / `keychain` を dispatch し、GitHub API と AI の Git network operation を同一 provider + HTTPS に統一する。`.cursorignore` で AI アクセス遮断 |
+| `scripts/tech_contract.py` | 契約の lifecycle。`status`（READY=0 / NEEDS_DRAFT=1 / BROKEN=2、`--json` 可）、`draft-skeleton`（骨組みの生成。空欄は validate が拒否）、`validate [--check]`（版の数値らしき表記を WARN で報告）、`apply`（preimage 照合つき pin）。手順は Phase 1.6 |
 | `scripts/resolve_quality_gate.py` | 承認済み `tech_contract.quality_gate` を `project.quality_gate` へ投影 |
 | `scripts/materialize_runtime.py` | 承認済み `tech_contract.runtime_materialization.actions` の renderability 検査（`--check` のみ。書込みは `provision_runtime` 単一路） |
 | `scripts/check_tech_stack_conformance.py` | 承認済み `tech_contract.provisioning.preflight_checks` の declarative contract 評価（generic preflight / installed-marker validation） |
@@ -100,6 +102,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - [ ] Phase 1.45: root manifest framework 同期（run_resolved_engine.py bootstrap。root 不在時は新規生成 / `framework.*` 変更時のみ再同期）
 - [ ] Phase 1.5: init.yaml 適用（apply_kit_init.py。開発型固定 / name・slug 導出 / context_budget 適用）
 - [ ] Phase 1.55: budget_thresholds 算出（resolve_budget_thresholds.py）
+- [ ] Phase 1.6: tech_contract 起案・pin（tech_contract.py status が READY でないとき: draft-skeleton → 空欄を記入 → validate --check → apply。想定内の分岐であり中断しない）
 - [ ] Phase 1.65: G-* / quality gate backend contract 投影（resolve_quality_gate.py — `tech_contract.quality_gate` のみ）
 - [ ] Phase 1.66: CodeRabbit 投影（resolve_coderabbit.py — `tech_contract.review.coderabbit` のみ）
 - [ ] Phase 1.67: Domain docs 投影（resolve_domain_docs.py — `tech_contract.domain_docs.resolved` のみ）
@@ -115,6 +118,7 @@ Phase は番号順に実行する。「不要」と自己判断してスキッ�
 - **AskQuestion は1ステップ＝1論点ずつ提示する**。複数の確認事項を1回の `AskQuestion` にまとめない。
 - **各 AskQuestion には推奨案を必ず1つ添える**。トレードオフを1〜2行で示し、判断を丸投げしない。
 - **ステップが失敗・問題を検知したら、そのステップで中断する**。次フェーズへ進まず、検知内容・原因・影響範囲・推奨対応を PO に報告する。
+- **例外: 契約が未起案・未承認・stale（`tech_contract.py status` が NEEDS_DRAFT / exit 1、または consumer が「未承認」「source_fingerprint 不一致」の exit 1）は、失敗ではなく想定内の分岐である**。中断も質問もせず、Phase 1.6 を実行して続行する。中断するのは BROKEN（exit 2。manifest / 設計書 / 契約の schema 破損）と、Phase 1.6 が定める質問条件に当たる場合だけである。
 - unified/bas は immutable input として読み取り、毎回 resolved skill-dir に fingerprint と構造化要件を展開する。永続 seed を更新する同期処理や、前回実行結果との stateful drift 照合は行わない。
 
 ### Phase 1: manifest / templates 更新（必要時のみ）
@@ -246,7 +250,7 @@ feature の seed default はいずれも `enabled: true`。無効化したい場
 
 #### tech_contract 承認（AskQuestion / auto-apply）
 
-未 pin または fingerprint stale のとき、対話 SKILL は draft を起案し `tech_contract.py validate --check` する。承認経路は次のとおり。
+`tech_contract.py status` が READY でない（未 pin・未承認・fingerprint stale）とき、対話 SKILL は Phase 1.6 に従って draft を起案し `tech_contract.py validate --check` する。承認経路は次のとおり。
 
 | `project.tech_contract_auto_approve` | 挙動 |
 | --- | --- |
@@ -287,7 +291,48 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresh
 - `--check` フラグで dry-run（書き込みなし）を実行可能。
 - exit 2 は致命的エラー（manifest 破損等）。
 
-> Phase 1.6（techstack 取り込み）は廃止した。技術ブループリントは、Phase 2 の `mode: split` の出力（`docs/tech-stack/` と索引 `docs/tech-stack.md`）に置き換えた。`tech_contract` の起案は、引き続きブループリントの正本から行い、`source_fingerprint` が正本と一致しなくなると、`generate` と `audit` は exit 1（再起案が必要）になる。
+### Phase 1.6: tech_contract 起案・pin（`status` が READY でないとき）
+
+旧 Phase 1.6（techstack 取り込み）は廃止した。技術ブループリントは、Phase 2 の `mode: split` の出力（`docs/tech-stack/` と索引 `docs/tech-stack.md`）に置き換えた。この Phase は、承認済み `tech_contract`（Phase 1.65 以降の唯一の入力）を用意する。契約が既に READY なら何もしない。
+
+```bash
+TC=.cursor/skills/agentic-workflow-foundation/scripts/tech_contract.py
+DESIGN=.cursor/docs/<init.yaml の tech_stack_design.filename>
+
+python3 "$TC" --design-doc "$DESIGN" status            # --json で機械可読（state / reason / next_action）
+python3 "$TC" --design-doc "$DESIGN" draft-skeleton    # tmp/tech-stack-contract-draft.yaml を生成（既存は --force でのみ上書き）
+# 空欄（"" と []）をブループリントの根拠に基づいて埋める
+python3 "$TC" --design-doc "$DESIGN" validate --check
+pre="$(shasum -a 256 manifest.yaml | cut -d' ' -f1)"
+python3 "$TC" --design-doc "$DESIGN" apply --preimage "$pre"   # 承認は「tech_contract 承認」の表に従う
+```
+
+**`status` の状態**
+
+| 状態 | exit | 意味 | 対応 |
+| --- | --- | --- | --- |
+| `READY` | 0 | 承認済みで、設計書と一致している | 次の Phase へ進む |
+| `NEEDS_DRAFT` | 1 | 未起案・未承認（seed の placeholder）・設計書と不一致（stale） | **中断も質問もせず**、この Phase を実行する |
+| `BROKEN` | 2 | manifest / 設計書 / 契約の schema 破損 | 中断して PO に報告する（draft の再起案では直らない場合がある） |
+
+`generate` / `audit` / `check` と各 resolver（Phase 1.65 以降）も、契約が未承認・stale のときは exit 1 で「Phase 1.6 を実行する」と案内する。致命（exit 2）にはならない。
+
+**起案の規則**
+
+- `draft-skeleton` は、`schema_version`、`source_fingerprint`、節の骨組みだけを決定論で書く。判断が要る欄は空欄で、空欄のままでは `validate` が拒否する（埋め忘れた契約は pin できない）。
+- **`classification.profile`**: ブループリントが規定する対象で選び、`evidence_ref` に根拠の見出し名を書く。`gate_command` は `application` が `bin/quality-gate verify`、`foundation` が `bin/foundation-gate self` になる。
+- **雛形を作らないとき**（既定）: `provisioning.policy: none`、`runtime_materialization.actions: []`、`provisioning.command_actions: []` のままにする。ブループリントの `{{module}}` などのプレースホルダの具体値は、この契約には不要で、入れない。雛形を作るときだけ `policy: explicit` にし、file / command action にその値が要る。
+- **`quality_gate`**: `argv` と `gen_artifact_paths` は、ブループリントが固定している名称（Makefile のターゲット名、固定のディレクトリ）だけで書く。固有名が要るパスは含めない。
+- **版の数値は書かない**（「tech_contract 起案時のバージョンの扱い」）。`validate` は、版の数値らしき表記を stderr に `WARN:` で報告する（拒否はしない）。WARN が出たら、その表記を取り除く。
+- **`domain_docs` の節**: 「`domain_docs` 起案プレイブック」に従う。
+
+**質問してよい条件（これ以外は質問せずに進める）**
+
+1. 雛形を作る場合に、プレースホルダの具体値や配置が、設計書・`init.yaml`・既存実装のどれからも決まらないとき。
+2. `validate --check` が FAIL し、ブループリントの記述からは直せないとき。
+3. `project.tech_contract_auto_approve` が `false` のときの承認。
+
+契約が未起案・stale であること自体は質問の理由にならない。`auto_approve: true` は、PO が `init.yaml` に書いた「質問せず進めてよい」という委任である。
 
 ### Phase 1.65: G-* / quality gate backend contract 投影（contract-only）
 
@@ -300,7 +345,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.
 - 入力は承認済み `tech_contract` のみ。技術名の推論・legacy live materializer は行わない。
 - `quality_gate.gen_artifact_paths` / 各 gate の `argv` / `contract` 行は契約からそのまま投影する。
 - `quality_gate_contract` は `run_resolved_engine.py` が resolved manifest へ一時展開し、root へ永続書き戻ししない。
-- exit 0 → 投影成功。exit 2 → manifest 破損 / 未承認契約。
+- exit 0 → 投影成功。exit 1 → 契約が未承認 / stale（Phase 1.6 へ。中断ではない）。exit 2 → manifest 破損。
 
 ### Phase 1.66: CodeRabbit 投影（contract-only）
 

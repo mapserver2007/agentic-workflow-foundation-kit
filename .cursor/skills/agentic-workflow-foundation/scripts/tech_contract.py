@@ -98,6 +98,35 @@ class SchemaError(Exception):
     """schema / render / environment fatal（exit 2）。"""
 
 
+# status が返す状態。READY=0 / NEEDS_DRAFT=1（修正可能。中断理由ではない）/ BROKEN=2（致命）。
+STATE_READY = "READY"
+STATE_NEEDS_DRAFT = "NEEDS_DRAFT"
+STATE_BROKEN = "BROKEN"
+UNAPPROVED_STATUS = "unapproved"
+NEXT_ACTION_DRAFT = (
+    "SKILL.md Phase 1.6 を実行する: "
+    "tech_contract.py draft-skeleton で draft を生成し、ブループリントの根拠に基づいて空欄を埋め、"
+    "validate --check → apply の順に進める"
+)
+NEXT_ACTION_REPAIR = (
+    "manifest.yaml の tech_contract ブロックまたは技術設計書を修復する。"
+    "draft の再起案だけでは直らない場合がある"
+)
+FATAL_ERRORS = (
+    SchemaError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    OSError,
+    re.error,
+    rp.PreflightFatal,
+)
+# 版の数値らしき表記（dotted のみ）。§ 参照（§3.1 など）と識別子内の数字は対象外。
+VERSION_LIKE = re.compile(r"(?<![\w§.])v?\d+\.\d+(?:\.\d+)*(?!\w)")
+
+
 def canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -748,6 +777,12 @@ def _validate_runtime_materialization(contract: dict) -> None:
 def validate(contract: dict, design_doc: Path, require_approval: bool, check: bool = False) -> None:
     if not isinstance(contract, dict):
         raise SchemaError("tech_contract は mapping である必要があります")
+    if require_approval:
+        # seed の placeholder（approval.status: unapproved）は破損ではなく「未起案」。
+        # consumer は引き続き fail-closed で拒否するが、修正可能な状態として exit 1 にする。
+        approval = contract.get("approval")
+        if isinstance(approval, dict) and approval.get("status") == UNAPPROVED_STATUS:
+            raise ContractError(f"tech_contract が未承認です（placeholder のまま）。{NEXT_ACTION_DRAFT}")
     _reject_unknown(contract, TOP_LEVEL_KEYS, "tech_contract")
     if contract.get("schema_version") != SCHEMA_VERSION:
         raise SchemaError(f"schema_version は {SCHEMA_VERSION} である必要があります")
@@ -766,7 +801,9 @@ def validate(contract: dict, design_doc: Path, require_approval: bool, check: bo
 
     fingerprint = source_fingerprint(design_doc)
     if contract.get("source_fingerprint") != fingerprint:
-        raise ContractError("source_fingerprint が現在の技術設計書と一致しません")
+        raise ContractError(
+            f"source_fingerprint が現在の技術設計書と一致しません。{NEXT_ACTION_DRAFT}"
+        )
 
     expected_digest = contract_digest(contract)
     expected_projection = projection_digest(contract)
@@ -977,22 +1014,203 @@ def pin_contract(manifest_path: Path, contract: dict, expected_preimage: str) ->
     rp._atomic_write_bytes(manifest_path, new_raw)
 
 
+def contract_state(manifest: Path, design_doc: Path) -> dict:
+    """承認済み契約の状態を READY / NEEDS_DRAFT / BROKEN に分類する（read-only）。
+
+    NEEDS_DRAFT は修正可能な想定内の状態（未起案・未承認・stale）で、作業の中断理由ではない。
+    BROKEN だけが致命（manifest / 設計書 / 契約の schema 破損）。
+    """
+    try:
+        contract = load_approved(manifest, design_doc)
+    except ContractError as exc:
+        return {
+            "state": STATE_NEEDS_DRAFT,
+            "exit_code": 1,
+            "reason": str(exc),
+            "next_action": NEXT_ACTION_DRAFT,
+        }
+    except FATAL_ERRORS as exc:
+        return {
+            "state": STATE_BROKEN,
+            "exit_code": 2,
+            "reason": str(exc),
+            "next_action": NEXT_ACTION_REPAIR,
+        }
+    return {
+        "state": STATE_READY,
+        "exit_code": 0,
+        "reason": "",
+        "next_action": "",
+        "digest": contract_digest(contract),
+    }
+
+
+def build_draft_skeleton(design_doc: Path) -> dict:
+    """draft の骨組み。決定論で決まる値だけを埋め、判断が要る欄は空にする。
+
+    空欄は validate が拒否する（fail-closed）。埋め忘れたまま pin されることはない。
+    provisioning.policy は雛形なし・runtime 不要の既定として none にする。
+    """
+    def gate() -> dict:
+        return {"argv": [], "evidence_ref": "", "contract": []}
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "source_fingerprint": source_fingerprint(design_doc),
+        "classification": {"profile": "", "evidence_ref": ""},
+        "quality_gate": {
+            "gen_artifact_paths": [],
+            "gen": gate(),
+            "build": gate(),
+            "lint": gate(),
+            "test": gate(),
+        },
+        "runtime_materialization": {"actions": []},
+        "review": {
+            "evidence_ref": "",
+            "coderabbit": {
+                "enabled": True,
+                "language": "ja-JP",
+                "tools_enabled": [],
+                "tools_disabled": [],
+                "path_filters": [],
+                "path_instructions": [],
+            },
+        },
+        "domain_docs": {
+            "evidence_ref": "",
+            "resolved": {
+                "primary_language": "",
+                "api_style": "",
+                "database": "",
+                "architecture": "",
+                "framework": "",
+                "test_framework": "",
+                "package_manager": "",
+                "spec_sections": [],
+                "architecture_sections": [],
+                "api_sections": [],
+                "data_model_sections": [],
+                "coding_standards_sections": [],
+                "workflow_sections": [],
+            },
+        },
+        "provisioning": {
+            "policy": "none",
+            "evidence_ref": "",
+            "preflight_checks": [],
+            "command_actions": [],
+        },
+    }
+
+
+DRAFT_SKELETON_HEADER = (
+    "# tech_contract draft の骨組み（tech_contract.py draft-skeleton が生成）。",
+    "# 空欄（\"\" と []）をブループリントの根拠に基づいて埋める。空欄のままでは validate が拒否する。",
+    "# 版の数値は書かない。雛形なし・runtime 不要なら provisioning.policy は none のままにする。",
+    "# 手順の正本は SKILL.md の Phase 1.6。",
+)
+
+
+def render_draft_skeleton(design_doc: Path) -> str:
+    lines = list(DRAFT_SKELETON_HEADER) + _dump_yaml(build_draft_skeleton(design_doc))
+    return "\n".join(lines) + "\n"
+
+
+def lint_version_numbers(contract: dict) -> list[str]:
+    """契約に版の数値らしき表記があれば、その位置を返す（報告専用。拒否はしない）。
+
+    対象は、command の argv、file action の content / values、domain_docs.resolved、
+    CodeRabbit の path_instructions。evidence_ref と、形式を検査する pattern は対象外。
+    """
+    hits: list[str] = []
+
+    def scan(value: object, path: str) -> None:
+        if isinstance(value, str):
+            found = VERSION_LIKE.search(value)
+            if found:
+                hits.append(f"{path}: {found.group(0)!r}")
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                scan(item, f"{path}[{index}]")
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                scan(item, f"{path}.{key}")
+
+    quality = contract.get("quality_gate")
+    if isinstance(quality, dict):
+        for gate_name in ("gen", "build", "lint", "test"):
+            item = quality.get(gate_name)
+            if isinstance(item, dict):
+                scan(item.get("argv"), f"quality_gate.{gate_name}.argv")
+    for index, action in enumerate(rp.collect_file_actions(contract) if isinstance(contract, dict) else []):
+        for field in ("content", "values"):
+            scan(action.get(field), f"runtime_materialization.actions[{index}].{field}")
+    prov = contract.get("provisioning")
+    if isinstance(prov, dict) and isinstance(prov.get("command_actions"), list):
+        for index, action in enumerate(prov["command_actions"]):
+            if isinstance(action, dict):
+                scan(action.get("argv"), f"provisioning.command_actions[{index}].argv")
+    domain = contract.get("domain_docs")
+    if isinstance(domain, dict):
+        scan(domain.get("resolved"), "domain_docs.resolved")
+    review = contract.get("review")
+    coderabbit = review.get("coderabbit") if isinstance(review, dict) else None
+    if isinstance(coderabbit, dict) and isinstance(coderabbit.get("path_instructions"), list):
+        for index, item in enumerate(coderabbit["path_instructions"]):
+            if isinstance(item, dict):
+                scan(item.get("instructions"), f"review.coderabbit.path_instructions[{index}].instructions")
+    return hits
+
+
+def _warn_version_numbers(contract: dict) -> None:
+    for hit in lint_version_numbers(contract):
+        print(
+            f"WARN: 版の数値らしき表記があります（契約に版を写さない。SKILL.md Phase 1.6）: {hit}",
+            file=sys.stderr,
+        )
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    state = contract_state(args.manifest, args.design_doc)
+    if args.json:
+        print(json.dumps(state, ensure_ascii=False))
+        return state["exit_code"]
+    if state["state"] == STATE_READY:
+        print(f"READY: approved tech_contract digest={state['digest']}")
+        return state["exit_code"]
+    label = "NEEDS_DRAFT" if state["state"] == STATE_NEEDS_DRAFT else "FATAL"
+    print(f"{label}: {state['reason']}", file=sys.stderr)
+    if state["next_action"] not in state["reason"]:
+        print(f"NEXT: {state['next_action']}", file=sys.stderr)
+    return state["exit_code"]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="承認済み tech_contract lifecycle")
-    parser.add_argument("command", choices=("status", "validate", "apply"))
+    parser.add_argument("command", choices=("status", "draft-skeleton", "validate", "apply"))
     parser.add_argument("--manifest", type=Path, default=ROOT / "manifest.yaml")
     parser.add_argument("--design-doc", type=Path, required=True)
     parser.add_argument("--draft", type=Path, default=ROOT / "tmp" / "tech-stack-contract-draft.yaml")
     parser.add_argument("--preimage", help="apply に必要な root manifest 全体 SHA-256")
     parser.add_argument("--check", action="store_true", help="read-only renderability / projection 検査")
+    parser.add_argument("--json", action="store_true", help="status の結果を JSON で標準出力へ出す")
+    parser.add_argument("--force", action="store_true", help="draft-skeleton が既存 draft を上書きする")
     args = parser.parse_args(argv)
     try:
-        if not args.manifest.is_file() or not args.design_doc.is_file():
-            raise SchemaError("manifest または技術設計書が存在しません")
-        if args.command == "status":
-            contract = load_approved(args.manifest, args.design_doc)
-            print(f"READY: approved tech_contract digest={contract_digest(contract)}")
+        if not args.design_doc.is_file():
+            raise SchemaError("技術設計書が存在しません")
+        if args.command == "draft-skeleton":
+            if args.draft.exists() and not args.force:
+                raise ContractError(f"draft が既に存在します（上書きは --force）: {args.draft}")
+            args.draft.parent.mkdir(parents=True, exist_ok=True)
+            args.draft.write_text(render_draft_skeleton(args.design_doc), encoding="utf-8")
+            print(f"PASS: draft の骨組みを生成しました: {args.draft}")
             return 0
+        if not args.manifest.is_file():
+            raise SchemaError("manifest が存在しません")
+        if args.command == "status":
+            return _run_status(args)
         if not args.draft.is_file():
             raise ContractError(f"draft が見つかりません: {args.draft}")
         draft_root = load_yaml(args.draft)
@@ -1003,10 +1221,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"PASS: draft digest={contract_digest(draft)} "
                 f"projection={projection_digest(draft)}"
             )
+            _warn_version_numbers(draft)
             return 0
         if not args.preimage or not re.fullmatch(r"[0-9a-f]{64}", args.preimage):
             raise SchemaError("apply には --preimage <root manifest sha256> が必要です")
         validate(draft, args.design_doc, require_approval=False, check=True)
+        _warn_version_numbers(draft)
         sealed = seal_contract(args.manifest, draft, args.preimage)
         args.draft.unlink(missing_ok=True)
         print(f"PASS: tech_contract pinned digest={sealed['contract_digest']}")
@@ -1014,17 +1234,7 @@ def main(argv: list[str] | None = None) -> int:
     except ContractError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    except (
-        SchemaError,
-        json.JSONDecodeError,
-        UnicodeDecodeError,
-        ValueError,
-        TypeError,
-        AttributeError,
-        OSError,
-        re.error,
-        rp.PreflightFatal,
-    ) as exc:
+    except FATAL_ERRORS as exc:
         print(f"FATAL: {exc}", file=sys.stderr)
         return 2
 

@@ -240,6 +240,17 @@ fallback を持たない。
   contract digest と各 target preimage が一致する場合だけ実行する。品質ゲートは
   `--preflight` と同等の read-only 検査以外の install/network/write を行わない。
 
+## 設計判断: 契約の状態を READY / NEEDS_DRAFT / BROKEN に分け、起案を中断理由にしない（D-FLOW）
+
+契約が未起案・未承認・stale であることは、ブループリントの切り替えや root manifest の新規生成の直後に必ず起きる想定内の状態である。これを致命（exit 2）として返すと、対話 SKILL が「失敗」と解釈して中断し、`auto_approve: true` の委任があっても質問に回ってしまう。
+
+- **決定**: `tech_contract.py status` は READY（exit 0）/ NEEDS_DRAFT（exit 1）/ BROKEN（exit 2）を返し、`--json` で `state`・`reason`・`next_action` を返す。seed の placeholder（`approval.status: unapproved`）は `validate(require_approval=True)` が `ContractError`（NEEDS_DRAFT）として扱う。consumer（`generate` / `audit` / `check` と各 resolver）は従来どおり `ContractError` を exit 1 にするため、全経路で「未承認」は exit 1 と「Phase 1.6 を実行する」という案内になる。
+- **fail-closed は維持する**: 未承認の契約を consumer が受理することはない。変わるのは終了コードと案内であり、拒否の挙動ではない。BROKEN（schema 破損、設計書欠落）だけが致命のままである。
+- **骨組みの生成**: `draft-skeleton` は、`schema_version`、`source_fingerprint`、節の骨組みを決定論で書く。判断が要る欄は空欄にし、空欄のままでは `validate` が拒否する。fingerprint の計算と書式をエージェントが推測しなくてよく、埋め忘れは pin に到達しない。`provisioning.policy` の既定は `none`（雛形なし・runtime 不要）である。
+- **版の数値の lint**: `validate` は版の数値らしき表記（dotted 形式。`§` 参照は除く）を stderr に `WARN:` で報告する。対象は command の `argv`、file action の `content` / `values`、`domain_docs.resolved`、CodeRabbit の `path_instructions`。拒否にはしない（下の「契約に版の数値を持たない」の移行方針により、既存契約を壊さない）。
+- **質問の条件を限定する**: 契約が未起案・stale であること自体は質問の理由にしない。質問するのは、雛形を作るときの具体値が決まらないとき、`validate` が直せない FAIL のとき、`auto_approve: false` の承認のときだけである（SKILL.md の Phase 1.6）。
+- **非採用**: placeholder を exit 2 のままにして、SKILL.md の文章だけで「致命に見えても中断しない」と指示する案（状態を機械で判別できず、エージェントの解釈に依存する）。
+
 ## 設計判断: 契約に版の数値を持たない（D-QUALITY / D-DEPENDENCY）
 
 `tech_contract` の file action の `content`、preflight、postcondition、command の `argv` に、版の数値（exact・範囲・pattern 内の数字）を書かない。版の正本はプロジェクト自身の宣言ファイル（契約が宣言する path）だけとし、契約の検査は存在と形式に限る。
