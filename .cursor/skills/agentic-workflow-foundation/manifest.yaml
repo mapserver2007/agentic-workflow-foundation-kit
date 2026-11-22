@@ -24,8 +24,9 @@ marker_id: agentic-foundation
 #     本 manifest + templates は root manifest 生成前の汎用 seed / schema / default。
 #     統一設計書 unified/bas は immutable upstream SoT として run_resolved_engine.py が読み取り、
 #     毎回一時 resolved manifest に展開する。seed 自体は実行結果で永続更新しない。
-#     技術スタックは techstack 設計書（プロジェクト別ポリシー源）から、スキル実行で生成される
-#     リポジトリ直下 manifest.yaml の tech_stack へ Phase 1.6（ingest_tech_stack.py）で取り込む。
+#     技術スタックは、技術ブループリント（プロジェクトが選ぶ per-project の入力。init.yaml の
+#     tech_stack_design.filename が指す .cursor/docs/ のファイル）から、tech_contract の起案と
+#     mode: split の出力（docs/tech-stack/ と索引 docs/tech-stack.md）で扱う。
 # ------------------------------------------------------------
 
 # ------------------------------------------------------------
@@ -282,16 +283,6 @@ framework:
       - label: "AI 振る舞い規範"
         path: "AGENTS.md > Context Budget Protocol"
 # ------------------------------------------------------------
-# (2c) tech_stack — root manifest 生成用の seed（per-project 入力 / Phase 1.6 取り込み）
-#   framework.* と違い「凍結フレームワーク定義」ではなく、プロジェクト毎に変動する。
-#   配布時点では具体スタックを焼き込まず、プレーンな未取り込み状態を保持する。
-#   スキル実行後は root manifest.yaml の tech_stack が正式な取り込み先になる。
-# ------------------------------------------------------------
-tech_stack:
-  note: "未取り込み。Phase 1.6 で .cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md の §9 技術スタック表を取り込むと、プロジェクト固有の方針に置き換わる。"
-  items:
-
-# ------------------------------------------------------------
 # (2d) session — Layer 3 セッション管理（親へ内包）
 #   session-planning / session-handover は本 manifest の
 #   outputs[] から生成する。スキル実行後は root manifest.yaml の session.verification
@@ -308,7 +299,7 @@ session:
 # ------------------------------------------------------------
 # (2g) coderabbit — CodeRabbit 設定（tech_contract 投影 / Phase 1.66）
 #   Phase 1.66（resolve_coderabbit.py）が承認済み tech_contract.review.coderabbit を
-#   解釈せず投影する。tech_stack の技術名・カテゴリから再導出しない。
+#   解釈せず投影する。技術名・カテゴリから再導出しない。
 #   以下は template 展開用 seed default。
 # ------------------------------------------------------------
 coderabbit:
@@ -947,12 +938,28 @@ outputs:
       - "閾値の決定根拠"
       - "tracker と handoff manifest"
       - "campaign_id"
-  # techstack 設計書 §9 由来の Domain 層サマリ（下流の Design Doc / AI レポートが参照）。
-  - path: docs/tech-stack.md
+  # 技術ブループリント（project.tech_stack_design_filename が指す .cursor/docs/ の正本）を、
+  # 見出し単位で機械的に分割した逐語ファイル群（docs/tech-stack/）と、その索引（docs/tech-stack.md）。
+  # mode: split は engine の機能（agentic-workflow-engine/scripts/splitlib.py）。分割は人や LLM の判断を挟まない。
+  # 出力ディレクトリは kit が専有する（再生成で過不足を直す）。
+  # placeholder_check は、正本の二重波括弧のプレースホルダが、束縛節（docs/architecture.md の
+  # 「技術ブループリントの適用」）に記入欄として存在するかを audit で照合する。
+  # required_sections は索引のヘッダの目印だけにする（ブループリントの見出しを必須にすると、kit がスタックに結合する）。
+  - path: docs/tech-stack/
     template: docs/tech-stack.md.template
-    mode: render
+    mode: split
+    index_path: docs/tech-stack.md
+    source_dir: .cursor/docs
+    source_key: project.tech_stack_design_filename
+    max_bytes: 4096
+    min_bytes: 800
+    placeholder_check:
+      path: docs/architecture.md
+      heading: 技術ブループリントの適用
     required_sections:
-      - "技術スタック一覧とバージョン方針"
+      - "## 優先順位"
+      - "## タスク別の必読節"
+      - "## 目次"
   # Domain 層ドキュメント（seed: 初回のみ生成、PO が内容を充実させる）。
   # resolve_domain_docs.py（Phase 1.67）が承認済み tech_contract.domain_docs.resolved を投影し、
   # テンプレート内の {{#each}} で契約済みセクションを展開する。
@@ -977,6 +984,7 @@ outputs:
     mode: seed
     required_sections:
       - "## システム全体構成"
+      - "## 技術ブループリントの適用"
   - path: docs/api.md
     template: docs/api.md.template
     mode: seed
@@ -1968,7 +1976,7 @@ project:
   # 開発型固定。init.yaml / apply_kit_init.py が "開発型" を書き込む。他パターンは非対応
   workflow_pattern: "開発型"
   # init.yaml tech_stack_design.filename から apply_kit_init.py が書き込む。
-  # ingest_tech_stack.py が .cursor/docs/{filename} を解決する。
+  # tech_contract.py（resolve_design_doc）と mode: split の出力が .cursor/docs/{filename} を解決する。
   tech_stack_design_filename: "[要確認]"
   # init.yaml tech_contract.auto_approve から投影。省略時 false。
   # true のとき対話 SKILL は validate PASS 後に AskQuestion なしで tech_contract apply する。
@@ -2000,7 +2008,7 @@ project:
     - "仕様は docs(SoT)で裏取りし、推測で断定しない（BAS Humble）"
   # 承認済み tech_contract.quality_gate から Phase 1.65 が決定論的に投影する。
   # G-* の canonical backend argv と backend contract は同じ契約から展開する。
-  # tech_stack の技術名推論や package.json の script 検出は行わない。
+  # 技術名の推論や package.json の script 検出は行わない。
   quality_gate:
     # 単一 selector。foundation は kit 自己検証、application は下流 G-* を選ぶ。
     profile: "application"
@@ -2035,11 +2043,13 @@ project:
       - "token / secret / credential 環境変数の値を表示・出力する（guard-git-write.sh で deny）"
       - "認証ファイル（.env / *.pem / *.key / ~/.config/gh / ~/.git-credentials / ~/.netrc / ~/.ssh/**）を読み取る"
       - "AI シェルから OS credential store / secret manager（Keychain / 1Password / AWS SM / Vault 等）へ直接アクセスする（bin/*-safe wrapper 内部の選択 provider 取得だけを許可）"
-  # 固定値（生成物 docs/tech-stack.md + Domain 層ドキュメント群を指す。PO には問わない）。
+  # 固定値（生成物 docs/tech-stack.md、docs/tech-stack/ + Domain 層ドキュメント群を指す。PO には問わない）。
   doc_navigation:
     domain:
       - path: "docs/tech-stack.md"
-        desc: "技術スタック方針（tech_stack 由来の Domain 層サマリ・生成物）"
+        desc: "技術スタックと構成のベストプラクティスの索引。タスク別の必読節と目次を持つ（mode: split の生成物）"
+      - path: "docs/tech-stack/"
+        desc: "ブループリントを見出し単位で分割した逐語ファイル群。ディレクトリ構成・レイヤ・DB・ビルド・設定などの規範の正本（mode: split の生成物）"
       - path: "docs/spec.md"
         desc: "仕様概要 — ドメインコンテキスト + 機能インデックス。各機能の詳細は docs/spec/*.md（seed 生成物）"
       - path: "docs/spec/"
@@ -2051,6 +2061,6 @@ project:
       - path: "docs/data-models.md"
         desc: "データモデル — DB スキーマ・ER 関係・マイグレーション規約（seed 生成物）"
       - path: "docs/coding-standards.md"
-        desc: "コーディング規約 — tech-stack から自動導出されたベストプラクティス（render 生成物）"
+        desc: "コーディング規約 — ブループリントを複製せず、docs/tech-stack/ の該当節へのリンクとプロジェクト固有の内容を持つ（seed 生成物）"
       - path: "docs/workflows.md"
         desc: "ワークフロー — 主要ユースケースの処理フロー・状態遷移・エラーハンドリング（seed 生成物）"

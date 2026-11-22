@@ -31,6 +31,23 @@ Step ① では以下の 3 段階ガードを順番に実行し、blocking な�
 
 docs-first で仕様、アーキテクチャ、API、データモデル、ワークフロー、ADR、Boundaries との矛盾・SoT 間不整合を検査する。
 
+<!-- contract: gate-b-binding-section -->
+#### 技術ブループリントの束縛節
+
+`docs/architecture.md` の「技術ブループリントの適用」節は、新規ファイル・パッケージの配置と命名を解決する入力である。次の状態を検査する。
+
+- 節に未記入（`[TODO]`）の項目がある。
+- ブループリントのプレースホルダの一覧（`audit` が正本から抽出し、`docs/tech-stack.md` に載せる）に対して、記入欄が欠けている。
+
+判定は、タスクが配置の判断を要するかで分ける。
+
+| タスク | 判定 |
+| --- | --- |
+| 新規ファイルまたは新規パッケージの作成を伴う（配置の判断が必要） | `INCOMPLETE`。Issue Ledger に `gate: B`、`type: missing_requirement`、`resolution_owner: user`、`blocking: true` で記録し、未記入の項目をユーザーに質問する <!-- contract: gate-b-binding-incomplete-for-placement --> |
+| それ以外（docs だけの修正、既存ファイル内のバグ修正など） | `INCOMPLETE` にしない。non-blocking warning として Issue Ledger に記録する <!-- contract: gate-b-binding-warning-otherwise --> |
+
+`INCOMPLETE` は Step ① の退出条件（`blocking_open_issues: []`）を満たせなくするため、配置と無関係なタスクには適用しない。「新規ファイルまたは新規パッケージの作成を伴う」かどうかは、変更対象が特定される Gate C の結果に基づいて確定する。Gate B の時点で判定できない場合は、non-blocking warning として記録し、Gate C で変更対象が特定された後に再判定する。ファイルの追加とパッケージの追加の線引きに迷う場合は、配置の判断が必要なタスクとして扱う。
+
 ### 実現可能性チェック（Gate C）
 
 コード調査後に以下を検査する。**standard 経路と deep 経路の両方で親が直接実施する**（standard 経路では調査 Subagent 完走後、deep 経路では deep-thinking 完了後に親が実施）。

@@ -57,7 +57,7 @@ summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運
 {{else}}
 | 算出スクリプト | kit 内 `resolve_budget_thresholds.py`（本リポジトリには保持しない。updater の generate 時に実行される） |
 {{/if}}
-| 算出フェーズ | Phase 1.55（Phase 1.5 直後、Phase 1.6 の前） |
+| 算出フェーズ | Phase 1.55（Phase 1.5 直後、Phase 1.65 の前） |
 
 {{#if foundation.enabled}}
 複数モデルを併用する場合、最小のコンテキストウィンドウに合わせて保守的な閾値が適用される。閾値の再算出は `project.context_budget.min_context_window_tokens` を変更して `run_resolved_engine.py generate` を実行する。generate が `resolve()` で派生値を再導出する。

@@ -40,7 +40,10 @@ OWNED_ROOT_MARKER = ".agentic-workflow-update-owned"
 DENY_EXACT = {
     Path("init.yaml"),
     Path("manifest.yaml"),
-    Path(".cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md"),
+    # プロジェクトが選ぶ技術ブループリント（init.yaml の tech_stack_design.filename）。
+    # 更新で自動上書きすると、全プロジェクトの tech_contract の fingerprint が stale になるため、
+    # プロジェクト管理のファイルとして扱う。
+    Path(".cursor/docs/APP_DESIGN_BESTPRACTICE.md"),
     Path("docs/DECISIONS.md"),
     Path("docs/GOTCHAS.md"),
     Path("docs/spec.md"),
@@ -280,6 +283,12 @@ def _load_manifest(path: Path, kit_root: Path) -> dict[str, Any]:
 
 
 def _catalog_from_manifest(manifest: dict[str, Any]) -> dict[Path, dict[str, Any]]:
+    """updater が管理する出力（render と marker）だけを返す。
+
+    seed と split は含めない（読み飛ばす）。`mode: split` の出力ディレクトリ（`docs/tech-stack/`）と
+    索引は、consumer 側の `run_resolved_engine.py generate` が生成する。consumer ごとにブループリントが
+    異なり、updater 側で期待ファイル集合を事前に出せないため、updater の対象外とする。
+    """
     result: dict[Path, dict[str, Any]] = {}
     for output in manifest.get("outputs") or []:
         if not isinstance(output, dict) or not isinstance(output.get("path"), str):

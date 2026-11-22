@@ -306,6 +306,22 @@ def test_resolved_catalog_applies_overlay_features() -> None:
         temp.cleanup()
 
 
+def test_split_mode_is_not_in_catalog_and_blueprint_is_denied() -> None:
+    """mode: split は updater の catalog に含めない（seed と同じく読み飛ばす）。"""
+    manifest = {
+        "outputs": [
+            {"path": "AGENTS.md", "mode": "render"},
+            {"path": "docs/tech-stack/", "mode": "split"},
+            {"path": "docs/architecture.md", "mode": "seed"},
+            {"path": ".gitignore", "mode": "marker"},
+        ]
+    }
+    catalog = UPDATE._catalog_from_manifest(manifest)
+    assert {str(path) for path in catalog} == {"AGENTS.md", ".gitignore"}, catalog
+    assert Path(".cursor/docs/APP_DESIGN_BESTPRACTICE.md") in UPDATE.DENY_EXACT
+    assert Path(".cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md") not in UPDATE.DENY_EXACT
+
+
 def test_initial_adopt_does_not_infer_orphans() -> None:
     app, clone, work, temp = _fixture()
     try:
@@ -1303,6 +1319,7 @@ def main() -> int:
         ("consumer plan and apply", test_consumer_plan_and_apply_exclude_kit_sources),
         ("lock without cursor dir", test_plan_creates_lock_when_cursor_directory_is_absent),
         ("resolved catalog", test_resolved_catalog_applies_overlay_features),
+        ("split mode catalog", test_split_mode_is_not_in_catalog_and_blueprint_is_denied),
         ("initial adopt", test_initial_adopt_does_not_infer_orphans),
         ("lock orphan", test_lock_catalog_detects_removed_managed_output),
         ("retire keep", test_retire_keep_leaves_file_and_drops_lock),

@@ -99,6 +99,8 @@ TITLES = {
 
 def _skeletons() -> dict[str, str]:
     manifest = {
+        # architecture.md.template の束縛節が、ブループリントのファイル名を参照する。
+        "project": {"tech_stack_design_filename": "APP_DESIGN_BESTPRACTICE.md"},
         "domain_docs": {
             "primary_language": "Go",
             "framework": "gRPC",
@@ -1379,6 +1381,17 @@ def test_domain_docs_skill_template_contract() -> None:
     for stale in ("Phase 2.1", "subagent", "docs は読めない", "自動検知"):
         _assert(stale not in rendered, f"skill must not keep the old launch model: {stale}")
     _assert("field-guide" not in rendered, "field-guide must not be referenced")
+    # 生成範囲は、技術ブループリントの対象範囲から自律的に決める（PO には聞かない）。
+    for required in (
+        "## 生成範囲",
+        "自律的に決める",
+        "PO には聞かない",
+        "リポジトリの担当範囲",
+        "docs/tech-stack.md",
+        "`evidence` の見出しの実在",
+    ):
+        _assert(required in rendered, f"generation scope contract missing: {required}")
+    _assert("--scope-heading" not in rendered, "scope selection by PO must not be reintroduced")
     for rel, owned in da.OWNERSHIP.items():
         _assert(rel in rendered, f"ownership file missing: {rel}")
         for name in owned:

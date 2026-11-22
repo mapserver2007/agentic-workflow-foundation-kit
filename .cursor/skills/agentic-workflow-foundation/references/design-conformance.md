@@ -100,8 +100,10 @@ consumer 経路でも引き続き失敗とする。
 - `並行セッション対応`: セッションごとの独立した handoff manifest（`handoff-{session_id}.md`）による並行セッション管理と、stale-handoff の検出・選択機構を説明できること。
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
-### docs/tech-stack.md（techstack §9）
-- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。テンプレート内のリンクは `project.tech_stack_design_filename`（manifest 値）で動的解決される。
+### docs/tech-stack.md と docs/tech-stack/（技術ブループリントの `mode: split` 出力）
+- 索引 `docs/tech-stack.md`: 生成ヘッダ、優先順位、読み方、タスク別の必読節、目次を持つ。本文は持たない。必須要件は索引のヘッダの目印（`## 優先順位` / `## タスク別の必読節` / `## 目次`）だけで、ブループリントの見出しを必須節にしない（kit がスタックに結合しないため）。
+- 分割ファイル `docs/tech-stack/*.md`: ブループリントを見出し単位で機械的に分割した逐語ファイル。`audit` が、連結一致・残骸ファイル・サイズ上限・`§` 参照切れ・索引の網羅・プレースホルダの照合を検査する（`agentic-workflow-engine` の `mode: split`）。
+- 束縛節 `docs/architecture.md` の「技術ブループリントの適用」: 手書きの節（所有権表の対象外）。ブループリントのプレースホルダの記入欄の過不足を `audit` が検査する。
 
 ### .cursor/skills/session-planning/SKILL.md（Layer 3 セッション管理）
 - `name: session-planning`: Cursor skill としての識別子。
@@ -144,7 +146,7 @@ consumer 経路でも引き続き失敗とする。
 - **所有権表**: domain-docs が書ける節は `OWNERSHIP`（`domain_docs_apply.py`）で固定する（`ER図・関係性` を含む23節）。`参照` と各ファイルの前文は kit 所有で、書込みを拒否する。`spec_sections` / `architecture_sections` の契約節はテンプレートに受け皿が無く、対象にしない。所有権表とテンプレートの見出しは `test_domain_docs_apply.py` が突き合わせる。
 - **`ER図・関係性`**: Design Doc のデータベース設計の記述から起こした Mermaid の `erDiagram` だけを書ける。画像リンクは拒否のままである（Design Doc の ER が画像でも、テーブルの記述から起こす）。エンティティ名は、適用後の `docs/data-models.md` の本文（ER 図以外）に実在するものに限り、雛形名（`ENTITY_A` など）は拒否する。`erDiagram` は他の節では拒否する。テーブルの記述が無ければ `omissions` で見送り、テンプレートに偽の図の雛形は残らない（テンプレートは `[TODO]` だけを持つ）。
 - **契約節の例外（`api_sections` / `data_model_sections` / `workflow_sections`）**: 見出し名は consumer の契約が決めるため、固定の所有権表には入れない。kit が描画した器の `docs/api.md`、`docs/data-models.md`、`docs/workflows.md` で、見出し名がそのファイルの契約の配列（`CONTRACT_SECTION_KEYS`。resolved manifest から取る）の title と完全一致し、所有権表の節でも `参照` でもなく、引用段落と単独行の `[TODO]` だけでできている節を契約節（`placeholders`）とする。器から求めるので、既存ファイルの手書きの節は対象にならない。埋めてよいのは fill-only だけで、本文が器と完全一致する節に限る。apply は kit の引用を残して `[TODO]` だけを置換し、結果の `body` に引用を含めることを拒否する。update（`mode: refresh`）では対象にせず、結果に含めても拒否する。`state` が targets の `files[].guidance`（契約節名 → 引用の本文）で規約を渡す（targets の `schema_version` は 1 のまま、任意キーの追加）。本文の規則はファイルごとに `domain-docs` SKILL の `## 契約節` が定める。`api` は Design Doc に明示された JSON とエラー応答の外形に限り、型・シリアライザ・gRPC status・OpenAPI の required・各 API の JSON 例は書かない。`data-models` と `workflows` は引用の規約・手順を本文へ写し、引用にも Design Doc にも無い事実を補わない。契約節の `evidence` は、Design Doc の見出しのほかに固定値 `contract`（引用だけが根拠）を許可する。所有権表の節では `contract` を許可しない。
-- **契約の起案規則**: `tech_contract.domain_docs.resolved` は技術スタック設計書の見出しの役割で節を選ぶ（起案プレイブック。`SKILL.md` の Phase 1.67）。guidance は技術規約に限り、業務語彙を入れない。`domain_docs_apply.py state` は、Design Doc のコードスパンの識別子が guidance に現れたとき WARN を出す（報告専用）。`tech_contract.py validate` は技術スタック設計書だけを入力に取るので、この検査は持たない。
+- **契約の起案規則**: `tech_contract.domain_docs.resolved` は技術ブループリントの見出しの役割で節を選ぶ（起案プレイブック。`SKILL.md` の Phase 1.67）。guidance は技術規約に限り、業務語彙を入れない。`domain_docs_apply.py state` は、Design Doc のコードスパンの識別子が guidance に現れたとき WARN を出す（報告専用）。`tech_contract.py validate` は技術スタック設計書だけを入力に取るので、この検査は持たない。
 - **結果ファイルの `schema_version`**: 1 と 2 を受け付ける。2 は `sections` と `spec_files` に任意の `supporting_evidence`（Design Doc に実在する見出しの配列）を許可する。targets の `schema_version` は 1 のままである。一意性・既存 slug との対応・README の根拠は、主根拠だけに適用する。update では、既存の機能仕様の補足に限り、主根拠の Design Doc 見出し実在検査を免除する（後述の「機能仕様（docs/spec/*.md）」）。
 - **機能仕様の規則**: `body` は `## 概要` を必須とする。新しい機能仕様の主根拠は、Design Doc に `業務フロー` 見出しがあるとき、その直下の見出しに限る（細分化の防止。既存の機能仕様の根拠は変えない。見出しが無ければ検査しない）。`## エラーハンドリング` の欠落は `G-DOCFILL-005`（WARN）で報告する。
 - **決定論ゲート（`domain_docs_gate.py`）**: apply が書込み前に、今回置換する本文と適用後の docs に対して `G-DOCFILL-001`（FAIL: `[TODO]` と雛形名の残存）、`002`〜`005`（WARN: 図の本数、テーブルと列、エンドポイント、エラーハンドリング節）を実行し、`tmp/domain-docs-findings.yaml` へ書く。FAIL は検証失敗（exit 1）、WARN は報告だけで修復を起動しない。数値の閾値と割合の指標は持たない（`docs/QUALITY_GATE.md` の「数値スコアリングをしない」に合わせる）。設計書が標準の見出し構造を持たない検査は `skipped` にする。
@@ -244,7 +246,7 @@ fallback を持たない。
 
 - **決定**: preflight / postcondition の `pattern` は数字クラスで書く形式 pattern にし、`installed-marker` は `name` など版以外のフィールドで識別する。command の `argv` には版を渡さず、依存は名前だけを command で追加する。版の解決と充足は、command が起動する各エコシステムのツール（install / build）が担保し、lockfile が記録する。
 - **理由**: 版が契約内の複数箇所（file action、preflight、postcondition、command の `argv`）に重なると、プロジェクトが版を更新したときに preflight が不一致になり、契約の再起案と再承認が要る。契約に宣言の写しがあると、版の正本が二つになる。設計書 §9 のバージョン方針セルは `宣言:` / `[要確認]` / `—` でエコシステムごとの記法になり、範囲 pattern への変換は言語別の解釈を要する。
-- **対象外**: `tech_stack.items[].version_policy` の Domain 要約表示（`docs/tech-stack.md`）。設計書から写すだけで、検査には使わない。
+- **対象外**: ブループリントの「pin 例」の版の数値。版の正本は、プロジェクトの宣言ファイルである。`docs/tech-stack/` は正本の逐語なので、版の数値を検査には使わない。
 - **戻さないもの**: registry からの版取得は、ADR-0002 の consumer 境界により戻さない。
 - **移行**: 既存の封印済み契約は kit の更新では自動で直らない。版の数値を持つ契約は、再起案（`tech_contract.py validate --check` → 承認 → `apply`）で置き換える。`load_approved` は読み込みのたびに `validate` を実行するため、この方針は schema の拒否条件にはしない（既存契約を壊さない）。
 - **非採用**: 設計書のバージョン方針セルから範囲を導く案（記法が言語ごとに違う）、言語・ツールごとの記述表を kit に持つ案（新しい言語に対応できない）。

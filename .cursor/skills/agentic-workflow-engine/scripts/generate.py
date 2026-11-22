@@ -9,6 +9,9 @@
   render : テンプレート全展開でファイルを丸ごと生成（直接編集は drift）
   marker : `marker_id` のマーカーブロックを既存ファイルへ upsert（ブロック外は不可侵）
   seed   : 不在時のみ初期生成。既存ファイルは上書きしない（DECISIONS/GOTCHAS や Domain docs 等の追記ログ）。
+  split  : Markdown の正本を、見出し単位で機械的に分割した逐語ファイル群（出力ディレクトリ）と、
+           索引ファイルを出力する。出力ディレクトリは kit が専有し、再生成のたびに過不足を直す
+           （残骸ファイルを削除する）。分割と索引の計算は splitlib.py に集約している。
 
 exit code:
   0 = 生成成功 / --check で全出力が冪等（差分なし）
@@ -25,6 +28,7 @@ import sys
 import tempfile
 
 import genlib
+import splitlib
 
 
 EXECUTABLE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
@@ -232,6 +236,129 @@ def _safe_join(base: str, rel: str, field_name: str) -> str:
     return candidate
 
 
+# --------------------------------------------------------------------------
+# mode: split（出力ディレクトリ + 索引）
+# --------------------------------------------------------------------------
+_SPLIT_STR_KEYS = ("template", "index_path", "source_dir", "source_key")
+_SPLIT_INT_KEYS = ("max_bytes", "min_bytes")
+
+
+def split_settings(out: dict) -> dict:
+    """mode: split のエントリの設定を検証して返す。"""
+    rel = out.get("path")
+    parts = [p for p in rel.split("/") if p] if isinstance(rel, str) else []
+    if not isinstance(rel, str) or not rel.endswith("/") or len(parts) < 2 or ".." in parts:
+        raise genlib.YamlError(
+            f"mode: split の path は、深さ2以上のディレクトリ（末尾 /）で指定してください: {rel!r}"
+        )
+    for key in _SPLIT_STR_KEYS:
+        if not isinstance(out.get(key), str) or not out[key]:
+            raise genlib.YamlError(f"mode: split の {key} は非空文字列が必要です ({rel})")
+    for key in _SPLIT_INT_KEYS:
+        value = out.get(key)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise genlib.YamlError(f"mode: split の {key} は整数が必要です ({rel})")
+    check = out.get("placeholder_check")
+    if check is not None:
+        if not isinstance(check, dict) or not all(
+            isinstance(check.get(k), str) and check.get(k) for k in ("path", "heading")
+        ):
+            raise genlib.YamlError(f"mode: split の placeholder_check は path と heading が必要です ({rel})")
+    index_parts = [p for p in out["index_path"].split("/") if p]
+    if index_parts[: len(parts)] == parts:
+        raise genlib.YamlError(f"mode: split の index_path が出力ディレクトリの内側です ({rel})")
+    return {
+        "path": rel,
+        "template": out["template"],
+        "index_path": out["index_path"],
+        "source_dir": out["source_dir"],
+        "source_key": out["source_key"],
+        "max_bytes": out["max_bytes"],
+        "min_bytes": out["min_bytes"],
+        "placeholder_check": check,
+    }
+
+
+def split_build(root: str, out: dict, manifest: dict) -> tuple:
+    """(設定, ソースの相対パス, SplitResult) を返す。入力が契約外なら YamlError / RenderError / SplitError。"""
+    cfg = split_settings(out)
+    name = genlib._resolve_path(manifest, cfg["source_key"])
+    if not isinstance(name, str) or not name or "/" in name or "\\" in name or not name.endswith(".md"):
+        raise genlib.YamlError(
+            f"{cfg['source_key']} は basename の .md ファイル名が必要です: {name!r}"
+        )
+    source_rel = cfg["source_dir"].rstrip("/") + "/" + name
+    source_abs = _safe_join(root, source_rel, "outputs[].source_dir")
+    text = _read(source_abs)
+    if text is None:
+        raise genlib.YamlError(f"mode: split のソースが存在しません: {source_rel}")
+    return cfg, source_rel, splitlib.build(text, source_rel, cfg["max_bytes"], cfg["min_bytes"])
+
+
+def split_dir_names(dir_abs: str) -> list:
+    """出力ディレクトリ直下のファイル名を返す。symlink と下位ディレクトリがあれば YamlError（削除を拒否する）。"""
+    if not os.path.lexists(dir_abs):
+        return []
+    if os.path.islink(dir_abs) or not os.path.isdir(dir_abs):
+        raise genlib.YamlError(f"mode: split の出力先がディレクトリではありません: {dir_abs}")
+    names = []
+    for entry in sorted(os.listdir(dir_abs)):
+        path = os.path.join(dir_abs, entry)
+        if os.path.islink(path):
+            raise genlib.YamlError(f"mode: split の出力ディレクトリに symlink があります: {path}")
+        if os.path.isdir(path):
+            raise genlib.YamlError(f"mode: split の出力ディレクトリに下位ディレクトリがあります（削除しません）: {path}")
+        names.append(entry)
+    return names
+
+
+def split_index_context(manifest: dict, result) -> dict:
+    """索引テンプレートの描画用に、manifest の複製へ一時キー `_split` を足す（manifest は変更しない）。"""
+    ctx = dict(manifest)
+    ctx["_split"] = result.ctx
+    return ctx
+
+
+def _run_split_entry(root: str, rel: str, target_dir: str, template_text: str,
+                     manifest: dict, split: tuple, check: bool,
+                     changed: list, written: list, skipped: list,
+                     permission_errors: list) -> int:
+    cfg, _source_rel, result = split
+    index_abs = _safe_join(root, cfg["index_path"], "outputs[].index_path")
+    expected_index = genlib.render(template_text, split_index_context(manifest, result))
+    existing_names = split_dir_names(target_dir)
+    to_write = [
+        name for name in result.order
+        if _read(os.path.join(target_dir, name)) != result.files[name]
+    ]
+    to_delete = [name for name in existing_names if name not in result.files]
+    index_changed = _read(index_abs) != expected_index
+    for level, message in result.problems:
+        print(f"{'WARN' if level == splitlib.LEVEL_WARN else 'ERROR'}(split {rel}): {message}")
+    if check:
+        if to_write or to_delete or index_changed:
+            why = "新規作成" if not existing_names and _read(index_abs) is None else (
+                f"差分あり（書込 {len(to_write)} / 削除 {len(to_delete)} / 索引 {'差分' if index_changed else '一致'}）"
+            )
+            changed.append((rel, why))
+        return 0
+    if not (to_write or to_delete or index_changed):
+        skipped.append(rel)
+        return 0
+    try:
+        for name in to_write:
+            _write(os.path.join(target_dir, name), result.files[name], False)
+        for name in to_delete:
+            os.unlink(os.path.join(target_dir, name))
+        if index_changed:
+            _write(index_abs, expected_index, False)
+    except PermissionError as exc:
+        permission_errors.append((rel, exc))
+        return 0
+    written.append((rel, f"split: 書込 {len(to_write)} / 削除 {len(to_delete)} / 索引 {'更新' if index_changed else '一致'}"))
+    return 0
+
+
 def expected_content(out: dict, root_ctx: dict, target_path: str,
                      template_text: str, marker_id: str) -> str:
     """出力の「あるべき内容」を返す（render/seed=全展開, marker=upsert 結果）。"""
@@ -264,6 +391,26 @@ def run(skill_dir: str, check: bool) -> int:
     written = []
     skipped = []
     permission_errors = []
+
+    # mode: split は先に計算する（1つの manifest に1エントリまで）
+    split_state = {}
+    for out in outputs:
+        if not isinstance(out, dict) or out.get("mode", "render") != "split":
+            continue  # 不正な要素は、下のループの定義エラー処理に任せる
+        if split_state:
+            print("FATAL: mode: split のエントリは1つまでです", file=sys.stderr)
+            return 2
+        try:
+            split_state[out["path"]] = split_build(root, out, manifest)
+        except (TypeError, KeyError, genlib.YamlError, genlib.RenderError, splitlib.SplitError) as e:
+            print(f"FATAL: mode: split の入力エラー: {e}", file=sys.stderr)
+            return 2
+
+    # `_split`（分割と索引の描画用データ）は、同じ実行内の全テンプレートへ渡す。
+    # 例: seed のテンプレートが、正本のプレースホルダの記入欄を `_split.placeholders` から作る。
+    # manifest は変更しない（複製に一時キーを足す）。
+    render_ctx = split_index_context(manifest, next(iter(split_state.values()))[2]) if split_state else manifest
+
     for out in outputs:
         try:
             rel = out["path"]
@@ -275,6 +422,21 @@ def run(skill_dir: str, check: bool) -> int:
         existing = _read(target_path)
         mode = out.get("mode", "render")
 
+        if mode == "split":
+            template_text = _read(template_path)
+            if template_text is None:
+                print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
+                return 2
+            try:
+                _run_split_entry(
+                    root, rel, target_path, template_text, manifest,
+                    split_state[rel], check, changed, written, skipped, permission_errors,
+                )
+            except (genlib.YamlError, genlib.RenderError) as e:
+                print(f"FATAL: mode: split の処理失敗 ({rel}): {e}", file=sys.stderr)
+                return 2
+            continue
+
         if mode == "seed" and existing is not None:
             skipped.append(rel)
             continue
@@ -285,7 +447,7 @@ def run(skill_dir: str, check: bool) -> int:
             return 2
         try:
             expected = expected_content(
-                out, manifest, target_path, template_text, marker_id
+                out, render_ctx, target_path, template_text, marker_id
             )
         except genlib.RenderError as e:
             print(f"FATAL: 描画失敗 ({rel}): {e}", file=sys.stderr)

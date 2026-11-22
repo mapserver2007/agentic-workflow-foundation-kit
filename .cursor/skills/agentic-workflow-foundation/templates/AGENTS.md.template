@@ -44,7 +44,7 @@
 
 ## Tech Stack
 
-技術スタックの一覧とバージョン方針は Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md) に集約する（SoT は [`.cursor/docs/{{project.tech_stack_design_filename}}`](.cursor/docs/{{project.tech_stack_design_filename}})）。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。
+技術スタックと構成のベストプラクティス（ブループリント）は、Domain 層の [`docs/tech-stack.md`](docs/tech-stack.md)（索引）と `docs/tech-stack/`（ブループリントを見出し単位で分割した逐語ファイル群）に集約する。正本は [`.cursor/docs/{{project.tech_stack_design_filename}}`](.cursor/docs/{{project.tech_stack_design_filename}}) で、索引と分割ファイルは生成物（直接編集しない）。ディレクトリ構成、コードの配置と命名、レイヤ、ライブラリ、DB、ビルド、設定は、索引の「タスク別の必読節」から該当する行を選び、そのファイルに従う。下流の Design Doc / AI レポート生成はこの Domain ドキュメントを技術制約として参照する。<!-- contract: agents-tech-stack-index-route -->
 
 {{#if project.agents_optional.architecture}}
 ## Architecture

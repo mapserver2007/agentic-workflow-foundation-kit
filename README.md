@@ -37,8 +37,7 @@ agentic-workflow-foundation（What）
   seed manifest + templates + resolver scripts
         │
         ├─ bootstrap: root manifest.yaml を生成 / framework 同期
-        ├─ ingest: tech_stack を Domain サマリとして root manifest.yaml へ取り込み
-        ├─ contract: tech stack SoT → LLM draft → validate / PO approval → tech_contract pin
+        ├─ contract: 技術ブループリント（SoT）→ LLM draft → validate / PO approval → tech_contract pin
         ├─ resolve: 承認済み tech_contract を quality gate / runtime / review / domain docs へ投影
         ▼
 run_resolved_engine.py
@@ -90,7 +89,7 @@ agentic-workflow-foundation-kit/
 │   ├── QUALITY_GATE.md                │
 │   ├── CONTEXT_BUDGET.md              │
 │   ├── references/                    │
-│   ├── tech-stack.md                  │
+│   ├── tech-stack.md / tech-stack/    │ ブループリントの索引と、見出し単位の逐語の分割ファイル
 │   ├── DECISIONS.md / GOTCHAS.md      │
 │   ├── spec.md / spec/                │
 │   ├── architecture.md / api.md / …   │
@@ -100,7 +99,7 @@ agentic-workflow-foundation-kit/
     ├── docs/
     │   ├── AI_AGENT_UNIFIED_DESIGN.md        # immutable upstream SoT
     │   ├── AI_BUSINESS_AGENT_SUITE.md        # immutable upstream SoT
-    │   └── TECHNOLOGY_STACK_UNIFIED_DESIGN.md # project ごとの tech stack 入力
+    │   └── APP_DESIGN_BESTPRACTICE.md        # project ごとの技術ブループリント（技術スタックと構成の規範）
     ├── hooks/                                # 生成 Hook スクリプト
     ├── hooks.json
     ├── rules/                                # 生成 Cursor Rules
@@ -141,7 +140,6 @@ agentic-workflow-foundation-kit/
         │   └── scripts/
         │       ├── run_resolved_engine.py
         │       ├── apply_kit_init.py
-        │       ├── ingest_tech_stack.py
         │       ├── resolve_budget_thresholds.py
         │       ├── resolve_quality_gate.py
         │       ├── resolve_coderabbit.py
@@ -253,7 +251,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 2. **Phase 1.45**: `run_resolved_engine.py bootstrap` で root `manifest.yaml` を作成、または `framework:` ブロックを seed から同期する
 3. **Phase 1.5**: `init.yaml` → `apply_kit_init.py` で project / context budget / `github_access`（API と AI HTTPS Git の単一 credential provider）を確定する
 4. **Phase 1.55**: `resolve_budget_thresholds.py` で `min_context_window_tokens` から Context Budget 閾値を算出する
-5. **Phase 1.6**: `init.yaml > tech_stack_design.filename` で指定された設計書から `tech_stack` を root `manifest.yaml` へ取り込む
+5. **Phase 1.6**: 廃止。技術ブループリントは Phase 2 の `mode: split` の出力（`docs/tech-stack/` と索引 `docs/tech-stack.md`）に置き換えた
 6. **Contract lifecycle**: SoT fingerprint 不一致時だけ対話 SKILL が draft を起案し、schema・安全性検証と PO 承認後に root `manifest.yaml > tech_contract` へ pinする
 7. **Phase 1.65**: 承認済み `tech_contract.quality_gate` を G-* と package script contract へ投影する
 8. **Phase 1.66**: `tech_contract.review.coderabbit` を CodeRabbit 設定へ投影する
@@ -340,9 +338,6 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 # Context Budget 閾値を min_context_window_tokens から導出
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py
-
-# tech stack を root manifest.yaml > tech_stack へ取り込み
-python3 .cursor/skills/agentic-workflow-foundation/scripts/ingest_tech_stack.py
 
 # 承認済み tech_contract から quality gate / package script contract を投影
 python3 .cursor/skills/agentic-workflow-foundation/scripts/resolve_quality_gate.py
@@ -461,7 +456,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 
 ### tech stack は project input
 
-技術スタック統一設計書はプロジェクトごとに変わる技術入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。`ingest_tech_stack.py` が事実表を `tech_stack` へ取り込み、`docs/tech-stack.md` の Domain サマリに使います。G-* / runtime / CodeRabbit / Domain docs / Provisioning は、設計書から対話 SKILL が起案し承認後に pin した `tech_contract` だけを入力にします。
+技術ブループリント（技術スタックと構成のベストプラクティス）はプロジェクトごとに選ぶ技術入力です。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定し、配置は `.cursor/docs/` 固定です。engine の `mode: split` が、ブループリントを見出し単位で機械的に分割した逐語ファイル群 `docs/tech-stack/` と、その索引 `docs/tech-stack.md` として出力します。orchestrator は、索引の「タスク別の必読節」から該当のファイルを読んで、ディレクトリ構成・コードの配置・命名に従います。プロジェクト固有の値（プレースホルダの具体値、名前決定表）は `docs/architecture.md` の「技術ブループリントの適用」に書きます。G-* / runtime / CodeRabbit / Domain docs / Provisioning は、設計書から対話 SKILL が起案し承認後に pin した `tech_contract` だけを入力にします。
 
 ### Context Budget は Hook で観測する
 
@@ -475,7 +470,7 @@ root `manifest.yaml` は対象プロジェクトの正式 project manifest で�
 - `git`
 - `jq`（Hook 実行時を推奨。未インストール時は fail-open）
 - `gh`（GitHub 連携スキル使用時を推奨）
-- `.cursor/docs/` 配下の技術スタック統一設計書（ファイル名は `init.yaml > tech_stack_design.filename` で指定）
+- `.cursor/docs/` 配下の技術ブループリント（ファイル名は `init.yaml > tech_stack_design.filename` で指定）
 - Optional: CodeRabbit / GitHub review 運用を使う場合は、対象プロジェクト側の GitHub / CodeRabbit 設定
 
 macOS では `make install` / `make check` で CLI 依存を一括確認できます。

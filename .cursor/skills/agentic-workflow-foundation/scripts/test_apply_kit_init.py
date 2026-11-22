@@ -28,7 +28,7 @@ INIT_VALID = """version: 1
 project:
   name: my-test-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 context_budget:
   min_context_window_tokens: 200000
 """
@@ -37,49 +37,49 @@ INIT_NULL_NAME = """version: 1
 project:
   name: null
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 context_budget:
   min_context_window_tokens: 300000
 """
 
 INIT_MINIMAL = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 """
 
 INIT_BAD_VERSION = """version: 2
 project:
   name: test
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 """
 
 INIT_FORBIDDEN_KEY = """version: 1
 project:
   name: test
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 features:
   code_review: true
 """
 
 INIT_EMPTY_NAME = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 project:
   name: ""
 """
 
 INIT_SMALL_WINDOW = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 context_budget:
   min_context_window_tokens: 10000
 """
 
 INIT_UNKNOWN_KEY = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 project:
   name: test
   slug: forced
@@ -124,7 +124,7 @@ INIT_AUTO_APPROVE_TRUE = """version: 1
 project:
   name: auto-approve-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 tech_contract:
   auto_approve: true
 """
@@ -133,7 +133,7 @@ INIT_AUTO_APPROVE_FALSE = """version: 1
 project:
   name: manual-approve-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 tech_contract:
   auto_approve: false
 """
@@ -142,7 +142,7 @@ INIT_AUTO_APPROVE_BAD_TYPE = """version: 1
 project:
   name: bad-auto
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 tech_contract:
   auto_approve: "yes"
 """
@@ -151,7 +151,7 @@ INIT_AUTO_APPROVE_UNKNOWN_KEY = """version: 1
 project:
   name: bad-auto
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 tech_contract:
   auto_approve: true
   extra: bad
@@ -161,7 +161,7 @@ INIT_PROVISIONING_AUTO_APPROVE_TRUE = """version: 1
 project:
   name: provisioning-auto-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 provisioning:
   auto_approve: true
 """
@@ -170,7 +170,7 @@ INIT_PROVISIONING_AUTO_APPROVE_FALSE = """version: 1
 project:
   name: provisioning-manual-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 provisioning:
   auto_approve: false
 """
@@ -179,7 +179,7 @@ INIT_PROVISIONING_AUTO_APPROVE_BAD_TYPE = """version: 1
 project:
   name: provisioning-bad-auto
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 provisioning:
   auto_approve: "yes"
 """
@@ -188,7 +188,7 @@ INIT_PROVISIONING_AUTO_APPROVE_NULL = """version: 1
 project:
   name: provisioning-null-auto
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 provisioning:
   auto_approve: null
 """
@@ -197,7 +197,7 @@ INIT_PROVISIONING_AUTO_APPROVE_UNKNOWN_KEY = """version: 1
 project:
   name: provisioning-bad-auto
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 provisioning:
   auto_approve: true
   extra: bad
@@ -205,7 +205,7 @@ provisioning:
 
 INIT_GITHUB_APP = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: github_app
 """
@@ -214,7 +214,7 @@ INIT_GITHUB_KEYCHAIN = """version: 1
 project:
   name: github-keychain-project
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: keychain
   keychain:
@@ -224,14 +224,14 @@ github_access:
 
 INIT_GITHUB_BAD_PROVIDER = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: gh
 """
 
 INIT_GITHUB_EMPTY_ACCOUNT = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: keychain
   keychain:
@@ -240,14 +240,14 @@ github_access:
 
 INIT_GITHUB_KEYCHAIN_OMITTED = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: keychain
 """
 
 INIT_GITHUB_BAD_SERVICE = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   keychain:
     service: ""
@@ -255,20 +255,20 @@ github_access:
 
 INIT_GITHUB_UNKNOWN_KEY = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   extra: bad
 """
 
 INIT_GITHUB_BAD_TYPE = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access: github_app
 """
 
 INIT_GITHUB_CONTROL_CHAR = """version: 1
 tech_stack_design:
-  filename: TECHNOLOGY_STACK_UNIFIED_DESIGN.md
+  filename: APP_DESIGN_BESTPRACTICE.md
 github_access:
   api_credential_provider: keychain
   keychain:
@@ -308,7 +308,7 @@ def main() -> int:
         errors.append(f"valid init: expected exit 0, got {rc}\n{log}")
     for needle in ['name: "my-test-project"', 'slug: "my-test-project"',
                     'workflow_pattern: "開発型"',
-                    'tech_stack_design_filename: "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"']:
+                    'tech_stack_design_filename: "APP_DESIGN_BESTPRACTICE.md"']:
         if needle not in out:
             errors.append(f"valid init: missing {needle!r} in manifest")
 

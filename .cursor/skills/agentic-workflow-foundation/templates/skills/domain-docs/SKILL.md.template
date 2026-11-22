@@ -3,7 +3,8 @@ name: domain-docs
 description: >-
   単独で起動する。designs/docs/ の *.md から PO が AskQuestion で選んだ Design Doc を読み、
   Domain 層ドキュメント（docs/spec.md ほか）の本文を、既存 docs とマージして起案する。
-  コードベースがあれば整合を確認する。起動したエージェントは結果ファイル
+  コードベースがあれば整合を確認する。生成範囲は、技術ブループリントの対象範囲から
+  起案するエージェントが自律的に決める（PO には聞かない）。起動したエージェントは結果ファイル
   tmp/domain-docs-result.yaml だけを書き、docs への書込みは domain_docs_apply.py が行う。
   agentic-workflow-foundation の生成プロセスからは起動しない。
 disable-model-invocation: true
@@ -62,7 +63,7 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
      承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用されない。
    - 見送り: 同じ Design Doc の stale だけは、`python3 "$apply" apply --refresh --decline` で docs を変えずに既読にできる。switched、固定が無い場合、強制 update では `--decline` は使えない（exit 2）。見送りは `apply` を実行しないことで表す（固定は動かず、次回の `state` でも update として再提示される）。
 8. update の適用後に、同じ `--design-doc` で `state` を再実行する。`fill` が出たら（器のままの契約節、または update で `omissions` にした節）、続けて起案から繰り返す。`skip` になったら終了する。
-9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節を報告する。
+9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節、`## 生成範囲` で決めた範囲と理由（記録した「リポジトリの担当範囲」）を報告する。
 
 ## 入力と出力
 
@@ -71,10 +72,29 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
 - PO が選んだ Design Doc（targets の `design_doc` が指すファイル）
 - `tmp/domain-docs-targets.yaml`
 - 既存の Domain docs（`docs/spec.md`、`docs/spec/*.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/workflows.md`）。既存本文を起点にマージし、ファイル間の食い違いを避けるために読む。
+- 技術ブループリント（索引 `docs/tech-stack.md` と分割ファイル `docs/tech-stack/`）。`## 生成範囲` で対象範囲を読み取るために読む。
 - コードベース（`## マージとコード整合` の照合に使う）
 - 修復のとき（`apply --check` が exit 1 のとき）は、`tmp/domain-docs-findings.yaml`（ゲートの findings）と `tmp/domain-docs-result.yaml`（前回の結果。直す元）
 
 書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets、findings を直接変更しない。`state` の後に docs などが変わると、`apply` は digest 不一致で拒否する。
+
+例外が1つある。`## 生成範囲` が決めた範囲と理由は、`docs/architecture.md` の「技術ブループリントの適用」節の「リポジトリの担当範囲」に記録する。この節は手書きの節で、所有権表の対象ではない（`apply` は書かない）。記録は、`apply` が終わった後に、エージェントが直接編集して行う（`state` の後、`apply` の前に編集すると、digest 不一致で `apply` が拒否される）。
+
+## 生成範囲
+
+Design Doc のどの内容を Domain docs に持ち込むかは、技術ブループリントの対象範囲から、起案するエージェントが自律的に決める。PO には聞かない。特定のブループリントの章名や節番号を前提にせず、どのブループリントでも同じ手順で判断する。
+
+1. 技術ブループリントを読み、対象範囲を読み取る。読む場所は、題名（言語、フレームワーク、アプリケーションの種類）、冒頭の説明、「対象」と「対象外」を述べた節である。
+2. Design Doc の見出しを、対象範囲に入るものと入らないものに分ける。たとえば、バックエンドのブループリントでは、API、データベース、業務フロー、エラーハンドリング、状態遷移は入り、画面設計や画面の見た目は入らない。この例は判断の仕方の説明であり、スキルの契約ではない。
+3. 範囲に入る見出しだけを、本文と `evidence` に使う。範囲外の見出しは、本文に持ち込まない。範囲外であることを理由に書かない節は、`omissions` に理由を書く。範囲の判断が割れる見出しは範囲に入れ、その理由を記録に残す。
+4. 決めた範囲と理由（採用した見出し、除外した見出しと除外の理由）を、起案の後に、「リポジトリの担当範囲」へ記録する（`## 入力と出力` の例外を参照）。
+5. ブループリントが規定する領域（ディレクトリ構成、コードの配置、レイヤ、ライブラリ、DB の規約、ビルド、設定など）は、Domain docs に複製せず、技術ブループリントの索引 `docs/tech-stack.md` へのリンクと、節の指定（節番号、ブループリントの版、見出し名）で参照する。`docs/architecture.md` の `ディレクトリ/モジュール責務` は、構成要素と責務の表と、このリポジトリ固有の内容にとどめる。`docs/coding-standards.md` はこのスキルが書かないが、ブループリントの複製を見つけたら報告する。
+
+判断の担保は、PO の選択ではなく、次の3つである。機械が検査するのは `evidence` の見出しの実在だけで、範囲の妥当性は検査しない。画面設計などの混入や、範囲内の仕様の取りこぼしは、生成時に検知されない。
+
+- `update` の承認時の diff 確認。
+- 決めた範囲と理由の記録。
+- PO による生成結果の評価。評価の観点は、範囲外の内容が混入していないことと、範囲内の仕様が落ちていないことである。
 
 ## 結果ファイル
 
@@ -140,7 +160,7 @@ Design Doc に記載があるものは、落とさずに持ち込む。記載が
 - `docs/api.md`: 全エンドポイントの呼び元、request、response、条件付きで返す項目、並び順と同値のときの順序、既定値、検証失敗の分類とエラーコード、同じ値の再送の扱い、冪等性の有無。
 - `docs/data-models.md`: テーブルごとの列・型・制約・索引、ID 方式、ロックと採番の手順（番号付き）、処理ごとのアクセスパターンと使う索引、物理制約を置かない項目とその理由。
 - `docs/workflows.md`: 業務フローの時系列、エラー時の挙動、状態の値と遷移の表、画面や端末の同期契機、再試行の方針。
-- `docs/architecture.md`: 構成要素とその責務、依存の向き、トランザクションとロックの境界、同期の方式、システム外との境界。`ディレクトリ/モジュール責務` は、Design Doc に実在のパスが無いとき、構成要素（サーバー、フロントエンド、管理画面など）と責務の表にする。パスと依存先を推測で書かない。構成要素の記述も無いときだけ `omissions` に書く。
+- `docs/architecture.md`: 構成要素とその責務、依存の向き、トランザクションとロックの境界、同期の方式、システム外との境界。`ディレクトリ/モジュール責務` は、Design Doc に実在のパスが無いとき、構成要素（サーバー、フロントエンド、管理画面など）と責務の表にする。パスと依存先を推測で書かない。構成要素の記述も無いときだけ `omissions` に書く。ブループリントが規定する領域（ディレクトリ構成、コードの配置）は書かず、`docs/tech-stack.md` への参照にとどめる（`## 生成範囲`）。
 
 ## 矛盾する記述の扱い
 
@@ -208,8 +228,8 @@ targets の `files[].placeholders` に載った節は、契約の `api_sections`
 ## 起案の手順
 
 1. targets の `mode`、`action`、`pin`、対象節、既存 spec の slug と evidence を読む。
-2. Design Doc と既存の Domain docs（必要ならコードベース）を読む。
-3. 「持ち込む内容」「図の引継ぎ」「マージとコード整合」を満たして、対象節の本文と機能仕様を起案する。
+2. Design Doc と既存の Domain docs（必要ならコードベース）を読み、技術ブループリントの対象範囲から `## 生成範囲` に従って範囲を決める。
+3. 「持ち込む内容」「図の引継ぎ」「マージとコード整合」を満たして、範囲内の内容だけで対象節の本文と機能仕様を起案する。
 4. `tmp/domain-docs-result.yaml` だけを書く。docs を直接編集しない。
 5. `## 起動手順` の検証（`apply --check`）へ進む。
 

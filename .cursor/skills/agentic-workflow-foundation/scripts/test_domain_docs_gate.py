@@ -245,6 +245,8 @@ def test_structural_warnings_and_skips() -> None:
 # 別アプリ（図書館の貸出管理・別スタック）の fixture
 # --------------------------------------------------------------------------
 LIBRARY_MANIFEST = {
+    # architecture.md.template の束縛節が、ブループリントのファイル名を参照する。
+    "project": {"tech_stack_design_filename": "LIBRARY_BLUEPRINT.md"},
     "domain_docs": {
         "primary_language": "TypeScript",
         "framework": "NestJS",
