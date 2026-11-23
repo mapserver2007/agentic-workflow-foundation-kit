@@ -20,7 +20,9 @@ Design Doc は自動検知しない。PO が `designs/docs/` 直下の `*.md` �
       `[TODO]` が残る部分だけを fill する（既存の値は書き換えない）。`module` / `svc` / `db` /
       `ENV_PREFIX` / `Feature`、port、CORS の許可 origin は apply が `app` などから導出する。
       `state` が `git remote get-url origin` の文字列から owner を決定論で取り出して targets に載せる
-      （通信はしない。エージェントは git を読まない）。`app`（製品名）を決められないときは exit 2。
+      （通信はしない。エージェントは git を読まない）。`app`（製品名）は、Design Doc から推論で得られない・
+      一つに決められないときに、エージェントが AskQuestion で PO に確認して決める。`binding.app` が空、または
+      英数字にできないときは exit 2（フォールバックは無い）。PO が決めた名前は `binding.app_source: po` で記録する。
       契約節（`docs/api.md`、`docs/data-models.md`、`docs/workflows.md` の、契約の
       `api_sections` / `data_model_sections` / `workflow_sections`）は、kit の引用を残して
       `[TODO]` だけを置き換える。
@@ -586,7 +588,8 @@ def _digests(root: Path, doc: Path | None, manifest_path: Path) -> dict[str, str
 # 所有権表の節とは別の、fill 専用の経路で書く。kit の器にある `[TODO]` の部分（プレースホルダの行、
 # 名前決定表、ディレクトリツリー、担当範囲、方針）だけを置換し、埋め済みの部分は書き換えない
 # （`module` / `app` は import パスに影響するため。変更は手編集で行う）。
-# エージェントは `app`（製品名）と業務に依存する名前だけを決める。`module` / `svc` / `db` / `ENV_PREFIX` /
+# エージェントは `app`（製品名）と業務に依存する名前だけを決める（`app` が Design Doc から決められないときは、
+# エージェントが PO に確認して決める）。`module` / `svc` / `db` / `ENV_PREFIX` /
 # `Feature`、port、CORS の許可 origin は、apply が `app` などから決定論で導出する。
 # --------------------------------------------------------------------------
 BINDING_FILE = "docs/architecture.md"
@@ -602,8 +605,13 @@ BINDING_PARTS = (BINDING_PLACEHOLDERS, BINDING_NAMES, BINDING_TREE, BINDING_SCOP
 DERIVED_PLACEHOLDERS = (
     "module", "app", "svc", "ENV_PREFIX", "db", "feature", "Feature", "caller", "usecase_group",
 )
+# `app` の決め方。design_doc = Design Doc の記述から決めた（PO が Design Doc に現れる候補から選んだ場合を含む）、
+# po = PO が入力した名前、または Design Doc に現れない候補を PO が選んだ。
+APP_SOURCE_DESIGN_DOC = "design_doc"
+APP_SOURCE_PO = "po"
+APP_SOURCES = (APP_SOURCE_DESIGN_DOC, APP_SOURCE_PO)
 BINDING_INPUT_KEYS = frozenset({
-    "app", "app_evidence", "features", "callers", "usecase_groups",
+    "app", "app_evidence", "app_source", "features", "callers", "usecase_groups",
     "placeholders", "names", "tree", "scope", "policies",
 })
 NAME_ITEM_KEYS = frozenset({"name", "evidence"})
@@ -727,14 +735,15 @@ def normalize_app(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise FatalError(
             "app（製品名）を Design Doc から決められません。binding.app が空です（フォールバックは設けない。"
-            "Design Doc に英数字の製品名があるか確認して PO に報告する）"
+            "Design Doc から推論で得られない、または一つに決められないときは、AskQuestion で PO に確認して"
+            "決めた名前を書く。PO が決めなかったときは PO に報告する）"
         )
     text = re.sub(r"[\s_]+", "-", value.strip().lower())
     text = re.sub(r"-{2,}", "-", text).strip("-")
     if not APP_RE.fullmatch(text):
         raise FatalError(
             f"app（製品名）が kebab-case の英小文字と数字にできません: {value!r}"
-            "（Design Doc に英数字の製品名があるか確認して PO に報告する）"
+            "（英数字の製品名を AskQuestion で PO に確認して決める。PO が決めなかったときは PO に報告する）"
         )
     return text
 
@@ -797,9 +806,17 @@ def _check_binding_input(raw: object, target: dict, doc_headings: set[str], owne
     if unknown:
         raise ApplyError(f"binding に未知キーがあります: {unknown}")
     pending = set(target.get("pending") or [])
-    # `app` を決められないときは、フォールバックせずに exit 2 で止める。
+    # `app` が空、または英数字にできないときは、フォールバックせずに exit 2 で止める。
+    # Design Doc から決められないときは、エージェントが PO に確認して決めた名前を `app` に書く。
     app = normalize_app(raw.get("app"))
-    app_evidence = _check_evidence(raw.get("app_evidence"), "binding.app_evidence", doc_headings)
+    app_source = raw.get("app_source", APP_SOURCE_DESIGN_DOC)
+    if app_source not in APP_SOURCES:
+        raise ApplyError(f"binding.app_source は {list(APP_SOURCES)} のどちらかである必要があります: {app_source!r}")
+    if app_source == APP_SOURCE_PO and raw.get("app_evidence") in (None, ""):
+        # PO が決めた名前は、Design Doc に根拠の見出しが無くてよい。
+        app_evidence = ""
+    else:
+        app_evidence = _check_evidence(raw.get("app_evidence"), "binding.app_evidence", doc_headings)
     for key in ("features", "callers", "usecase_groups"):
         if key not in raw:
             raise ApplyError(f"binding.{key} がありません")
@@ -811,7 +828,7 @@ def _check_binding_input(raw: object, target: dict, doc_headings: set[str], owne
     group_names = [item["name"] for item in groups]
     derived = derive_binding_values(app, owner, feature_names, caller_names, group_names)
 
-    values: dict = {"app": app, "app_evidence": app_evidence, "derived": derived}
+    values: dict = {"app": app, "app_evidence": app_evidence, "app_source": app_source, "derived": derived}
     values["features"], values["callers"], values["groups"] = feature_names, caller_names, group_names
 
     if BINDING_PLACEHOLDERS in pending:
@@ -936,7 +953,15 @@ def _defaults_table(callers: list[str]) -> str:
 def _fixed_policy_rows(values: dict) -> list[list[str]]:
     """apply が必ず記録する方針の行（`app` と `module` の決め方）。"""
     app, repo, owner = values["app"], values["repo"], values["owner"]
-    app_policy = f"Design Doc の製品名 `{app}` を使う。"
+    if values.get("app_source") == APP_SOURCE_PO:
+        app_policy = (
+            f"PO が `AskQuestion` で決めた製品名 `{app}` を使う"
+            "（Design Doc から推論で得られない、または一つに決められなかったため）。"
+        )
+        app_basis = f"`{values['app_evidence']}`" if values["app_evidence"] else "PO の指定（AskQuestion）"
+    else:
+        app_policy = f"Design Doc の製品名 `{app}` を使う。"
+        app_basis = f"`{values['app_evidence']}`"
     if repo and repo != app:
         app_policy += f"ブループリントの定義（リポジトリ名 / バイナリ名）のうち、リポジトリ名（`{repo}`）とは一致しない。"
     module = values["derived"]["module"]
@@ -945,7 +970,7 @@ def _fixed_policy_rows(values: dict) -> list[list[str]]:
         if owner else f"{module} とする。git remote origin から owner を取り出せないため、製品名だけにした。"
     )
     return [
-        ["app（アプリ名とバイナリ名）", app_policy, f"`{values['app_evidence']}`"],
+        ["app（アプリ名とバイナリ名）", app_policy, app_basis],
         ["module（Go module path）", module_policy, "git remote origin と製品名"],
     ]
 

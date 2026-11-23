@@ -44,7 +44,7 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
    | `update` | 固定済みと別のファイルを選んだ（`pin=switched`）、固定済みのファイルが変わった（`pin=stale`）、固定が無く docs が埋め済み、または `state --refresh` の指定 | 所有権表の全節と既存の機能仕様を、マージして更新する（targets の `mode: refresh`） |
 
    `state --refresh` は、選んだ Design Doc での強制 update である（品質改善後の再起案に使う）。
-5. 起案する。`## マージとコード整合` に従い、結果ファイル `tmp/domain-docs-result.yaml` だけを書く。targets に `files[].binding` があるときは、`## 束縛節` に従って `binding` も書く（`AskQuestion` は使わず、規則で必ず決める）。
+5. 起案する。`## マージとコード整合` に従い、結果ファイル `tmp/domain-docs-result.yaml` だけを書く。targets に `files[].binding` があるときは、`## 束縛節` に従って `binding` も書く。`binding` の値は規則で必ず決める。ただし `app`（製品名）が Design Doc から推論で得られないとき、または一つに決められないときだけ、`### app の確認` に従って `AskQuestion` で PO に確認する。
 6. 検証する。書込みなしで、`apply` と同じ検証と決定論ゲート（`G-DOCFILL-*`）を実行する。`update` のときは `--refresh` を付ける。
 
    ```bash
@@ -54,7 +54,7 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
 
    - exit 0: PASS。WARN があってもよい。WARN は再起案せず、最後の報告に載せる。
    - exit 1: 検証失敗、またはゲートの FAIL。docs は変更されない。メッセージと `tmp/domain-docs-findings.yaml` を読み、結果ファイルを**最大 1 回だけ**直して `--check` を再実行する。2 回目も exit 1 なら、PO に報告して停止する。
-   - exit 2: 致命的（入力が曖昧・消失、書込み失敗）。中断して PO に報告する。`binding.app`（製品名）を決められないとき、または kebab-case の英数字にできないときも exit 2 である（フォールバックは無い）。
+   - exit 2: 致命的（入力が曖昧・消失、書込み失敗）。中断して PO に報告する。`binding.app`（製品名）が空のとき、または kebab-case の英数字にできないときも exit 2 である（フォールバックは無い）。`app` を決められないときは、`apply` を実行する前に `### app の確認` で PO に確認して決める。この exit 2 は、確認せずに `app` を書かなかった場合と、PO が決めずに中断した場合の最後の防壁である。
 7. 適用する。
    - `fill`: `python3 "$apply" apply` を実行する。
    - `update`: `python3 "$apply" apply --refresh` で計画（diff、findings、`PLAN: ... digest=<digest>`）を表示する（書込みなし）。次の2つを要約して PO に提示し、`AskQuestion` で承認を得る（推奨: 承認する。diff に意図しない `-` 行が無いことを確認したうえで）。
@@ -63,7 +63,7 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
      承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用されない。
    - 見送り: 同じ Design Doc の stale だけは、`python3 "$apply" apply --refresh --decline` で docs を変えずに既読にできる。switched、固定が無い場合、強制 update では `--decline` は使えない（exit 2）。見送りは `apply` を実行しないことで表す（固定は動かず、次回の `state` でも update として再提示される）。
 8. update の適用後に、同じ `--design-doc` で `state` を再実行する。`fill` が出たら（器のままの契約節、update で `omissions` にした節、または未記入の束縛節）、続けて起案から繰り返す。束縛節は update では書かれないので、update の適用後に必ず `fill` で埋める。`skip` になったら終了する。
-9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節、`## 生成範囲` で決めた範囲と理由（`binding.scope` に書いた「リポジトリの担当範囲」）、決めた `app` と、apply が導出した `module`・port・CORS の許可 origin を報告する。
+9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節、`## 生成範囲` で決めた範囲と理由（`binding.scope` に書いた「リポジトリの担当範囲」）、決めた `app` とその決め方（Design Doc の記述、または PO の確認）、apply が導出した `module`・port・CORS の許可 origin を報告する。
 
 ## 入力と出力
 
@@ -215,7 +215,7 @@ targets の `files[].binding` は、`docs/architecture.md` の「技術ブルー
 
 - fill（`mode: fill`）でだけ書ける。update（`mode: refresh`）では対象にならず、`binding` を書くと拒否される。update の適用後に `state` を再実行して、`fill` で埋める。
 - targets に `files[].binding` があるのに `binding` を書かずに `apply` を実行すると、拒否される（`omissions` での見送りは無い）。
-- `AskQuestion` は使わない。この節の値は、下の規則で必ず決める。承認の対話は無く、確認は事後に git diff で行う。
+- `AskQuestion` を使うのは `app`（製品名）だけで、Design Doc から推論で得られないとき、または一つに決められないときに限る（`### app の確認`）。`app` 以外の値は、下の規則で必ず決める。承認の対話は無く、確認は事後に git diff で行う。
 - apply は、`[TODO]` が残る部分だけを置換する。埋め済みの部分は書き換えない（`module` と `app` は import パスに影響するため。変更は手編集で行う）。
 
 `files[].binding` が持つもの:
@@ -228,8 +228,9 @@ targets の `files[].binding` は、`docs/architecture.md` の「技術ブルー
 
 | キー | 内容 |
 | --- | --- |
-| `app` | 製品名。Design Doc にある英数字の製品名を使う。apply が kebab-case の英小文字と数字へ正規化する |
-| `app_evidence` | 製品名が現れる Design Doc の見出し |
+| `app` | 製品名。Design Doc にある英数字の製品名、または `### app の確認` で PO が決めた名前を使う。apply が kebab-case の英小文字と数字へ正規化する |
+| `app_evidence` | 製品名が現れる Design Doc の見出し。`app_source` が `po` のときだけ省略できる（書くなら Design Doc に実在する見出し） |
+| `app_source` | 任意。`design_doc`（既定）または `po`。`design_doc` は、Design Doc の記述から決めた、または PO が Design Doc に現れる候補から選んだ場合。`po` は、PO が入力した名前、または Design Doc に現れない候補（リポジトリ名など）を PO が選んだ場合。apply が方針表に決め方を記録する |
 | `features` | 集約の名前（snake_case）の配列。各要素は `name` と `evidence` |
 | `callers` | 呼び出し元の名前（snake_case）の配列。各要素は `name` と `evidence` |
 | `usecase_groups` | ユースケース群の名前（snake_case）の配列。各要素は `name` と `evidence` |
@@ -275,7 +276,7 @@ binding:
 
 どの規則も、Design Doc に実在する記述だけを根拠にする。推測で補わない。
 
-- `app`: Design Doc の製品名を使う（ブループリントの「リポジトリ名 / バイナリ名」の定義から外れてよい。外れる旨は apply が方針表に記録する）。**決められないときは、フォールバックしない。`app` を書かずに中断して PO に報告する。書かずに `apply` を実行しても exit 2 で止まる。** 製品名が日本語だけで、英数字の表記が Design Doc に無いときも同じである。
+- `app`: Design Doc の英数字の製品名が一つに決まるときは、それを使う（ブループリントの「リポジトリ名 / バイナリ名」の定義から外れてよい。外れる旨は apply が方針表に記録する）。**推論で得られないとき（製品名が日本語だけで、英数字の表記が Design Doc に無い、など）と、一つに決められないとき（候補が 2 つ以上あり、Design Doc の記述から絞れない）は、推測で決めず、フォールバックもしない。`### app の確認` に従って `AskQuestion` で PO に確認し、決まった名前を書く。**
 - `features`: Design Doc のデータベース設計のテーブルから、集約を選ぶ。関係テーブル（2 つの主キー列が他のテーブルを指すだけのもの）と、他のテーブルの明細として説明されるテーブルは、独立した集約にしない。名前は、単数形の snake_case にする。
 - `callers`: 呼び出し元は、Design Doc が構成要素に付けた語（括弧内の英語名など）を使う。1 つしか無く、ブループリントが「呼び出し元が 1 つのときの名前」を定めているなら、それに従う。
 - `usecase_groups`: 業務フロー直下の見出しごとに 1 つ決める。見出しは日本語なので、英語の snake_case の名前は起案するエージェントが決める。この変換は決定論ではないため、機械が検査するのは形式（snake_case）と、名前決定表・ツリーとの整合だけである。`evidence` に元の見出しを書く。
@@ -284,6 +285,33 @@ binding:
 - `scope`: `## 生成範囲` で決めた範囲と理由（採用した見出し、除外した見出しと除外の理由）。port、CORS、環境名は書かない（apply が追記する）。
 - `policies`: ブループリントが「プロジェクトで決めて記録する」とする項目を、1 項目 1 行で書く（1 件以上）。Design Doc に記載があるものだけを書く。「無い」と明記する項目（認証など）は、Design Doc が付けないと述べているときだけ「無い」と書く。`app` と `module` の決め方は、apply が必ず記録するので書かない。
 - `placeholders`: apply が導出する名前（`module`、`app`、`svc`、`ENV_PREFIX`、`db`、`feature`、`Feature`、`caller`、`usecase_group`）は書けない。これ以外の行が器にあるときだけ、具体値を書く。
+
+### app の確認
+
+`app` が、次のどちらかのときだけ、結果ファイルを書く前に `AskQuestion` で PO に確認する。Design Doc の記述から英数字の製品名が一つに決まるときは、確認しない。
+
+- 推論で得られない: Design Doc に英数字の製品名が無い（日本語だけ、など）。
+- 一つに決められない: 候補が 2 つ以上あり、Design Doc の記述から 1 つに絞れない。
+
+手順:
+
+1. 候補を推論で集める。読む場所は、Design Doc の題名（H1）、冒頭の概要、構成要素に付いた括弧内の英語名、コードスパンや太字で示された固有名詞である。次も候補に加える。
+   - targets の `files[].binding.repo_name`（git remote のリポジトリ名。ブループリントの既定の定義はリポジトリ名 / バイナリ名）。あるときだけ。
+   - 既存の `docs/architecture.md` の方針表に、埋め済みの `app` があるとき、その値。
+
+   候補は、apply の正規化（kebab-case の英小文字と数字）をかけた値で示し、元の表記と出典（見出し名、`repo_name`、既存 docs）を添える。同じ値は 1 つにまとめる。
+2. `AskQuestion` を1回で提示する。この確認は 1 論点で、ほかの確認と1回にまとめない。選択肢は候補ごとに 1 つとする。PO は `Other` に任意の製品名を入力できる。選択肢が 2 つに満たないときは、「候補にない名前を入力する（`Other` に入力）」を選択肢に足す。
+3. 推奨案を必ず 1 つ添える。推奨は、根拠が最も強い候補とする（強い順: Design Doc の題名・概要に現れる名前、既存 docs の埋め済みの値、`repo_name`）。候補が無いときは、「`Other` に入力する」を推奨し、Design Doc の製品名の英訳またはローマ字表記を入力案として示す。トレードオフを 1〜2 行で示す（例: Design Doc の名前は文書と一致するが、`repo_name` と異なると module path がリポジトリ名と分かれる）。
+4. 回答を `app` に書く。PO が入力した名前は、書く前に英数字（`-` と `_` と空白を区切りにできる）で表せるか確認する。表せない入力（日本語だけなど）は、書かずに英数字での入力を求めて、もう一度だけ `AskQuestion` する。PO が決めずに中断したときは、`app` を書かずに中断して報告する（`apply` は exit 2 で止まる）。
+5. 決め方を記録する。PO が Design Doc に現れる候補から選んだときは、`app_source` を省略し、`app_evidence` にその候補が現れる見出しを書く。PO が入力した名前、または Design Doc に現れない候補（`repo_name`、既存 docs の値）を選んだときは、`app_source: "po"` を書く。`app_evidence` は省略してよい（書くなら Design Doc に実在する見出し）。apply が方針表に「PO が決めた」と記録する。
+
+```yaml
+binding:
+  app: "sample-app"
+  app_source: "po"
+```
+
+この例は `app` と `app_source` だけを抜き出したもので、ほかのキーは `### binding のキー` のとおりに書く。
 
 ### apply が導出する値
 
@@ -295,7 +323,7 @@ binding:
 
 ### 検証と終了コード
 
-`apply --check` は、書込みなしで同じ検証と決定論ゲート（`G-DOCFILL-006`）を実行する。exit 1（名前の不整合、`[TODO]` の混入など）は、結果ファイルを最大 1 回だけ直す。exit 2（`app` を決められない）は、中断して PO に報告する。
+`apply --check` は、書込みなしで同じ検証と決定論ゲート（`G-DOCFILL-006`）を実行する。exit 1（名前の不整合、`[TODO]` の混入など）は、結果ファイルを最大 1 回だけ直す。exit 2（`app` が空、または英数字にできない）は、`### app の確認` で PO に確認して `app` を決め直せていないということなので、中断して PO に報告する。
 
 ## 機能仕様
 

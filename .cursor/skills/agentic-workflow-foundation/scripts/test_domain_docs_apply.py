@@ -1413,8 +1413,16 @@ def test_domain_docs_skill_template_contract() -> None:
         "apply --check --refresh",
         "apply --refresh --approve",
         "pin=switched",
+        # app を Design Doc から決められないときは、候補を挙げて PO に AskQuestion で確認する。
+        "### app の確認",
+        "推論で得られない",
+        "一つに決められない",
+        "app_source",
+        "`repo_name`",
     ):
         _assert(required in rendered, f"skill contract missing: {required}")
+    _assert("`AskQuestion` は使わない" not in rendered, "binding must allow AskQuestion for app")
+    _assert("`AskQuestion` は使わず" not in rendered, "binding must allow AskQuestion for app")
     for stale in ("Phase 2.1", "subagent", "docs は読めない", "自動検知"):
         _assert(stale not in rendered, f"skill must not keep the old launch model: {stale}")
     _assert("field-guide" not in rendered, "field-guide must not be referenced")
@@ -1961,6 +1969,11 @@ def test_binding_validation() -> None:
         check("empty app", da.FatalError, "app（製品名）を Design Doc から決められません", app="")
         check("non latin app", da.FatalError, "kebab-case", app="来店")
         check("no app evidence", da.ApplyError, "app_evidence", app_evidence="存在しない見出し")
+        # 根拠の見出しを省略できるのは、PO が決めた名前（app_source: po）だけ。
+        check("design doc app without evidence", da.ApplyError, "app_evidence", app_evidence=None)
+        check("unknown app source", da.ApplyError, "app_source", app_source="guess")
+        check("po app with a wrong evidence", da.ApplyError, "app_evidence", app_source="po", app_evidence="存在しない見出し")
+        check("po app still needs latin letters", da.FatalError, "kebab-case", app="来店", app_source="po")
         check("no features", da.ApplyError, "binding.features", features=None)
         check("empty callers", da.ApplyError, "binding.callers", callers=[])
         check("bad name", da.ApplyError, "snake_case", features=[{"name": "Thing-Key", "evidence": "概要"}])
@@ -1992,6 +2005,37 @@ def test_binding_validation() -> None:
         exc = _expect(da.ApplyError, "refresh binding", lambda: plan_for(
             root, skeletons, targets, {**make_result(targets), "binding": binding_with()}, refresh=True))
         _assert("fill-only" in str(exc), f"refresh message wrong: {exc}")
+
+
+def test_binding_app_decided_by_po() -> None:
+    """Design Doc から決められない `app` は、エージェントが PO に確認して決める。方針表に決め方を記録する。"""
+    skeletons = _skeletons()
+    tree = make_binding()["tree"].replace("sample-app", "po-app")
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-po-") as temp_dir:
+        base = Path(temp_dir)
+        # 根拠の見出しなし: PO の指定として記録する。module と導出値は PO が決めた名前から作る。
+        root = binding_repo(base, skeletons, "po-plain")
+        _, plan = binding_plan(
+            root, skeletons, binding_with(app="PO App", app_source="po", app_evidence=None, tree=tree))
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("| `{{app}}` | `po-app` |" in text, "app must come from the PO answer")
+        _assert("| `{{module}}` | `github.com/acme/po-app` |" in text, "module must be derived from the PO app")
+        _assert("PO が `AskQuestion` で決めた製品名 `po-app` を使う" in text, "policy must say the PO decided")
+        _assert("PO の指定（AskQuestion）" in text, "evidence cell must say the PO decided")
+        _assert("Design Doc の製品名 `po-app`" not in text, "policy must not claim the Design Doc named the app")
+        # 根拠の見出しを添えたときは、その見出しを根拠の列に残す。
+        root = binding_repo(base, skeletons, "po-evidence")
+        _, plan = binding_plan(
+            root, skeletons, binding_with(app="po-app", app_source="po", app_evidence="概要", tree=tree))
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("PO が `AskQuestion` で決めた製品名 `po-app` を使う" in text and "`概要`" in text,
+                "po app with an evidence heading must keep the heading")
+        # 既定（design_doc）は従来どおり Design Doc の製品名として記録する。
+        root = binding_repo(base, skeletons, "design-doc")
+        _, plan = binding_plan(root, skeletons, binding_with())
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("Design Doc の製品名 `sample-app` を使う" in text and "AskQuestion` で決めた" not in text,
+                "default source must keep the Design Doc wording")
 
 
 def test_binding_without_remote_uses_the_app_only() -> None:
@@ -2079,6 +2123,7 @@ def main() -> int:
         ("binding state and fill", test_binding_state_and_fill),
         ("binding keeps filled parts", test_binding_keeps_filled_parts),
         ("binding validation", test_binding_validation),
+        ("binding app decided by po", test_binding_app_decided_by_po),
         ("binding without remote uses the app only", test_binding_without_remote_uses_the_app_only),
         ("binding cli exit codes", test_binding_cli_exit_codes),
     )
