@@ -1,7 +1,7 @@
 ---
 title: Go + gRPC アプリケーション 構成ベストプラクティス
 created_at: 2026-11-20
-version: 1.0
+version: 1.1
 status: 正式版
 ---
 
@@ -53,12 +53,12 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 | タスク種別 | 必読節 | 参照先 |
 | --- | --- | --- |
 | 常時 | §0.1, §0.2 | §0.3 |
-| 新規ファイル・パッケージの追加 | §2, §3.4.1, §3.9 | §0.2, §3.1, §3.2, §3.4.2, §3.4.3, §3.5.3, §3.5.5, §7.5, §9, §11 |
+| 新規ファイル・パッケージの追加 | §2, §3.4.1, §3.9 | §0.2, §3.1, §3.2, §3.4.2, §3.4.3, §3.5.2, §3.5.3, §3.5.5, §7.5, §9, §11 |
 | レイヤをまたぐ変更（Controller から Repository まで） | §3.1, §3.2, §3.3, §3.4.1, §3.4.2, §3.5.1, §3.5.2 | §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.4, §6.5, §9.2, §10 |
 | Controller の追加・変更 | §3.1, §3.2 | §3.4.1, §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.4, §9.2, §10 |
 | UseCase の追加・変更 | §3.1, §3.3 | §3.2, §3.4.1, §3.4.3, §3.5.4, §3.5.5, §3.9, §6.5 |
-| Domain（Entity、VO、Domain Service）の追加・変更 | §3.4 | §3.2, §3.5.3, §3.5.5, §5.4, §10 |
-| Repository・DB アクセスの追加・変更 | §3.5.1, §3.5.2, §3.5.3, §3.5.4, §6 | §3.2, §3.3, §3.5.5, §9, §10 |
+| Domain（Entity、VO、Domain Service）の追加・変更 | §3.4 | §3.2, §3.5.2, §3.5.3, §3.5.5, §5.4, §10 |
+| Repository・DB アクセスの追加・変更 | §3.5.1, §3.5.2, §3.5.3, §3.5.4, §6 | §3.2, §3.3, §3.4.3, §3.5.5, §9, §10 |
 | 外部システム連携（gateway）の追加・変更 | §3.5.5 | §0.4, §3.1, §3.2, §3.3, §3.5.2, §9 |
 | gRPC サーバー・DI・エントリポイントの変更 | §3.6, §3.7, §3.8 | §9, §10 |
 | 新規依存ライブラリの追加 | §4 | §6.2, §9, §10 |
@@ -106,6 +106,8 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 │   │   ├── types/                     # 検証も振る舞いも持たない型（ID の別名型など。§3.4.1）
 │   │   ├── service/{{feature}}_service/ # Domain Service（業務ルールと Repository 呼び出し）
 │   │   ├── repository/                # Repository interface と Repository 層の sentinel
+│   │   │   ├── {{feature}}_repository.go # Repository interface（1 interface = 1 ファイル。infrastructure の実装と同名。§3.5.2）
+│   │   │   └── error.go               # Repository 層の sentinel（§3.4.3）
 │   │   └── domainerror/               # Domain 層の sentinel（業務とカテゴリ）
 │   ├── infrastructure/                # Domain interface の実装
 │   │   ├── {{feature}}_repository.go
@@ -299,7 +301,7 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*CreateOutput, er
 | `vo` | 不変条件や振る舞いを持つ型。不正な値を拒否する（`Parse*` / `New*`）、または値から導く振る舞い（`Contains` など）を持つ。型を持たない純関数は置かない（業務ルールは Domain Service。§3.4.2） | `FeatureStatus`（列挙値を検証する）、`DateRange`（範囲の整合を検証し、`Contains` を持つ） |
 | `types` | 検証も振る舞いも持たない型。意味を区別するための名前付きの型（ID の別名型など）。`Parse*` / `New*` / `Restore*` を持たない | `FeatureID`（`uint64` の別名型） |
 | `service/<feature>_service` | 集約の業務ルールと、そのルールに必要な Repository 呼び出し。transaction は開始しない。時刻と ID は引数で受け取る | interface 名 = 集約名（`Feature`）、実装は非公開構造体、`New(...) Feature` |
-| `repository` | Repository interface（`queryable` を引数に取る）と、Repository 層のカテゴリ sentinel | `<Feature>Repository`、`ErrNotFound` など |
+| `repository` | Repository interface（`queryable` を引数に取る）と、Repository 層のカテゴリ sentinel | `<Feature>Repository`、`ErrNotFound` など。ファイルは interface ごとに `<feature>_repository.go`、sentinel は `error.go`（§3.5.2、§3.4.3） |
 | `domainerror` | Domain 層の sentinel。カテゴリ5つと、ドメイン層の生成時に足す業務 sentinel | `Err*` |
 
 #### 3.4.2 Domain Service
@@ -401,7 +403,7 @@ func RestoreFeature(id uint64, name string, createdAt time.Time) *Feature {
 | `ErrUnavailable` | `unavailable` | 外部システム（gateway）に繋がらない、外部が応答しない（§3.5.5）。DB のドライバエラーには、§3.5.3 の判定表に載せたものにだけ使う |
 
 ```go
-// internal/domain/domainerror/error.go（repository と usecaseerror も同じ5つ）
+// internal/domain/domainerror/error.go（repository と usecaseerror も同じ5つ。ファイルはそれぞれ internal/domain/repository/error.go、internal/usecase/usecaseerror/error.go）
 var ErrNotFound = errors.New("not_found")
 
 // Domain Service: Repository 層 → Domain 層。UseCase の toUseCaseError（Domain 層 → UseCase 層）も同形
@@ -429,7 +431,7 @@ func toDomainError(err error) error {
 | 規則 | 強度 |
 | --- | --- |
 | sentinel は `var Err* = errors.New("<snake_case>")`。比較は `errors.Is` | MUST |
-| カテゴリ5つは `domainerror`、`repository`、`usecaseerror` の3パッケージに置く | MUST |
+| カテゴリ5つは `domainerror`、`repository`、`usecaseerror` の3パッケージに置く。ファイルは各パッケージの `error.go` に固定する（`repository/error.go` は、`infrastructure/repository_error.go`（ドライバのエラーを変換する関数。§3.5.3）とは別物） | MUST |
 | 層を越えるときは自層の同名 sentinel に `fmt.Errorf("%w: %w", <自層の sentinel>, err)` で包む（sentinel と原因の両方を `errors.Is` / `errors.As` で辿れる。複数の `%w` は Go 1.20 以降）。sentinel を付けず原因だけ残すときは `fmt.Errorf("<動詞> <対象>: %w", err)` | MUST |
 | エラーを `errors.Join` や `%v` で包まない（`errors.Join` は `Error()` が改行区切りになり、1 行 1 イベントのログ（§10）に反する。`%v` は文字列化されて `errors.Is` が辿れない） | MUST NOT |
 | 業務 sentinel の一覧と gRPC / HTTP の対応は表で残す（§5.4。記録先は本書の外）。業務ルールに対応するものだけを足し、本書では先に作らない | MUST |
@@ -474,7 +476,8 @@ func (r *featureRepository) FindChild(ctx context.Context, rq queryable.ReadQuer
 | 規則 | 強度 |
 | --- | --- |
 | コンストラクタは **Domain の interface を返す**。実装構造体は非公開 | MUST |
-| 1 Repository = 1 ファイル `<feature>_repository.go`（`internal/infrastructure/` 直下・フラット） | MUST |
+| Repository interface は 1 interface = 1 ファイル。ファイル名は interface 名（`<Feature>Repository`）の snake_case で、`internal/domain/repository/` 直下・フラットに置く（例: `TableKeyRepository` → `table_key_repository.go`）。複数の interface を 1 ファイルにまとめない。sentinel は `error.go`（§3.4.3） | MUST |
+| Repository 実装は 1 Repository = 1 ファイル `<feature>_repository.go`（`internal/infrastructure/` 直下・フラット）。domain の interface と同名のファイルにする | MUST |
 | DB に触る全メソッドは、第 1 引数 `ctx`、第 2 引数に `queryable.ReadQueryable`（読み取り）または `queryable.WriteQueryable`（書き込み）を受け取り、**それだけ**を使って実行する。DB 接続を構造体に保持しない。`ctx` に transaction を載せて取り出す方式を使わない | MUST |
 | 書き込み transaction の中で呼ばれる読み取りメソッドには、コールバックの `wq` が渡される（`WriteQueryable` は `ReadQueryable` を満たす） | MUST |
 | SQL は `const query` に書き、**プレースホルダ（`?`）で値を渡す。文字列連結しない** | MUST |
@@ -633,7 +636,7 @@ gRPC と REST gateway は**同一プロセス**にする。サーバーのエン
 
 | 項目 | 規則 | 強度 |
 | --- | --- | --- |
-| ファイル名 | `snake_case.go`。1 ユースケース/1 Repository = 1 ファイル。Controller のファイル名は §3.2 | MUST |
+| ファイル名 | `snake_case.go`。1 ユースケース = 1 ファイル、1 Repository interface（domain）= 1 ファイル、1 Repository 実装（infrastructure）= 1 ファイル（§3.5.2）。Controller のファイル名は §3.2 | MUST |
 | パッケージのディレクトリ | ディレクトリ名はパッケージ名と一致させる。`snake_case`。ハイフンは使わない。`cmd/{{app}}` は package `main` の起動口であり、名前は §0.2 に従う | MUST |
 | パッケージ名 | 命名は D5 に従う。アンダースコアを許容する（Go の慣習より構成の一意性を優先） | MUST |
 | エラー | 包み方は §3.4.3。`panic` はプログラムエラー専用 | MUST |
@@ -842,8 +845,8 @@ docker run --rm -v "$(CURDIR):/work" -w /work $(PROTOC_IMAGE) \
 ### 7.3 Wire / Mock
 
 - Wire: `make wire`。`internal/di/wire_gen.go` を commit。
-- Mock: `gomockhandler.json` に **ソース interface → 出力先** を登録する（SOURCE_MODE、package は `mock`、出力は `test/mock/<name>.go`）。対象は `internal/domain/repository` の interface（Domain Service のテストが差し替える。§7.5）。checksum は gomockhandler が管理するので手編集しない。
-- Mock が必要な interface を増やしたら `gomockhandler.json` に追記し、`make gen-mock` を実行する。
+- Mock: `gomockhandler.json` に **ソース interface → 出力先** を登録する（SOURCE_MODE、package は `mock`）。対象は `internal/domain/repository` の interface（Domain Service のテストが差し替える。§7.5）。ソースは `internal/domain/repository/<feature>_repository.go` ごとに 1 エントリ、出力は `test/mock/<feature>_repository.go`（ソースと同名）とする。`error.go`（sentinel）は対象外。checksum は gomockhandler が管理するので手編集しない。
+- Mock が必要な interface を増やしたら、その interface のファイル（`<feature>_repository.go`）のエントリを `gomockhandler.json` に追記し、`make gen-mock` を実行する。
 
 ### 7.4 生成物
 
