@@ -1,7 +1,7 @@
 ---
 title: Go + gRPC アプリケーション 構成ベストプラクティス
 created_at: 2026-11-20
-version: 1.1
+version: 1.2
 status: 正式版
 ---
 
@@ -29,9 +29,9 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 | `{{svc}}pb` | 生成 Go パッケージ名 | `examplepb` |
 | `{{ENV_PREFIX}}` | 環境変数 prefix（UPPER_SNAKE） | `EXAMPLE_APP` |
 | `{{db}}` | DB 名 | `example` |
-| `{{feature}}` / `{{Feature}}` | 集約名（lower_snake / PascalCase）。Entity・Service・Repository のパッケージ名に使う。**仮名**。実名は、本書を使ってドメイン層を生成するときに決めて置き換える。コード例の `Feature` / `feature` は、この仮名に対応する | `feature` / `Feature` |
+| `{{feature}}` / `{{Feature}}` | 集約名（lower_snake / PascalCase）。Entity・Service・Repository のパッケージ名、proto のファイル名と service 名（`{{feature}}.proto` / `{{Feature}}Service`）、Controller のファイル名（`{{feature}}_controller.go`）に使う。**仮名**。実名は、本書を使ってドメイン層を生成するときに決めて置き換える。コード例の `Feature` / `feature` は、この仮名に対応する | `feature` / `Feature` |
 | `{{caller}}` | UseCase を束ねる呼び出し元の単位（lower_snake）。呼び出し元が 1 つなら `{{svc}}` にする。**仮名**。実名は、ドメイン層の生成時に決めて置き換える | `caller` |
-| `{{usecase_group}}` | UseCase パッケージの名前（ユースケース群、lower_snake）。業務上の機能単位で切る。集約名と一致しなくてよい。基準に合わない場合は、外れる理由を記録する（記録先は本書の外。§0.3）。**仮名**。実名は、ドメイン層の生成時に決めて置き換える | `usecase_group` |
+| `{{usecase_group}}` | UseCase パッケージの名前（ユースケース群、lower_snake）。業務上の機能単位で切る。集約名と一致しなくてよい。UseCase パッケージの分け方にだけ使い、proto の service とファイルの分割には使わない（§5.1）。基準に合わない場合は、外れる理由を記録する（記録先は本書の外。§0.3）。**仮名**。実名は、ドメイン層の生成時に決めて置き換える | `usecase_group` |
 ### 0.3 対象範囲
 
 対象: アプリケーションのコード構成、依存ライブラリ、ローカル開発環境（Docker / Compose）、DB、ビルドとコード生成、リポジトリの設定ファイル。
@@ -52,21 +52,21 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 
 | タスク種別 | 必読節 | 参照先 |
 | --- | --- | --- |
-| 常時 | §0.1, §0.2 | §0.3 |
-| 新規ファイル・パッケージの追加 | §2, §3.4.1, §3.9 | §0.2, §3.1, §3.2, §3.4.2, §3.4.3, §3.5.2, §3.5.3, §3.5.5, §7.5, §9, §11 |
-| レイヤをまたぐ変更（Controller から Repository まで） | §3.1, §3.2, §3.3, §3.4.1, §3.4.2, §3.5.1, §3.5.2 | §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.4, §6.5, §9.2, §10 |
-| Controller の追加・変更 | §3.1, §3.2 | §3.4.1, §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.4, §9.2, §10 |
+| 常時 | §0.1, §0.2 | §0.3, §5.1 |
+| 新規ファイル・パッケージの追加 | §2, §3.4.1, §3.9 | §0.2, §3.1, §3.2, §3.4.2, §3.4.3, §3.5.2, §3.5.3, §3.5.5, §5.1, §7.5, §9, §11 |
+| レイヤをまたぐ変更（Controller から Repository まで） | §3.1, §3.2, §3.3, §3.4.1, §3.4.2, §3.5.1, §3.5.2 | §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.1, §5.4, §6.5, §9.2, §10 |
+| Controller の追加・変更 | §3.1, §3.2 | §3.4.1, §3.4.3, §3.5.3, §3.5.4, §3.5.5, §3.9, §5.1, §5.4, §9.2, §10 |
 | UseCase の追加・変更 | §3.1, §3.3 | §3.2, §3.4.1, §3.4.3, §3.5.4, §3.5.5, §3.9, §6.5 |
 | Domain（Entity、VO、Domain Service）の追加・変更 | §3.4 | §3.2, §3.5.2, §3.5.3, §3.5.5, §5.4, §10 |
 | Repository・DB アクセスの追加・変更 | §3.5.1, §3.5.2, §3.5.3, §3.5.4, §6 | §3.2, §3.3, §3.4.3, §3.5.5, §9, §10 |
 | 外部システム連携（gateway）の追加・変更 | §3.5.5 | §0.4, §3.1, §3.2, §3.3, §3.5.2, §9 |
 | gRPC サーバー・DI・エントリポイントの変更 | §3.6, §3.7, §3.8 | §9, §10 |
 | 新規依存ライブラリの追加 | §4 | §6.2, §9, §10 |
-| API・proto の変更 | §5, §7.2, §7.4 | §3.2, §10, §11.3 |
+| API・proto の変更 | §5, §7.2, §7.4 | §0.2, §0.3, §3.2, §10, §11.3 |
 | スキーマ・seed の変更 | §6 | §3.3, §3.5.5, §9 |
 | 設定・環境変数の変更 | §9 | §3.3, §3.5.5, §3.7, §3.8, §6.1, §8.2 |
 | ログ・エラーの変更 | §3.4.3, §10 | §3.2, §3.5.3, §3.5.5, §5.4 |
-| ビルド・生成・テストの変更 | §7 | §3.1, §11.3 |
+| ビルド・生成・テストの変更 | §7 | §3.1, §5.1, §11.3 |
 | Docker・Compose の変更 | §8 | §9.2 |
 | 設計方針の確認（原則、この表） | §0.5, §1 | §3.1 |
 
@@ -97,6 +97,7 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 │   └── {{app}}/main.go                # サーバーのエントリポイント（1 つ）
 ├── internal/                          # アプリケーションコード（§3.1）
 │   ├── controller/                    # gRPC ↔ UseCase の変換
+│   │   └── {{feature}}_controller.go  # 1 proto service = 1 Controller。proto のファイル名と同じ集約名（§3.2）
 │   ├── usecase/
 │   │   ├── usecaseerror/              # UseCase 層の sentinel（§3.4.3）
 │   │   └── {{caller}}/{{usecase_group}}_usecase/ # 呼び出し元ごとに束ねる。ユースケース編成 + transaction 境界
@@ -122,7 +123,7 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 │   ├── snowflake/                     # ID 生成
 │   └── timezone/                      # タイムゾーンの集約（§9.2）
 ├── proto/
-│   ├── {{svc}}/*.proto                # API 契約の正本
+│   ├── {{svc}}/{{feature}}.proto      # API 契約の正本。1 集約 = 1 service = 1 ファイル（§5.1）
 │   └── protodep/googleapis/google/api/ # 依存 proto（pin して commit）
 ├── gen/grpc/{{svc}}/                  # proto 生成物（手編集禁止・commit）
 ├── openapi/gen/                       # OpenAPI 生成物（手編集禁止・commit）
@@ -151,9 +152,9 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 | D2 | アプリケーションコードは `internal/` に置く。外部公開 API を持たない | MUST |
 | D3 | `pkg/` は `internal/` を import しない。業務概念を持たない（接続・ID 生成など技術部品のみ） | MUST |
 | D4 | `cmd/` に置くのは配線と起動・停止のみ。業務ロジックを書かない。サーバーのエントリポイントは `cmd/{{app}}/main.go` の 1 つ。環境ごとに main を複製しない | MUST |
-| D5 | パッケージは役割ごとに命名する。Entity と Domain Service は集約名（`<feature>_entity` / `<feature>_service`）。UseCase は呼び出し元（`{{caller}}`）の配下に、ユースケース群の名前（`<usecase_group>_usecase`）で置く。3 つの名前を揃えることは要求しない。サフィックスは省略しない | MUST |
+| D5 | パッケージは役割ごとに命名する。Entity と Domain Service は集約名（`<feature>_entity` / `<feature>_service`）。UseCase は呼び出し元（`{{caller}}`）の配下に、ユースケース群の名前（`<usecase_group>_usecase`）で置く。3 つの名前を揃えることは要求しない。proto のファイル名・service 名と Controller のファイル名は、`{{usecase_group}}` ではなく集約名に揃える（`<feature>.proto` / `<Feature>Service` / `<feature>_controller.go`。§5.1、§3.2）。サフィックスは省略しない | MUST |
 | D6 | `gen/`・`openapi/gen/`・`test/mock/`・`internal/di/wire_gen.go` は生成物。手編集しない。commit する | MUST |
-| D7 | proto は `proto/{{svc}}/`。依存 proto は `proto/protodep/` に置き、取得元の commit SHA を Makefile で pin する | MUST |
+| D7 | proto は `proto/{{svc}}/{{feature}}.proto`（1 集約 1 ファイル。§5.1）。依存 proto は `proto/protodep/` に置き、取得元の commit SHA を Makefile で pin する | MUST |
 | D8 | スキーマは 1 テーブル 1 ファイル `NN_<table>.sql`（NN は依存順の 2 桁連番） | MUST |
 | D9 | バイナリ出力は `bin/{{app}}`、またはリポジトリ直下 `/{{app}}`。いずれも `.gitignore` する | SHOULD |
 | D10 | 実行時に必要な静的ファイル（画像など）は専用ディレクトリに置き、Dockerfile の最終 stage へ明示的に COPY する | SHOULD |
@@ -204,7 +205,7 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 
 | 規則 | 強度 |
 | --- | --- |
-| 1 proto service = 1 Controller 構造体 = 1 ファイル（`<service>_controller.go`）。各構造体は `Unimplemented<Service>Server` を埋め込む | SHOULD |
+| 1 proto service = 1 Controller 構造体 = 1 ファイル（`<feature>_controller.go`。`<feature>` は proto のファイル名 `<feature>.proto` と同じ集約名。§5.1）。各構造体は `Unimplemented<Feature>ServiceServer` を埋め込む | SHOULD |
 | 全メソッドの失敗は `ErrorConverter.ToStatus(err)` を通して返す。直接 `status.Error` を作らない | MUST |
 | 日時の文字列化は Controller の 1 関数（例 `FormatJST`）に集約する。`timezone.Location`（§9.2）に変換してから整形する。Domain は `time.Time` を扱う | MUST |
 | 64bit ID の JSON 文字列化は REST gateway に任せ、Controller で手変換しない | MUST |
@@ -698,9 +699,11 @@ gRPC と REST gateway は**同一プロセス**にする。サーバーのエン
 
 | 規則 | 強度 |
 | --- | --- |
-| 構文は proto3。パッケージは `{{svc}}.v1`、配置は `proto/{{svc}}/<service>.proto` | MUST |
+| 構文は proto3。パッケージは `{{svc}}.v1`、配置は `proto/{{svc}}/{{feature}}.proto`（ファイル名は集約名） | MUST |
 | `go_package = "{{module}}/gen/grpc/{{svc}};{{svc}}pb"` | MUST |
-| 1 ファイル 1 service。service 名は `<Feature>Service` | MUST |
+| 1 ファイル 1 service。service 名は `{{Feature}}Service`（`{{Feature}}` は集約名。§0.2） | MUST |
+| service とファイルを `{{usecase_group}}`、画面、呼び出し元（`{{caller}}`）の単位で分けない。proto の分割は集約の単位だけで決める | MUST NOT |
+| service は集約（`{{feature}}`）ごとに分け、RPC は主対象の集約の service に置く（例: `Feature` の一覧取得は `FeatureService` に置く）。従属集約（親の集約の ID を指定して操作するもの）を親の service に含めるときは、含める理由を記録する（記録先は本書の外。§0.3）。含めた場合も、service 名とファイル名は親の集約名にする | SHOULD |
 | REST は `google.api.http` annotation を各 RPC に付ける。パスは `/api/<resource>`（kebab-case） | MUST |
 | 配列をトップレベルで返す GET は `response_body: "<repeated field>"` | SHOULD |
 | 金額は整数（`uint32`/`uint64`）、ID は `uint64`（JSON では REST gateway が文字列化）、日時は表示用 `string` | SHOULD |
@@ -873,6 +876,7 @@ API の形、DI の配線、Mock の対象は生成物ではなく生成元で�
 | DB から得る値が必要なテストは、対象 interface を実装した stub を使い、固定の値を返す。stub は `internal/infrastructure/stub` に置く。DB クライアントを持たない | MUST |
 | `t.Skip` で原因不明の失敗を隠さない。アサーションを弱めて通さない。テスト間で実行順序に依存しない | MUST NOT |
 | アーキテクチャテスト（§3.1）を持つ | MUST |
+| アーキテクチャテストで、`proto/{{svc}}/*.proto` のファイル名が集約名（`{{feature}}.proto`）で、各ファイルの service 名が `{{Feature}}Service` であることも検査する（§5.1） | SHOULD |
 
 ---
 

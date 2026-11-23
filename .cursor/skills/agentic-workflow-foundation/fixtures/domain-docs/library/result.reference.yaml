@@ -322,6 +322,30 @@ binding:
       name: "loan_entity"
       path: "internal/domain/entity/loan_entity/"
       evidence: "loans（貸出）"
+    - kind: "proto"
+      name: "member"
+      path: "proto/citylibrary/member.proto"
+      evidence: "members（会員）"
+    - kind: "proto"
+      name: "book"
+      path: "proto/citylibrary/book.proto"
+      evidence: "books（蔵書）"
+    - kind: "proto"
+      name: "loan"
+      path: "proto/citylibrary/loan.proto"
+      evidence: "loans（貸出）"
+    - kind: "Controller"
+      name: "member"
+      path: "internal/controller/member_controller.go"
+      evidence: "members（会員）"
+    - kind: "Controller"
+      name: "book"
+      path: "internal/controller/book_controller.go"
+      evidence: "books（蔵書）"
+    - kind: "Controller"
+      name: "loan"
+      path: "internal/controller/loan_controller.go"
+      evidence: "loans（貸出）"
     - kind: "UseCase"
       name: "librarian / register_member"
       path: "internal/usecase/librarian/register_member_usecase/"
@@ -337,7 +361,15 @@ binding:
   tree: |-
     city-library/
     ├── cmd/city-library/main.go
+    ├── proto/citylibrary/
+    │   ├── member.proto
+    │   ├── book.proto
+    │   └── loan.proto
     └── internal/
+        ├── controller/
+        │   ├── member_controller.go
+        │   ├── book_controller.go
+        │   └── loan_controller.go
         ├── domain/entity/member_entity/
         ├── domain/entity/book_entity/
         ├── domain/entity/loan_entity/

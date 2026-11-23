@@ -197,6 +197,8 @@ def make_binding(target: dict | None = None) -> dict:
              "evidence": "概要"},
             {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
              "evidence": "概要"},
+            {"kind": "proto", "name": "thing", "path": "proto/sampleapp/thing.proto", "evidence": "概要"},
+            {"kind": "proto", "name": "thing_key", "path": "proto/sampleapp/thing_key.proto", "evidence": "概要"},
             {"kind": "UseCase", "name": "frontend / setup",
              "path": "internal/usecase/frontend/setup_usecase/", "evidence": "1. 設置"},
             {"kind": "UseCase", "name": "manager / ordering",
@@ -1984,6 +1986,16 @@ def test_binding_validation() -> None:
         check("unknown key", da.ApplyError, "未知キー", extra_key="x")
         check("names miss a name", da.ApplyError, "決めた名前が現れません", names=[
             {"kind": "Entity", "name": "thing_entity", "path": "internal/thing/", "evidence": "概要"}])
+        # 集約ごとの proto の行が名前決定表に無いときは、決定論ゲート（G-DOCFILL-006）が止める。
+        check("names without proto rows", da.GateError, "proto の行が無い集約: thing, thing_key", names=[
+            {"kind": "Entity", "name": "thing_entity", "path": "internal/domain/entity/thing_entity/",
+             "evidence": "概要"},
+            {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
+             "evidence": "概要"},
+            {"kind": "UseCase", "name": "frontend / setup",
+             "path": "internal/usecase/frontend/setup_usecase/", "evidence": "1. 設置"},
+            {"kind": "UseCase", "name": "manager / ordering",
+             "path": "internal/usecase/manager/ordering_usecase/", "evidence": "2. 注文"}])
         check("tree misses a name", da.ApplyError, "binding.tree に、決めた名前が現れません", tree="sample-app/\n└── cmd/")
         check("tree has todo", da.ApplyError, "[TODO]", tree="sample-app/ thing thing_key frontend manager setup ordering [TODO]")
         check("pipe in a cell", da.ApplyError, "`|`", policies=[{"item": "a|b", "policy": "x", "evidence": "概要"}])

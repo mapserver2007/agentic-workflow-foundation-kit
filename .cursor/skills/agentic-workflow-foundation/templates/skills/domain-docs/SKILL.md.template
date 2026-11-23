@@ -260,9 +260,19 @@ binding:
       name: "item_entity"
       path: "internal/domain/entity/item_entity/"
       evidence: "items（商品）"
+    - kind: "proto"
+      name: "item"
+      path: "proto/sampleapp/item.proto"
+      evidence: "items（商品）"
+    - kind: "Controller"
+      name: "item"
+      path: "internal/controller/item_controller.go"
+      evidence: "items（商品）"
   tree: |-
     sample-app/
-    └── internal/domain/entity/item_entity/
+    ├── internal/controller/item_controller.go
+    ├── internal/domain/entity/item_entity/
+    └── proto/sampleapp/item.proto
   scope: |-
     - 採用した見出し: 概要、業務フロー。
     - 除外した見出し: 画面設計（見た目は対象外）。
@@ -281,6 +291,8 @@ binding:
 - `callers`: 呼び出し元は、Design Doc が構成要素に付けた語（括弧内の英語名など）を使う。1 つしか無く、ブループリントが「呼び出し元が 1 つのときの名前」を定めているなら、それに従う。
 - `usecase_groups`: 業務フロー直下の見出しごとに 1 つ決める。見出しは日本語なので、英語の snake_case の名前は起案するエージェントが決める。この変換は決定論ではないため、機械が検査するのは形式（snake_case）と、名前決定表・ツリーとの整合だけである。`evidence` に元の見出しを書く。
 - `names`: 名前決定表の行。`features`、`callers`、`usecase_groups` の名前が、すべて `name` の列のどこかに現れること。`path` は、ブループリントのディレクトリ構成（`docs/tech-stack/`）に従って、実名で書く。
+- `names`（proto と Controller）: `features` の名前ごとに、種別 `proto` の行と種別 `Controller` の行を 1 行ずつ書く。`name` は集約の名前、`path` は `proto/<svc>/<feature>.proto` と `internal/controller/<feature>_controller.go`（`<svc>` は `app` からハイフンを除いたもの）。proto の分割は集約の単位だけで決める。`usecase_groups` や `callers` の名前では分けない（ブループリントの「API 契約」の proto 規約）。集約ごとの `proto` の行が名前決定表に無いと、決定論ゲート（`G-DOCFILL-006`）が FAIL にする。
+- `names`（従属集約を親の proto に含めるとき）: ブループリントは、親の集約の ID を指定して操作する従属集約の RPC を、親の service に含めることを、理由の記録を条件に許す。含めるときは、従属集約の `proto` の行と `Controller` の行を残し、その `path` を親の `.proto` と親の `_controller.go` にする。理由は `policies` に 1 行で書く（`item`: `proto の統合: <従属集約> を <親> に含める`、`policy`: 含める理由、`evidence`: 理由の根拠になる Design Doc の見出し）。理由を Design Doc の記述から書けないときは、含めず、集約ごとに分ける。これが既定である。
 - `tree`: 名前決定表から、ブループリントのディレクトリ構成を展開したツリー。`app` と、決めた名前がすべて現れること。
 - `scope`: `## 生成範囲` で決めた範囲と理由（採用した見出し、除外した見出しと除外の理由）。port、CORS、環境名は書かない（apply が追記する）。
 - `policies`: ブループリントが「プロジェクトで決めて記録する」とする項目を、1 項目 1 行で書く（1 件以上）。Design Doc に記載があるものだけを書く。「無い」と明記する項目（認証など）は、Design Doc が付けないと述べているときだけ「無い」と書く。`app` と `module` の決め方は、apply が必ず記録するので書かない。

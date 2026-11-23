@@ -1023,6 +1023,7 @@ def binding_gate_input(section_body: str, values: dict) -> dict:
         "names_text": parts.get(BINDING_NAMES, ""),
         "tree_text": parts.get(BINDING_TREE, ""),
         "required_names": sorted(set(values["features"] + values["callers"] + values["groups"])),
+        "feature_names": sorted(set(values["features"])),
         "app": values["app"],
     }
 

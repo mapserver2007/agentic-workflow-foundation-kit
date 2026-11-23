@@ -466,9 +466,15 @@ def test_binding_gate() -> None:
     good = {
         "file": "docs/arch.md", "section": "束縛", "text": "本文",
         "placeholder_rows": {"app": "`sample-app`", "module": "`github.com/acme/sample-app`"},
-        "names_text": "| Entity | `item_entity` | `internal/item_entity/` |\n| UseCase | `web / order` | `x` |",
+        "names_text": (
+            "| 種別 | 実名 | パス | 根拠 |\n| --- | --- | --- | --- |\n"
+            "| Entity | `item_entity` | `internal/item_entity/` | `x` |\n"
+            "| proto | `item` | `proto/sample/item.proto` | `x` |\n"
+            "| UseCase | `web / order` | `x` | `x` |"
+        ),
         "tree_text": "sample-app/\n├── item_entity/\n└── web/order_usecase/",
         "required_names": ["item", "order", "web"],
+        "feature_names": ["item"],
         "app": "sample-app",
     }
     clean = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=good)
@@ -481,7 +487,27 @@ def test_binding_gate() -> None:
     cases = {
         "unfilled row": ({"placeholder_rows": {"app": "[TODO]", "module": "`m`"}}, "プレースホルダの具体値が未記入: app"),
         "empty row": ({"placeholder_rows": {"app": "  "}}, "プレースホルダの具体値が未記入: app"),
-        "name missing in names": ({"names_text": "| Entity | `item_entity` | `p` |"}, "名前決定表に現れない名前: order, web"),
+        "name missing in names": (
+            {"names_text": "| Entity | `item_entity` | `p` |\n| proto | `item` | `proto/sample/item.proto` |"},
+            "名前決定表に現れない名前: order, web",
+        ),
+        # 集約の Entity の行だけでは足りない。集約ごとに、パスが `.proto` の行が要る。
+        "no proto row": (
+            {"names_text": "| Entity | `item_entity` | `p` | `x` |\n| UseCase | `web / order` | `x` | `x` |"},
+            "名前決定表に proto の行が無い集約: item",
+        ),
+        "proto row for another name": (
+            {"feature_names": ["item", "order"]},
+            "名前決定表に proto の行が無い集約: order",
+        ),
+        # 実名の列が集約名でも、パスが `.proto` でなければ proto の行に数えない。
+        "controller row is not a proto row": (
+            {"names_text": (
+                "| Entity | `item_entity` | `p` | `x` |\n"
+                "| Controller | `item` | `internal/controller/item_controller.go` | `x` |\n"
+                "| UseCase | `web / order` | `x` | `x` |")},
+            "名前決定表に proto の行が無い集約: item",
+        ),
         "name missing in tree": ({"tree_text": "sample-app/\n└── item_entity/"}, "ディレクトリツリーに現れない名前: order, web"),
         "app missing in tree": ({"tree_text": "item order web"}, "ディレクトリツリーに現れない名前: sample-app"),
     }
@@ -491,6 +517,15 @@ def test_binding_gate() -> None:
         found = [f for f in report.fails if f["id"] == "G-DOCFILL-006"]
         _assert(len(found) == 1 and message in found[0]["message"], f"{label}: wrong findings: {report.findings}")
         _assert(found[0]["file"] == "docs/arch.md#束縛", f"{label}: wrong label: {found[0]['file']}")
+    # 従属集約を親の proto に含めるときも、従属集約の行は残り、パスが親の `.proto` を指せば満たす。
+    merged = {
+        **good,
+        "feature_names": ["item", "order"],
+        "names_text": good["names_text"] + "\n| proto | `order` | `proto/sample/item.proto` | `x` |",
+    }
+    report = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=merged)
+    _assert(not [f for f in report.findings if f["id"] == "G-DOCFILL-006"],
+            f"a subordinate aggregate pointing at the parent proto must pass: {report.findings}")
 
 
 def main() -> int:
