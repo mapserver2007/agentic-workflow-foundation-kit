@@ -135,6 +135,7 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 │   ├── mysql/{init.sql,my.cnf}        # ローカル MySQL 設定（data/ は git 管理外）
 │   ├── mysqldef/Dockerfile            # スキーマ適用ツール
 │   └── protoc-gen/Dockerfile          # protoc + プラグイン
+├── test/architecture/                 # アーキテクチャテスト（依存方向の AST 検査。§3.1）
 ├── test/mock/                         # gomock 生成物（手編集禁止・commit）
 ├── docker-compose.yaml
 ├── Makefile
@@ -183,7 +184,7 @@ Go + gRPC（+ grpc-gateway）アプリケーションの、ディレクトリ構
 | Infrastructure | `internal/infrastructure/**` | Repository 実装、外部システムの gateway（§3.5.5）、時刻・ID・設定、gRPC server / REST gateway、interceptor | `domain/*`、`pkg/*`、各種ライブラリ | 業務ルールの再定義 |
 | DI | `internal/di` | Wire による組み立て | 全レイヤ | — |
 
-- 依存方向の違反は**アーキテクチャテストで検出する**（MUST）。最小要件は「`domain` が `infrastructure` を import しない」。AST の `parser.ImportsOnly` で全 `.go`（`_test.go` を除く）を走査する。次も同様に検査する（SHOULD）: `usecase` が `domain/repository` を import しない、`usecase` が `infrastructure` を import しない、`domain` が `pkg/mysql/queryable` 以外の `pkg/mysql` を import しない、`pkg` が `internal` を import しない、`controller` が `domain/vo` / `domain/types` / `domain/entity` / `domain/service` を import しない。
+- 依存方向の違反は**アーキテクチャテストで検出する**（MUST）。アーキテクチャテストはアプリケーションコードではないので `internal/` に置かず、ルート直下の `test/architecture/` に置く。最小要件は「`domain` が `infrastructure` を import しない」。AST の `parser.ImportsOnly` で全 `.go`（`_test.go` を除く）を走査する。次も同様に検査する（SHOULD）: `usecase` が `domain/repository` を import しない、`usecase` が `infrastructure` を import しない、`domain` が `pkg/mysql/queryable` 以外の `pkg/mysql` を import しない、`pkg` が `internal` を import しない、`controller` が `domain/vo` / `domain/types` / `domain/entity` / `domain/service` を import しない。
 - Controller に業務分岐を書かない（MUST NOT）。分岐が必要なら Domain Service へ移す。
 - `queryable`（§3.5.4）は `sqlx.QueryerContext` / `sqlx.ExecerContext` を埋め込むため、Domain は `queryable` 経由で `sqlx` に間接依存する。これは意図した例外とする（`sqlx.GetContext` / `SelectContext` を使えて Repository 実装が短くなる。標準ライブラリだけの最小 interface にすると、行のスキャンを手書きするかコード生成が必要になる）。
 
@@ -867,7 +868,7 @@ API の形、DI の配線、Mock の対象は生成物ではなく生成元で�
 
 | 規則 | 強度 |
 | --- | --- |
-| 標準 `testing` + table-driven。テストは同じパッケージの `_test.go` | MUST |
+| 標準 `testing` + table-driven。テストは同じパッケージの `_test.go`（アーキテクチャテストは対象外。`test/architecture/` に置く。§3.1） | MUST |
 | Domain（Entity / VO / types）のテストは I/O がないためモックを使わない。境界値・不正値・状態遷移を網羅する | MUST |
 | 単体テストの既定対象は Domain Service。`test/mock` の gomock で Repository を差し替える。テストが `queryable` を渡し、Domain Service は transaction を開始しない。時刻と ID は引数で渡して決定的にする | MUST |
 | UseCase の単体テストは書かない。transaction の開始は `pkg/mysql` の `RunInWriteTx` の契約テストで検証する。業務ルールと Repository の呼び出し順は Domain Service のテストで検証する | SHOULD |
