@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -54,7 +55,17 @@ def _invoke_prov(args: list[str]) -> tuple[int, str, str]:
 
 def runner_root_immutable_twice() -> bool:
     manifest = ROOT / "manifest.yaml"
-    design = ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+    # 技術ブループリントの正本は、root manifest が指すファイル名から解決する（特定のファイル名に依存しない）。
+    design_name = "APP_DESIGN_BESTPRACTICE.md"
+    if manifest.is_file():
+        found = re.search(
+            r'^\s+tech_stack_design_filename:\s*"?([^"\n]+)"?\s*$',
+            manifest.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        if found:
+            design_name = found.group(1)
+    design = ROOT / ".cursor" / "docs" / design_name
     if not manifest.is_file() or not design.is_file():
         print("SKIP runner_root_immutable_twice: root manifest/design absent", file=sys.stderr)
         return True
@@ -283,7 +294,8 @@ def _engine_stack(label: str, contract_builder, design_text: str, *, assert_no_p
     with tempfile.TemporaryDirectory() as tmp:
         isolated = Path(tmp)
         (isolated / ".cursor" / "skills").mkdir(parents=True, exist_ok=True)
-        design = isolated / "docs" / "TECH.md"
+        # mode: split の入力は `.cursor/docs/<tech_stack_design_filename>` から読まれるため、実際のレイアウトに置く。
+        design = isolated / ".cursor" / "docs" / "TECH.md"
         design.parent.mkdir(parents=True, exist_ok=True)
         design.write_text(design_text, encoding="utf-8")
         fp = tc.source_fingerprint(design)

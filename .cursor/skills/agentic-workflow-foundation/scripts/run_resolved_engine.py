@@ -27,7 +27,6 @@ from resolve_budget_thresholds import resolve as resolve_budget_thresholds  # no
 
 ROOT_OVERLAY_KEYS = (
     "project",
-    "tech_stack",
     "tech_contract",
     "session",
     "domain_docs",

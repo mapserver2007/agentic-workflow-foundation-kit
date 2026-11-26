@@ -100,6 +100,22 @@ def test_r3_text_preserves_digest() -> None:
     )
 
 
+def test_placement_basis_column_is_not_in_payload() -> None:
+    """配置根拠の列（2列目）は、承認 payload（先頭列と末尾列だけ）に含まれない。"""
+    gate = _gate()
+    with_basis = REPORT.replace(
+        "| 変更対象ファイル | 変更箇所 | 変更内容 |\n| --- | --- | --- |\n| src/api.py | handler | 入力検証を追加 |",
+        "| 変更対象ファイル | 配置根拠 | 変更箇所 | 変更内容 |\n| --- | --- | --- | --- |\n"
+        "| src/api.py | 既存踏襲（src/other.py） | handler | 入力検証を追加 |",
+    )
+    assert with_basis != REPORT
+    payload = gate.extract_approved_plan_payload(with_basis)
+    assert payload["change_files"] == [{"path": "src/api.py", "change": "入力検証を追加"}], payload
+    assert gate.compute_approved_plan_digest(with_basis) == gate.compute_approved_plan_digest(REPORT)
+    changed_basis = with_basis.replace("既存踏襲（src/other.py）", "ブループリント（§3.3）")
+    assert gate.compute_approved_plan_digest(changed_basis) == gate.compute_approved_plan_digest(with_basis)
+
+
 def test_pre_dispatch_fails_closed() -> None:
     gate = _gate()
     digest = gate.compute_approved_plan_digest(REPORT)
@@ -402,6 +418,7 @@ def main() -> int:
     tests = [
         test_payload_changes_invalidate_digest,
         test_r3_text_preserves_digest,
+        test_placement_basis_column_is_not_in_payload,
         test_pre_dispatch_fails_closed,
         test_step_status_report_path_binding,
         test_pre_dispatch_subcommand_rejects_wrong_position,

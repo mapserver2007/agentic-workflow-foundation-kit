@@ -245,6 +245,8 @@ def test_structural_warnings_and_skips() -> None:
 # 別アプリ（図書館の貸出管理・別スタック）の fixture
 # --------------------------------------------------------------------------
 LIBRARY_MANIFEST = {
+    # architecture.md.template の束縛節が、ブループリントのファイル名を参照する。
+    "project": {"tech_stack_design_filename": "LIBRARY_BLUEPRINT.md"},
     "domain_docs": {
         "primary_language": "TypeScript",
         "framework": "NestJS",
@@ -459,6 +461,105 @@ def test_kit_sources_carry_no_design_vocabulary() -> None:
     _assert(not offenders, "design vocabulary leaked into kit sources: " + "; ".join(offenders))
 
 
+def test_binding_gate() -> None:
+    """G-DOCFILL-006: 束縛節の整合。apply が渡す名前の一覧だけで検査し、語彙は持たない。"""
+    good = {
+        "file": "docs/arch.md", "section": "束縛", "text": "本文",
+        "placeholder_rows": {"app": "`sample-app`", "module": "`github.com/acme/sample-app`"},
+        "names_text": (
+            "| 種別 | 実名 | パス | 根拠 |\n| --- | --- | --- | --- |\n"
+            "| Entity | `item_entity` | `internal/item_entity/` | `x` |\n"
+            "| proto | `item` | `proto/sample/item.proto` | `x` |\n"
+            "| UseCase | `web / order` | `x` | `x` |"
+        ),
+        "tree_text": "sample-app/\n├── item_entity/\n└── web/order_usecase/",
+        "required_names": ["item", "order", "web"],
+        "feature_names": ["item"],
+        "app": "sample-app",
+    }
+    clean = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=good)
+    _assert(not [f for f in clean.findings if f["id"] == "G-DOCFILL-006"], f"good binding must pass: {clean.findings}")
+    _assert(clean.metrics.get("binding") == {"placeholders": 2, "names": 3}, f"metrics wrong: {clean.metrics}")
+    # 束縛節を書かないときは、何も検査せず、skipped にも出さない。
+    none = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=None)
+    _assert("binding" not in none.metrics and not [s for s in none.skipped if s["id"] == "G-DOCFILL-006"],
+            f"no binding must be silent: {none.metrics} {none.skipped}")
+    cases = {
+        "unfilled row": ({"placeholder_rows": {"app": "[TODO]", "module": "`m`"}}, "プレースホルダの具体値が未記入: app"),
+        "empty row": ({"placeholder_rows": {"app": "  "}}, "プレースホルダの具体値が未記入: app"),
+        "name missing in names": (
+            {"names_text": "| Entity | `item_entity` | `p` |\n| proto | `item` | `proto/sample/item.proto` |"},
+            "名前決定表に現れない名前: order, web",
+        ),
+        # 集約の Entity の行だけでは足りない。集約ごとに、パスが `.proto` の行が要る。
+        "no proto row": (
+            {"names_text": "| Entity | `item_entity` | `p` | `x` |\n| UseCase | `web / order` | `x` | `x` |"},
+            "名前決定表に proto の行が無い集約: item",
+        ),
+        "proto row for another name": (
+            {"feature_names": ["item", "order"]},
+            "名前決定表に proto の行が無い集約: order",
+        ),
+        # 実名の列が集約名でも、パスが `.proto` でなければ proto の行に数えない。
+        "controller row is not a proto row": (
+            {"names_text": (
+                "| Entity | `item_entity` | `p` | `x` |\n"
+                "| Controller | `item` | `internal/controller/item_controller.go` | `x` |\n"
+                "| UseCase | `web / order` | `x` | `x` |")},
+            "名前決定表に proto の行が無い集約: item",
+        ),
+        "name missing in tree": ({"tree_text": "sample-app/\n└── item_entity/"}, "ディレクトリツリーに現れない名前: order, web"),
+        "app missing in tree": ({"tree_text": "item order web"}, "ディレクトリツリーに現れない名前: sample-app"),
+    }
+    for label, (change, message) in cases.items():
+        report = gate.evaluate(
+            DESIGN, replaced={}, final_texts={}, spec_documents={}, binding={**good, **change})
+        found = [f for f in report.fails if f["id"] == "G-DOCFILL-006"]
+        _assert(len(found) == 1 and message in found[0]["message"], f"{label}: wrong findings: {report.findings}")
+        _assert(found[0]["file"] == "docs/arch.md#束縛", f"{label}: wrong label: {found[0]['file']}")
+    # 従属集約を親の proto に含めるときも、従属集約の行は残り、パスが親の `.proto` を指せば満たす。
+    merged = {
+        **good,
+        "feature_names": ["item", "order"],
+        "names_text": good["names_text"] + "\n| proto | `order` | `proto/sample/item.proto` | `x` |",
+    }
+    report = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding=merged)
+    _assert(not [f for f in report.findings if f["id"] == "G-DOCFILL-006"],
+            f"a subordinate aggregate pointing at the parent proto must pass: {report.findings}")
+
+
+def test_binding_gate_proto_rows_follow_the_contract() -> None:
+    """proto の行は、ブループリントが proto を使う契約のときだけ要る（`require_proto`。既定は要求する）。"""
+    binding = {
+        "file": "docs/arch.md", "section": "束縛", "text": "本文",
+        "placeholder_rows": {"app": "`sample-app`"},
+        "names_text": (
+            "| 種別 | 実名 | パス | 根拠 |\n| --- | --- | --- | --- |\n"
+            "| Entity | `item_entity` | `internal/item_entity/` | `x` |\n"
+            "| Controller | `item` | `internal/controller/item_controller.go` | `x` |"
+        ),
+        "tree_text": "sample-app/\n├── item_entity/\n└── item/",
+        "required_names": ["item"],
+        "feature_names": ["item"],
+        "app": "sample-app",
+    }
+
+    def findings(**changes):
+        report = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding={**binding, **changes})
+        return [f for f in report.findings if f["id"] == "G-DOCFILL-006"]
+
+    default = findings()
+    _assert(
+        len(default) == 1 and default[0]["level"] == "FAIL" and "proto の行が無い集約: item" in default[0]["message"],
+        f"既定は proto の行を要求する: {default}",
+    )
+    _assert(len(findings(require_proto=True)) == 1, "require_proto=True は要求する")
+    _assert(findings(require_proto=False) == [], f"require_proto=False は proto の行を要求しない: {findings(require_proto=False)}")
+    # proto の行を要求しなくても、ほかの検査（名前の欠落）は効く。
+    missing = findings(require_proto=False, required_names=["item", "order"])
+    _assert(any("名前決定表に現れない名前: order" in f["message"] for f in missing), f"名前の検査は残る: {missing}")
+
+
 def main() -> int:
     tests = (
         ("design doc extraction", test_design_doc_extraction),
@@ -468,7 +569,9 @@ def main() -> int:
         ("second app mutations are detected", test_second_app_mutations_are_detected),
         ("gate skips for a design doc without the standard structure",
          test_gate_skips_for_a_design_doc_without_the_standard_structure),
+        ("binding gate", test_binding_gate),
         ("kit sources carry no design vocabulary", test_kit_sources_carry_no_design_vocabulary),
+        ("binding gate proto rows follow the contract", test_binding_gate_proto_rows_follow_the_contract),
     )
     for label, test in tests:
         try:

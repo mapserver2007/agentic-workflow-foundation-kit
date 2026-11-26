@@ -3,7 +3,8 @@ name: domain-docs
 description: >-
   単独で起動する。designs/docs/ の *.md から PO が AskQuestion で選んだ Design Doc を読み、
   Domain 層ドキュメント（docs/spec.md ほか）の本文を、既存 docs とマージして起案する。
-  コードベースがあれば整合を確認する。起動したエージェントは結果ファイル
+  コードベースがあれば整合を確認する。生成範囲は、技術ブループリントの対象範囲から
+  起案するエージェントが自律的に決める（PO には聞かない）。起動したエージェントは結果ファイル
   tmp/domain-docs-result.yaml だけを書き、docs への書込みは domain_docs_apply.py が行う。
   agentic-workflow-foundation の生成プロセスからは起動しない。
 disable-model-invocation: true
@@ -39,11 +40,11 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
    | action | 意味 | 動作 |
    | --- | --- | --- |
    | `skip` | 埋める節が無く、固定済みの Design Doc と同じ | 起案せず終了する |
-   | `fill` | 器のままの節がある | 器のままの節だけを埋める（targets の `mode: fill`） |
+   | `fill` | 器のままの節がある、または束縛節（`files[].binding`）に未記入の部分がある | 器のままの節と、束縛節の未記入の部分だけを埋める（targets の `mode: fill`） |
    | `update` | 固定済みと別のファイルを選んだ（`pin=switched`）、固定済みのファイルが変わった（`pin=stale`）、固定が無く docs が埋め済み、または `state --refresh` の指定 | 所有権表の全節と既存の機能仕様を、マージして更新する（targets の `mode: refresh`） |
 
    `state --refresh` は、選んだ Design Doc での強制 update である（品質改善後の再起案に使う）。
-5. 起案する。`## マージとコード整合` に従い、結果ファイル `tmp/domain-docs-result.yaml` だけを書く。
+5. 起案する。`## マージとコード整合` に従い、結果ファイル `tmp/domain-docs-result.yaml` だけを書く。targets に `files[].binding` があるときは、`## 束縛節` に従って `binding` も書く。`binding` の値は規則で必ず決める。ただし `app`（製品名）が Design Doc から推論で得られないとき、または一つに決められないときだけ、`### app の確認` に従って `AskQuestion` で PO に確認する。
 6. 検証する。書込みなしで、`apply` と同じ検証と決定論ゲート（`G-DOCFILL-*`）を実行する。`update` のときは `--refresh` を付ける。
 
    ```bash
@@ -53,7 +54,7 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
 
    - exit 0: PASS。WARN があってもよい。WARN は再起案せず、最後の報告に載せる。
    - exit 1: 検証失敗、またはゲートの FAIL。docs は変更されない。メッセージと `tmp/domain-docs-findings.yaml` を読み、結果ファイルを**最大 1 回だけ**直して `--check` を再実行する。2 回目も exit 1 なら、PO に報告して停止する。
-   - exit 2: 致命的（入力が曖昧・消失、書込み失敗）。中断して PO に報告する。
+   - exit 2: 致命的（入力が曖昧・消失、書込み失敗）。中断して PO に報告する。`binding.app`（製品名）が空のとき、または kebab-case の英数字にできないときも exit 2 である（フォールバックは無い）。`app` を決められないときは、`apply` を実行する前に `### app の確認` で PO に確認して決める。この exit 2 は、確認せずに `app` を書かなかった場合と、PO が決めずに中断した場合の最後の防壁である。
 7. 適用する。
    - `fill`: `python3 "$apply" apply` を実行する。
    - `update`: `python3 "$apply" apply --refresh` で計画（diff、findings、`PLAN: ... digest=<digest>`）を表示する（書込みなし）。次の2つを要約して PO に提示し、`AskQuestion` で承認を得る（推奨: 承認する。diff に意図しない `-` 行が無いことを確認したうえで）。
@@ -61,8 +62,8 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
      - 旧世代のまま残る契約節の件数と名前。すでに埋まった契約節（`## 契約節` を参照）は update で変わらない。
      承認後に `python3 "$apply" apply --refresh --approve <digest>` を実行する。digest が現在の計画と一致しなければ適用されない。
    - 見送り: 同じ Design Doc の stale だけは、`python3 "$apply" apply --refresh --decline` で docs を変えずに既読にできる。switched、固定が無い場合、強制 update では `--decline` は使えない（exit 2）。見送りは `apply` を実行しないことで表す（固定は動かず、次回の `state` でも update として再提示される）。
-8. update の適用後に、同じ `--design-doc` で `state` を再実行する。`fill` が出たら（器のままの契約節、または update で `omissions` にした節）、続けて起案から繰り返す。`skip` になったら終了する。
-9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節を報告する。
+8. update の適用後に、同じ `--design-doc` で `state` を再実行する。`fill` が出たら（器のままの契約節、update で `omissions` にした節、または未記入の束縛節）、続けて起案から繰り返す。束縛節は update では書かれないので、update の適用後に必ず `fill` で埋める。`skip` になったら終了する。
+9. 最後に、`state` の action、書いた節と作成した `docs/spec/*.md`、`omissions` にした節、WARN と `SKIPPED`、契約の識別子混入 WARN、旧世代のまま残る契約節、`## 生成範囲` で決めた範囲と理由（`binding.scope` に書いた「リポジトリの担当範囲」）、決めた `app` とその決め方（Design Doc の記述、または PO の確認）、apply が導出した `module`・port・CORS の許可 origin を報告する。
 
 ## 入力と出力
 
@@ -71,14 +72,33 @@ apply=.cursor/skills/agentic-workflow-foundation/scripts/domain_docs_apply.py
 - PO が選んだ Design Doc（targets の `design_doc` が指すファイル）
 - `tmp/domain-docs-targets.yaml`
 - 既存の Domain docs（`docs/spec.md`、`docs/spec/*.md`、`docs/architecture.md`、`docs/api.md`、`docs/data-models.md`、`docs/workflows.md`）。既存本文を起点にマージし、ファイル間の食い違いを避けるために読む。
+- 技術ブループリント（索引 `docs/tech-stack.md` と分割ファイル `docs/tech-stack/`）。`## 生成範囲` で対象範囲を読み取るために読む。
 - コードベース（`## マージとコード整合` の照合に使う）
 - 修復のとき（`apply --check` が exit 1 のとき）は、`tmp/domain-docs-findings.yaml`（ゲートの findings）と `tmp/domain-docs-result.yaml`（前回の結果。直す元）
 
 書いてよいファイルは `tmp/domain-docs-result.yaml` だけである。結果ファイル以外は編集しない。docs、manifest、Design Doc、targets、findings を直接変更しない。`state` の後に docs などが変わると、`apply` は digest 不一致で拒否する。
 
+`## 生成範囲` が決めた範囲と理由は、結果ファイルの `binding.scope` に書く（`## 束縛節` を参照）。`docs/architecture.md` の「技術ブループリントの適用」節は所有権表の対象ではないが、束縛節専用の経路で `apply` が書く。この節を、エージェントが `apply` の前後に直接編集することはない（`state` の後に編集すると、digest 不一致で `apply` が拒否される）。git remote は、エージェントは読まない。`state` が owner を取り出して targets に載せる。
+
+## 生成範囲
+
+Design Doc のどの内容を Domain docs に持ち込むかは、技術ブループリントの対象範囲から、起案するエージェントが自律的に決める。PO には聞かない。特定のブループリントの章名や節番号を前提にせず、どのブループリントでも同じ手順で判断する。
+
+1. 技術ブループリントを読み、対象範囲を読み取る。読む場所は、題名（言語、フレームワーク、アプリケーションの種類）、冒頭の説明、「対象」と「対象外」を述べた節である。
+2. Design Doc の見出しを、対象範囲に入るものと入らないものに分ける。たとえば、バックエンドのブループリントでは、API、データベース、業務フロー、エラーハンドリング、状態遷移は入り、画面設計や画面の見た目は入らない。この例は判断の仕方の説明であり、スキルの契約ではない。
+3. 範囲に入る見出しだけを、本文と `evidence` に使う。範囲外の見出しは、本文に持ち込まない。範囲外であることを理由に書かない節は、`omissions` に理由を書く。範囲の判断が割れる見出しは範囲に入れ、その理由を記録に残す。
+4. 決めた範囲と理由（採用した見出し、除外した見出しと除外の理由）を、結果ファイルの `binding.scope` に書いて、「リポジトリの担当範囲」へ記録する（`## 束縛節` を参照）。
+5. ブループリントが規定する領域（ディレクトリ構成、コードの配置、レイヤ、ライブラリ、DB の規約、ビルド、設定など）は、Domain docs に複製せず、技術ブループリントの索引 `docs/tech-stack.md` へのリンクと、節の指定（節番号、ブループリントの版、見出し名）で参照する。`docs/architecture.md` の `ディレクトリ/モジュール責務` は、構成要素と責務の表と、このリポジトリ固有の内容にとどめる。`docs/coding-standards.md` はこのスキルが書かないが、ブループリントの複製を見つけたら報告する。
+
+判断の担保は、PO の選択ではなく、次の3つである。機械が検査するのは `evidence` の見出しの実在だけで、範囲の妥当性は検査しない。画面設計などの混入や、範囲内の仕様の取りこぼしは、生成時に検知されない。
+
+- `update` の承認時の diff 確認。
+- 決めた範囲と理由の記録。
+- PO による生成結果の評価。評価の観点は、範囲外の内容が混入していないことと、範囲内の仕様が落ちていないことである。
+
 ## 結果ファイル
 
-トップレベルのキーは `schema_version`、`sections`、`omissions`、`spec_files` だけである。`schema_version` は `1` または `2` とする。`supporting_evidence` を使うときは `2` にする。
+トップレベルのキーは `schema_version`、`sections`、`omissions`、`spec_files`、`binding` だけである。`binding` は、targets に `files[].binding` があるときだけ書く（`## 束縛節`）。`schema_version` は `1` または `2` とする。`supporting_evidence` を使うときは `2` にする。
 
 `sections` の各要素は `file`、`heading`、`body`、`evidence` をすべて持つ。`schema_version: 2` では、任意の `supporting_evidence`（Design Doc の見出しの配列）を足せる。
 
@@ -140,7 +160,7 @@ Design Doc に記載があるものは、落とさずに持ち込む。記載が
 - `docs/api.md`: 全エンドポイントの呼び元、request、response、条件付きで返す項目、並び順と同値のときの順序、既定値、検証失敗の分類とエラーコード、同じ値の再送の扱い、冪等性の有無。
 - `docs/data-models.md`: テーブルごとの列・型・制約・索引、ID 方式、ロックと採番の手順（番号付き）、処理ごとのアクセスパターンと使う索引、物理制約を置かない項目とその理由。
 - `docs/workflows.md`: 業務フローの時系列、エラー時の挙動、状態の値と遷移の表、画面や端末の同期契機、再試行の方針。
-- `docs/architecture.md`: 構成要素とその責務、依存の向き、トランザクションとロックの境界、同期の方式、システム外との境界。`ディレクトリ/モジュール責務` は、Design Doc に実在のパスが無いとき、構成要素（サーバー、フロントエンド、管理画面など）と責務の表にする。パスと依存先を推測で書かない。構成要素の記述も無いときだけ `omissions` に書く。
+- `docs/architecture.md`: 構成要素とその責務、依存の向き、トランザクションとロックの境界、同期の方式、システム外との境界。`ディレクトリ/モジュール責務` は、Design Doc に実在のパスが無いとき、構成要素（サーバー、フロントエンド、管理画面など）と責務の表にする。パスと依存先を推測で書かない。構成要素の記述も無いときだけ `omissions` に書く。ブループリントが規定する領域（ディレクトリ構成、コードの配置）は書かず、`docs/tech-stack.md` への参照にとどめる（`## 生成範囲`）。
 
 ## 矛盾する記述の扱い
 
@@ -189,6 +209,135 @@ targets の `files[].placeholders` に載った節は、契約の `api_sections`
 - 根拠が無い節は `omissions` に書く。
 - 契約節は fill（`mode: fill`）でだけ書く。update（`mode: refresh`）では書かない。器のまま（`[TODO]`）の契約節は、update の適用後に `state` を再実行して `fill` で埋める。すでに埋まった契約節は変更されず、旧世代の内容が残る。
 
+## 束縛節
+
+targets の `files[].binding` は、`docs/architecture.md` の「技術ブループリントの適用」節（束縛節）の、未記入の部分である。所有権表の節とは別の経路で書く。`sections` や `omissions` には書かず、結果ファイルのトップレベルキー `binding` に書く。
+
+- fill（`mode: fill`）でだけ書ける。update（`mode: refresh`）では対象にならず、`binding` を書くと拒否される。update の適用後に `state` を再実行して、`fill` で埋める。
+- targets に `files[].binding` があるのに `binding` を書かずに `apply` を実行すると、拒否される（`omissions` での見送りは無い）。
+- `AskQuestion` を使うのは `app`（製品名）だけで、Design Doc から推論で得られないとき、または一つに決められないときに限る（`### app の確認`）。`app` 以外の値は、下の規則で必ず決める。承認の対話は無く、確認は事後に git diff で行う。
+- apply は、`[TODO]` が残る部分だけを置換する。埋め済みの部分は書き換えない（`module` と `app` は import パスに影響するため。変更は手編集で行う）。
+- プレースホルダ表の `app` の行が記入済みのときは、その値を `module` などの導出元にする。結果ファイルの `binding.app` には、記入済みと同じ名前を書く（違う名前は拒否される。変えるときは手編集で直す）。
+
+`files[].binding` が持つもの:
+
+- `pending`: `[TODO]` が残る部分（プレースホルダの具体値、名前決定表、実名で解決したディレクトリツリー、リポジトリの担当範囲、プロジェクトの方針）。
+- `placeholders`: 具体値が未記入のプレースホルダの名前（あるときだけ）。
+- `module_owner` と `repo_name`: `state` が `git remote get-url origin` の文字列から決定論で取り出した値（通信はしない。取り出せなければ無い）。エージェントは git を読まない。
+
+### binding のキー
+
+| キー | 内容 |
+| --- | --- |
+| `app` | 製品名。Design Doc にある英数字の製品名、または `### app の確認` で PO が決めた名前を使う。apply が kebab-case の英小文字と数字へ正規化する |
+| `app_evidence` | 製品名が現れる Design Doc の見出し。`app_source` が `po` のときだけ省略できる（書くなら Design Doc に実在する見出し） |
+| `app_source` | 任意。`design_doc`（既定）または `po`。`design_doc` は、Design Doc の記述から決めた、または PO が Design Doc に現れる候補から選んだ場合。`po` は、PO が入力した名前、または Design Doc に現れない候補（リポジトリ名など）を PO が選んだ場合。apply が方針表に決め方を記録する |
+| `features` | 集約の名前（snake_case）の配列。各要素は `name` と `evidence` |
+| `callers` | 呼び出し元の名前（snake_case）の配列。各要素は `name` と `evidence` |
+| `usecase_groups` | ユースケース群の名前（snake_case）の配列。各要素は `name` と `evidence` |
+| `placeholders` | apply が導出しない名前の具体値（名前 → 値の mapping）。器にそのような行があるときだけ |
+| `names` | 名前決定表の行の配列。各要素は `kind`、`name`、`path`、`evidence` |
+| `tree` | 実名で解決したディレクトリツリー（文字列。コードフェンスは書かない。apply が囲む） |
+| `scope` | 「リポジトリの担当範囲」の本文（Markdown） |
+| `policies` | 「プロジェクトの方針」の行の配列。各要素は `item`、`policy`、`evidence` |
+
+`evidence` は、Design Doc に実在する ATX 見出しと完全一致する1行にする。表のセルに入れる値は1行で、`|` とバッククォートを含めない。
+
+```yaml
+binding:
+  app: "sample-app"
+  app_evidence: "概要"
+  features:
+    - name: "item"
+      evidence: "items（商品）"
+  callers:
+    - name: "web"
+      evidence: "画面設計"
+  usecase_groups:
+    - name: "ordering"
+      evidence: "1. 注文"
+  names:
+    - kind: "Entity"
+      name: "item_entity"
+      path: "internal/domain/entity/item_entity/"
+      evidence: "items（商品）"
+    - kind: "proto"
+      name: "item"
+      path: "proto/sampleapp/item.proto"
+      evidence: "items（商品）"
+    - kind: "Controller"
+      name: "item"
+      path: "internal/controller/item_controller.go"
+      evidence: "items（商品）"
+  tree: |-
+    sample-app/
+    ├── internal/controller/item_controller.go
+    ├── internal/domain/entity/item_entity/
+    └── proto/sampleapp/item.proto
+  scope: |-
+    - 採用した見出し: 概要、業務フロー。
+    - 除外した見出し: 画面設計（見た目は対象外）。
+  policies:
+    - item: "認証"
+      policy: "Design Doc が付けないとしているため、無い。"
+      evidence: "API設計"
+```
+
+### 決定規則
+
+どの規則も、Design Doc に実在する記述だけを根拠にする。推測で補わない。
+
+- `app`: Design Doc の英数字の製品名が一つに決まるときは、それを使う（ブループリントの「リポジトリ名 / バイナリ名」の定義から外れてよい。外れる旨は apply が方針表に記録する）。**推論で得られないとき（製品名が日本語だけで、英数字の表記が Design Doc に無い、など）と、一つに決められないとき（候補が 2 つ以上あり、Design Doc の記述から絞れない）は、推測で決めず、フォールバックもしない。`### app の確認` に従って `AskQuestion` で PO に確認し、決まった名前を書く。**
+- `features`: Design Doc のデータベース設計のテーブルから、集約を選ぶ。関係テーブル（2 つの主キー列が他のテーブルを指すだけのもの）と、他のテーブルの明細として説明されるテーブルは、独立した集約にしない。名前は、単数形の snake_case にする。
+- `callers`: 呼び出し元は、Design Doc が構成要素に付けた語（括弧内の英語名など）を使う。1 つしか無く、ブループリントが「呼び出し元が 1 つのときの名前」を定めているなら、それに従う。
+- `usecase_groups`: 業務フロー直下の見出しごとに 1 つ決める。見出しは日本語なので、英語の snake_case の名前は起案するエージェントが決める。この変換は決定論ではないため、機械が検査するのは形式（snake_case）と、名前決定表・ツリーとの整合だけである。`evidence` に元の見出しを書く。
+- `names`: 名前決定表の行。`features`、`callers`、`usecase_groups` の名前が、すべて `name` の列のどこかに現れること。`path` は、ブループリントのディレクトリ構成（`docs/tech-stack/`）に従って、実名で書く。
+- `names`（proto と Controller）: 承認済み契約の `api_style` に gRPC を含むときは、`features` の名前ごとに、種別 `proto` の行と種別 `Controller` の行を 1 行ずつ書く。`name` は集約の名前、`path` は `proto/<svc>/<feature>.proto` と `internal/controller/<feature>_controller.go`（`<svc>` は `app` からハイフンを除いたもの）。proto の分割は集約の単位だけで決める。`usecase_groups` や `callers` の名前では分けない（ブループリントの「API 契約」の proto 規約）。集約ごとの `proto` の行が名前決定表に無いと、決定論ゲート（`G-DOCFILL-006`）が FAIL にする。`api_style` に gRPC を含まない契約では、`proto` の行は書かず、ゲートも要求しない（パスはブループリントのディレクトリ構成に従う）。
+- `names`（従属集約を親の proto に含めるとき）: ブループリントは、親の集約の ID を指定して操作する従属集約の RPC を、親の service に含めることを、理由の記録を条件に許す。含めるときは、従属集約の `proto` の行と `Controller` の行を残し、その `path` を親の `.proto` と親の `_controller.go` にする。理由は `policies` に 1 行で書く（`item`: `proto の統合: <従属集約> を <親> に含める`、`policy`: 含める理由、`evidence`: 理由の根拠になる Design Doc の見出し）。理由を Design Doc の記述から書けないときは、含めず、集約ごとに分ける。これが既定である。
+- `tree`: 名前決定表から、ブループリントのディレクトリ構成を展開したツリー。`app` と、決めた名前がすべて現れること。
+- `scope`: `## 生成範囲` で決めた範囲と理由（採用した見出し、除外した見出しと除外の理由）。port、CORS、環境名は書かない（apply が追記する）。`## ` 見出しは書かない（束縛節の解析が途中で切れるため拒否される。箇条書きと `###` 以下の見出しは使える）。
+- `policies`: ブループリントが「プロジェクトで決めて記録する」とする項目を、1 項目 1 行で書く（1 件以上）。Design Doc に記載があるものだけを書く。「無い」と明記する項目（認証など）は、Design Doc が付けないと述べているときだけ「無い」と書く。`app` と `module` の決め方は、apply が必ず記録するので書かない。
+- `placeholders`: apply が導出する名前（`module`、`app`、`svc`、`ENV_PREFIX`、`db`、`feature`、`Feature`、`caller`、`usecase_group`）は書けない。これ以外の行が器にあるときだけ、具体値を書く。
+
+### app の確認
+
+`app` が、次のどちらかのときだけ、結果ファイルを書く前に `AskQuestion` で PO に確認する。Design Doc の記述から英数字の製品名が一つに決まるときは、確認しない。
+
+- 推論で得られない: Design Doc に英数字の製品名が無い（日本語だけ、など）。
+- 一つに決められない: 候補が 2 つ以上あり、Design Doc の記述から 1 つに絞れない。
+
+手順:
+
+1. 候補を推論で集める。読む場所は、Design Doc の題名（H1）、冒頭の概要、構成要素に付いた括弧内の英語名、コードスパンや太字で示された固有名詞である。次も候補に加える。
+   - targets の `files[].binding.repo_name`（git remote のリポジトリ名。ブループリントの既定の定義はリポジトリ名 / バイナリ名）。あるときだけ。
+   - 既存の `docs/architecture.md` の方針表に、埋め済みの `app` があるとき、その値。
+
+   候補は、apply の正規化（kebab-case の英小文字と数字）をかけた値で示し、元の表記と出典（見出し名、`repo_name`、既存 docs）を添える。同じ値は 1 つにまとめる。
+2. `AskQuestion` を1回で提示する。この確認は 1 論点で、ほかの確認と1回にまとめない。選択肢は候補ごとに 1 つとする。PO は `Other` に任意の製品名を入力できる。選択肢が 2 つに満たないときは、「候補にない名前を入力する（`Other` に入力）」を選択肢に足す。
+3. 推奨案を必ず 1 つ添える。推奨は、根拠が最も強い候補とする（強い順: Design Doc の題名・概要に現れる名前、既存 docs の埋め済みの値、`repo_name`）。候補が無いときは、「`Other` に入力する」を推奨し、Design Doc の製品名の英訳またはローマ字表記を入力案として示す。トレードオフを 1〜2 行で示す（例: Design Doc の名前は文書と一致するが、`repo_name` と異なると module path がリポジトリ名と分かれる）。
+4. 回答を `app` に書く。PO が入力した名前は、書く前に英数字（`-` と `_` と空白を区切りにできる）で表せるか確認する。表せない入力（日本語だけなど）は、書かずに英数字での入力を求めて、もう一度だけ `AskQuestion` する。PO が決めずに中断したときは、`app` を書かずに中断して報告する（`apply` は exit 2 で止まる）。
+5. 決め方を記録する。PO が Design Doc に現れる候補から選んだときは、`app_source` を省略し、`app_evidence` にその候補が現れる見出しを書く。PO が入力した名前、または Design Doc に現れない候補（`repo_name`、既存 docs の値）を選んだときは、`app_source: "po"` を書く。`app_evidence` は省略してよい（書くなら Design Doc に実在する見出し）。apply が方針表に「PO が決めた」と記録する。
+
+```yaml
+binding:
+  app: "sample-app"
+  app_source: "po"
+```
+
+この例は `app` と `app_source` だけを抜き出したもので、ほかのキーは `### binding のキー` のとおりに書く。
+
+### apply が導出する値
+
+エージェントは書かない。
+
+- `svc`: `app` からハイフンを除いたもの。`db`: `app` のハイフンをアンダースコアにしたもの。`ENV_PREFIX`: `app` を大文字にして、ハイフンをアンダースコアにしたもの。`Feature`: `features` の PascalCase。
+- `module`: owner があるときは `github.com/<owner>/<app>`。owner を取り出せない（remote が無い、GitHub の URL でない）ときは `<app>` だけにする。`project.name` は表示用の値なので使わない。
+- 設定の既定値（「リポジトリの担当範囲」に追記する）: gRPC の port は `50051`、REST gateway の port は `8080`。`callers` の並び順に、開発サーバーの port を `3000` から 1 ずつ増やす。CORS の許可 origin は、各 port の `localhost` と `127.0.0.1`（`*` は使わない。API 自身の port は含めない）。追加する環境名は無し（`configs/local.yaml` だけを使う）。ブループリントは port と CORS の数値を定めないため、この既定値で決める。
+
+### 検証と終了コード
+
+`apply --check` は、書込みなしで同じ検証と決定論ゲート（`G-DOCFILL-006`）を実行する。exit 1（名前の不整合、`[TODO]` の混入など）は、結果ファイルを最大 1 回だけ直す。exit 2（`app` が空、または英数字にできない）は、`### app の確認` で PO に確認して `app` を決め直せていないということなので、中断して PO に報告する。
+
 ## 機能仕様
 
 `docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様、`docs/spec/{slug}.md` の3者を同じ機能の集合にする。
@@ -208,8 +357,8 @@ targets の `files[].placeholders` に載った節は、契約の `api_sections`
 ## 起案の手順
 
 1. targets の `mode`、`action`、`pin`、対象節、既存 spec の slug と evidence を読む。
-2. Design Doc と既存の Domain docs（必要ならコードベース）を読む。
-3. 「持ち込む内容」「図の引継ぎ」「マージとコード整合」を満たして、対象節の本文と機能仕様を起案する。
+2. Design Doc と既存の Domain docs（必要ならコードベース）を読み、技術ブループリントの対象範囲から `## 生成範囲` に従って範囲を決める。
+3. 「持ち込む内容」「図の引継ぎ」「マージとコード整合」を満たして、範囲内の内容だけで対象節の本文と機能仕様を起案する。targets に `files[].binding` があれば、`## 束縛節` に従って `binding` も起案する。
 4. `tmp/domain-docs-result.yaml` だけを書く。docs を直接編集しない。
 5. `## 起動手順` の検証（`apply --check`）へ進む。
 

@@ -13,6 +13,9 @@ reference:
     endpoints:
       design: 4
       missing: 0
+    binding:
+      placeholders: 0
+      names: 7
 mutations:
   "drop-column":
     level: "WARN"

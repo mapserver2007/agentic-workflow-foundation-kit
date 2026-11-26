@@ -16,6 +16,15 @@ Design Doc は自動検知しない。PO が `designs/docs/` 直下の `*.md` �
                  stale / switched、pin が無く埋め済みの docs、または --refresh の指定で選ばれる。
   domain_docs_apply.py apply
       fill で適用する。本文が器と完全一致する節だけを埋める。
+      束縛節（`docs/architecture.md` の「技術ブループリントの適用」）は、結果ファイルの `binding` で、
+      `[TODO]` が残る部分だけを fill する（既存の値は書き換えない）。`module` / `svc` / `db` /
+      `ENV_PREFIX` / `Feature`、port、CORS の許可 origin は apply が `app` などから導出する。
+      `state` が `git remote get-url origin` の文字列から owner を決定論で取り出して targets に載せる
+      （通信はしない。エージェントは git を読まない）。`app`（製品名）は、Design Doc から推論で得られない・
+      一つに決められないときに、エージェントが AskQuestion で PO に確認して決める。`binding.app` が空、または
+      英数字にできないときは exit 2（フォールバックは無い）。PO が決めた名前は `binding.app_source: po` で記録する。
+      束縛節に記入済みの `app` があるときは、それを導出元にし、回答の `app` が違えば拒否する（exit 1）。
+      名前決定表の proto の行は、承認済み契約の `api_style` が gRPC を含むときだけ要求する。
       契約節（`docs/api.md`、`docs/data-models.md`、`docs/workflows.md` の、契約の
       `api_sections` / `data_model_sections` / `workflow_sections`）は、kit の引用を残して
       `[TODO]` だけを置き換える。
@@ -46,6 +55,7 @@ import difflib
 import hashlib
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -149,7 +159,8 @@ OMISSION_KEYS = frozenset({"file", "heading", "reason"})
 SPEC_FILE_KEYS = frozenset({"slug", "title", "summary", "evidence", "body"})
 # v2 だけで使える任意キー（主根拠のほかに取り込んだ Design Doc の見出し）。
 OPTIONAL_KEYS = frozenset({"supporting_evidence"})
-RESULT_KEYS = frozenset({"schema_version", "sections", "omissions", "spec_files"})
+# `binding` は束縛節（`docs/architecture.md` の「技術ブループリントの適用」）の fill 専用キーである。
+RESULT_KEYS = frozenset({"schema_version", "sections", "omissions", "spec_files", "binding"})
 ROW_RE = re.compile(
     r"^- \[(?P<title>[^\]]+)\]\((?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md\)"
     r"(?: — (?P<summary>.*?))?"
@@ -419,6 +430,20 @@ def contract_section_titles(manifest_path: Path) -> dict[str, frozenset[str]]:
     return titles
 
 
+def proto_required(api_style: object) -> bool:
+    """承認済み契約の `api_style` が gRPC を含むときだけ、名前決定表に proto の行を要求する。
+
+    `api_style` は自由記述なので、キーワード一致で決める。gRPC 系なのに記述に含まれないときは、
+    proto の行の検査が行われない（今より緩くなる側に倒れる。厳しくはならない）。
+    """
+    return isinstance(api_style, str) and "grpc" in api_style.lower()
+
+
+def contract_require_proto(manifest_path: Path) -> bool:
+    """承認済み契約の `api_style` から、proto の行を要求するかを決める。"""
+    return proto_required(_resolved_domain_docs(manifest_path).get("api_style"))
+
+
 def contract_guidance_texts(manifest_path: Path) -> list[str]:
     """契約の `*_sections` の本文（guidance / content）をすべて返す。"""
     domain = _resolved_domain_docs(manifest_path)
@@ -494,6 +519,7 @@ def analyze(
             "fillable": [],
             "mismatch": "",
             "placeholder_quotes": quotes,
+            "binding_pending": {"parts": [], "placeholders": []},
         }
         if path.is_file():
             try:
@@ -511,6 +537,8 @@ def analyze(
                     for name, base, current in zip(names, skeleton_sections, current_sections)
                     if (name in owned or name in quotes) and base == current
                 ]
+                if rel == BINDING_FILE:
+                    entry["binding_pending"] = binding_pending(_read_text(path))
         info[rel] = entry
     return info
 
@@ -568,6 +596,499 @@ def _digests(root: Path, doc: Path | None, manifest_path: Path) -> dict[str, str
     if doc is not None:
         paths.add(doc.relative_to(root).as_posix())
     return {rel: _sha(root / rel) for rel in sorted(paths)}
+
+
+# --------------------------------------------------------------------------
+# 束縛節（docs/architecture.md の「技術ブループリントの適用」）
+#
+# 所有権表の節とは別の、fill 専用の経路で書く。kit の器にある `[TODO]` の部分（プレースホルダの行、
+# 名前決定表、ディレクトリツリー、担当範囲、方針）だけを置換し、埋め済みの部分は書き換えない
+# （`module` / `app` は import パスに影響するため。変更は手編集で行う）。
+# エージェントは `app`（製品名）と業務に依存する名前だけを決める（`app` が Design Doc から決められないときは、
+# エージェントが PO に確認して決める）。`module` / `svc` / `db` / `ENV_PREFIX` /
+# `Feature`、port、CORS の許可 origin は、apply が `app` などから決定論で導出する。
+# --------------------------------------------------------------------------
+BINDING_FILE = "docs/architecture.md"
+BINDING_SECTION = "技術ブループリントの適用"
+BINDING_KEY = "binding"
+BINDING_PLACEHOLDERS = "プレースホルダの具体値"
+BINDING_NAMES = "名前決定表"
+BINDING_TREE = "実名で解決したディレクトリツリー"
+BINDING_SCOPE = "リポジトリの担当範囲"
+BINDING_POLICIES = "プロジェクトの方針"
+BINDING_PARTS = (BINDING_PLACEHOLDERS, BINDING_NAMES, BINDING_TREE, BINDING_SCOPE, BINDING_POLICIES)
+# apply が導出するプレースホルダ。これ以外の行は、結果ファイルの `binding.placeholders` で埋める。
+DERIVED_PLACEHOLDERS = (
+    "module", "app", "svc", "ENV_PREFIX", "db", "feature", "Feature", "caller", "usecase_group",
+)
+# `app` の決め方。design_doc = Design Doc の記述から決めた（PO が Design Doc に現れる候補から選んだ場合を含む）、
+# po = PO が入力した名前、または Design Doc に現れない候補を PO が選んだ。
+APP_SOURCE_DESIGN_DOC = "design_doc"
+APP_SOURCE_PO = "po"
+APP_SOURCES = (APP_SOURCE_DESIGN_DOC, APP_SOURCE_PO)
+BINDING_INPUT_KEYS = frozenset({
+    "app", "app_evidence", "app_source", "features", "callers", "usecase_groups",
+    "placeholders", "names", "tree", "scope", "policies",
+})
+NAME_ITEM_KEYS = frozenset({"name", "evidence"})
+NAMES_ROW_KEYS = frozenset({"kind", "name", "path", "evidence"})
+POLICY_ROW_KEYS = frozenset({"item", "policy", "evidence"})
+# ブループリントが数値を定めない設定の既定値（PO 確定）。
+DEFAULT_GRPC_PORT = 50051
+DEFAULT_REST_PORT = 8080
+DEFAULT_CLIENT_PORT_START = 3000
+CORS_HOSTS = ("localhost", "127.0.0.1")
+APP_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
+GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")
+GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# scp 形式（`git@github.com:owner/repo.git`）と URL 形式（ssh / https / git）。認証情報（userinfo）は取り込まない。
+_GITHUB_REMOTE_RES = (
+    re.compile(r"^(?:[\w.-]+@)?github\.com:(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$"),
+    re.compile(
+        r"^(?:ssh|https?|git)://(?:[^@/\s]+@)?github\.com(?::\d+)?/"
+        r"(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$"
+    ),
+)
+_PLACEHOLDER_ROW_RE = re.compile(r"^\|\s*`\{\{(?P<name>[^`{}]+)\}\}`\s*\|\s*(?P<value>.*?)\s*\|\s*$")
+_SUBSECTION_RE = re.compile(r"^### (?P<name>.+?)\s*$")
+
+
+def parse_github_remote(url: str) -> tuple[str, str]:
+    """GitHub の remote URL の文字列から (owner, repo) を取り出す。解釈できない部分は空文字にする。
+
+    文字列を読むだけで、通信しない。認証情報（userinfo）は捨て、戻り値にも含めない。
+    """
+    text = (url or "").strip()
+    for pattern in _GITHUB_REMOTE_RES:
+        match = pattern.match(text)
+        if match:
+            owner, repo = match.group("owner"), match.group("repo")
+            return (
+                owner if GITHUB_OWNER_RE.fullmatch(owner) else "",
+                repo if GITHUB_REPO_RE.fullmatch(repo) else "",
+            )
+    return "", ""
+
+
+def git_remote_url(root: Path) -> str:
+    """`git remote get-url origin` の文字列を返す。remote が無い・git が使えないときは空文字。"""
+    env = {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",
+        # root より上のリポジトリを辿らない（一時ディレクトリが別のリポジトリの中にあっても取り違えない）。
+        "GIT_CEILING_DIRECTORIES": os.path.realpath(root.parent),
+    }
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL, env=env, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def module_identity(root: Path) -> tuple[str, str]:
+    """git remote origin から (owner, repo) を決定論で取り出す。取り出せないときは空文字。"""
+    return parse_github_remote(git_remote_url(root))
+
+
+def _binding_subsections(body: str) -> tuple[str, list[list[str]]]:
+    """束縛節の本文を、前文と `### ` 小節（[名前, 見出し行, 本文]）へ分ける。コードフェンスの中は見出しとみなさない。"""
+    lines = body.splitlines(keepends=True)
+    mask = generate._fence_mask(lines)
+    preamble: list[str] = []
+    subsections: list[list[str]] = []
+    for line, fenced in zip(lines, mask):
+        match = None if fenced else _SUBSECTION_RE.match(line.rstrip("\r\n"))
+        if match:
+            subsections.append([match.group("name"), line, ""])
+        elif subsections:
+            subsections[-1][2] += line
+        else:
+            preamble.append(line)
+    return "".join(preamble), subsections
+
+
+def _join_subsections(preamble: str, subsections: list[list[str]]) -> str:
+    return preamble + "".join(heading + text for _, heading, text in subsections)
+
+
+def _unfenced_todo_lines(text: str) -> list[int]:
+    lines = text.splitlines(keepends=True)
+    mask = generate._fence_mask(lines)
+    return [index for index, (line, fenced) in enumerate(zip(lines, mask)) if "[TODO]" in line and not fenced]
+
+
+def binding_pending(text: str) -> dict:
+    """既存の `docs/architecture.md` の束縛節で、`[TODO]` が残る部分と、未記入のプレースホルダ行を求める。"""
+    body = _section_body(text, BINDING_SECTION)
+    if not body.strip():
+        return {"parts": [], "placeholders": []}
+    _, subsections = _binding_subsections(body)
+    parts: list[str] = []
+    placeholders: list[str] = []
+    for name, _, sub_text in subsections:
+        if name not in BINDING_PARTS:
+            continue
+        if name == BINDING_PLACEHOLDERS:
+            rows = []
+            for line in sub_text.splitlines():
+                match = _PLACEHOLDER_ROW_RE.match(line)
+                if match and match.group("value") == "[TODO]":
+                    rows.append(match.group("name"))
+            if rows:
+                parts.append(name)
+                placeholders = rows
+        elif _unfenced_todo_lines(sub_text):
+            parts.append(name)
+    return {"parts": parts, "placeholders": placeholders}
+
+
+def recorded_binding_app(text: str) -> str:
+    """束縛節のプレースホルダ表に、記入済みの `app` があれば、その値（コードスパンを除く）を返す。無ければ空文字。
+
+    記入済みの値は書き換えない。`module` などを導出するときの元にするため、回答の `app` と照合する。
+    """
+    body = _section_body(text, BINDING_SECTION)
+    if not body.strip():
+        return ""
+    _, subsections = _binding_subsections(body)
+    for name, _, sub_text in subsections:
+        if name != BINDING_PLACEHOLDERS:
+            continue
+        for line in sub_text.splitlines():
+            match = _PLACEHOLDER_ROW_RE.match(line)
+            if match and match.group("name") == "app":
+                value = match.group("value").strip()
+                if value and value != "[TODO]":
+                    return value.strip("`").strip()
+    return ""
+
+
+def normalize_app(value: object) -> str:
+    """製品名を kebab-case の英小文字と数字へ正規化する。決められないときは exit 2（フォールバックは無い）。"""
+    if not isinstance(value, str) or not value.strip():
+        raise FatalError(
+            "app（製品名）を Design Doc から決められません。binding.app が空です（フォールバックは設けない。"
+            "Design Doc から推論で得られない、または一つに決められないときは、AskQuestion で PO に確認して"
+            "決めた名前を書く。PO が決めなかったときは PO に報告する）"
+        )
+    text = re.sub(r"[\s_]+", "-", value.strip().lower())
+    text = re.sub(r"-{2,}", "-", text).strip("-")
+    if not APP_RE.fullmatch(text):
+        raise FatalError(
+            f"app（製品名）が kebab-case の英小文字と数字にできません: {value!r}"
+            "（英数字の製品名を AskQuestion で PO に確認して決める。PO が決めなかったときは PO に報告する）"
+        )
+    return text
+
+
+def derive_binding_values(app: str, owner: str, features: list[str], callers: list[str], groups: list[str]) -> dict:
+    """`app` などから、導出するプレースホルダの値（コードスパンの文字列）を決定論で求める。"""
+    module = f"github.com/{owner}/{app}" if owner else app
+    codes = lambda names: ", ".join(f"`{name}`" for name in names)  # noqa: E731
+    pascal = lambda name: "".join(part.capitalize() for part in name.split("_"))  # noqa: E731
+    return {
+        "module": f"`{module}`",
+        "app": f"`{app}`",
+        "svc": f"`{app.replace('-', '')}`",
+        "ENV_PREFIX": f"`{app.replace('-', '_').upper()}`",
+        "db": f"`{app.replace('-', '_')}`",
+        "feature": codes(features),
+        "Feature": codes([pascal(name) for name in features]),
+        "caller": codes(callers),
+        "usecase_group": codes(groups),
+    }
+
+
+def _cell(value: object, label: str) -> str:
+    """表のセルに入れる値。1 行で、`|` とバッククォートを含まない。"""
+    text = _single_line(value, label)
+    if "|" in text or "`" in text:
+        raise ApplyError(f"{label} に `|` とバッククォートは書けません")
+    return text
+
+
+def _word_in(name: str, text: str) -> bool:
+    """名前が、英数字に挟まれずに現れるか。`_` と `/` と `.` は区切りとして扱う（パスの一部でよい）。"""
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", text) is not None
+
+
+def _check_names(raw: object, label: str, doc_headings: set[str]) -> list[dict]:
+    if not isinstance(raw, list) or not raw:
+        raise ApplyError(f"{label} は 1 件以上の配列が必要です（各要素は name と evidence）")
+    items: list[dict] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(raw):
+        item_label = f"{label}[{index}]"
+        item = _check_keys(entry, NAME_ITEM_KEYS, item_label)
+        name = _single_line(item["name"], f"{item_label}.name")
+        if not NAME_RE.fullmatch(name):
+            raise ApplyError(f"{item_label}.name は snake_case の英小文字と数字である必要があります: {name!r}")
+        if name in seen:
+            raise ApplyError(f"{item_label}.name が重複しています: {name!r}")
+        seen.add(name)
+        evidence = _check_evidence(item["evidence"], item_label, doc_headings)
+        items.append({"name": name, "evidence": evidence})
+    return items
+
+
+def _check_binding_input(
+    raw: object, target: dict, doc_headings: set[str], owner: str, repo: str, recorded_app: str = ""
+) -> dict:
+    """結果ファイルの `binding` を検証し、組み立てに使う値を返す。
+
+    `recorded_app` は、束縛節に記入済みの `app`（無ければ空）。記入済みの値は書き換えないので、
+    回答の `app` が違えば拒否する（違うまま導出すると、`module` などが記入済みの `app` と食い違う）。
+    """
+    if not isinstance(raw, dict):
+        raise ApplyError("binding は mapping である必要があります")
+    unknown = sorted(set(raw) - BINDING_INPUT_KEYS)
+    if unknown:
+        raise ApplyError(f"binding に未知キーがあります: {unknown}")
+    pending = set(target.get("pending") or [])
+    # `app` が空、または英数字にできないときは、フォールバックせずに exit 2 で止める。
+    # Design Doc から決められないときは、エージェントが PO に確認して決めた名前を `app` に書く。
+    app = normalize_app(raw.get("app"))
+    if recorded_app:
+        try:
+            recorded_norm = normalize_app(recorded_app)
+        except FatalError as exc:
+            raise ApplyError(
+                f"記入済みの app（{recorded_app!r}）を kebab-case の英小文字と数字にできません。"
+                "記入済みの値は書き換えないので、手で直してから再実行する"
+            ) from exc
+        if app != recorded_norm:
+            raise ApplyError(
+                f"binding.app（{app!r}）が記入済みの app（{recorded_norm!r}）と一致しません。"
+                "記入済みの値は書き換えないので、同じ名前を書く（変えるときは手編集で直す）"
+            )
+    app_source = raw.get("app_source", APP_SOURCE_DESIGN_DOC)
+    if app_source not in APP_SOURCES:
+        raise ApplyError(f"binding.app_source は {list(APP_SOURCES)} のどちらかである必要があります: {app_source!r}")
+    if app_source == APP_SOURCE_PO and raw.get("app_evidence") in (None, ""):
+        # PO が決めた名前は、Design Doc に根拠の見出しが無くてよい。
+        app_evidence = ""
+    else:
+        app_evidence = _check_evidence(raw.get("app_evidence"), "binding.app_evidence", doc_headings)
+    for key in ("features", "callers", "usecase_groups"):
+        if key not in raw:
+            raise ApplyError(f"binding.{key} がありません")
+    features = _check_names(raw["features"], "binding.features", doc_headings)
+    callers = _check_names(raw["callers"], "binding.callers", doc_headings)
+    groups = _check_names(raw["usecase_groups"], "binding.usecase_groups", doc_headings)
+    feature_names = [item["name"] for item in features]
+    caller_names = [item["name"] for item in callers]
+    group_names = [item["name"] for item in groups]
+    derived = derive_binding_values(app, owner, feature_names, caller_names, group_names)
+
+    values: dict = {"app": app, "app_evidence": app_evidence, "app_source": app_source, "derived": derived}
+    values["features"], values["callers"], values["groups"] = feature_names, caller_names, group_names
+
+    if BINDING_PLACEHOLDERS in pending:
+        extra = raw.get("placeholders") or {}
+        if not isinstance(extra, dict):
+            raise ApplyError("binding.placeholders は mapping（プレースホルダ名 → 具体値）である必要があります")
+        rows = target.get("placeholders") or []
+        clash = sorted(name for name in extra if name in DERIVED_PLACEHOLDERS)
+        if clash:
+            raise ApplyError(f"binding.placeholders は apply が導出する名前を書けません: {clash}")
+        stray = sorted(name for name in extra if name not in rows)
+        if stray:
+            raise ApplyError(f"binding.placeholders に、記入欄の無いプレースホルダがあります: {stray}")
+        missing = sorted(name for name in rows if name not in DERIVED_PLACEHOLDERS and name not in extra)
+        if missing:
+            raise ApplyError(
+                f"binding.placeholders に、導出できないプレースホルダの具体値がありません: {missing}"
+            )
+        values["extra"] = {
+            name: f"`{_cell(value, f'binding.placeholders.{name}')}`" for name, value in extra.items()
+        }
+    if BINDING_NAMES in pending:
+        if "names" not in raw or not isinstance(raw["names"], list) or not raw["names"]:
+            raise ApplyError("binding.names は 1 件以上の配列が必要です（各要素は kind / name / path / evidence）")
+        names_rows = []
+        for index, entry in enumerate(raw["names"]):
+            label = f"binding.names[{index}]"
+            item = _check_keys(entry, NAMES_ROW_KEYS, label)
+            names_rows.append([
+                _cell(item["kind"], f"{label}.kind"),
+                f"`{_cell(item['name'], f'{label}.name')}`",
+                f"`{_cell(item['path'], f'{label}.path')}`",
+                f"`{_cell(_check_evidence(item['evidence'], label, doc_headings), f'{label}.evidence')}`",
+            ])
+        values["names_rows"] = names_rows
+        table_text = "\n".join(" ".join(row) for row in names_rows)
+        absent = sorted(
+            name for name in set(feature_names + caller_names + group_names) if not _word_in(name, table_text)
+        )
+        if absent:
+            raise ApplyError(f"binding.names の実名に、決めた名前が現れません: {absent}")
+    if BINDING_TREE in pending:
+        tree = raw.get("tree")
+        if not isinstance(tree, str) or not tree.strip():
+            raise ApplyError("binding.tree は非空文字列が必要です")
+        if "[TODO]" in tree or "{{" in tree or "```" in tree:
+            raise ApplyError("binding.tree に `[TODO]`、Mustache 構文、コードフェンスは書けません")
+        absent = sorted(
+            name for name in set([app] + feature_names + caller_names + group_names) if not _word_in(name, tree)
+        )
+        if absent:
+            raise ApplyError(f"binding.tree に、決めた名前が現れません: {absent}")
+        values["tree"] = tree.strip("\n")
+    if BINDING_SCOPE in pending:
+        scope = raw.get("scope")
+        values["scope"] = _check_body(scope, "binding.scope")
+        # 束縛節の解析は、任意の `## ` 見出しで打ち切られる。`###` 以下の見出しと箇条書きは使える。
+        scope_headings = generate.structural_headings(values["scope"])
+        if scope_headings:
+            raise ApplyError(
+                f"binding.scope に構造見出し（`## `）は書けません（`###` 以下は使えます）: {scope_headings}"
+            )
+    if BINDING_POLICIES in pending:
+        if "policies" not in raw or not isinstance(raw["policies"], list) or not raw["policies"]:
+            raise ApplyError("binding.policies は 1 件以上の配列が必要です（各要素は item / policy / evidence）")
+        policy_rows = []
+        for index, entry in enumerate(raw["policies"]):
+            label = f"binding.policies[{index}]"
+            item = _check_keys(entry, POLICY_ROW_KEYS, label)
+            policy_rows.append([
+                _cell(item["item"], f"{label}.item"),
+                _cell(item["policy"], f"{label}.policy"),
+                f"`{_cell(_check_evidence(item['evidence'], label, doc_headings), f'{label}.evidence')}`",
+            ])
+        values["policy_rows"] = policy_rows
+    values["repo"] = repo
+    values["owner"] = owner
+    return values
+
+
+def _row(cells: list[str]) -> str:
+    return "| " + " | ".join(cells) + " |\n"
+
+
+def _replace_todo_lines(text: str, replacement: str) -> str:
+    """小節の本文で、コードフェンス外の `[TODO]` を含む行を取り除き、最初の位置へ `replacement` を挿入する。"""
+    lines = text.splitlines(keepends=True)
+    mask = generate._fence_mask(lines)
+    out: list[str] = []
+    inserted = False
+    block = replacement if replacement.endswith("\n") else replacement + "\n"
+    for line, fenced in zip(lines, mask):
+        if "[TODO]" in line and not fenced:
+            if not inserted:
+                out.append(block)
+                inserted = True
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+def _defaults_table(callers: list[str]) -> str:
+    """ブループリントが数値を定めない設定の既定値（port、CORS の許可 origin、追加する環境名）。"""
+    rows = [
+        ["gRPC port", f"`{DEFAULT_GRPC_PORT}`", "gRPC の慣習的な既定"],
+        ["REST gateway port", f"`{DEFAULT_REST_PORT}`", "HTTP API の慣習的な既定"],
+    ]
+    origins: list[str] = []
+    for offset, caller in enumerate(callers):
+        port = DEFAULT_CLIENT_PORT_START + offset
+        rows.append([
+            f"呼び出し元 `{caller}` の開発サーバー port", f"`{port}`",
+            "フロントエンド開発サーバーの慣習的な既定（呼び出し元ごとに 1 つずつ増やす）",
+        ])
+        origins.extend(f"http://{host}:{port}" for host in CORS_HOSTS)
+    rows.append([
+        "CORS の許可 origin", ", ".join(f"`{origin}`" for origin in origins),
+        "API を呼ぶ画面の配信元の全組み合わせ。`*` は使わない。API 自身の port は含めない",
+    ])
+    rows.append(["追加する環境名", "なし", "`configs/local.yaml` だけを使う"])
+    table = _row(["項目", "既定値", "根拠"]) + _row(["---", "---", "---"]) + "".join(_row(row) for row in rows)
+    return (
+        "設定の既定値（ブループリントは port と CORS の数値を定めないため、`domain-docs` が既定の規則で決めた）:\n\n"
+        + table
+    )
+
+
+def _fixed_policy_rows(values: dict) -> list[list[str]]:
+    """apply が必ず記録する方針の行（`app` と `module` の決め方）。"""
+    app, repo, owner = values["app"], values["repo"], values["owner"]
+    if values.get("app_source") == APP_SOURCE_PO:
+        app_policy = (
+            f"PO が `AskQuestion` で決めた製品名 `{app}` を使う"
+            "（Design Doc から推論で得られない、または一つに決められなかったため）。"
+        )
+        app_basis = f"`{values['app_evidence']}`" if values["app_evidence"] else "PO の指定（AskQuestion）"
+    else:
+        app_policy = f"Design Doc の製品名 `{app}` を使う。"
+        app_basis = f"`{values['app_evidence']}`"
+    if repo and repo != app:
+        app_policy += f"ブループリントの定義（リポジトリ名 / バイナリ名）のうち、リポジトリ名（`{repo}`）とは一致しない。"
+    module = values["derived"]["module"]
+    module_policy = (
+        f"{module} とする。owner は git remote origin の URL から取り出した。"
+        if owner else f"{module} とする。git remote origin から owner を取り出せないため、製品名だけにした。"
+    )
+    return [
+        ["app（アプリ名とバイナリ名）", app_policy, app_basis],
+        ["module（Go module path）", module_policy, "git remote origin と製品名"],
+    ]
+
+
+def compose_binding_section(body: str, target: dict, values: dict) -> str:
+    """束縛節の本文で、`[TODO]` が残る部分だけを置換した全文を返す（埋め済みの部分は保つ）。"""
+    pending = set(target.get("pending") or [])
+    preamble, subsections = _binding_subsections(body)
+    for entry in subsections:
+        name, _, text = entry
+        if name not in pending:
+            continue
+        if name == BINDING_PLACEHOLDERS:
+            merged = {**values["derived"], **values.get("extra", {})}
+            out = []
+            for line in text.splitlines(keepends=True):
+                match = _PLACEHOLDER_ROW_RE.match(line)
+                if match and match.group("value") == "[TODO]":
+                    key = match.group("name")
+                    out.append("| `{{" + key + "}}` | " + merged[key] + " |\n")
+                else:
+                    out.append(line)
+            entry[2] = "".join(out)
+        elif name == BINDING_NAMES:
+            entry[2] = _replace_todo_lines(text, "".join(_row(row) for row in values["names_rows"]))
+        elif name == BINDING_TREE:
+            entry[2] = _replace_todo_lines(text, "```text\n" + values["tree"] + "\n```\n")
+        elif name == BINDING_SCOPE:
+            entry[2] = _replace_todo_lines(text, values["scope"] + "\n\n" + _defaults_table(values["callers"]))
+        elif name == BINDING_POLICIES:
+            rows = _fixed_policy_rows(values) + values["policy_rows"]
+            entry[2] = _replace_todo_lines(text, "".join(_row(row) for row in rows))
+    return _join_subsections(preamble, subsections)
+
+
+def binding_gate_input(section_body: str, values: dict) -> dict:
+    """決定論ゲート（G-DOCFILL-006）へ渡す、適用後の束縛節の情報。"""
+    _, subsections = _binding_subsections(section_body)
+    parts = {name: text for name, _, text in subsections}
+    rows: dict[str, str] = {}
+    for line in parts.get(BINDING_PLACEHOLDERS, "").splitlines():
+        match = _PLACEHOLDER_ROW_RE.match(line)
+        if match:
+            rows[match.group("name")] = match.group("value")
+    return {
+        "file": BINDING_FILE,
+        "section": BINDING_SECTION,
+        "text": section_body,
+        "placeholder_rows": rows,
+        "names_text": parts.get(BINDING_NAMES, ""),
+        "tree_text": parts.get(BINDING_TREE, ""),
+        "required_names": sorted(set(values["features"] + values["callers"] + values["groups"])),
+        "feature_names": sorted(set(values["features"])),
+        "app": values["app"],
+        "require_proto": values.get("require_proto", True),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -629,6 +1150,18 @@ def build_targets(
             }
         if entry["mismatch"]:
             item["mismatch"] = entry["mismatch"]
+        pending = entry["binding_pending"]
+        if rel == BINDING_FILE and not action_update and pending["parts"]:
+            # 束縛節は fill 専用。`[TODO]` が残る部分だけを対象にし、owner は state が決定論で求める。
+            owner, repo = module_identity(root)
+            binding_item: dict = {"pending": list(pending["parts"])}
+            if pending["placeholders"]:
+                binding_item["placeholders"] = list(pending["placeholders"])
+            if owner:
+                binding_item["module_owner"] = owner
+            if repo:
+                binding_item["repo_name"] = repo
+            item["binding"] = binding_item
         files.append(item)
     readme = root / README_PATH
     rows = readme_rows(_read_text(readme)) if readme.is_file() else []
@@ -639,7 +1172,7 @@ def build_targets(
             "exists": (root / SPEC_DIR / f"{slug}.md").is_file(),
             "evidence": by_slug.get(slug, ""),
         })
-    total = sum(len(item["sections"]) for item in files)
+    total = sum(len(item["sections"]) for item in files) + sum(1 for item in files if item.get("binding"))
     if action_update:
         action = "update"
     elif total > 0:
@@ -912,7 +1445,9 @@ def build_plan(
     *,
     refresh: bool,
     titles: Mapping[str, frozenset[str]] | None = None,
+    require_proto: bool = True,
 ) -> Plan:
+    """`require_proto` は、名前決定表に proto の行を要求するか（G-DOCFILL-006）。既定は要求する。"""
     _check_targets(targets, refresh=refresh)
     doc = _check_unchanged(root, manifest_path, targets)
     doc_headings = heading_names(doc)
@@ -982,6 +1517,21 @@ def build_plan(
             + ", ".join(f"{rel}#{name}" for rel, name in unanswered)
         )
 
+    binding_target = next(
+        (item["binding"] for item in targets["files"] if item["file"] == BINDING_FILE and item.get("binding")),
+        None,
+    )
+    binding_raw = result.get(BINDING_KEY)
+    if binding_raw is not None and binding_target is None:
+        if refresh:
+            raise ApplyError("binding は fill-only でだけ書けます（refresh では書けません）")
+        raise ApplyError("binding は書込み対象ではありません（束縛節に `[TODO]` が残っていない）")
+    if binding_target is not None and binding_raw is None:
+        raise ApplyError(
+            f"束縛節（{BINDING_FILE}#{BINDING_SECTION}）に回答がありません"
+            "（結果ファイルの binding に書く。省略や見送りはできない）"
+        )
+
     new_texts: dict[str, str] = {}
     for rel, entry in info.items():
         replacements = {
@@ -1018,6 +1568,33 @@ def build_plan(
             new_texts[rel] = new_text
             if refresh:
                 plan.diffs.append(_unified_diff(rel, existing, new_text))
+
+    # --- binding（束縛節。fill 専用）--------------------------------------------
+    binding_report: dict | None = None
+    if binding_target is not None:
+        entry = info[BINDING_FILE]
+        if not entry["exists"]:
+            raise ApplyError(f"{BINDING_FILE} が存在しません。generate を先に実行してください")
+        if entry["mismatch"]:
+            raise ApplyError(f"{BINDING_FILE}: 見出し構成不一致（{entry['mismatch']}）")
+        base_text = new_texts.get(BINDING_FILE) or _read_text(root / BINDING_FILE)
+        values = _check_binding_input(
+            binding_raw, binding_target, doc_headings,
+            str(binding_target.get("module_owner") or ""), str(binding_target.get("repo_name") or ""),
+            recorded_app=recorded_binding_app(base_text),
+        )
+        values["require_proto"] = require_proto
+        composed = compose_binding_section(_section_body(base_text, BINDING_SECTION), binding_target, values)
+        bound_text = _replace_sections(
+            base_text, entry["headings"], {BINDING_SECTION: composed.strip("\n")}
+        )
+        if bound_text != base_text:
+            new_texts[BINDING_FILE] = bound_text
+        binding_report = binding_gate_input(_section_body(bound_text, BINDING_SECTION), values)
+        plan.notes.append(
+            f"BINDING: {BINDING_FILE}#{BINDING_SECTION} の {', '.join(binding_target['pending'])} を書きます"
+            f"（app={values['app']}）"
+        )
 
     # --- spec_files -----------------------------------------------------------
     readme_path = root / README_PATH
@@ -1140,6 +1717,8 @@ def build_plan(
         if _written(rel, name, info, refresh)
     }
     replaced.update({rel: body for rel, body in spec_bodies.items() if rel in new_files})
+    if binding_report is not None:
+        replaced[f"{BINDING_FILE}#{BINDING_SECTION}"] = binding_report["text"]
     final_texts = {}
     for rel in gate.GATE_FILES:
         if rel in new_texts:
@@ -1148,7 +1727,8 @@ def build_plan(
             path = root / rel
             final_texts[rel] = _read_text(path) if path.is_file() else ""
     plan.report = gate.evaluate(
-        _read_text(doc), replaced=replaced, final_texts=final_texts, spec_documents=new_files
+        _read_text(doc), replaced=replaced, final_texts=final_texts, spec_documents=new_files,
+        binding=binding_report,
     )
     if plan.report.fails:
         raise GateError(
@@ -1255,8 +1835,9 @@ def cmd_state(args: argparse.Namespace) -> int:
     targets_path.parent.mkdir(parents=True, exist_ok=True)
     targets_path.write_text(dump_yaml_text(targets), encoding="utf-8")
     total = sum(len(item["sections"]) for item in targets["files"])
+    binding_total = sum(1 for item in targets["files"] if item.get("binding"))
     print(
-        f"STATE: action={targets['action']} pin={targets['pin']} sections={total} "
+        f"STATE: action={targets['action']} pin={targets['pin']} sections={total} binding={binding_total} "
         f"targets={targets_path.relative_to(root).as_posix() if targets_path.is_relative_to(root) else targets_path}"
     )
     _warn_contract_vocabulary(root, manifest_path, targets)
@@ -1337,6 +1918,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         plan = build_plan(
             root, manifest_path, skeletons, targets, result,
             refresh=args.refresh, titles=contract_section_titles(manifest_path),
+            require_proto=contract_require_proto(manifest_path),
         )
     except GateError as exc:
         _write_findings(findings_path, exc.report)

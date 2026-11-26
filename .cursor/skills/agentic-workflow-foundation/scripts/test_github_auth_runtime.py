@@ -1205,17 +1205,14 @@ def _test_root_overlay_to_wrapper_constants(errors: list[str]) -> None:
             errors.append("root overlay fixture could not replace github_access")
             return
         fixture_root.write_text(fixture_text, encoding="utf-8")
-        fixture_design = (
-            fixture_root.parent
-            / ".cursor"
-            / "docs"
-            / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md"
+        # 技術ブループリントの正本は、root manifest が指すファイル名から解決する（特定のファイル名に依存しない）。
+        design_name = (genlib.load_manifest(str(root_manifest)).get("project") or {}).get(
+            "tech_stack_design_filename"
         )
+        fixture_design = fixture_root.parent / ".cursor" / "docs" / str(design_name)
         fixture_design.parent.mkdir(parents=True)
         fixture_design.write_text(
-            (ROOT / ".cursor" / "docs" / "TECHNOLOGY_STACK_UNIFIED_DESIGN.md").read_text(
-                encoding="utf-8"
-            ),
+            (ROOT / ".cursor" / "docs" / str(design_name)).read_text(encoding="utf-8"),
             encoding="utf-8",
         )
         # root manifest が design_doc を pin 済みなら、入力の Design Doc も fixture へ複製する。

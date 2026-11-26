@@ -28,9 +28,8 @@ marker_id: test-marker
 framework:
   naming:
     meta_pattern: "UPPER_SNAKE_CASE.md"
-tech_stack:
-  note: "fixture"
-  items: []
+session:
+  tracker_always_required: true
 quality_gate_contract:
   gen:
   build:
@@ -55,9 +54,8 @@ marker_id: test-marker
 framework:
   naming:
     meta_pattern: "OLD"
-tech_stack:
-  note: "fixture"
-  items: []
+session:
+  tracker_always_required: true
 # old comment block
 quality_gate_contract:
   gen:
@@ -101,7 +99,7 @@ def test_01_new_root_strips_dead():
         if dead:
             print(f"new root still contains dead blocks: {dead}", file=sys.stderr)
             return 1
-        if "tech_stack:" not in text or "project:" not in text:
+        if "session:" not in text or "project:" not in text:
             print("overlay keys were incorrectly removed", file=sys.stderr)
             return 1
     return 0
@@ -123,7 +121,7 @@ def test_02_existing_root_strips_dead():
         if dead:
             print(f"existing root still contains dead blocks: {dead}", file=sys.stderr)
             return 1
-        if "tech_stack:" not in text or "project:" not in text:
+        if "session:" not in text or "project:" not in text:
             print("overlay keys were incorrectly removed", file=sys.stderr)
             return 1
         if "# old comment block" in text:

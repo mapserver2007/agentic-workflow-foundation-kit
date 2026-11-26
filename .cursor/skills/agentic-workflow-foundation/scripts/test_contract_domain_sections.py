@@ -87,14 +87,28 @@ def templates_match_section_contract() -> bool:
     return True
 
 
+# mode: split の audit が要求する最小の書式（索引表があり、全ての節が索引から参照される）を満たす正本。
+FIXTURE_BLUEPRINT = (
+    "# fixture\n\nTypeScript\n\n"
+    "## 0. 表記\n\n### 0.1 概要\n\nTypeScript の fixture。\n\n"
+    "### 0.2 タスク別の必読節\n\n"
+    "| タスク種別 | 必読節 | 参照先 |\n| --- | --- | --- |\n| 常時 | §0.1, §0.2 | — |\n"
+)
+
+
 def valid_fixture_resolves_generates_and_audits() -> bool:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         design = root / "docs" / "TECH.md"
         design.parent.mkdir(parents=True, exist_ok=True)
-        design.write_text("# fixture\nTypeScript\n", encoding="utf-8")
+        design.write_text(FIXTURE_BLUEPRINT, encoding="utf-8")
         contract = base_contract(tc.source_fingerprint(design), with_file_action=False)
-        manifest, design = write_sealed_manifest(root, copy.deepcopy(contract), "# fixture\nTypeScript\n")
+        manifest, design = write_sealed_manifest(root, copy.deepcopy(contract), FIXTURE_BLUEPRINT)
+        # mode: split の入力は `.cursor/docs/<tech_stack_design_filename>` から読まれる。
+        # 契約の検証用（docs/）と同じバイト列を、実際のレイアウトにも置く（fingerprint は変わらない）。
+        split_source = root / ".cursor" / "docs" / "TECH.md"
+        split_source.parent.mkdir(parents=True, exist_ok=True)
+        split_source.write_text(FIXTURE_BLUEPRINT, encoding="utf-8")
 
         resolved = rd._resolve(str(manifest))
         if resolved != contract["domain_docs"]["resolved"]:

@@ -1,16 +1,43 @@
-# 技術スタック（Domain 層サマリ）
+<!-- このファイルは agentic-workflow-foundation スキルの生成物（mode: split の索引）。直接編集せず、正本 {{_split.source}} を更新して再生成する。 -->
 
-<!-- このファイルは agentic-workflow-foundation スキルの生成物。直接編集せず manifest.yaml（tech_stack）を更新して再生成する。 -->
+# {{_split.title}}
 
-> 本ファイルは `manifest.yaml > tech_stack` から生成された Domain 層サマリ。`tech_stack` は Phase 1.6 で [`.cursor/docs/{{project.tech_stack_design_filename}}`](../.cursor/docs/{{project.tech_stack_design_filename}}) を取り込んだ結果であり、下流の Design Doc / AI レポート生成は本一覧を技術制約として参照する。
+> 本書は、技術ブループリントの**索引**である。本文は `docs/tech-stack/` の分割ファイル {{_split.file_count}} 個（正本の逐語。生成物）にある。
+> 正本: `{{_split.source}}`（版: {{_split.version}} / 状態: {{_split.status}}）。索引と分割ファイルは直接編集しない（正本を編集して再生成する）。ブループリントからの逸脱は ADR（`docs/DECISIONS.md`）に記録する。
+> プレースホルダ（{{_split.placeholders_line}}）の具体値と名前決定表は、`docs/architecture.md` の「技術ブループリントの適用」にある。
 
-## 技術スタック一覧とバージョン方針
+## 優先順位
 
-> {{tech_stack.note}}
->
-> 各技術が対応する品質ゲート（G-GEN / G-BUILD / G-LINT / G-TEST）の内訳は [`docs/QUALITY_GATE.md §1.1 quality gate backend contract`](QUALITY_GATE.md) を参照。
+- 既存実装がある場合は既存実装を踏襲し、ない場合はブループリントを採用する。「既存実装がある」とは、同じスタックで、同じ層・同じ役割の既存ファイル・パッケージがリポジトリにあることを指す。
+- 既存実装がブループリントから外れていても、その領域では既存実装に合わせる。既存の外れの是正は別タスクにする。
+- 束縛節（`docs/architecture.md` の「技術ブループリントの適用」）の値は、どちらの場合も配置と命名の解決に使う。
 
-| レイヤ | 技術 | バージョン方針 | 備考 |
+## 読み方
+
+1. 下の「タスク別の必読節」から、作業に当たる行を選ぶ。「常時」の行は、どのタスクでも読む。
+2. 「ファイル」の番号（NN）は `docs/tech-stack/NN_*.md` を指す。必読節と参照先の本文を読む。
+3. 読む途中で、表にない節への `§` 参照が出たら、「目次」でその節のファイルを探して読む。
+
+## タスク別の必読節
+
+| タスク種別 | 必読節 | 参照先 | ファイル |
 | --- | --- | --- | --- |
-{{#each tech_stack.items}}| {{this.layer}} | {{this.technology}} | {{this.version_policy}} | {{this.note}} |
+{{#each _split.tasks}}
+| {{this.name}} | {{this.starts}} | {{this.refs}} | {{this.files}} |
 {{/each}}
+
+## 目次
+
+| 節 | 見出し | NN | 直接の参照先 |
+| --- | --- | --- | --- |
+{{#each _split.toc}}
+| §{{this.num}} | {{this.title}} | {{this.file}} | {{this.refs}} |
+{{/each}}
+{{#if _split.warnings}}
+
+## 生成時の警告
+
+{{#each _split.warnings}}
+- {{this}}
+{{/each}}
+{{/if}}

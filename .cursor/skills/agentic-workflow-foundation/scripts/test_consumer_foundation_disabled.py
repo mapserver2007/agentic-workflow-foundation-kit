@@ -233,7 +233,12 @@ def main() -> int:
                 f"{path.relative_to(TEMPLATES)}: foundation.enabled=false でも foundation scripts パスを案内している"
             )
 
-    def _render_verify_steps(build: list[str], lint: list[str], test: list[str]) -> str:
+    def _render_verify_steps(
+        build: list[str],
+        lint: list[str],
+        test: list[str],
+        gen: list[str] | None = None,
+    ) -> str:
         return genlib.render(
             quality_gate,
             {
@@ -241,7 +246,7 @@ def main() -> int:
                 "project": {"tech_stack_design_filename": "TECH.md"},
                 "tech_contract": {
                     "quality_gate": {
-                        "gen": {"argv": ["true"]},
+                        "gen": {"argv": gen if gen is not None else ["true"]},
                         "build": {"argv": build},
                         "lint": {"argv": lint},
                         "test": {"argv": test},
@@ -331,6 +336,57 @@ def main() -> int:
                     "bin/quality-gate: 依存欠落をターゲット不在として省略した "
                     f"(exit {dependency.returncode}): {dependency.stdout}{dependency.stderr}"
                 )
+
+            # 単体サブコマンド（gen / build / lint / test）も、対象 make ターゲットが
+            # 無ければエラーにせず SKIP して exit 0 とする。実在して失敗した段は失敗のまま。
+            gate.write_text(
+                _render_verify_steps(
+                    ["make", "build"],
+                    ["make", "lint"],
+                    ["make", "test"],
+                    gen=["make", "gen"],
+                ),
+                encoding="utf-8",
+            )
+            gate.chmod(0o755)
+            log.unlink(missing_ok=True)
+            makefile.write_text(
+                "lint:\n"
+                "\texit 1\n",
+                encoding="utf-8",
+            )
+            for sub in ("gen", "build", "test"):
+                single = subprocess.run(
+                    [str(gate), sub], cwd=root, capture_output=True, text=True, check=False
+                )
+                if single.returncode != 0 or f"SKIP: make target '{sub}'" not in single.stdout:
+                    failures.append(
+                        f"bin/quality-gate {sub}: 無い make ターゲットを SKIP して exit 0 にできていない "
+                        f"(exit {single.returncode}): {single.stdout}{single.stderr}"
+                    )
+            single_failed = subprocess.run(
+                [str(gate), "lint"], cwd=root, capture_output=True, text=True, check=False
+            )
+            if single_failed.returncode == 0 or "SKIP:" in single_failed.stdout:
+                failures.append(
+                    "bin/quality-gate lint: 実在ターゲットの失敗を省略した "
+                    f"(exit {single_failed.returncode}): {single_failed.stdout}{single_failed.stderr}"
+                )
+
+            makefile.unlink()
+            for sub in ("gen", "build", "lint", "test"):
+                single_no_makefile = subprocess.run(
+                    [str(gate), sub], cwd=root, capture_output=True, text=True, check=False
+                )
+                if (
+                    single_no_makefile.returncode != 0
+                    or f"SKIP: make target '{sub}'" not in single_no_makefile.stdout
+                ):
+                    failures.append(
+                        f"bin/quality-gate {sub}: Makefile 自体が無い場合を SKIP して exit 0 にできていない "
+                        f"(exit {single_no_makefile.returncode}): "
+                        f"{single_no_makefile.stdout}{single_no_makefile.stderr}"
+                    )
     except (OSError, genlib.RenderError) as exc:
         failures.append(f"bin/quality-gate: make ターゲット省略の検証不能: {exc}")
 

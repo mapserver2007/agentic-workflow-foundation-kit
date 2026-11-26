@@ -2,9 +2,9 @@
 
 > 本スキルでは `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` / `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` を immutable upstream SoT として読み取り、`.cursor/skills/agentic-workflow-foundation/manifest.yaml` + `templates/` を schema/default として使う。スキル実行時に `scripts/run_resolved_engine.py` が一時 resolved skill-dir を作成し、既存 engine に渡す。
 >
-> 技術スタック統一設計書は per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。Phase 1.6 で生成済み root `manifest.yaml > tech_stack` へ取り込む。`.cursor` 配下に永続的な project manifest は作らない。
+> 技術ブループリントは per-project 入力として `init.yaml > tech_stack_design.filename` で必須指定する（配置は `.cursor/docs/` 固定）。engine の `mode: split` が、`docs/tech-stack/`（見出し単位の逐語の分割ファイル）と索引 `docs/tech-stack.md` として出力する。`.cursor` 配下に永続的な project manifest は作らない。
 >
-> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_stack` / `tech_contract` / `session` / `domain_docs` / feature-flag overlay keys を seed manifest に overlay する。承認済み `tech_contract` が quality gate / review / tech 依存 domain docs / provisioning の唯一 consumer 入力であり、registry live compose や tech 名カテゴリ推論は使用しない。root `manifest.yaml > design_doc`（`source_path` / `source_fingerprint`）は、最後に適用した Design Doc の変更検知だけを担い、seed への overlay 対象ではない。業務仕様本文は、foundation の生成プロセスの外で、単独起動の domain-docs が書く。
+> Phase 2 / Phase 3 では `scripts/run_resolved_engine.py` が immutable design docs の fingerprint / 構造化要件と、root `manifest.yaml` の `project` / `framework.accd_axes` / `tech_contract` / `session` / `domain_docs` / feature-flag overlay keys を seed manifest に overlay する。承認済み `tech_contract` が quality gate / review / tech 依存 domain docs / provisioning の唯一 consumer 入力であり、registry live compose や tech 名カテゴリ推論は使用しない。root `manifest.yaml > design_doc`（`source_path` / `source_fingerprint`）は、最後に適用した Design Doc の変更検知だけを担い、seed への overlay 対象ではない。業務仕様本文は、foundation の生成プロセスの外で、単独起動の domain-docs が書く。
 >
 > **対象外**: 生成/監査エンジン `agentic-workflow-engine`（`generate.py` / `audit.py` / `genlib.py`）は本マッピングに含めない。エンジンは How ツールであり、本スキルの生成出力ではない。
 
@@ -14,7 +14,7 @@
 | --- | --- |
 | `.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md` | immutable upstream SoT。セッション管理、Lost in the Middle、レイヤー構造、Hook 配置の設計入力。 |
 | `.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` | immutable upstream SoT。ACCD / Agent Conduct / YAML正本+Gate の設計入力。 |
-| `.cursor/docs/{tech_stack_design_filename}` | per-project 技術ポリシー源。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定。Phase 1.6 で `tech_stack` へ取り込む。 |
+| `.cursor/docs/{tech_stack_design_filename}` | per-project 技術ブループリント（技術スタックと構成のベストプラクティス）の正本。ファイル名は `init.yaml > tech_stack_design.filename` で必須指定。`tech_contract` の起案元であり、`mode: split` で `docs/tech-stack/` と索引 `docs/tech-stack.md` へ出力される。 |
 | `designs/docs/*.md`（見本 `*.sample.md` を除く） | per-project の業務設計入力。foundation の生成は読まない。PO が `AskQuestion` で1つ選び、seed の `outputs[]` から生成した domain-docs スキルを単独で起動して、Domain docs の本文へ構造化する（自動検知はしない）。 |
 
 ## マッピング表
@@ -38,11 +38,11 @@
 | `tech_contract` | `scripts/tech_contract.py` が canonical digest・設計書 fingerprint・approval を検証して pin する承認済み派生 SoT。`docs/QUALITY_GATE.md` / `bin/quality-gate` / runtime / review / Domain docs の唯一の tech 依存 consumer 入力。CI・generate・品質ゲートは LLM を呼ばない |
 | `tech_contract.quality_gate` | `docs/QUALITY_GATE.md`（quality gate backend contract）/ `bin/quality-gate`（argv 実行）。`project.quality_gate` は互換表示用の展開値であり、契約の代替 SoT ではない |
 | `tech_contract.runtime_materialization` | `scripts/provision_runtime.py` / `bin/project-setup`。`--plan` は read-only、`--apply` は contract digest と target preimage が一致する承認済み plan だけを実行する |
-| `tech_stack.note` / `tech_stack.items` | `docs/tech-stack.md`（Domain 層サマリ）/ `AGENTS.md`（Tech Stack はポインタのみ）。G-* / runtime / review / Domain docs / provisioning の consumer 入力には使用しない |
+| `.cursor/docs/{tech_stack_design_filename}`（`mode: split` の入力） | `docs/tech-stack/`（逐語の分割ファイル）/ `docs/tech-stack.md`（索引）/ `AGENTS.md`（Tech Stack はポインタのみ）。G-* / runtime / review / Domain docs / provisioning の consumer 入力には使用しない（それらは承認済み `tech_contract` だけ） |
 | `tech_contract.review.coderabbit` | `.coderabbit.yaml`（CodeRabbit レビュー設定。承認済み contract の構造化データをそのまま投影） |
 | `tech_contract.domain_docs.resolved` | `docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/coding-standards.md` / `docs/workflows.md`（Domain 層スケルトン。承認済み contract の sections/content をそのまま投影、seed モード） |
 | `outputs[]`（domain-docs） | `.cursor/skills/domain-docs/SKILL.md`。seed の `outputs[]` から生成する起案手順（所有権表、持ち込む内容、図の引継ぎ、契約節、機能仕様の規則）。所有権の SoT は `scripts/domain_docs_apply.py` の `OWNERSHIP` で、テンプレートへ写した表はテストで一致を検査する |
-| `design_doc`（`source_path` / `source_fingerprint`） | `scripts/domain_docs_apply.py` が、PO の選んだ Design Doc と最後に適用した Design Doc の比較（`state` の unpinned / fresh / stale / switched）に使う。`docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/workflows.md` の本文と `docs/spec/{slug}.md` は、単独起動した domain-docs の結果を apply が書く（fill は器のままの節だけ、update は承認を得て既存本文とマージ）。書込み前に `scripts/domain_docs_gate.py` が構造を検査する（`G-DOCFILL-*`）。 |
+| `design_doc`（`source_path` / `source_fingerprint`） | `scripts/domain_docs_apply.py` が、PO の選んだ Design Doc と最後に適用した Design Doc の比較（`state` の unpinned / fresh / stale / switched）に使う。`docs/spec.md` / `docs/spec/README.md` / `docs/architecture.md` / `docs/api.md` / `docs/data-models.md` / `docs/workflows.md` の本文と `docs/spec/{slug}.md` は、単独起動した domain-docs の結果を apply が書く（fill は器のままの節だけ、update は承認を得て既存本文とマージ）。書込み前に `scripts/domain_docs_gate.py` が構造を検査する（`G-DOCFILL-*`）。`docs/architecture.md` の「技術ブループリントの適用」（束縛節）は所有権表の対象外で、同じ結果ファイルの `binding` を、apply が fill だけで書く（`module` の owner は `state` が git remote origin の文字列から取り出す）。 |
 | `session.large_task_threshold` | `.cursor/skills/session-planning/SKILL.md` |
 | `session.verification.gate_command` | `.cursor/skills/session-handover/SKILL.md` / `.cursor/skills/session-handover/scripts/verification-gate.sh` |
 | `outputs[]`（campaign cleanup） | `.cursor/skills/campaign-cleanup/SKILL.md` / `.cursor/skills/campaign-cleanup/config.yaml` / `.cursor/skills/campaign-cleanup/scripts/campaign-cleanup.sh`。allowlist 内 runtime の current campaign 保護と承認なし apply の削除境界 |
@@ -62,7 +62,7 @@
 
 1. immutable upstream docs / stateless resolver / `framework.*` / `outputs[]` / `templates/*` / seed `session.*` の変更は、基盤定義変更として扱う。PO 確定済み事項は再質問せず、未確定事項のみ PO 承認を得る。`outputs[]` は seed manifest が単一 SoT であり、root manifest には保持しない（`ROOT_OVERLAY_KEYS` に含まれず生成に使われないため、bootstrap が除去する）。
 2. `project.*` と `github_access` は Phase 1.5 の `init.yaml` → `apply_kit_init.py` で確定する（workflow_pattern は開発型固定、GitHub provider は `github_app | keychain`）。`framework.accd_axes` は開発型の軽量実装として seed manifest に固定する。確定値は root `manifest.yaml` に保存する。
-3. `tech_stack.*` は Phase 1.6 で技術設計書から root `manifest.yaml` へ取り込む（Domain サマリ）。G-* / runtime / CodeRabbit / Domain docs / provisioning は承認済み `tech_contract` だけを consumer とし、契約外の技術名判定や fallback を行わない。
+3. 技術ブループリントは `manifest.yaml` へ取り込まず、`mode: split` で `docs/tech-stack/` と索引へ出力する。G-* / runtime / CodeRabbit / Domain docs / provisioning は承認済み `tech_contract` だけを consumer とし、契約外の技術名判定や fallback を行わない。
 4. `design_doc` は、単独起動の domain-docs（`domain_docs_apply.py`）が、fill の初回成功時と update の適用時に、最後に適用した Design Doc の `source_path` / `source_fingerprint` の2キーで固定する。foundation の生成プロセスは書かない。手で書いた Domain docs 節の更新は `maintenance-docs-workflow` が担う。
 5. Phase 2 / Phase 3 は `run_resolved_engine.py` 経由で engine を呼び、unified design / root manifest overlay を foundation 側の stateless 前処理に閉じ込める。
 6. root `manifest.yaml` と生成ファイルの評価は PO が行う。プラン実装中に勝手に生成物を作らない。

@@ -100,8 +100,10 @@ consumer 経路でも引き続き失敗とする。
 - `並行セッション対応`: セッションごとの独立した handoff manifest（`handoff-{session_id}.md`）による並行セッション管理と、stale-handoff の検出・選択機構を説明できること。
 - `意図的に採用しない設計`: 閾値の外部設定機構・個人別オーバーライドを YAGNI で非採用とし、manifest を SoT とする判断を復元可能にすること（`framework.handoff.non_goals`）。`将来拡張候補`（`framework.handoff.future_notes`）は preCompact による proxy 指標補完の方向性を残すこと（unified の preCompact 行が根拠）。
 
-### docs/tech-stack.md（techstack §9）
-- `技術スタック一覧とバージョン方針`: §9 の技術スタック表（レイヤ/技術/バージョン方針/備考）を Domain 層へ符号化したもの。テンプレート内のリンクは `project.tech_stack_design_filename`（manifest 値）で動的解決される。
+### docs/tech-stack.md と docs/tech-stack/（技術ブループリントの `mode: split` 出力）
+- 索引 `docs/tech-stack.md`: 生成ヘッダ、優先順位、読み方、タスク別の必読節、目次を持つ。本文は持たない。必須要件は索引のヘッダの目印（`## 優先順位` / `## タスク別の必読節` / `## 目次`）だけで、ブループリントの見出しを必須節にしない（kit がスタックに結合しないため）。
+- 分割ファイル `docs/tech-stack/*.md`: ブループリントを見出し単位で機械的に分割した逐語ファイル。`audit` が、連結一致・残骸ファイル・サイズ上限・`§` 参照切れ・索引の網羅・プレースホルダの照合を検査する（`agentic-workflow-engine` の `mode: split`）。
+- 束縛節 `docs/architecture.md` の「技術ブループリントの適用」: 所有権表の対象外で、`domain-docs` が束縛節専用の経路（結果ファイルの `binding`）で fill だけ書く節。採用ブループリントの版は、kit の生成が正本の frontmatter（`_split.version` / `_split.status`）から転記する（無いときは「正本に版の記載なし」）。ブループリントのプレースホルダの記入欄の過不足は `audit` が検査する。
 
 ### .cursor/skills/session-planning/SKILL.md（Layer 3 セッション管理）
 - `name: session-planning`: Cursor skill としての識別子。
@@ -144,16 +146,17 @@ consumer 経路でも引き続き失敗とする。
 - **所有権表**: domain-docs が書ける節は `OWNERSHIP`（`domain_docs_apply.py`）で固定する（`ER図・関係性` を含む23節）。`参照` と各ファイルの前文は kit 所有で、書込みを拒否する。`spec_sections` / `architecture_sections` の契約節はテンプレートに受け皿が無く、対象にしない。所有権表とテンプレートの見出しは `test_domain_docs_apply.py` が突き合わせる。
 - **`ER図・関係性`**: Design Doc のデータベース設計の記述から起こした Mermaid の `erDiagram` だけを書ける。画像リンクは拒否のままである（Design Doc の ER が画像でも、テーブルの記述から起こす）。エンティティ名は、適用後の `docs/data-models.md` の本文（ER 図以外）に実在するものに限り、雛形名（`ENTITY_A` など）は拒否する。`erDiagram` は他の節では拒否する。テーブルの記述が無ければ `omissions` で見送り、テンプレートに偽の図の雛形は残らない（テンプレートは `[TODO]` だけを持つ）。
 - **契約節の例外（`api_sections` / `data_model_sections` / `workflow_sections`）**: 見出し名は consumer の契約が決めるため、固定の所有権表には入れない。kit が描画した器の `docs/api.md`、`docs/data-models.md`、`docs/workflows.md` で、見出し名がそのファイルの契約の配列（`CONTRACT_SECTION_KEYS`。resolved manifest から取る）の title と完全一致し、所有権表の節でも `参照` でもなく、引用段落と単独行の `[TODO]` だけでできている節を契約節（`placeholders`）とする。器から求めるので、既存ファイルの手書きの節は対象にならない。埋めてよいのは fill-only だけで、本文が器と完全一致する節に限る。apply は kit の引用を残して `[TODO]` だけを置換し、結果の `body` に引用を含めることを拒否する。update（`mode: refresh`）では対象にせず、結果に含めても拒否する。`state` が targets の `files[].guidance`（契約節名 → 引用の本文）で規約を渡す（targets の `schema_version` は 1 のまま、任意キーの追加）。本文の規則はファイルごとに `domain-docs` SKILL の `## 契約節` が定める。`api` は Design Doc に明示された JSON とエラー応答の外形に限り、型・シリアライザ・gRPC status・OpenAPI の required・各 API の JSON 例は書かない。`data-models` と `workflows` は引用の規約・手順を本文へ写し、引用にも Design Doc にも無い事実を補わない。契約節の `evidence` は、Design Doc の見出しのほかに固定値 `contract`（引用だけが根拠）を許可する。所有権表の節では `contract` を許可しない。
-- **契約の起案規則**: `tech_contract.domain_docs.resolved` は技術スタック設計書の見出しの役割で節を選ぶ（起案プレイブック。`SKILL.md` の Phase 1.67）。guidance は技術規約に限り、業務語彙を入れない。`domain_docs_apply.py state` は、Design Doc のコードスパンの識別子が guidance に現れたとき WARN を出す（報告専用）。`tech_contract.py validate` は技術スタック設計書だけを入力に取るので、この検査は持たない。
+- **束縛節の fill（`binding`）**: `docs/architecture.md` の「技術ブループリントの適用」は、所有権表の節ではない。`state` は、器の束縛節に `[TODO]` が残る部分（プレースホルダの行、名前決定表、ディレクトリツリー、担当範囲、方針）を `files[].binding.pending` として targets に載せる（fill のときだけ。`schema_version` は 1 のまま、任意キーの追加）。`state` は `git remote get-url origin` の文字列から owner と repo を決定論で取り出して `module_owner` / `repo_name` に載せる（通信はせず、認証情報は取り込まない。エージェントは git を読まない）。結果ファイルは、`binding`（`app`、`features`、`callers`、`usecase_groups`、`names`、`tree`、`scope`、`policies`、必要なら `placeholders`）を書く。`module`、`svc`、`db`、`ENV_PREFIX`、`Feature`、port、CORS の許可 origin は、apply が `app` などから導出する。`[TODO]` が残る部分だけを置換し、埋め済みの部分は書き換えない（`module` と `app` は import パスに影響する）。`AskQuestion` を使うのは `app`（製品名）だけで、Design Doc から推論で得られないとき、または一つに決められないときに、候補（Design Doc の題名・概要・括弧内の英語名、`repo_name`、既存 docs の埋め済みの値）を推奨案つきで挙げ、PO が選ぶか `Other` に入力して決める。それ以外の値の承認の対話は無く、確認は事後の git diff で行う。PO が決めた名前（入力した名前、または Design Doc に現れない候補）は、任意キー `app_source: po` で記録し、`app_evidence` を省略できる（apply が方針表に「PO が決めた」と記録する。既定の `design_doc` は従来どおり `app_evidence` が必須）。`app`（製品名）が空のとき、または kebab-case の英数字にできないときは、フォールバックせず exit 2 で止まる（確認せずに `app` を書かなかった場合と、PO が決めずに中断した場合の最後の防壁）。`binding` が無い・対象が無いのにある・update で書く、のときは exit 1 で拒否する。`module` の owner は、`project.name`（表示用の値）ではなく git remote から取り、取り出せないときは `app` だけにする。
+- **契約の起案規則**: `tech_contract.domain_docs.resolved` は技術ブループリントの見出しの役割で節を選ぶ（起案プレイブック。`SKILL.md` の Phase 1.67）。guidance は技術規約に限り、業務語彙を入れない。`domain_docs_apply.py state` は、Design Doc のコードスパンの識別子が guidance に現れたとき WARN を出す（報告専用）。`tech_contract.py validate` は技術スタック設計書だけを入力に取るので、この検査は持たない。
 - **結果ファイルの `schema_version`**: 1 と 2 を受け付ける。2 は `sections` と `spec_files` に任意の `supporting_evidence`（Design Doc に実在する見出しの配列）を許可する。targets の `schema_version` は 1 のままである。一意性・既存 slug との対応・README の根拠は、主根拠だけに適用する。update では、既存の機能仕様の補足に限り、主根拠の Design Doc 見出し実在検査を免除する（後述の「機能仕様（docs/spec/*.md）」）。
 - **機能仕様の規則**: `body` は `## 概要` を必須とする。新しい機能仕様の主根拠は、Design Doc に `業務フロー` 見出しがあるとき、その直下の見出しに限る（細分化の防止。既存の機能仕様の根拠は変えない。見出しが無ければ検査しない）。`## エラーハンドリング` の欠落は `G-DOCFILL-005`（WARN）で報告する。
-- **決定論ゲート（`domain_docs_gate.py`）**: apply が書込み前に、今回置換する本文と適用後の docs に対して `G-DOCFILL-001`（FAIL: `[TODO]` と雛形名の残存）、`002`〜`005`（WARN: 図の本数、テーブルと列、エンドポイント、エラーハンドリング節）を実行し、`tmp/domain-docs-findings.yaml` へ書く。FAIL は検証失敗（exit 1）、WARN は報告だけで修復を起動しない。数値の閾値と割合の指標は持たない（`docs/QUALITY_GATE.md` の「数値スコアリングをしない」に合わせる）。設計書が標準の見出し構造を持たない検査は `skipped` にする。
+- **決定論ゲート（`domain_docs_gate.py`）**: apply が書込み前に、今回置換する本文と適用後の docs に対して `G-DOCFILL-001`（FAIL: `[TODO]` と雛形名の残存）、`002`〜`005`（WARN: 図の本数、テーブルと列、エンドポイント、エラーハンドリング節）、`006`（FAIL: 束縛節のプレースホルダの行がすべて埋まり、決めた名前が名前決定表とツリーに現れる。束縛節を書くときだけ）を実行し、`tmp/domain-docs-findings.yaml` へ書く。FAIL は検証失敗（exit 1）、WARN は報告だけで修復を起動しない。数値の閾値と割合の指標は持たない（`docs/QUALITY_GATE.md` の「数値スコアリングをしない」に合わせる）。設計書が標準の見出し構造を持たない検査は `skipped` にする。
 - **`apply --check` と修復**: 書込み・pin・片付けをせず、`apply` と同じ検証とゲートだけを実行する。update のとき（targets の `mode: refresh`）は `--refresh` を付ける。exit 1 のとき、起案エージェントは findings を読み、結果ファイルを最大 1 回だけ直し、再度 `--check` を実行する。2 回目も exit 1 なら PO へ報告して停止する。`--check` が PASS した後の `apply` は、直接編集の検知などを除き exit 1 にならない。
 - **fill と update**: fill は、本文が kit の器と完全一致する節だけを埋める（手で書いた節と `maintenance-docs-workflow` の反映は変更しない）。update は、所有権表の全節を、既存本文を起点にマージした本文で置換する（更新しない節は `omissions` で既存本文を保つ）。update では手で書いた節も置換の対象になり、保持は `omissions` と承認で担保する（pin が無く手で書いた節がある docs も update になる）。engine（`generate.py`）は既存の seed を常にスキップし、Design Doc を一切知らない。fill の節の保持は `merge_seed_sections` を `domain_docs_apply.py` が再利用して行う。
 - **update は承認付き**: update は `apply --refresh` で diff と digest を提示し、承認後に `--approve <digest>` で適用する。承認時は、起案エージェントが diff の `-` 行（削除・置換される旧記述）と、旧世代のまま残る契約節の件数と名前を要約して添える。見送り（`--decline`、docs 不変、fingerprint のみ更新）は、同じ Design Doc の stale だけに許す。switched / pin なし / 強制 update（`state --refresh`）では `--decline` は exit 2 とし、見送りは `apply` を実行しないことで表す（pin は動かず、反映していない Design Doc を既読にしない）。fingerprint は、fill の初回成功時（pin が無いとき）と、update の適用時、stale の `--decline` で更新する。
 - **機能仕様（docs/spec/*.md）**: 件数と名前は Design Doc ごとに変わるため、seed の `outputs[]` には登録しない。`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様（行ごとに根拠見出しを併記）、`docs/spec/*.md` の3者が一致することを apply が検証する。再実行時は根拠見出しから既存の slug を引き当て、既存ファイルを再作成しない。結果から外した既存の slug は、変更も削除もしない（収録仕様の既存行と `docs/spec.md` のリンクも維持する）。別の Design Doc を根拠にした既存行は、今回の Design Doc に根拠の見出しが無くても正常な状態であり、`ORPHAN` の注記は出さない。update で既存の機能仕様を補足するときは、収録仕様の既存行の根拠が非空で、結果の `evidence` が既存行と一致するときだけ、`evidence` の Design Doc 見出し実在検査を免除する。この免除を使うときは、`supporting_evidence`（`schema_version: 2`）を1件以上必須にし、その見出しは今回の Design Doc に実在すること。既存行の根拠が空のとき、および fill では免除せず、従来どおり検査する。
 - **原子性**: すべての検証が通ってから全ファイルを atomic に書く。途中で失敗したら書込み前へ戻す。戻せないときは変更したファイルを列挙して exit 2 にする。
-- **状態境界**: Design Doc は `--design-doc` で PO が選ぶ（`designs/docs/` 直下の `*.md`。`..`、見本 `*.sample.md`、シンボリックリンク、存在しないファイルは exit 2）。固定済みの `design_doc` と比べた状態は `unpinned` / `fresh` / `stale` / `switched`（固定済みと別のファイルを選んだ。固定が指すファイルが消えていても、別のファイルを選べば switched）で、いずれも exit 0 で報告する。action は `skip`（対象なし）/ `fill`（器のままの節がある）/ `update`（stale / switched、pin が無く埋め済み、または `state --refresh`）である。「埋め済み」は、所有権表の節に本文が器と一致しないものがある状態を指す。fingerprint の形式不正は exit 2。
+- **状態境界**: Design Doc は `--design-doc` で PO が選ぶ（`designs/docs/` 直下の `*.md`。`..`、見本 `*.sample.md`、シンボリックリンク、存在しないファイルは exit 2）。固定済みの `design_doc` と比べた状態は `unpinned` / `fresh` / `stale` / `switched`（固定済みと別のファイルを選んだ。固定が指すファイルが消えていても、別のファイルを選べば switched）で、いずれも exit 0 で報告する。action は `skip`（対象なし）/ `fill`（器のままの節、または未記入の束縛節がある）/ `update`（stale / switched、pin が無く埋め済み、または `state --refresh`）である。「埋め済み」は、所有権表の節に本文が器と一致しないものがある状態を指す。fingerprint の形式不正は exit 2。
 - **承認の要否**: fill に承認の AskQuestion は不要で、検証 PASS の apply がそのまま書込みまで行う。使う Design Doc の選択は、常に `AskQuestion`（推奨案を添える）で PO が行う。update は diff と digest の承認が要る。
 - **意味検証の限界**: `evidence` は Design Doc 内の ATX 見出し名が存在することだけを機械検証する。決定論ゲートは、図の本数、テーブル名と列名、エンドポイント、必須見出しの有無といった構造だけを検査する。本文の意味的正確性（`docs` 間の記述の食い違いを含む）と、update で「旧内容を落とさず矛盾なく統合したか」は、機械で保証しない。担保は、承認時の diff（`-` 行）、矛盾時の PO への質問、承認なしでは書かない digest の3つと、PO の生成結果評価である。新しい Design Doc の内容をどの既存機能へ対応させるかは起案エージェントの判断であり、誤対応は承認時の diff で確認する。すでに埋まった契約節は fill-only のままで、旧世代の内容が残る（承認時の提示で件数と名前を報告する）。
 - **実行タイミングと起動方式**: foundation の生成プロセス（generate / audit）の外で、domain-docs を単独で起動する。実行はキャンペーン外か実装開始前に限り、Step③以降の実差分は `G-WRITE-SCOPE-DOMAIN-001` が Domain docs の変更として拒否する。
@@ -161,7 +164,7 @@ consumer 経路でも引き続き失敗とする。
 
 ### .cursor/skills/domain-docs/SKILL.md
 
-seed の `outputs[]` から `mode: render` で生成する。feature 条件は付けない。適用スクリプトの書込み範囲は、所有権表と契約節（上記の例外）に限る。
+seed の `outputs[]` から `mode: render` で生成する。feature 条件は付けない。適用スクリプトの書込み範囲は、所有権表、契約節（上記の例外）、束縛節（`binding`）に限る。
 
 - `name: domain-docs`: Cursor skill としての識別子。単独で起動する（`disable-model-invocation: true`。foundation の生成プロセスからは起動しない）。
 - `## 起動手順`: 候補の列挙（Glob と root manifest）、`AskQuestion` での Design Doc 選択（推奨案つき）、`state --design-doc`、起案、`apply --check`（update は `--refresh`）、fill の `apply`、update の `apply --refresh` と承認、update 後の再 `state`。
@@ -171,6 +174,7 @@ seed の `outputs[]` から `mode: render` で生成する。feature 条件は�
 - `## 持ち込む内容`: Design Doc に記載があれば落とさず持ち込む項目を、ファイルごとに定める。記載が無い項目は書かず、`omissions` に理由を書く。
 - `## 図の引継ぎ`: sequence と state の Mermaid を `docs/workflows.md` へ引き継ぐ規則。本数は Design Doc 以上。見本の図を写さない。
 - `## 契約節`: `files[].placeholders` の節だけ、`[TODO]` の置換文を書く。ファイルごとの本文規則（`api` は外形に限る、`data-models` と `workflows` は引用の規約・手順を写す）と `evidence: contract` を定める。
+- `## 束縛節`: targets の `files[].binding` があるときだけ、結果ファイルの `binding` に、`app`、`features`、`callers`、`usecase_groups`、`names`、`tree`、`scope`、`policies` を書く。決定規則（製品名、集約の選び方、呼び出し元、ユースケース群、導出する値、port と CORS の既定値）と、`### app の確認`（`app` を Design Doc から推論で得られない・一つに決められないときだけ、候補を挙げて PO に `AskQuestion` で確認する。`app_source` の記録を含む）、`app` が空・英数字にできないときの exit 2 を定める。`app` 以外の値に `AskQuestion` は使わない。
 - `docs/spec/{slug}.md`: 機能仕様の出力先。`docs/spec.md` の機能仕様、`docs/spec/README.md` の収録仕様と3者一致させる。
 
 ### .cursor/skills/agent-maintenance-docs/SKILL.md（feature: agent_workflow.maintenance_docs）
@@ -238,13 +242,24 @@ fallback を持たない。
   contract digest と各 target preimage が一致する場合だけ実行する。品質ゲートは
   `--preflight` と同等の read-only 検査以外の install/network/write を行わない。
 
+## 設計判断: 契約の状態を READY / NEEDS_DRAFT / BROKEN に分け、起案を中断理由にしない（D-FLOW）
+
+契約が未起案・未承認・stale であることは、ブループリントの切り替えや root manifest の新規生成の直後に必ず起きる想定内の状態である。これを致命（exit 2）として返すと、対話 SKILL が「失敗」と解釈して中断し、`auto_approve: true` の委任があっても質問に回ってしまう。
+
+- **決定**: `tech_contract.py status` は READY（exit 0）/ NEEDS_DRAFT（exit 1）/ BROKEN（exit 2）を返し、`--json` で `state`・`reason`・`next_action` を返す。seed の placeholder（`approval.status: unapproved`）は `validate(require_approval=True)` が `ContractError`（NEEDS_DRAFT）として扱う。consumer（`generate` / `audit` / `check` と各 resolver）は従来どおり `ContractError` を exit 1 にするため、全経路で「未承認」は exit 1 と「Phase 1.6 を実行する」という案内になる。
+- **fail-closed は維持する**: 未承認の契約を consumer が受理することはない。変わるのは終了コードと案内であり、拒否の挙動ではない。BROKEN（schema 破損、設計書欠落）だけが致命のままである。
+- **骨組みの生成**: `draft-skeleton` は、`schema_version`、`source_fingerprint`、節の骨組みを決定論で書く。判断が要る欄は空欄にし、空欄のままでは `validate` が拒否する。fingerprint の計算と書式をエージェントが推測しなくてよく、埋め忘れは pin に到達しない。`provisioning.policy` の既定は `none`（雛形なし・runtime 不要）である。
+- **版の数値の lint**: `validate` は版の数値らしき表記（dotted 形式。`§` 参照は除く）を stderr に `WARN:` で報告する。対象は command の `argv`、file action の `content` / `values`、`domain_docs.resolved`、CodeRabbit の `path_instructions`。拒否にはしない（下の「契約に版の数値を持たない」の移行方針により、既存契約を壊さない）。
+- **質問の条件を限定する**: 契約が未起案・stale であること自体は質問の理由にしない。質問するのは、雛形を作るときの具体値が決まらないとき、`validate` が直せない FAIL のとき、`auto_approve: false` の承認のときだけである（SKILL.md の Phase 1.6）。
+- **非採用**: placeholder を exit 2 のままにして、SKILL.md の文章だけで「致命に見えても中断しない」と指示する案（状態を機械で判別できず、エージェントの解釈に依存する）。
+
 ## 設計判断: 契約に版の数値を持たない（D-QUALITY / D-DEPENDENCY）
 
 `tech_contract` の file action の `content`、preflight、postcondition、command の `argv` に、版の数値（exact・範囲・pattern 内の数字）を書かない。版の正本はプロジェクト自身の宣言ファイル（契約が宣言する path）だけとし、契約の検査は存在と形式に限る。
 
 - **決定**: preflight / postcondition の `pattern` は数字クラスで書く形式 pattern にし、`installed-marker` は `name` など版以外のフィールドで識別する。command の `argv` には版を渡さず、依存は名前だけを command で追加する。版の解決と充足は、command が起動する各エコシステムのツール（install / build）が担保し、lockfile が記録する。
 - **理由**: 版が契約内の複数箇所（file action、preflight、postcondition、command の `argv`）に重なると、プロジェクトが版を更新したときに preflight が不一致になり、契約の再起案と再承認が要る。契約に宣言の写しがあると、版の正本が二つになる。設計書 §9 のバージョン方針セルは `宣言:` / `[要確認]` / `—` でエコシステムごとの記法になり、範囲 pattern への変換は言語別の解釈を要する。
-- **対象外**: `tech_stack.items[].version_policy` の Domain 要約表示（`docs/tech-stack.md`）。設計書から写すだけで、検査には使わない。
+- **対象外**: ブループリントの「pin 例」の版の数値。版の正本は、プロジェクトの宣言ファイルである。`docs/tech-stack/` は正本の逐語なので、版の数値を検査には使わない。
 - **戻さないもの**: registry からの版取得は、ADR-0002 の consumer 境界により戻さない。
 - **移行**: 既存の封印済み契約は kit の更新では自動で直らない。版の数値を持つ契約は、再起案（`tech_contract.py validate --check` → 承認 → `apply`）で置き換える。`load_approved` は読み込みのたびに `validate` を実行するため、この方針は schema の拒否条件にはしない（既存契約を壊さない）。
 - **非採用**: 設計書のバージョン方針セルから範囲を導く案（記法が言語ごとに違う）、言語・ツールごとの記述表を kit に持つ案（新しい言語に対応できない）。

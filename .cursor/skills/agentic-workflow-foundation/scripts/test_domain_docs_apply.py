@@ -99,6 +99,8 @@ TITLES = {
 
 def _skeletons() -> dict[str, str]:
     manifest = {
+        # architecture.md.template の束縛節が、ブループリントのファイル名を参照する。
+        "project": {"tech_stack_design_filename": "APP_DESIGN_BESTPRACTICE.md"},
         "domain_docs": {
             "primary_language": "Go",
             "framework": "gRPC",
@@ -182,6 +184,42 @@ def targets_for(
     return da.build_targets(root, root / "manifest.yaml", skeletons, selected, refresh=refresh, titles=TITLES)
 
 
+def make_binding(target: dict | None = None) -> dict:
+    """束縛節（技術ブループリントの適用）への既定の回答。名前は、組み立てた表とツリーで整合する。"""
+    binding = {
+        "app": "Sample App",
+        "app_evidence": "概要",
+        "features": [{"name": "thing", "evidence": "概要"}, {"name": "thing_key", "evidence": "概要"}],
+        "callers": [{"name": "frontend", "evidence": "概要"}, {"name": "manager", "evidence": "概要"}],
+        "usecase_groups": [{"name": "setup", "evidence": "1. 設置"}, {"name": "ordering", "evidence": "2. 注文"}],
+        "names": [
+            {"kind": "Entity", "name": "thing_entity", "path": "internal/domain/entity/thing_entity/",
+             "evidence": "概要"},
+            {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
+             "evidence": "概要"},
+            {"kind": "proto", "name": "thing", "path": "proto/sampleapp/thing.proto", "evidence": "概要"},
+            {"kind": "proto", "name": "thing_key", "path": "proto/sampleapp/thing_key.proto", "evidence": "概要"},
+            {"kind": "UseCase", "name": "frontend / setup",
+             "path": "internal/usecase/frontend/setup_usecase/", "evidence": "1. 設置"},
+            {"kind": "UseCase", "name": "manager / ordering",
+             "path": "internal/usecase/manager/ordering_usecase/", "evidence": "2. 注文"},
+        ],
+        "tree": (
+            "sample-app/\n"
+            "├── cmd/sample-app/main.go\n"
+            "└── internal/\n"
+            "    ├── domain/entity/thing_entity/\n"
+            "    ├── domain/entity/thing_key_entity/\n"
+            "    └── usecase/\n"
+            "        ├── frontend/setup_usecase/\n"
+            "        └── manager/ordering_usecase/"
+        ),
+        "scope": "- 採用した見出し: 概要、業務フロー。\n- 除外した見出し: 画面設計（見た目は対象外）。",
+        "policies": [{"item": "認証", "policy": "無い（設計書が付けないとしている）。", "evidence": "API設計"}],
+    }
+    return binding
+
+
 def make_result(
     targets: dict,
     spec_files: list[dict] | None = None,
@@ -222,6 +260,9 @@ def make_result(
     result = {"sections": sections, "spec_files": [dict(item) for item in spec_files]}
     if omissions:
         result["omissions"] = omissions
+    for item in targets["files"]:
+        if item.get("binding"):
+            result["binding"] = make_binding(item["binding"])
     return result
 
 
@@ -251,6 +292,7 @@ def run_cli(root: Path, skeletons: dict[str, str], *args: str) -> tuple[int, str
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(da, "render_skeletons", return_value=skeletons), \
             patch.object(da, "contract_section_titles", return_value=TITLES), \
+            patch.object(da, "contract_require_proto", return_value=True), \
             patch.object(da, "contract_guidance_texts", side_effect=lambda _manifest: list(GUIDANCE_TEXTS)), \
             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
         code = da.main([args[0], "--manifest", str(root / "manifest.yaml"), *args[1:]])
@@ -1374,11 +1416,30 @@ def test_domain_docs_skill_template_contract() -> None:
         "apply --check --refresh",
         "apply --refresh --approve",
         "pin=switched",
+        # app を Design Doc から決められないときは、候補を挙げて PO に AskQuestion で確認する。
+        "### app の確認",
+        "推論で得られない",
+        "一つに決められない",
+        "app_source",
+        "`repo_name`",
     ):
         _assert(required in rendered, f"skill contract missing: {required}")
+    _assert("`AskQuestion` は使わない" not in rendered, "binding must allow AskQuestion for app")
+    _assert("`AskQuestion` は使わず" not in rendered, "binding must allow AskQuestion for app")
     for stale in ("Phase 2.1", "subagent", "docs は読めない", "自動検知"):
         _assert(stale not in rendered, f"skill must not keep the old launch model: {stale}")
     _assert("field-guide" not in rendered, "field-guide must not be referenced")
+    # 生成範囲は、技術ブループリントの対象範囲から自律的に決める（PO には聞かない）。
+    for required in (
+        "## 生成範囲",
+        "自律的に決める",
+        "PO には聞かない",
+        "リポジトリの担当範囲",
+        "docs/tech-stack.md",
+        "`evidence` の見出しの実在",
+    ):
+        _assert(required in rendered, f"generation scope contract missing: {required}")
+    _assert("--scope-heading" not in rendered, "scope selection by PO must not be reintroduced")
     for rel, owned in da.OWNERSHIP.items():
         _assert(rel in rendered, f"ownership file missing: {rel}")
         for name in owned:
@@ -1718,6 +1779,397 @@ def test_state_warns_about_vocabulary_in_the_contract() -> None:
             GUIDANCE_TEXTS[:] = []
 
 
+# --------------------------------------------------------------------------
+# 束縛節（docs/architecture.md の「技術ブループリントの適用」）
+# --------------------------------------------------------------------------
+BINDING_ROWS = (
+    "module", "app", "svc", "ENV_PREFIX", "db", "feature", "Feature", "caller", "usecase_group", "extra_name",
+)
+REMOTE = "git@github.com:acme/sample-repo.git"
+
+
+def binding_repo(base: Path, skeletons: dict[str, str], name: str, *, rows: tuple[str, ...] = BINDING_ROWS) -> Path:
+    """プレースホルダの記入欄がある束縛節を持つリポジトリ（kit の描画は `_split` を渡すので、同じ形にする）。"""
+    root = make_repo(base, skeletons, pin="fresh", name=name)
+    path = root / "docs/architecture.md"
+    text = path.read_text(encoding="utf-8")
+    marker = "| --- | --- |\n\n### 名前決定表"
+    _assert(marker in text, "skeleton must have the placeholder table before the name table")
+    table = "".join(f"| `{{{{{row}}}}}` | [TODO] |\n" for row in rows)
+    path.write_text(text.replace(marker, "| --- | --- |\n" + table + "\n### 名前決定表"), encoding="utf-8")
+    return root
+
+
+def binding_with(**changes) -> dict:
+    binding = make_binding()
+    binding["placeholders"] = {"extra_name": "extra-value"}
+    for key, value in changes.items():
+        if value is None:
+            binding.pop(key, None)
+        else:
+            binding[key] = value
+    return binding
+
+
+def binding_plan(root, skeletons, binding, *, remote=REMOTE):
+    with patch.object(da, "git_remote_url", return_value=remote):
+        targets = targets_for(root, skeletons)
+    result = make_result(targets)
+    if binding is None:
+        result.pop("binding", None)
+    else:
+        result["binding"] = binding
+    return targets, plan_for(root, skeletons, targets, result)
+
+
+def test_binding_remote_parsing() -> None:
+    parse = da.parse_github_remote
+    cases = {
+        "git@github.com:acme/sample-repo.git": ("acme", "sample-repo"),
+        "git@github.com:acme/sample-repo": ("acme", "sample-repo"),
+        "ssh://git@github.com/acme/sample-repo.git": ("acme", "sample-repo"),
+        "https://github.com/acme/sample-repo.git": ("acme", "sample-repo"),
+        "https://github.com/acme/sample-repo/": ("acme", "sample-repo"),
+        "https://github.com/acme/sample.repo": ("acme", "sample.repo"),
+        # 認証情報（userinfo）は取り込まない。
+        "https://x-access-token:SECRET@github.com/acme/sample-repo.git": ("acme", "sample-repo"),
+        "https://github.com/-bad-/sample-repo": ("", "sample-repo"),
+        "https://gitlab.com/acme/sample-repo.git": ("", ""),
+        "": ("", ""),
+        "not a url": ("", ""),
+    }
+    for url, expected in cases.items():
+        _assert(parse(url) == expected, f"parse_github_remote({url!r}) = {parse(url)} != {expected}")
+    _assert("SECRET" not in repr(parse("https://x-access-token:SECRET@github.com/acme/sample-repo.git")),
+            "credential leaked from the remote URL")
+    # remote が無い（git リポジトリでない）ディレクトリでは空になり、上位のリポジトリを辿らない。
+    with tempfile.TemporaryDirectory(prefix="domain-docs-remote-") as temp_dir:
+        _assert(da.module_identity(Path(temp_dir)) == ("", ""), "non repository must have no identity")
+
+
+def test_binding_derivation() -> None:
+    derived = da.derive_binding_values("sample-app", "acme", ["thing", "thing_key"], ["frontend", "manager"], ["setup"])
+    _assert(derived["module"] == "`github.com/acme/sample-app`", f"module wrong: {derived['module']}")
+    _assert(derived["svc"] == "`sampleapp`" and derived["db"] == "`sample_app`", f"svc/db wrong: {derived}")
+    _assert(derived["ENV_PREFIX"] == "`SAMPLE_APP`", f"ENV_PREFIX wrong: {derived['ENV_PREFIX']}")
+    _assert(derived["Feature"] == "`Thing`, `ThingKey`", f"Feature wrong: {derived['Feature']}")
+    _assert(derived["feature"] == "`thing`, `thing_key`", f"feature wrong: {derived['feature']}")
+    _assert(da.derive_binding_values("sample-app", "", ["a"], ["b"], ["c"])["module"] == "`sample-app`",
+            "module without owner must be the app only")
+    _assert(da.normalize_app("Sample  App_X") == "sample-app-x", "app must be normalized to kebab-case")
+    for bad in (None, "", "   ", "日本語", "-", 3):
+        _expect(da.FatalError, f"app {bad!r}", lambda value=bad: da.normalize_app(value))
+
+
+def test_binding_state_and_fill() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "fill")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        item = next(i for i in targets["files"] if i["file"] == "docs/architecture.md")
+        binding = item["binding"]
+        _assert(binding["pending"] == [
+            da.BINDING_PLACEHOLDERS, da.BINDING_NAMES, da.BINDING_TREE, da.BINDING_SCOPE, da.BINDING_POLICIES,
+        ], f"pending parts wrong: {binding['pending']}")
+        _assert(binding["placeholders"] == list(BINDING_ROWS), f"placeholder rows wrong: {binding['placeholders']}")
+        _assert(binding["module_owner"] == "acme" and binding["repo_name"] == "sample-repo", f"identity: {binding}")
+        _assert(targets["action"] == "fill", f"binding pending must fill: {targets['action']}")
+        # 他の節が埋め済みでも、束縛節に `[TODO]` が残るなら fill になる。
+        _assert(not any("binding" in i for i in targets["files"] if i["file"] != "docs/architecture.md"),
+                "only architecture may carry binding")
+        # state の出力に束縛節の件数が出る。
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            code, out, _ = run_cli(root, skeletons, "state")
+        _assert(code == 0 and "binding=1" in out, f"state must report the binding: {code} {out}")
+
+        _, plan = binding_plan(root, skeletons, binding_with())
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        rows = {
+            "module": "`github.com/acme/sample-app`", "app": "`sample-app`", "svc": "`sampleapp`",
+            "ENV_PREFIX": "`SAMPLE_APP`", "db": "`sample_app`", "feature": "`thing`, `thing_key`",
+            "Feature": "`Thing`, `ThingKey`", "caller": "`frontend`, `manager`",
+            "usecase_group": "`setup`, `ordering`", "extra_name": "`extra-value`",
+        }
+        for name, value in rows.items():
+            _assert("| `{{" + name + "}}` | " + value + " |" in text, f"placeholder row {name} wrong:\n{text}")
+        _assert("[TODO]" not in da._section_body(text, da.BINDING_SECTION), "binding section still has TODO")
+        _assert("| Entity | `thing_entity` | `internal/domain/entity/thing_entity/` | `概要` |" in text,
+                "name table row missing")
+        _assert("```text\nsample-app/\n" in text and "manager/ordering_usecase/\n```" in text, "tree block missing")
+        _assert("| 項目 | 方針 | 根拠 |\n| --- | --- | --- |\n| app（アプリ名とバイナリ名） |" in text,
+                "policy table must start with the fixed rows")
+        _assert("リポジトリ名（`sample-repo`）とは一致しない" in text, "app deviation must be recorded")
+        _assert("| module（Go module path） | `github.com/acme/sample-app` とする。" in text, "module policy missing")
+        _assert("| 認証 | 無い（設計書が付けないとしている）。 | `API設計` |" in text, "agent policy row missing")
+        # port と CORS の既定値は apply が導出する。呼び出し元ごとに port を 1 つずつ増やす。
+        for needle in (
+            "| gRPC port | `50051` |", "| REST gateway port | `8080` |",
+            "| 呼び出し元 `frontend` の開発サーバー port | `3000` |",
+            "| 呼び出し元 `manager` の開発サーバー port | `3001` |",
+            "`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:3001`, `http://127.0.0.1:3001`",
+            "| 追加する環境名 | なし |",
+        ):
+            _assert(needle in text, f"scope default missing: {needle}")
+        _assert("- 採用した見出し: 概要、業務フロー。" in text, "agent scope text missing")
+        # ラベル（第 1 列）は残る。audit の記入欄の検査と整合する。
+        for name in BINDING_ROWS:
+            _assert("`{{" + name + "}}`" in text, f"placeholder label lost: {name}")
+        _assert(plan.report.metrics.get("binding", {}).get("placeholders") == len(BINDING_ROWS),
+                f"gate metrics wrong: {plan.report.metrics}")
+        _assert(any(note.startswith("BINDING:") for note in plan.notes), f"binding note missing: {plan.notes}")
+
+        # 書き込んだあとは、束縛節は対象にならず、再実行しても書き換わらない（fill-only）。
+        da.commit(root, plan.writes)
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            again = targets_for(root, skeletons)
+        _assert(not any(i.get("binding") for i in again["files"]), "filled binding must not be a target again")
+        exc = _expect(da.ApplyError, "filled binding", lambda: plan_for(
+            root, skeletons, again, {**make_result(again), "binding": binding_with()}))
+        _assert("書込み対象ではありません" in str(exc), f"unexpected message: {exc}")
+
+
+def test_binding_keeps_filled_parts() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-kept-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "kept")
+        path = root / "docs/architecture.md"
+        text = path.read_text(encoding="utf-8")
+        # 手で埋めた行と、手で書いた担当範囲は書き換えない。
+        text = text.replace("| `{{app}}` | [TODO] |", "| `{{app}}` | `hand-written` |")
+        text = text.replace(
+            "[TODO] このリポジトリが担当する範囲（ブループリントの対象範囲から、Domain docs の生成範囲として決めた結果と理由。"
+            "採用した見出し、除外した見出しと除外の理由）、port、CORS の許可 origin、追加する環境名を記述する。",
+            "手で書いた担当範囲。",
+        )
+        path.write_text(text, encoding="utf-8")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        pending = next(i for i in targets["files"] if i["file"] == "docs/architecture.md")["binding"]
+        _assert(da.BINDING_SCOPE not in pending["pending"], f"filled scope must not be pending: {pending}")
+        _assert("app" not in pending["placeholders"], f"filled row must not be pending: {pending}")
+        # 回答の app が記入済みの app と違うときは、導出値（module など）が食い違うので拒否する。
+        exc = _expect(da.ApplyError, "app differs from the filled row", lambda: plan_for(
+            root, skeletons, targets, {**make_result(targets), "binding": binding_with()}))
+        _assert("記入済みの app" in str(exc) and "一致しません" in str(exc), f"unexpected message: {exc}")
+        # 同じ名前を書けば、記入済みの app を導出元にして、残りの部分だけを埋める。
+        tree = make_binding()["tree"].replace("sample-app", "hand-written")
+        result = {**make_result(targets), "binding": binding_with(app="hand-written", tree=tree)}
+        plan = plan_for(root, skeletons, targets, result)
+        out = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("| `{{app}}` | `hand-written` |" in out, "hand-written row was overwritten")
+        _assert("手で書いた担当範囲。" in out and "設定の既定値" not in out, "hand-written scope was overwritten")
+        _assert("| `{{module}}` | `github.com/acme/hand-written` |" in out, "module must follow the filled app")
+        _assert("| `{{svc}}` | `handwritten` |" in out and "| `{{db}}` | `hand_written` |" in out,
+                "derived rows must follow the filled app")
+        # 記入済みの app が kebab-case にできないときは、手で直すよう拒否する。
+        text = (root / "docs/architecture.md").read_text(encoding="utf-8").replace("`hand-written`", "`来店`")
+        (root / "docs/architecture.md").write_text(text, encoding="utf-8")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        exc = _expect(da.ApplyError, "filled app is not kebab-case", lambda: plan_for(
+            root, skeletons, targets, {**make_result(targets), "binding": binding_with()}))
+        _assert("手で直して" in str(exc), f"unexpected message: {exc}")
+
+
+def test_recorded_binding_app() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-recorded-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "recorded")
+        text = (root / "docs/architecture.md").read_text(encoding="utf-8")
+        _assert(da.recorded_binding_app(text) == "", "an unfilled app row must not be recorded")
+        filled = text.replace("| `{{app}}` | [TODO] |", "| `{{app}}` | `hand-written` |")
+        _assert(da.recorded_binding_app(filled) == "hand-written", "a filled app row must be recorded")
+        _assert(da.recorded_binding_app("# no binding section\n") == "", "no binding section means no recorded app")
+        # 別の行の値は拾わない。
+        other = text.replace("| `{{svc}}` | [TODO] |", "| `{{svc}}` | `x` |")
+        _assert(da.recorded_binding_app(other) == "", "another row must not count as the app")
+
+
+def test_binding_proto_rows_follow_the_contract() -> None:
+    """proto の行は、承認済み契約の api_style が gRPC を含むときだけ要求する。"""
+    _assert(da.proto_required("gRPC（proto-first）と grpc-gateway による REST"), "gRPC must require proto rows")
+    _assert(da.proto_required("GRPC"), "the match must ignore case")
+    for style in ("REST/JSON", "GraphQL", "", None, 3):
+        _assert(not da.proto_required(style), f"{style!r} must not require proto rows")
+    skeletons = _skeletons()
+    no_proto = [
+        {"kind": "Entity", "name": "thing_entity", "path": "internal/domain/entity/thing_entity/", "evidence": "概要"},
+        {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
+         "evidence": "概要"},
+        {"kind": "UseCase", "name": "frontend / setup", "path": "internal/usecase/frontend/setup_usecase/",
+         "evidence": "1. 設置"},
+        {"kind": "UseCase", "name": "manager / ordering", "path": "internal/usecase/manager/ordering_usecase/",
+         "evidence": "2. 注文"},
+    ]
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-proto-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "proto")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        result = {**make_result(targets), "binding": binding_with(names=no_proto)}
+
+        def build(**kwargs):
+            return da.build_plan(root, root / "manifest.yaml", skeletons, targets, result,
+                                 refresh=False, titles=TITLES, **kwargs)
+
+        exc = _expect(da.GateError, "default requires proto rows", build)
+        _assert("proto の行が無い集約" in str(exc), f"unexpected message: {exc}")
+        plan = build(require_proto=False)
+        _assert(not [f for f in plan.report.findings if f["id"] == "G-DOCFILL-006"],
+                f"a contract without proto must not require proto rows: {plan.report.findings}")
+        _assert("docs/architecture.md" in plan.writes, "the binding must still be written")
+
+
+def test_binding_validation() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-bad-") as temp_dir:
+        base = Path(temp_dir)
+
+        def check(label, exc_type, needle, **changes):
+            root = binding_repo(base, skeletons, f"bad-{len(list(base.iterdir()))}")
+            exc = _expect(exc_type, label, lambda: binding_plan(root, skeletons, binding_with(**changes)))
+            _assert(needle in str(exc), f"{label}: unexpected message: {exc}")
+            _assert("[TODO]" in (root / "docs/architecture.md").read_text(encoding="utf-8"), f"{label}: wrote the docs")
+
+        # app を決められないときは、フォールバックせずに exit 2 相当の FatalError。
+        check("no app", da.FatalError, "app（製品名）を Design Doc から決められません", app=None)
+        check("empty app", da.FatalError, "app（製品名）を Design Doc から決められません", app="")
+        check("non latin app", da.FatalError, "kebab-case", app="来店")
+        check("no app evidence", da.ApplyError, "app_evidence", app_evidence="存在しない見出し")
+        # 根拠の見出しを省略できるのは、PO が決めた名前（app_source: po）だけ。
+        check("design doc app without evidence", da.ApplyError, "app_evidence", app_evidence=None)
+        check("unknown app source", da.ApplyError, "app_source", app_source="guess")
+        check("po app with a wrong evidence", da.ApplyError, "app_evidence", app_source="po", app_evidence="存在しない見出し")
+        check("po app still needs latin letters", da.FatalError, "kebab-case", app="来店", app_source="po")
+        check("no features", da.ApplyError, "binding.features", features=None)
+        check("empty callers", da.ApplyError, "binding.callers", callers=[])
+        check("bad name", da.ApplyError, "snake_case", features=[{"name": "Thing-Key", "evidence": "概要"}])
+        check("duplicate name", da.ApplyError, "重複", features=[
+            {"name": "thing", "evidence": "概要"}, {"name": "thing", "evidence": "概要"}])
+        check("name evidence", da.ApplyError, "対応する見出しが Design Doc にありません", usecase_groups=[
+            {"name": "setup", "evidence": "存在しない"}])
+        check("unknown key", da.ApplyError, "未知キー", extra_key="x")
+        check("names miss a name", da.ApplyError, "決めた名前が現れません", names=[
+            {"kind": "Entity", "name": "thing_entity", "path": "internal/thing/", "evidence": "概要"}])
+        # 集約ごとの proto の行が名前決定表に無いときは、決定論ゲート（G-DOCFILL-006）が止める。
+        check("names without proto rows", da.GateError, "proto の行が無い集約: thing, thing_key", names=[
+            {"kind": "Entity", "name": "thing_entity", "path": "internal/domain/entity/thing_entity/",
+             "evidence": "概要"},
+            {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
+             "evidence": "概要"},
+            {"kind": "UseCase", "name": "frontend / setup",
+             "path": "internal/usecase/frontend/setup_usecase/", "evidence": "1. 設置"},
+            {"kind": "UseCase", "name": "manager / ordering",
+             "path": "internal/usecase/manager/ordering_usecase/", "evidence": "2. 注文"}])
+        check("tree misses a name", da.ApplyError, "binding.tree に、決めた名前が現れません", tree="sample-app/\n└── cmd/")
+        check("tree has todo", da.ApplyError, "[TODO]", tree="sample-app/ thing thing_key frontend manager setup ordering [TODO]")
+        check("pipe in a cell", da.ApplyError, "`|`", policies=[{"item": "a|b", "policy": "x", "evidence": "概要"}])
+        check("empty policies", da.ApplyError, "binding.policies", policies=[])
+        check("scope with todo", da.ApplyError, "[TODO]", scope="[TODO] 後で書く")
+        # 束縛節の解析は任意の `## ` 見出しで打ち切られる。構造見出しは、既知の見出しと同名でなくても拒否する。
+        check("scope with a known structural heading", da.ApplyError, "構造見出し", scope="- a\n\n## 参照\n\n- b")
+        check("scope with another structural heading", da.ApplyError, "構造見出し", scope="- a\n\n## 補足\n\n- b")
+        check("derived placeholder given", da.ApplyError, "導出する名前", placeholders={
+            "extra_name": "x", "module": "y"})
+        check("stray placeholder", da.ApplyError, "記入欄の無い", placeholders={"extra_name": "x", "nothing": "y"})
+        check("missing extra value", da.ApplyError, "導出できないプレースホルダ", placeholders={})
+
+        # `###` 以下の見出しと、フェンス内の `## ` は、構造見出しではないので書ける。
+        root = binding_repo(base, skeletons, "scope-h3")
+        scope = "- a\n\n### 小見出し\n\n- b\n\n```text\n## フェンスの中\n```"
+        _, plan = binding_plan(root, skeletons, binding_with(scope=scope))
+        _assert("### 小見出し" in plan.writes["docs/architecture.md"].decode("utf-8"), "### in scope must be kept")
+
+        # binding の回答が無い（対象があるのに）、対象が無いのにある、refresh でも拒否する。
+        root = binding_repo(base, skeletons, "unanswered")
+        exc = _expect(da.ApplyError, "unanswered", lambda: binding_plan(root, skeletons, None))
+        _assert("回答がありません" in str(exc), f"unanswered message wrong: {exc}")
+        root = make_repo(base, skeletons, pin="stale", name="refresh-binding")
+        targets = targets_for(root, skeletons)
+        _assert(targets["mode"] == "refresh" and not any(i.get("binding") for i in targets["files"]),
+                "refresh must not target the binding section")
+        exc = _expect(da.ApplyError, "refresh binding", lambda: plan_for(
+            root, skeletons, targets, {**make_result(targets), "binding": binding_with()}, refresh=True))
+        _assert("fill-only" in str(exc), f"refresh message wrong: {exc}")
+
+
+def test_binding_app_decided_by_po() -> None:
+    """Design Doc から決められない `app` は、エージェントが PO に確認して決める。方針表に決め方を記録する。"""
+    skeletons = _skeletons()
+    tree = make_binding()["tree"].replace("sample-app", "po-app")
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-po-") as temp_dir:
+        base = Path(temp_dir)
+        # 根拠の見出しなし: PO の指定として記録する。module と導出値は PO が決めた名前から作る。
+        root = binding_repo(base, skeletons, "po-plain")
+        _, plan = binding_plan(
+            root, skeletons, binding_with(app="PO App", app_source="po", app_evidence=None, tree=tree))
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("| `{{app}}` | `po-app` |" in text, "app must come from the PO answer")
+        _assert("| `{{module}}` | `github.com/acme/po-app` |" in text, "module must be derived from the PO app")
+        _assert("PO が `AskQuestion` で決めた製品名 `po-app` を使う" in text, "policy must say the PO decided")
+        _assert("PO の指定（AskQuestion）" in text, "evidence cell must say the PO decided")
+        _assert("Design Doc の製品名 `po-app`" not in text, "policy must not claim the Design Doc named the app")
+        # 根拠の見出しを添えたときは、その見出しを根拠の列に残す。
+        root = binding_repo(base, skeletons, "po-evidence")
+        _, plan = binding_plan(
+            root, skeletons, binding_with(app="po-app", app_source="po", app_evidence="概要", tree=tree))
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("PO が `AskQuestion` で決めた製品名 `po-app` を使う" in text and "`概要`" in text,
+                "po app with an evidence heading must keep the heading")
+        # 既定（design_doc）は従来どおり Design Doc の製品名として記録する。
+        root = binding_repo(base, skeletons, "design-doc")
+        _, plan = binding_plan(root, skeletons, binding_with())
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("Design Doc の製品名 `sample-app` を使う" in text and "AskQuestion` で決めた" not in text,
+                "default source must keep the Design Doc wording")
+
+
+def test_binding_without_remote_uses_the_app_only() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-noremote-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "noremote")
+        _, plan = binding_plan(root, skeletons, binding_with(), remote="")
+        text = plan.writes["docs/architecture.md"].decode("utf-8")
+        _assert("| `{{module}}` | `sample-app` |" in text, "module must be the app only without a remote")
+        _assert("owner を取り出せないため、製品名だけにした" in text, "module policy must say the owner is missing")
+        # 取り出せない URL（GitHub 以外）も同じ。
+        _, plan = binding_plan(root, skeletons, binding_with(), remote="https://gitlab.com/acme/x.git")
+        _assert("| `{{module}}` | `sample-app` |" in plan.writes["docs/architecture.md"].decode("utf-8"),
+                "non github remote must not yield an owner")
+
+
+def test_binding_cli_exit_codes() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-cli-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "cli")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            code, _, _ = run_cli(root, skeletons, "state")
+            _assert(code == 0, "state failed")
+            targets = genlib.load_manifest(str(root / da.TARGETS_RELATIVE))
+            _assert(targets["files"][-1].get("binding") or any(i.get("binding") for i in targets["files"]),
+                    "targets must carry the binding")
+            # app が決められない結果は exit 2（docs は変わらない）。
+            result = {**make_result(targets), "binding": binding_with(app=None)}
+            write_result(root, result)
+            before = (root / "docs/architecture.md").read_bytes()
+            code, _, err = run_cli(root, skeletons, "apply")
+            _assert(code == 2 and "app（製品名）" in err, f"missing app must be exit 2: {code} {err}")
+            _assert((root / "docs/architecture.md").read_bytes() == before, "docs changed on a fatal error")
+            # 名前の不整合は exit 1（直して再実行できる）。
+            write_result(root, {**make_result(targets), "binding": binding_with(tree="sample-app/")})
+            code, _, err = run_cli(root, skeletons, "apply")
+            _assert(code == 1 and "binding.tree" in err, f"inconsistent tree must be exit 1: {code} {err}")
+            # --check は書き込まず通る。
+            write_result(root, {**make_result(targets), "binding": binding_with()})
+            code, out, err = run_cli(root, skeletons, "apply", "--check")
+            _assert(code == 0 and "CHECK: PASS" in out, f"check must pass: {code} {out} {err}")
+            _assert((root / "docs/architecture.md").read_bytes() == before, "--check wrote the docs")
+            code, out, err = run_cli(root, skeletons, "apply")
+            _assert(code == 0 and "[write] docs/architecture.md" in out, f"apply must write: {code} {out} {err}")
+            code, out, _ = run_cli(root, skeletons, "state")
+            _assert(code == 0 and "action=skip" in out, f"filled repo must skip: {out}")
+
+
 def main() -> int:
     tests = (
         ("state table", test_state_table),
@@ -1752,6 +2204,16 @@ def main() -> int:
         ("zero state e2e ends skip fresh", test_zero_state_e2e_ends_skip_fresh),
         ("refresh invalid result does not write", test_refresh_invalid_result_does_not_write),
         ("real repo docs keep structure", test_real_repo_docs_keep_structure),
+        ("binding remote parsing", test_binding_remote_parsing),
+        ("binding derivation", test_binding_derivation),
+        ("binding state and fill", test_binding_state_and_fill),
+        ("binding keeps filled parts", test_binding_keeps_filled_parts),
+        ("recorded binding app", test_recorded_binding_app),
+        ("binding proto rows follow the contract", test_binding_proto_rows_follow_the_contract),
+        ("binding validation", test_binding_validation),
+        ("binding app decided by po", test_binding_app_decided_by_po),
+        ("binding without remote uses the app only", test_binding_without_remote_uses_the_app_only),
+        ("binding cli exit codes", test_binding_cli_exit_codes),
     )
     for label, test in tests:
         try:

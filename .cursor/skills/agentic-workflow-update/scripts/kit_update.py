@@ -40,7 +40,10 @@ OWNED_ROOT_MARKER = ".agentic-workflow-update-owned"
 DENY_EXACT = {
     Path("init.yaml"),
     Path("manifest.yaml"),
-    Path(".cursor/docs/TECHNOLOGY_STACK_UNIFIED_DESIGN.md"),
+    # プロジェクトが選ぶ技術ブループリント（init.yaml の tech_stack_design.filename）。
+    # 更新で自動上書きすると、全プロジェクトの tech_contract の fingerprint が stale になるため、
+    # プロジェクト管理のファイルとして扱う。
+    Path(".cursor/docs/APP_DESIGN_BESTPRACTICE.md"),
     Path("docs/DECISIONS.md"),
     Path("docs/GOTCHAS.md"),
     Path("docs/spec.md"),
@@ -280,6 +283,12 @@ def _load_manifest(path: Path, kit_root: Path) -> dict[str, Any]:
 
 
 def _catalog_from_manifest(manifest: dict[str, Any]) -> dict[Path, dict[str, Any]]:
+    """updater が管理する出力（render と marker）だけを返す。
+
+    seed と split は含めない（読み飛ばす）。`mode: split` の出力ディレクトリ（`docs/tech-stack/`）と
+    索引は、consumer 側の `run_resolved_engine.py generate` が生成する。consumer ごとにブループリントが
+    異なり、updater 側で期待ファイル集合を事前に出せないため、updater の対象外とする。
+    """
     result: dict[Path, dict[str, Any]] = {}
     for output in manifest.get("outputs") or []:
         if not isinstance(output, dict) or not isinstance(output.get("path"), str):
@@ -293,6 +302,24 @@ def _catalog_from_manifest(manifest: dict[str, Any]) -> dict[Path, dict[str, Any
         if rel == LOCK_PATH:
             raise FatalUpdateError(f"KU-SCOPE-001: lock path を output catalog に含められません: {rel}")
         result[rel] = {"path": str(rel), "mode": mode}
+    return result
+
+
+def _split_index_paths(manifest: dict[str, Any]) -> set[Path]:
+    """`mode: split` の索引のパス。
+
+    split の出力は updater の対象外（consumer 側の generate が生成する）。ただし、以前の kit では
+    同じパスが `render` で、旧 lock の catalog に残っていることがある。所有が render から split へ
+    移っただけなので、orphan（削除・rename の候補）にしない。
+    """
+    result: set[Path] = set()
+    for output in manifest.get("outputs") or []:
+        if (
+            isinstance(output, dict)
+            and output.get("mode") == "split"
+            and isinstance(output.get("index_path"), str)
+        ):
+            result.add(_safe_rel(output["index_path"]))
     return result
 
 
@@ -579,7 +606,9 @@ def _output_change_records(
     work_root: Path,
     old_outputs: dict[Path, dict[str, Any]],
     new_outputs: dict[Path, dict[str, Any]],
+    transferred: Iterable[Path] = (),
 ) -> tuple[list[dict[str, Any]], list[Path], list[tuple[Path, Path]]]:
+    """`transferred` は、所有が別のモードへ移っただけのパス（orphan にしない）。"""
     changes: list[dict[str, Any]] = []
     for relative, output in sorted(new_outputs.items()):
         candidate = _safe_target(work_root, relative)
@@ -603,7 +632,7 @@ def _output_change_records(
             "action": "add" if not target.exists() else "update",
         })
 
-    removed = sorted(set(old_outputs) - set(new_outputs))
+    removed = sorted(set(old_outputs) - set(new_outputs) - set(transferred))
     new_by_digest = {
         record["candidate_sha256"]: Path(record["path"])
         for record in changes
@@ -716,7 +745,8 @@ def _build_plan(
     host_updater_digest = _tree_digest(updater_source)
     _write_lock_candidate(work_root, kit_revision, new_catalog)
     output_changes, output_orphans, rename_candidates = _output_change_records(
-        app_root, work_root, old_catalog, new_catalog
+        app_root, work_root, old_catalog, new_catalog,
+        transferred=_split_index_paths(resolved_manifest),
     )
     has_retirement_targets = bool(output_orphans or rename_candidates)
     if retirement and not has_retirement_targets:

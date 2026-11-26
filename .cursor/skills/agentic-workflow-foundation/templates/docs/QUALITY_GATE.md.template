@@ -30,6 +30,8 @@ AI エージェントは **exit 0 を観測するまで修正と再実行を繰�
 | G-LINT | `bin/quality-gate lint` | exit 0 |
 | G-TEST | `bin/quality-gate test` | exit 0（全テスト PASS） |
 
+**対象 make ターゲットが無い場合**: `gen` / `build` / `lint` / `test` / `verify` のいずれも、承認済み backend が `make <target>` で、そのターゲットが Makefile に無いときは、エラーにせず `SKIP: make target '<target>' が無いため省略します` を表示して exit 0 とする（プロジェクトによっては gen などが無いことが普通にある）。ターゲットが実在して失敗した場合と、依存の欠落（`needed by`）は省略せず失敗として扱う。SKIP した段は実行されていないため、報告には「未実行（ターゲット無し）」と記録する（`gate_results` は exit 0 の整数 `0` で記録する）。
+
 **G-GEN の位置づけ（決定 10: パス限定 porcelain チェック）**: G-GEN は `manifest.yaml > project.quality_gate.gen_artifact_paths` に列挙されたパスのみを対象とする。{{#if agent_workflow.gate_scripts}}`workflow-gate.sh step4`{{else}}コードゲートの実行{{/if}} は profile selector に従う: `foundation` は envelope 検査後 `bin/foundation-gate self`、`application` は「`gen_artifact_paths` 非空なら **常に** `bin/quality-gate gen` 実行 → 対象パスのみ `git status --porcelain` → build/lint/test（`bin/quality-gate verify`）」の順で実行する。source のみ変更で output が clean でも gen をスキップしない。`gen_artifact_paths` が未定義（キー不在）の場合は exit 2（安全側フォールバック。全体差分判定への暗黙フォールバック禁止）。空リストは gen 不要を意味する。
 
 **標準検証の推奨順序**:

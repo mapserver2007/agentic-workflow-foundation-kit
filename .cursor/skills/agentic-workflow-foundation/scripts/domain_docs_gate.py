@@ -12,6 +12,10 @@ Design Doc の標準的な見出し構造から取り出せる事実が落ちて
   G-DOCFILL-003 WARN  設計書のデータベース設計にあるテーブル名と列名が data-models にある
   G-DOCFILL-004 WARN  設計書の API 設計の「メソッドとパス」表にあるエンドポイントが api にある
   G-DOCFILL-005 WARN  新しい機能仕様に `## エラーハンドリング` がある
+  G-DOCFILL-006 FAIL  束縛節（技術ブループリントの適用）で、プレースホルダの行がすべて埋まり、
+                      決めた名前が名前決定表とディレクトリツリーに現れ、製品名がツリーに現れ、
+                      集約ごとに proto の行（パスが `.proto`）が名前決定表にある
+                      （`require_proto` が偽のときは要求しない。既定は要求する。承認済み契約が proto を使うかは apply が決める）
 
 FAIL は呼び出し側（apply）が検証失敗として扱う。WARN は報告だけで、修復を起動しない。
 設計書が標準の見出し構造を持たず抽出できない検査は skipped として理由を残す。
@@ -322,12 +326,14 @@ def evaluate(
     replaced: Mapping,
     final_texts: Mapping,
     spec_documents: Mapping,
+    binding: Mapping | None = None,
 ) -> Report:
     """書込み計画を検査する。
 
     replaced: 今回置換する本文（ラベル → 本文）。G-DOCFILL-001 の対象。
     final_texts: 適用後の docs の全文（`GATE_FILES` のパス → 本文。ファイルが無ければ空文字）。
     spec_documents: 今回作成・置換する機能仕様の全文（パス → 本文）。G-DOCFILL-005 の対象。
+    binding: 束縛節を今回書くときの、適用後の情報（apply が組む）。G-DOCFILL-006 の対象。無ければ検査しない。
     """
     report = Report()
     _check_residue(report, replaced, design_text)
@@ -335,7 +341,67 @@ def evaluate(
     _check_tables(report, design_text, final_texts.get(DATA_MODELS_FILE, ""))
     _check_endpoints(report, design_text, final_texts.get(API_FILE, ""))
     _check_spec_error_handling(report, spec_documents)
+    _check_binding(report, binding)
     return report
+
+
+def _check_binding(report: Report, binding: Mapping | None) -> None:
+    """束縛節の整合。名前の語彙は持たず、apply が渡した名前の一覧だけを使う。"""
+    if not binding:
+        return
+    label = f"{binding['file']}#{binding['section']}"
+    rows = binding.get("placeholder_rows") or {}
+    unfilled = sorted(name for name, value in rows.items() if not value.strip() or "[TODO]" in value)
+    if unfilled:
+        report.add(
+            "G-DOCFILL-006", "FAIL", label,
+            "プレースホルダの具体値が未記入: " + ", ".join(unfilled),
+        )
+    names_text = binding.get("names_text") or ""
+    tree_text = binding.get("tree_text") or ""
+    loose = lambda name, text: (  # noqa: E731
+        re.search(rf"(?<![A-Za-z0-9]){re.escape(name)}(?![A-Za-z0-9])", text) is not None
+    )
+    required = list(binding.get("required_names") or [])
+    if names_text:
+        absent = [name for name in required if not loose(name, names_text)]
+        if absent:
+            report.add("G-DOCFILL-006", "FAIL", label, "名前決定表に現れない名前: " + ", ".join(absent))
+    # proto の分割は集約の単位で決める。集約ごとに、パスが `.proto` の行が名前決定表に要る
+    # （従属集約を親の proto に含めるときも、従属集約の行は親の `.proto` を指して残す）。
+    # proto の行は、ブループリントが proto を使う契約のときだけ要る。呼び出し側（apply）が、承認済み契約の
+    # `api_style` から `require_proto` を決めて渡す（無いときは要求する）。ゲート自身は API 方式を判断しない。
+    feature_names = list(binding.get("feature_names") or [])
+    if names_text and feature_names and binding.get("require_proto", True):
+        with_proto = _proto_row_names(names_text)
+        absent = [name for name in feature_names if name not in with_proto]
+        if absent:
+            report.add(
+                "G-DOCFILL-006", "FAIL", label,
+                "名前決定表に proto の行が無い集約: " + ", ".join(absent),
+            )
+    if tree_text:
+        wanted = required + ([binding["app"]] if binding.get("app") else [])
+        absent = [name for name in wanted if not loose(name, tree_text)]
+        if absent:
+            report.add(
+                "G-DOCFILL-006", "FAIL", label,
+                "ディレクトリツリーに現れない名前: " + ", ".join(absent),
+            )
+    report.metrics["binding"] = {"placeholders": len(rows), "names": len(required)}
+
+
+def _proto_row_names(names_text: str) -> set[str]:
+    """名前決定表のうち、パスが `.proto` で終わる行の実名の集合。列は 種別 / 実名 / パス / 根拠 の順。"""
+    found: set[str] = set()
+    for line in names_text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip().strip("`") for cell in stripped.strip("|").split("|")]
+        if len(cells) >= 3 and cells[2].endswith(".proto"):
+            found.add(cells[1])
+    return found
 
 
 def _check_residue(report: Report, replaced: Mapping, design_text: str) -> None:

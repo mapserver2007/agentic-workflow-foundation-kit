@@ -349,9 +349,6 @@ def write_quality_gate_manifest(root: Path, design_text: str = "# fixture\n") ->
     manifest = root / "manifest.yaml"
     manifest.write_text(
         "version: 1\n"
-        "tech_stack:\n"
-        "  note: \"fixture\"\n"
-        "  items: []\n"
         "session:\n"
         "  verification:\n"
         "    gate_command: \"[要確認]\"\n"

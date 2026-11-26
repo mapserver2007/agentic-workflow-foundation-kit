@@ -9,12 +9,12 @@ models:
   # 参照: .cursor/skills/requirement-analysis/config.yaml
 {{else}}
   # Step ① 調査・分析（requirement_analysis 無効時のみ。有効時は requirement-analysis/config.yaml が SoT）
-  step1_investigation: "{{#if agent_workflow.models.step1_investigation}}{{agent_workflow.models.step1_investigation}}{{else}}claude-4.6-opus-high-thinking{{/if}}"
+  step1_investigation: "{{#if agent_workflow.models.step1_investigation}}{{agent_workflow.models.step1_investigation}}{{else}}claude-sonnet-5-5-high{{/if}}"
 {{/if}}
   # Step ② レポート作成
   step2_report: "{{#if agent_workflow.models.step2_report}}{{agent_workflow.models.step2_report}}{{else}}composer-2.5-fast{{/if}}"
   # Step ③ 実装
-  step3_implementation: "{{#if agent_workflow.models.step3_implementation}}{{agent_workflow.models.step3_implementation}}{{else}}gpt-5.6-terra-medium{{/if}}"
+  step3_implementation: "{{#if agent_workflow.models.step3_implementation}}{{agent_workflow.models.step3_implementation}}{{else}}grok-4.7-high{{/if}}"
   # Step ④ テスト
   step4_testing: "{{#if agent_workflow.models.step4_testing}}{{agent_workflow.models.step4_testing}}{{else}}composer-2.5-fast{{/if}}"
   # Step ⑤⑥ は config 対象外（親モデルをそのまま使用）
