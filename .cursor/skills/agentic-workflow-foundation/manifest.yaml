@@ -531,7 +531,7 @@ agent_workflow:
   models:
     step1_investigation: "claude-4.6-opus-high-thinking"
     step2_report: "composer-2.5-fast"
-    step3_implementation: "gpt-5.6-terra-medium"
+    step3_implementation: "grok-4.7-high"
     step4_testing: "composer-2.5-fast"
   # モデル利用不可時の方針: ABORT（親が起動前に即終了・設定見直しを案内）
   model_unavailable: "ABORT"
@@ -601,8 +601,8 @@ requirement_analysis:
   enabled: true
   models:
     normalize: "composer-2.5-fast"
-    depth_triage: "cursor-grok-4.6-high-fast"
-    standard_investigation: "cursor-grok-4.6-high-fast"
+    depth_triage: "grok-4.7-high"
+    standard_investigation: "grok-4.7-high"
   execution:
     score_threshold: 2
     max_gate_retries: 3
