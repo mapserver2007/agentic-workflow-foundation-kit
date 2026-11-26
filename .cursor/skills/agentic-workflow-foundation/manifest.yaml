@@ -529,7 +529,7 @@ agent_workflow:
   # config.yaml テンプレートがこの値を seed 初期値として使い、生成後は PO が直接 config.yaml を編集できる。
   # Step ⑤⑥ は親直接実行のため config 対象外。
   models:
-    step1_investigation: "claude-4.6-opus-high-thinking"
+    step1_investigation: "claude-sonnet-5-5-high"
     step2_report: "composer-2.5-fast"
     step3_implementation: "grok-4.7-high"
     step4_testing: "composer-2.5-fast"
