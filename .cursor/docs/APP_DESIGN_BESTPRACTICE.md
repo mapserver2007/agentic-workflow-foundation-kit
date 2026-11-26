@@ -1,7 +1,7 @@
 ---
 title: Go + gRPC アプリケーション 構成ベストプラクティス
 created_at: 2026-11-20
-version: 1.2
+version: 1.3
 status: 正式版
 ---
 
@@ -485,7 +485,7 @@ func (r *featureRepository) FindChild(ctx context.Context, rq queryable.ReadQuer
 | SQL は `const query` に書き、**プレースホルダ（`?`）で値を渡す。文字列連結しない** | MUST |
 | DB 行 → Entity の変換は `<x>Row.toEntity()` に集約する。`SELECT *` を使わず列を明示する | MUST |
 | ドライバのエラーは `toRepositoryError` で変換し、下の判定表に従う。**ctx 由来を最初に判定する**。表に無いエラーを `Unavailable` などの sentinel に包まない（`%w` で返し、`ErrorConverter` に `Internal` にさせる） | MUST |
-| `UPDATE` の `RowsAffected()==0` は、ドライバのエラーではないので、Repository のメソッドが `repository.ErrNotFound` を返す | MUST |
+| `UPDATE` の `RowsAffected()==0`（DSN の `clientFoundRows=true` により、変更行数ではなく一致行数。§3.5.4）は、ドライバのエラーではないので、Repository のメソッドが `repository.ErrNotFound` を返す | MUST |
 | Repository 内で transaction を開始しない | MUST NOT |
 | 行ロックが必要な読み取りは、メソッド名に意図を出す（例 `Lock...`）。`FOR UPDATE` は transaction 内でのみ使う | MUST |
 
@@ -526,7 +526,7 @@ type Clients struct {
 }
 ```
 
-- 接続: `sqlx.Open("mysql", DSN)` → pool 設定 → `PingContext`（5 秒）。DSN は `parseTime=true&loc=<URL エンコードしたタイムゾーン>&charset=utf8mb4` を必ず付ける（MUST）。
+- 接続: `sqlx.Open("mysql", DSN)` → pool 設定 → `PingContext`（5 秒）。DSN は `parseTime=true&loc=<URL エンコードしたタイムゾーン>&charset=utf8mb4&clientFoundRows=true` を必ず付ける（MUST）。`clientFoundRows=true` は `UPDATE` の `RowsAffected()` を、変更行数ではなく WHERE に一致した行数にする。値が変わらない `UPDATE` を行の不在と取り違えないために必要である（§3.5.2）。
 - `RunInWriteTx` の契約（MUST）:
   - `BeginTxx` → `fn` が `nil` を返せば `Commit`、`error` を返せば `Rollback` して元のエラーを返す。`panic` は `Rollback` して再 panic する。
   - `BeginTxx` と `Commit` の失敗は、`fmt.Errorf("begin transaction: %w", err)` / `fmt.Errorf("commit transaction: %w", err)` で返す。sentinel には包まない（`pkg/mysql` は `repository` を import できない。D3）。ctx 由来なら `ErrorConverter` が `Canceled` / `DeadlineExceeded` にし、それ以外は `Internal` になる（§3.2）。接続断も `Internal` になり、`Unavailable` にしない（「未知の DB エラーは `Internal`」の帰結。DB 障害は `Internal` のログとして出る）。

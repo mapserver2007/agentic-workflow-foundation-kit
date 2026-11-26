@@ -23,6 +23,8 @@ Design Doc は自動検知しない。PO が `designs/docs/` 直下の `*.md` �
       （通信はしない。エージェントは git を読まない）。`app`（製品名）は、Design Doc から推論で得られない・
       一つに決められないときに、エージェントが AskQuestion で PO に確認して決める。`binding.app` が空、または
       英数字にできないときは exit 2（フォールバックは無い）。PO が決めた名前は `binding.app_source: po` で記録する。
+      束縛節に記入済みの `app` があるときは、それを導出元にし、回答の `app` が違えば拒否する（exit 1）。
+      名前決定表の proto の行は、承認済み契約の `api_style` が gRPC を含むときだけ要求する。
       契約節（`docs/api.md`、`docs/data-models.md`、`docs/workflows.md` の、契約の
       `api_sections` / `data_model_sections` / `workflow_sections`）は、kit の引用を残して
       `[TODO]` だけを置き換える。
@@ -428,6 +430,20 @@ def contract_section_titles(manifest_path: Path) -> dict[str, frozenset[str]]:
     return titles
 
 
+def proto_required(api_style: object) -> bool:
+    """承認済み契約の `api_style` が gRPC を含むときだけ、名前決定表に proto の行を要求する。
+
+    `api_style` は自由記述なので、キーワード一致で決める。gRPC 系なのに記述に含まれないときは、
+    proto の行の検査が行われない（今より緩くなる側に倒れる。厳しくはならない）。
+    """
+    return isinstance(api_style, str) and "grpc" in api_style.lower()
+
+
+def contract_require_proto(manifest_path: Path) -> bool:
+    """承認済み契約の `api_style` から、proto の行を要求するかを決める。"""
+    return proto_required(_resolved_domain_docs(manifest_path).get("api_style"))
+
+
 def contract_guidance_texts(manifest_path: Path) -> list[str]:
     """契約の `*_sections` の本文（guidance / content）をすべて返す。"""
     domain = _resolved_domain_docs(manifest_path)
@@ -730,6 +746,27 @@ def binding_pending(text: str) -> dict:
     return {"parts": parts, "placeholders": placeholders}
 
 
+def recorded_binding_app(text: str) -> str:
+    """束縛節のプレースホルダ表に、記入済みの `app` があれば、その値（コードスパンを除く）を返す。無ければ空文字。
+
+    記入済みの値は書き換えない。`module` などを導出するときの元にするため、回答の `app` と照合する。
+    """
+    body = _section_body(text, BINDING_SECTION)
+    if not body.strip():
+        return ""
+    _, subsections = _binding_subsections(body)
+    for name, _, sub_text in subsections:
+        if name != BINDING_PLACEHOLDERS:
+            continue
+        for line in sub_text.splitlines():
+            match = _PLACEHOLDER_ROW_RE.match(line)
+            if match and match.group("name") == "app":
+                value = match.group("value").strip()
+                if value and value != "[TODO]":
+                    return value.strip("`").strip()
+    return ""
+
+
 def normalize_app(value: object) -> str:
     """製品名を kebab-case の英小文字と数字へ正規化する。決められないときは exit 2（フォールバックは無い）。"""
     if not isinstance(value, str) or not value.strip():
@@ -798,8 +835,14 @@ def _check_names(raw: object, label: str, doc_headings: set[str]) -> list[dict]:
     return items
 
 
-def _check_binding_input(raw: object, target: dict, doc_headings: set[str], owner: str, repo: str) -> dict:
-    """結果ファイルの `binding` を検証し、組み立てに使う値を返す。"""
+def _check_binding_input(
+    raw: object, target: dict, doc_headings: set[str], owner: str, repo: str, recorded_app: str = ""
+) -> dict:
+    """結果ファイルの `binding` を検証し、組み立てに使う値を返す。
+
+    `recorded_app` は、束縛節に記入済みの `app`（無ければ空）。記入済みの値は書き換えないので、
+    回答の `app` が違えば拒否する（違うまま導出すると、`module` などが記入済みの `app` と食い違う）。
+    """
     if not isinstance(raw, dict):
         raise ApplyError("binding は mapping である必要があります")
     unknown = sorted(set(raw) - BINDING_INPUT_KEYS)
@@ -809,6 +852,19 @@ def _check_binding_input(raw: object, target: dict, doc_headings: set[str], owne
     # `app` が空、または英数字にできないときは、フォールバックせずに exit 2 で止める。
     # Design Doc から決められないときは、エージェントが PO に確認して決めた名前を `app` に書く。
     app = normalize_app(raw.get("app"))
+    if recorded_app:
+        try:
+            recorded_norm = normalize_app(recorded_app)
+        except FatalError as exc:
+            raise ApplyError(
+                f"記入済みの app（{recorded_app!r}）を kebab-case の英小文字と数字にできません。"
+                "記入済みの値は書き換えないので、手で直してから再実行する"
+            ) from exc
+        if app != recorded_norm:
+            raise ApplyError(
+                f"binding.app（{app!r}）が記入済みの app（{recorded_norm!r}）と一致しません。"
+                "記入済みの値は書き換えないので、同じ名前を書く（変えるときは手編集で直す）"
+            )
     app_source = raw.get("app_source", APP_SOURCE_DESIGN_DOC)
     if app_source not in APP_SOURCES:
         raise ApplyError(f"binding.app_source は {list(APP_SOURCES)} のどちらかである必要があります: {app_source!r}")
@@ -885,6 +941,12 @@ def _check_binding_input(raw: object, target: dict, doc_headings: set[str], owne
     if BINDING_SCOPE in pending:
         scope = raw.get("scope")
         values["scope"] = _check_body(scope, "binding.scope")
+        # 束縛節の解析は、任意の `## ` 見出しで打ち切られる。`###` 以下の見出しと箇条書きは使える。
+        scope_headings = generate.structural_headings(values["scope"])
+        if scope_headings:
+            raise ApplyError(
+                f"binding.scope に構造見出し（`## `）は書けません（`###` 以下は使えます）: {scope_headings}"
+            )
     if BINDING_POLICIES in pending:
         if "policies" not in raw or not isinstance(raw["policies"], list) or not raw["policies"]:
             raise ApplyError("binding.policies は 1 件以上の配列が必要です（各要素は item / policy / evidence）")
@@ -1025,6 +1087,7 @@ def binding_gate_input(section_body: str, values: dict) -> dict:
         "required_names": sorted(set(values["features"] + values["callers"] + values["groups"])),
         "feature_names": sorted(set(values["features"])),
         "app": values["app"],
+        "require_proto": values.get("require_proto", True),
     }
 
 
@@ -1382,7 +1445,9 @@ def build_plan(
     *,
     refresh: bool,
     titles: Mapping[str, frozenset[str]] | None = None,
+    require_proto: bool = True,
 ) -> Plan:
+    """`require_proto` は、名前決定表に proto の行を要求するか（G-DOCFILL-006）。既定は要求する。"""
     _check_targets(targets, refresh=refresh)
     doc = _check_unchanged(root, manifest_path, targets)
     doc_headings = heading_names(doc)
@@ -1516,7 +1581,9 @@ def build_plan(
         values = _check_binding_input(
             binding_raw, binding_target, doc_headings,
             str(binding_target.get("module_owner") or ""), str(binding_target.get("repo_name") or ""),
+            recorded_app=recorded_binding_app(base_text),
         )
+        values["require_proto"] = require_proto
         composed = compose_binding_section(_section_body(base_text, BINDING_SECTION), binding_target, values)
         bound_text = _replace_sections(
             base_text, entry["headings"], {BINDING_SECTION: composed.strip("\n")}
@@ -1851,6 +1918,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         plan = build_plan(
             root, manifest_path, skeletons, targets, result,
             refresh=args.refresh, titles=contract_section_titles(manifest_path),
+            require_proto=contract_require_proto(manifest_path),
         )
     except GateError as exc:
         _write_findings(findings_path, exc.report)

@@ -24,7 +24,7 @@
 | スキル設定（seed） | `campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml`、`cross-repository-knowledge-link/config.json` | 初回生成後のモデルや閾値を人間が編集する | 適用しない。denylist でバイト列を保護する |
 | キュー（seed / denylist） | `docs/agent-tasks/reports/**`、`docs/agent-tasks/reviews/**`、`docs/agent-tasks/maintenance-docs/.gitkeep` | キャンペーン成果物と起票を人間が維持する | `reports/**` と `reviews/**` は denylist。`maintenance-docs/.gitkeep` は seed で、既存なら適用しない |
 | Meta / 生成物（render） | `docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/AGENT_RUNBOOK.md`、`docs/references/context-budget-internals.md`、`docs/agent-tasks/agent-workflow/**`、`.cursor/skills/domain-docs/SKILL.md`、`.cursor/skills/campaign-cleanup/SKILL.md`、`bin/quality-gate`、`bin/foundation-gate`、`bin/project-setup`、`.cursor/hooks/session-progress-emitter.sh` | 直接編集は drift。次回生成で消える | テンプレートから上書きする |
-| Domain 名でも split | `docs/tech-stack.md`、`docs/tech-stack/` | 直接編集しない。ブループリントの正本を更新して `generate` で再生成する（`mode: split` は updater の対象外） | 触れない（consumer 側の `generate` が生成する） |
+| Domain 名でも split | `docs/tech-stack.md`、`docs/tech-stack/` | 直接編集しない。ブループリントの正本を更新して `generate` で再生成する（`mode: split` は updater の対象外） | 触れない（consumer 側の `generate` が生成する）。以前の `render` として lock に残る `docs/tech-stack.md` は、所有が split へ移っただけなので orphan にしない |
 
 ## 境界
 

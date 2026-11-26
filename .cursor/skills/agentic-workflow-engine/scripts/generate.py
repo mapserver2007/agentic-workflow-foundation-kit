@@ -16,12 +16,13 @@
 exit code:
   0 = 生成成功 / --check で全出力が冪等（差分なし）
   1 = --check で差分あり（再生成が必要）
- 2 = 致命的エラー（manifest 破損 / テンプレート不在 / 出力パスへの権限拒否 等）
+ 2 = 致命的エラー（manifest 破損 / テンプレート不在 / 出力パスへの権限拒否 / UTF-8 として読めないファイル 等）
 """
 from __future__ import annotations
 
 import argparse
 import os
+import posixpath
 import re
 import stat
 import sys
@@ -189,10 +190,18 @@ def _upsert_marker(existing: str, marker_id: str, body: str) -> str:
 
 
 def _read(path: str) -> str | None:
+    """UTF-8 のファイルを読む。無ければ None。UTF-8 として読めなければ YamlError（致命的な入力エラー）。
+
+    出力・テンプレート・正本はすべて UTF-8 で書く契約である。非 UTF-8 のファイルを黙って差分や
+    不在として扱うと、人手管理の seed まで書き換えかねない。呼び出し側は YamlError を exit 2 にする。
+    """
     if not os.path.isfile(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError as exc:
+        raise genlib.YamlError(f"UTF-8 として読めません: {path}（{exc.reason}）") from exc
 
 
 def _write(path: str, content: str, executable: bool) -> None:
@@ -247,7 +256,9 @@ def split_settings(out: dict) -> dict:
     """mode: split のエントリの設定を検証して返す。"""
     rel = out.get("path")
     parts = [p for p in rel.split("/") if p] if isinstance(rel, str) else []
-    if not isinstance(rel, str) or not rel.endswith("/") or len(parts) < 2 or ".." in parts:
+    # 深さと内側判定は正規化したパスで見る（`docs/./stack/` のような `.` で検査をすり抜けさせない）。
+    dir_parts = [p for p in posixpath.normpath(rel).split("/") if p] if isinstance(rel, str) and rel else []
+    if not isinstance(rel, str) or not rel.endswith("/") or len(dir_parts) < 2 or ".." in parts:
         raise genlib.YamlError(
             f"mode: split の path は、深さ2以上のディレクトリ（末尾 /）で指定してください: {rel!r}"
         )
@@ -264,8 +275,8 @@ def split_settings(out: dict) -> dict:
             isinstance(check.get(k), str) and check.get(k) for k in ("path", "heading")
         ):
             raise genlib.YamlError(f"mode: split の placeholder_check は path と heading が必要です ({rel})")
-    index_parts = [p for p in out["index_path"].split("/") if p]
-    if index_parts[: len(parts)] == parts:
+    index_parts = [p for p in posixpath.normpath(out["index_path"]).split("/") if p]
+    if index_parts[: len(dir_parts)] == dir_parts:
         raise genlib.YamlError(f"mode: split の index_path が出力ディレクトリの内側です ({rel})")
     return {
         "path": rel,
@@ -289,6 +300,18 @@ def split_build(root: str, out: dict, manifest: dict) -> tuple:
         )
     source_rel = cfg["source_dir"].rstrip("/") + "/" + name
     source_abs = _safe_join(root, source_rel, "outputs[].source_dir")
+    # 正本を出力ディレクトリの内側に置く、または索引で正本を上書きする設定は、生成前に拒否する。
+    # そのままだと、正本を「残骸」として削除する、または索引で上書きする（正規化したパスで比較する）。
+    source_norm = posixpath.normpath(source_rel)
+    out_dir_norm = posixpath.normpath(cfg["path"])
+    if source_norm == out_dir_norm or source_norm.startswith(out_dir_norm + "/"):
+        raise genlib.YamlError(
+            f"mode: split の正本が出力ディレクトリの内側です（正本を削除するため拒否）: {source_rel} / {cfg['path']}"
+        )
+    if posixpath.normpath(cfg["index_path"]) == source_norm:
+        raise genlib.YamlError(
+            f"mode: split の index_path が正本と同じです（正本を上書きするため拒否）: {cfg['index_path']}"
+        )
     text = _read(source_abs)
     if text is None:
         raise genlib.YamlError(f"mode: split のソースが存在しません: {source_rel}")
@@ -419,11 +442,15 @@ def run(skill_dir: str, check: bool) -> int:
         except (TypeError, KeyError, genlib.YamlError) as e:
             print(f"FATAL: outputs[] 定義エラー: {e}", file=sys.stderr)
             return 2
-        existing = _read(target_path)
+        try:
+            existing = _read(target_path)
+            template_text = _read(template_path)
+        except genlib.YamlError as e:
+            print(f"FATAL: {e}", file=sys.stderr)
+            return 2
         mode = out.get("mode", "render")
 
         if mode == "split":
-            template_text = _read(template_path)
             if template_text is None:
                 print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
                 return 2
@@ -441,7 +468,6 @@ def run(skill_dir: str, check: bool) -> int:
             skipped.append(rel)
             continue
 
-        template_text = _read(template_path)
         if template_text is None:
             print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
             return 2

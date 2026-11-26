@@ -424,6 +424,11 @@ def test_generate_safety_and_input_errors() -> None:
         "path が浅い": MANIFEST.replace('path: "docs/stack/"', 'path: "stack/"'),
         "path に末尾 / がない": MANIFEST.replace('path: "docs/stack/"', 'path: "docs/stack"'),
         "index が出力ディレクトリの内側": MANIFEST.replace('index_path: "docs/stack.md"', 'index_path: "docs/stack/index.md"'),
+        "index が出力ディレクトリの内側（. を含む）": MANIFEST.replace(
+            'index_path: "docs/stack.md"', 'index_path: "docs/./stack/index.md"'),
+        "path が . を含み実際は浅い": MANIFEST.replace('path: "docs/stack/"', 'path: "./docs/"'),
+        "正本が出力ディレクトリの内側": MANIFEST.replace('path: "docs/stack/"', 'path: ".cursor/docs/"'),
+        "index が正本と同じ": MANIFEST.replace('index_path: "docs/stack.md"', 'index_path: ".cursor/docs/BP.md"'),
         "上限が整数でない": MANIFEST.replace("max_bytes: 600", 'max_bytes: "600"'),
         "下限が上限以上": MANIFEST.replace("min_bytes: 120", "min_bytes: 900"),
         "source_key が解決できない": MANIFEST.replace("project.tech_stack_design_filename", "project.missing_key"),
@@ -437,6 +442,22 @@ def test_generate_safety_and_input_errors() -> None:
             skill_dir = _make_repo(root, blueprint(), manifest=manifest)
             _assert(_generate(skill_dir)[0] == 2, f"generate が致命的エラーにならない: {label}")
             _assert(_audit(skill_dir)[0] == 2, f"audit が致命的エラーにならない: {label}")
+    # 正本と出力の重複は、正本を削除・上書きせずに拒否する
+    for label, manifest in (
+        ("正本が出力ディレクトリの内側", MANIFEST.replace('path: "docs/stack/"', 'path: ".cursor/docs/"')),
+        ("index が正本と同じ", MANIFEST.replace('index_path: "docs/stack.md"', 'index_path: ".cursor/docs/BP.md"')),
+    ):
+        with tempfile.TemporaryDirectory(prefix="split-overlap-") as temp_dir:
+            root = Path(temp_dir) / "repo"
+            source = blueprint()
+            skill_dir = _make_repo(root, source, manifest=manifest)
+            rc, _, err = _generate(skill_dir)
+            _assert(rc == 2 and "正本" in err, f"重複を拒否しない（{label}）: {rc} {err}")
+            _assert(
+                (root / ".cursor" / "docs" / "BP.md").read_text(encoding="utf-8") == source,
+                f"正本が変更された（{label}）",
+            )
+            _assert(_audit(skill_dir)[0] == 2, f"audit も致命的エラーにする（{label}）")
     # 正本の不在、見出しなし
     with tempfile.TemporaryDirectory(prefix="split-nosrc-") as temp_dir:
         root = Path(temp_dir) / "repo"
@@ -447,6 +468,76 @@ def test_generate_safety_and_input_errors() -> None:
         root = Path(temp_dir) / "repo"
         skill_dir = _make_repo(root, "見出しのない文章\n")
         _assert(_generate(skill_dir)[0] == 2, "見出しなしが致命的エラーにならない")
+
+
+def test_split_settings_normalizes_paths() -> None:
+    """`.` を含むパスでも、出力ディレクトリの深さと index の内側判定が変わらない。"""
+    base = {
+        "path": "docs/stack/", "template": "t", "source_dir": ".cursor/docs",
+        "source_key": "k", "max_bytes": 600, "min_bytes": 100, "index_path": "docs/stack.md",
+    }
+    _assert(generate.split_settings(base)["index_path"] == "docs/stack.md", "正常な設定が拒否された")
+    for label, change in (
+        ("index に `.`", {"index_path": "docs/./stack/index.md"}),
+        ("index に `//`", {"index_path": "docs//stack/index.md"}),
+        ("path に `.` を足して浅い", {"path": "./docs/"}),
+    ):
+        try:
+            generate.split_settings({**base, **change})
+        except generate.genlib.YamlError:
+            continue
+        raise AssertionError(f"拒否されない: {label}")
+    # 出力ディレクトリの外の索引は、`.` を含んでも許可する
+    ok = generate.split_settings({**base, "index_path": "docs/./stack.md"})
+    _assert(ok["index_path"] == "docs/./stack.md", "外側の索引が拒否された")
+
+
+def test_non_utf8_files_are_fatal_and_untouched() -> None:
+    """非 UTF-8 のファイルは、差分や不在として扱わず、書き換えずに致命的エラー（exit 2）にする。"""
+    sjis = "日本語".encode("shift_jis")
+    # 分割ファイル
+    with tempfile.TemporaryDirectory(prefix="split-sjis-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir = _make_repo(root, blueprint())
+        _assert(_generate(skill_dir)[0] == 0, "生成に失敗")
+        stack = root / "docs" / "stack"
+        target = sorted(stack.iterdir())[1]
+        target.write_bytes(sjis)
+        for label, run in (("generate", lambda: _generate(skill_dir)), ("--check", lambda: _generate(skill_dir, True)),
+                           ("audit", lambda: _audit(skill_dir))):
+            rc, _, err = run()
+            _assert(rc == 2 and "UTF-8" in err, f"{label} が致命的エラーにならない: {rc} {err}")
+        _assert(target.read_bytes() == sjis, "非 UTF-8 のファイルを書き換えた")
+    # 人手管理の seed（既存なら読まずにスキップする出力）も、書き換えない
+    with tempfile.TemporaryDirectory(prefix="split-sjis-seed-") as temp_dir:
+        root = Path(temp_dir) / "repo"
+        skill_dir = _make_repo(root, blueprint())
+        (root / "docs" / "arch.md").write_bytes(sjis)
+        rc, _, err = _generate(skill_dir)
+        _assert(rc == 2 and "UTF-8" in err, f"seed の非 UTF-8 が致命的エラーにならない: {rc} {err}")
+        _assert((root / "docs" / "arch.md").read_bytes() == sjis, "非 UTF-8 の seed を書き換えた")
+        _assert(_audit(skill_dir)[0] == 2, "audit が致命的エラーにならない")
+
+
+def test_leading_text_merge_is_size_checked() -> None:
+    """先頭の見出しより前の本文を先頭チャンクへ結合した後も、サイズ上限を検査する。"""
+    front = "---\nversion: 1\n---\n\n"
+    leading = "LEAD-" + "x" * 25 + "\n\n"
+    body = "# T\n\n## 1. A\n\n" + ("a" * 40 + "\n") * 13
+    plain = splitlib.build(front + body, SOURCE_REL, 100_000, 50)
+    _assert(len(plain.files) == 1, f"基準は 1 ファイル: {list(plain.files)}")
+    node_bytes = len(splitlib.strip_header(plain.files[plain.order[0]]).encode("utf-8"))
+    kinds = lambda result: [v[2] for v in result.violations]  # noqa: E731
+    # 結合前は上限以内で、結合後に超える: 違反にする
+    over = splitlib.build(front + leading + body, SOURCE_REL, node_bytes + 10, 50)
+    _assert("leading_text_merge_over_max" in kinds(over), f"結合後の超過が違反にならない: {over.violations}")
+    _assert(any("サイズ上限" in m for m in _fails(over)), f"失敗にならない: {_fails(over)}")
+    # 結合後も上限以内: 違反にしない
+    fits = splitlib.build(front + leading + body, SOURCE_REL, node_bytes + 200, 50)
+    _assert(fits.violations == [], f"上限以内なのに違反: {fits.violations}")
+    # 結合前に上限を超えていたチャンクは、登録済みなので重複して報告しない
+    already = splitlib.build(front + leading + body, SOURCE_REL, node_bytes - 10, 50)
+    _assert("leading_text_merge_over_max" not in kinds(already), f"重複して報告した: {already.violations}")
 
 
 def main() -> int:
@@ -460,6 +551,9 @@ def main() -> int:
         ("seed template receives split context", test_seed_template_receives_split_context),
         ("architecture template copies blueprint version", test_architecture_template_copies_blueprint_version),
         ("generate safety and input errors", test_generate_safety_and_input_errors),
+        ("split settings normalize paths", test_split_settings_normalizes_paths),
+        ("non-UTF-8 files are fatal and untouched", test_non_utf8_files_are_fatal_and_untouched),
+        ("leading text merge is size checked", test_leading_text_merge_is_size_checked),
     )
     for label, test in tests:
         try:

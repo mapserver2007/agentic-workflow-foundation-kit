@@ -161,7 +161,11 @@ def run(skill_dir: str, *, skip_seed_required_sections: bool = False) -> int:
         except (TypeError, KeyError, genlib.YamlError) as e:
             print(f"FATAL: outputs[] 定義エラー: {e}", file=sys.stderr)
             return 2
-        template_text = _read(template_path)
+        try:
+            template_text = _read(template_path)
+        except genlib.YamlError as e:
+            print(f"FATAL: {e}", file=sys.stderr)
+            return 2
         if template_text is None:
             print(f"FATAL: テンプレート不在: {template_path}", file=sys.stderr)
             return 2
@@ -181,7 +185,11 @@ def run(skill_dir: str, *, skip_seed_required_sections: bool = False) -> int:
             ok += 1
             continue
 
-        existing = _read(target_path)
+        try:
+            existing = _read(target_path)
+        except genlib.YamlError as e:
+            print(f"FATAL: {e}", file=sys.stderr)
+            return 2
         if existing is None:
             failures.append((rel, "出力ファイル不在"))
             continue

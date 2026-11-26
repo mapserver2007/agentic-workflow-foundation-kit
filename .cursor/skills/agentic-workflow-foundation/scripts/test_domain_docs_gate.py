@@ -528,6 +528,38 @@ def test_binding_gate() -> None:
             f"a subordinate aggregate pointing at the parent proto must pass: {report.findings}")
 
 
+def test_binding_gate_proto_rows_follow_the_contract() -> None:
+    """proto の行は、ブループリントが proto を使う契約のときだけ要る（`require_proto`。既定は要求する）。"""
+    binding = {
+        "file": "docs/arch.md", "section": "束縛", "text": "本文",
+        "placeholder_rows": {"app": "`sample-app`"},
+        "names_text": (
+            "| 種別 | 実名 | パス | 根拠 |\n| --- | --- | --- | --- |\n"
+            "| Entity | `item_entity` | `internal/item_entity/` | `x` |\n"
+            "| Controller | `item` | `internal/controller/item_controller.go` | `x` |"
+        ),
+        "tree_text": "sample-app/\n├── item_entity/\n└── item/",
+        "required_names": ["item"],
+        "feature_names": ["item"],
+        "app": "sample-app",
+    }
+
+    def findings(**changes):
+        report = gate.evaluate(DESIGN, replaced={}, final_texts={}, spec_documents={}, binding={**binding, **changes})
+        return [f for f in report.findings if f["id"] == "G-DOCFILL-006"]
+
+    default = findings()
+    _assert(
+        len(default) == 1 and default[0]["level"] == "FAIL" and "proto の行が無い集約: item" in default[0]["message"],
+        f"既定は proto の行を要求する: {default}",
+    )
+    _assert(len(findings(require_proto=True)) == 1, "require_proto=True は要求する")
+    _assert(findings(require_proto=False) == [], f"require_proto=False は proto の行を要求しない: {findings(require_proto=False)}")
+    # proto の行を要求しなくても、ほかの検査（名前の欠落）は効く。
+    missing = findings(require_proto=False, required_names=["item", "order"])
+    _assert(any("名前決定表に現れない名前: order" in f["message"] for f in missing), f"名前の検査は残る: {missing}")
+
+
 def main() -> int:
     tests = (
         ("design doc extraction", test_design_doc_extraction),
@@ -539,6 +571,7 @@ def main() -> int:
          test_gate_skips_for_a_design_doc_without_the_standard_structure),
         ("binding gate", test_binding_gate),
         ("kit sources carry no design vocabulary", test_kit_sources_carry_no_design_vocabulary),
+        ("binding gate proto rows follow the contract", test_binding_gate_proto_rows_follow_the_contract),
     )
     for label, test in tests:
         try:

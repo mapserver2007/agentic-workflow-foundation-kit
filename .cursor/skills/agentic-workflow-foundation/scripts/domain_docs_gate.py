@@ -15,6 +15,7 @@ Design Doc の標準的な見出し構造から取り出せる事実が落ちて
   G-DOCFILL-006 FAIL  束縛節（技術ブループリントの適用）で、プレースホルダの行がすべて埋まり、
                       決めた名前が名前決定表とディレクトリツリーに現れ、製品名がツリーに現れ、
                       集約ごとに proto の行（パスが `.proto`）が名前決定表にある
+                      （`require_proto` が偽のときは要求しない。既定は要求する。承認済み契約が proto を使うかは apply が決める）
 
 FAIL は呼び出し側（apply）が検証失敗として扱う。WARN は報告だけで、修復を起動しない。
 設計書が標準の見出し構造を持たず抽出できない検査は skipped として理由を残す。
@@ -368,8 +369,10 @@ def _check_binding(report: Report, binding: Mapping | None) -> None:
             report.add("G-DOCFILL-006", "FAIL", label, "名前決定表に現れない名前: " + ", ".join(absent))
     # proto の分割は集約の単位で決める。集約ごとに、パスが `.proto` の行が名前決定表に要る
     # （従属集約を親の proto に含めるときも、従属集約の行は親の `.proto` を指して残す）。
+    # proto の行は、ブループリントが proto を使う契約のときだけ要る。呼び出し側（apply）が、承認済み契約の
+    # `api_style` から `require_proto` を決めて渡す（無いときは要求する）。ゲート自身は API 方式を判断しない。
     feature_names = list(binding.get("feature_names") or [])
-    if names_text and feature_names:
+    if names_text and feature_names and binding.get("require_proto", True):
         with_proto = _proto_row_names(names_text)
         absent = [name for name in feature_names if name not in with_proto]
         if absent:

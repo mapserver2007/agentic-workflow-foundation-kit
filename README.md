@@ -313,7 +313,11 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
 foundation / engine / upstream design docs は適用しません。`init.yaml`、root
 `manifest.yaml`、技術スタック設計書、`docs/spec/**`、ADR / GOTCHAS、reports、
 seed、アプリコードは保護されます。orphan / rename は plan の `retirement` が
-`delete` または `keep` のときだけ、計画全体の承認後に解消します。未指定、allowlist
+`delete` または `keep` のときだけ、計画全体の承認後に解消します。ただし `mode: split` の
+索引（`docs/tech-stack.md`）は orphan にしません。以前の kit では同じパスが `render` で、
+旧 lock に残っていても、所有が render から split へ移っただけだからです。split の出力
+（`docs/tech-stack.md` と `docs/tech-stack/`）は updater の対象外なので、更新後は対象アプリ側で
+`generate` を実行して生成してください。未指定、allowlist
 外の差分、preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
 ファイル適用、quality gate、host 配置は一つのトランザクションです。いずれかが例外で失敗した場合は、
 同期済みファイルと host 個人スキルを適用前へ戻します。プロセスが強制終了された場合は復元されず、

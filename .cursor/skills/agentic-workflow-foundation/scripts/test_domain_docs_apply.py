@@ -292,6 +292,7 @@ def run_cli(root: Path, skeletons: dict[str, str], *args: str) -> tuple[int, str
     stdout, stderr = io.StringIO(), io.StringIO()
     with patch.object(da, "render_skeletons", return_value=skeletons), \
             patch.object(da, "contract_section_titles", return_value=TITLES), \
+            patch.object(da, "contract_require_proto", return_value=True), \
             patch.object(da, "contract_guidance_texts", side_effect=lambda _manifest: list(GUIDANCE_TEXTS)), \
             contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
         code = da.main([args[0], "--manifest", str(root / "manifest.yaml"), *args[1:]])
@@ -1947,12 +1948,76 @@ def test_binding_keeps_filled_parts() -> None:
         pending = next(i for i in targets["files"] if i["file"] == "docs/architecture.md")["binding"]
         _assert(da.BINDING_SCOPE not in pending["pending"], f"filled scope must not be pending: {pending}")
         _assert("app" not in pending["placeholders"], f"filled row must not be pending: {pending}")
-        result = {**make_result(targets), "binding": binding_with()}
+        # 回答の app が記入済みの app と違うときは、導出値（module など）が食い違うので拒否する。
+        exc = _expect(da.ApplyError, "app differs from the filled row", lambda: plan_for(
+            root, skeletons, targets, {**make_result(targets), "binding": binding_with()}))
+        _assert("記入済みの app" in str(exc) and "一致しません" in str(exc), f"unexpected message: {exc}")
+        # 同じ名前を書けば、記入済みの app を導出元にして、残りの部分だけを埋める。
+        tree = make_binding()["tree"].replace("sample-app", "hand-written")
+        result = {**make_result(targets), "binding": binding_with(app="hand-written", tree=tree)}
         plan = plan_for(root, skeletons, targets, result)
         out = plan.writes["docs/architecture.md"].decode("utf-8")
         _assert("| `{{app}}` | `hand-written` |" in out, "hand-written row was overwritten")
         _assert("手で書いた担当範囲。" in out and "設定の既定値" not in out, "hand-written scope was overwritten")
-        _assert("| `{{module}}` | `github.com/acme/sample-app` |" in out, "pending row was not filled")
+        _assert("| `{{module}}` | `github.com/acme/hand-written` |" in out, "module must follow the filled app")
+        _assert("| `{{svc}}` | `handwritten` |" in out and "| `{{db}}` | `hand_written` |" in out,
+                "derived rows must follow the filled app")
+        # 記入済みの app が kebab-case にできないときは、手で直すよう拒否する。
+        text = (root / "docs/architecture.md").read_text(encoding="utf-8").replace("`hand-written`", "`来店`")
+        (root / "docs/architecture.md").write_text(text, encoding="utf-8")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        exc = _expect(da.ApplyError, "filled app is not kebab-case", lambda: plan_for(
+            root, skeletons, targets, {**make_result(targets), "binding": binding_with()}))
+        _assert("手で直して" in str(exc), f"unexpected message: {exc}")
+
+
+def test_recorded_binding_app() -> None:
+    skeletons = _skeletons()
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-recorded-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "recorded")
+        text = (root / "docs/architecture.md").read_text(encoding="utf-8")
+        _assert(da.recorded_binding_app(text) == "", "an unfilled app row must not be recorded")
+        filled = text.replace("| `{{app}}` | [TODO] |", "| `{{app}}` | `hand-written` |")
+        _assert(da.recorded_binding_app(filled) == "hand-written", "a filled app row must be recorded")
+        _assert(da.recorded_binding_app("# no binding section\n") == "", "no binding section means no recorded app")
+        # 別の行の値は拾わない。
+        other = text.replace("| `{{svc}}` | [TODO] |", "| `{{svc}}` | `x` |")
+        _assert(da.recorded_binding_app(other) == "", "another row must not count as the app")
+
+
+def test_binding_proto_rows_follow_the_contract() -> None:
+    """proto の行は、承認済み契約の api_style が gRPC を含むときだけ要求する。"""
+    _assert(da.proto_required("gRPC（proto-first）と grpc-gateway による REST"), "gRPC must require proto rows")
+    _assert(da.proto_required("GRPC"), "the match must ignore case")
+    for style in ("REST/JSON", "GraphQL", "", None, 3):
+        _assert(not da.proto_required(style), f"{style!r} must not require proto rows")
+    skeletons = _skeletons()
+    no_proto = [
+        {"kind": "Entity", "name": "thing_entity", "path": "internal/domain/entity/thing_entity/", "evidence": "概要"},
+        {"kind": "Entity", "name": "thing_key_entity", "path": "internal/domain/entity/thing_key_entity/",
+         "evidence": "概要"},
+        {"kind": "UseCase", "name": "frontend / setup", "path": "internal/usecase/frontend/setup_usecase/",
+         "evidence": "1. 設置"},
+        {"kind": "UseCase", "name": "manager / ordering", "path": "internal/usecase/manager/ordering_usecase/",
+         "evidence": "2. 注文"},
+    ]
+    with tempfile.TemporaryDirectory(prefix="domain-docs-binding-proto-") as temp_dir:
+        root = binding_repo(Path(temp_dir), skeletons, "proto")
+        with patch.object(da, "git_remote_url", return_value=REMOTE):
+            targets = targets_for(root, skeletons)
+        result = {**make_result(targets), "binding": binding_with(names=no_proto)}
+
+        def build(**kwargs):
+            return da.build_plan(root, root / "manifest.yaml", skeletons, targets, result,
+                                 refresh=False, titles=TITLES, **kwargs)
+
+        exc = _expect(da.GateError, "default requires proto rows", build)
+        _assert("proto の行が無い集約" in str(exc), f"unexpected message: {exc}")
+        plan = build(require_proto=False)
+        _assert(not [f for f in plan.report.findings if f["id"] == "G-DOCFILL-006"],
+                f"a contract without proto must not require proto rows: {plan.report.findings}")
+        _assert("docs/architecture.md" in plan.writes, "the binding must still be written")
 
 
 def test_binding_validation() -> None:
@@ -2001,10 +2066,19 @@ def test_binding_validation() -> None:
         check("pipe in a cell", da.ApplyError, "`|`", policies=[{"item": "a|b", "policy": "x", "evidence": "概要"}])
         check("empty policies", da.ApplyError, "binding.policies", policies=[])
         check("scope with todo", da.ApplyError, "[TODO]", scope="[TODO] 後で書く")
+        # 束縛節の解析は任意の `## ` 見出しで打ち切られる。構造見出しは、既知の見出しと同名でなくても拒否する。
+        check("scope with a known structural heading", da.ApplyError, "構造見出し", scope="- a\n\n## 参照\n\n- b")
+        check("scope with another structural heading", da.ApplyError, "構造見出し", scope="- a\n\n## 補足\n\n- b")
         check("derived placeholder given", da.ApplyError, "導出する名前", placeholders={
             "extra_name": "x", "module": "y"})
         check("stray placeholder", da.ApplyError, "記入欄の無い", placeholders={"extra_name": "x", "nothing": "y"})
         check("missing extra value", da.ApplyError, "導出できないプレースホルダ", placeholders={})
+
+        # `###` 以下の見出しと、フェンス内の `## ` は、構造見出しではないので書ける。
+        root = binding_repo(base, skeletons, "scope-h3")
+        scope = "- a\n\n### 小見出し\n\n- b\n\n```text\n## フェンスの中\n```"
+        _, plan = binding_plan(root, skeletons, binding_with(scope=scope))
+        _assert("### 小見出し" in plan.writes["docs/architecture.md"].decode("utf-8"), "### in scope must be kept")
 
         # binding の回答が無い（対象があるのに）、対象が無いのにある、refresh でも拒否する。
         root = binding_repo(base, skeletons, "unanswered")
@@ -2134,6 +2208,8 @@ def main() -> int:
         ("binding derivation", test_binding_derivation),
         ("binding state and fill", test_binding_state_and_fill),
         ("binding keeps filled parts", test_binding_keeps_filled_parts),
+        ("recorded binding app", test_recorded_binding_app),
+        ("binding proto rows follow the contract", test_binding_proto_rows_follow_the_contract),
         ("binding validation", test_binding_validation),
         ("binding app decided by po", test_binding_app_decided_by_po),
         ("binding without remote uses the app only", test_binding_without_remote_uses_the_app_only),

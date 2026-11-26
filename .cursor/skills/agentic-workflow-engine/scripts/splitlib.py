@@ -311,7 +311,12 @@ def build(text: str, source_rel: str, max_bytes: int, min_bytes: int) -> SplitRe
         chunks.extend(_split(node, lines, max_bytes, min_bytes, result.violations))
     # 先頭の見出しより前の本文（空行を除く）は、最初のチャンクの先頭へ付ける
     if nodes[0].start > body_start and chunks:
+        before = chunks[0].size(lines)
         chunks[0].line_idx = _range(body_start, nodes[0].start) + chunks[0].line_idx
+        after = chunks[0].size(lines)
+        # 前文の結合で初めて上限を超えるときだけ違反にする（結合前に超えていたチャンクは登録済み）。
+        if before <= max_bytes < after:
+            result.violations.append((chunks[0].nodes[0].title, after, "leading_text_merge_over_max"))
 
     total = len(chunks)
     width = max(2, len(str(total)))

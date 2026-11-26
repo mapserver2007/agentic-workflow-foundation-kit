@@ -467,6 +467,65 @@ def test_retire_without_targets_is_fatal() -> None:
         temp.cleanup()
 
 
+def test_split_index_paths_come_only_from_split_outputs() -> None:
+    manifest = {
+        "outputs": [
+            {"path": "docs/tech-stack/", "mode": "split", "index_path": "docs/tech-stack.md"},
+            {"path": "AGENTS.md", "mode": "render", "index_path": "ignored.md"},
+            {"path": "docs/other/", "mode": "split"},
+            "not-a-mapping",
+        ]
+    }
+    assert UPDATE._split_index_paths(manifest) == {Path("docs/tech-stack.md")}
+    assert UPDATE._split_index_paths({}) == set()
+
+
+def test_render_to_split_transfer_is_not_orphan() -> None:
+    """以前の kit では docs/tech-stack.md が render だった。split の索引へ所有が移っただけなので orphan にしない。"""
+    outputs = [("AGENTS.md", "render", None)]
+    split_manifest = _manifest(outputs) + (
+        '  - path: "docs/tech-stack/"\n'
+        '    template: "docs/tech-stack.md.template"\n'
+        "    mode: split\n"
+        '    index_path: "docs/tech-stack.md"\n'
+    )
+    # 対照: split の出力が無ければ、旧 lock にだけあるパスは従来どおり orphan（検知の経路が生きている）。
+    app, clone, work, temp = _fixture(outputs=outputs, candidate_updates={"AGENTS.md": "generated-v2\n"})
+    try:
+        _write(app, "docs/tech-stack.md", "old-render\n")
+        _write_removed_lock(app, clone, "docs/tech-stack.md")
+        plan = _plan(app, clone, work)
+        assert plan["orphan"] == ["docs/tech-stack.md"], plan["orphan"]
+        assert "KU-ORPHAN-001" in plan["blocking_issues"]
+    finally:
+        temp.cleanup()
+    # split の索引になったパスは、orphan にも削除にもしない。
+    app, clone, work, temp = _fixture(outputs=outputs, candidate_updates={"AGENTS.md": "generated-v2\n"})
+    try:
+        _write(app, "docs/tech-stack.md", "old-render\n")
+        _write_removed_lock(app, clone, "docs/tech-stack.md")
+        _write(clone, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", split_manifest)
+        plan = _plan(app, clone, work)
+        assert plan["orphan"] == [], plan["orphan"]
+        assert plan["rename_candidates"] == [], plan["rename_candidates"]
+        assert "KU-ORPHAN-001" not in plan["blocking_issues"], plan["blocking_issues"]
+        assert not any(item["path"] == "docs/tech-stack.md" for item in plan["changes"])
+        assert not any(item["path"] == "docs/tech-stack.md" for item in plan["catalog"])
+        UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        UPDATE._apply_plan(plan)
+        assert (app / "docs/tech-stack.md").read_text(encoding="utf-8") == "old-render\n"
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
+        # 解消対象が無いので、retirement の指定は致命的エラー（delete でも新索引を消す変更は作らない）。
+        try:
+            _plan(app, clone, work, retirement="delete")
+        except UPDATE.FatalUpdateError as exc:
+            assert "KU-ORPHAN-001" in str(exc)
+        else:
+            raise AssertionError("所有移管のパスに retirement=delete が受理された")
+    finally:
+        temp.cleanup()
+
+
 def test_overlay_preflight_happens_before_fetch() -> None:
     with tempfile.TemporaryDirectory(prefix="kit-update-preflight-") as temp_dir:
         app = Path(temp_dir) / "app"
@@ -1326,6 +1385,8 @@ def main() -> int:
         ("retire delete", test_retire_delete_removes_only_former_managed_file),
         ("retire rename", test_retire_delete_renames_by_removing_old_path_only),
         ("retire without targets", test_retire_without_targets_is_fatal),
+        ("split index paths", test_split_index_paths_come_only_from_split_outputs),
+        ("render to split transfer", test_render_to_split_transfer_is_not_orphan),
         ("transaction gate failure", test_transaction_gate_failure_restores_app_and_leaves_host),
         ("transaction host failure", test_transaction_host_stage_failure_restores_app_and_host),
         ("transaction host lock failure", test_transaction_host_lock_failure_is_update_error),
