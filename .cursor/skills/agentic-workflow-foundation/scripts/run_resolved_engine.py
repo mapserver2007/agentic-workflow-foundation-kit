@@ -508,8 +508,85 @@ def _filter_outputs_by_features(manifest: dict) -> dict:
         features = feature if isinstance(feature, list) else [feature]
         if any(_is_feature_enabled(manifest, f) for f in features):
             filtered.append(out)
+    for out in filtered:
+        _resolve_required_sections(manifest, out)
     manifest["outputs"] = filtered
     return manifest
+
+
+def _resolve_required_sections(manifest: dict, out: dict) -> None:
+    """required_sections の条件付き項目を、feature に応じて文字列へ展開する。
+
+    項目は文字列（常に必須）か、`{text, feature}` のマッピング（feature が有効なときだけ必須）。
+    出力側のテンプレートが feature で記述を省く節を、audit が無条件に要求しないようにする。
+    engine（audit.py）には展開後の文字列リストだけを渡す。
+    """
+    items = out.get("required_sections")
+    if not items:
+        return
+    resolved = []
+    for item in items:
+        if not isinstance(item, dict):
+            resolved.append(item)
+            continue
+        text = item.get("text")
+        feature = item.get("feature")
+        if not isinstance(text, str) or not text or feature in (None, "", []):
+            print(
+                f"FATAL: {out.get('path')} の required_sections は文字列か "
+                f"{{text, feature}} である必要があります: {item!r}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        features = feature if isinstance(feature, list) else [feature]
+        if any(_is_feature_enabled(manifest, f) for f in features):
+            resolved.append(text)
+    out["required_sections"] = resolved
+
+
+def _disabled_feature_leftovers(
+    all_outputs: list[dict],
+    enabled_outputs: list[dict],
+    work_root: str,
+) -> list[dict]:
+    """feature が無効なため生成対象から外れたが、work_root に既存ファイルが残っている outputs を返す。
+
+    split（ディレクトリ単位の出力）と marker（管理ブロックの upsert。ファイルは他用途と共有）は
+    ファイル単位の残骸と言えないため対象外とする。
+    """
+    enabled_paths = {out.get("path") for out in enabled_outputs}
+    leftovers = []
+    for out in all_outputs:
+        path = out.get("path")
+        if not path or path in enabled_paths:
+            continue
+        if out.get("mode") in ("split", "marker"):
+            continue
+        if os.path.lexists(os.path.join(work_root, path)):
+            leftovers.append(out)
+    return leftovers
+
+
+def _warn_disabled_feature_leftovers(
+    seed_manifest_path: str,
+    manifest: dict,
+    work_root: str,
+) -> None:
+    """無効化された feature の既存ファイルを WARN で列挙する。削除はしない。"""
+    seed_outputs = genlib.load_manifest(seed_manifest_path).get("outputs") or []
+    leftovers = _disabled_feature_leftovers(
+        seed_outputs, manifest.get("outputs") or [], work_root
+    )
+    if not leftovers:
+        return
+    print(
+        f"WARN: 無効化された feature に属する既存ファイルが {len(leftovers)} 件残っています"
+        "（生成対象から外れただけで、削除はしません。不要なら手動で削除してください）:"
+    )
+    for out in leftovers:
+        feature = out.get("feature")
+        label = ", ".join(feature) if isinstance(feature, list) else feature
+        print(f"  - {out['path']} (feature: {label})")
 
 
 def _apply_derived_budget_thresholds(merged: dict) -> dict:
@@ -985,6 +1062,8 @@ def main(argv=None) -> int:
                 rc = _cleanup_legacy_workflow_triage(manifest)
                 if rc != 0:
                     return rc
+            if args.command == "generate":
+                _warn_disabled_feature_leftovers(args.seed_manifest, manifest, work_root)
             if (
                 args.command == "generate"
                 and not args.skip_host_update

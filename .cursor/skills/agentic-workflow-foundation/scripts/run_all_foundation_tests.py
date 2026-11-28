@@ -36,6 +36,7 @@ TESTS_IN_ORDER = [
     "test_domain_docs_gate.py",
     "test_genlib_literal_render.py",
     "test_apply_kit_init.py",
+    "test_gen_skills_resolution.py",
     "test_github_auth_runtime.py",
     "test_tech_contract.py",
     "test_contract_state.py",
