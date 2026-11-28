@@ -6,19 +6,14 @@
 """
 from __future__ import annotations
 
-import os
 import re
-import stat
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 N_A_RE = re.compile(r"^\s*(?:[-*]\s*)?該当なし:[ \t]*(?P<reason>.+?)\s*$", re.MULTILINE)
-FRAGMENT_RE = re.compile(r"#L(\d+)(?:-L(\d+))?$")
 PIPE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
 MIN_N_A_REASON_CHARS = 20
-MAX_READ_BYTES = 4 * 1024 * 1024
 
 
 class QualityError(Exception):
@@ -160,43 +155,6 @@ def _has_element(kind: str, masked_body: Sequence[str], raw: Sequence[str], star
     return False
 
 
-def verify_evidence_ranges(
-    source_root: Path,
-    all_evidence: Sequence[Tuple[str, Optional[str]]],
-) -> None:
-    """全 evidence の行範囲が実ファイルの範囲内にあることを検査する（引用文の内容は検査しない）。"""
-    cache: Dict[str, List[str]] = {}
-
-    def lines_of(path: str) -> List[str]:
-        if path not in cache:
-            full = source_root / path
-            try:
-                metadata = os.lstat(full)
-                if stat.S_ISLNK(metadata.st_mode) or metadata.st_size > MAX_READ_BYTES:
-                    raise QualityError(f"evidence {path} を検査できません（symlink または大きすぎます）")
-                data = full.read_bytes()
-            except OSError as exc:
-                raise QualityError(f"evidence {path} を読み取れません") from exc
-            cache[path] = data.decode("utf-8", errors="replace").split("\n")
-        return cache[path]
-
-    def bounds(path: str, fragment: Optional[str]) -> Tuple[int, int]:
-        lines = lines_of(path)
-        total = len(lines) - (1 if lines and lines[-1] == "" else 0)
-        if fragment is None:
-            return 1, max(total, 1)
-        match = FRAGMENT_RE.search(fragment)
-        assert match is not None
-        first = int(match.group(1))
-        last = int(match.group(2) or match.group(1))
-        if first < 1 or last < first or last > total:
-            raise QualityError(f"evidence {path}{fragment} の行範囲が実ファイルの範囲（1〜{total}）外です")
-        return first, last
-
-    for path, fragment in all_evidence:
-        bounds(path, fragment)
-
-
 def _section_body(masked: Sequence[str], bounds: Tuple[int, int]) -> List[str]:
     return list(masked[bounds[0] : bounds[1]])
 
@@ -206,18 +164,9 @@ def validate_text_quality(
     raw: Sequence[str],
     fenced: Set[int],
     section_ranges: Dict[int, Tuple[int, int]],
-    evidence: Sequence[Tuple[str, int]],
     profile: Profile,
 ) -> None:
-    """text だけで決まる品質の床を検査する。
-
-    evidence は互換のため受け取る。非空なら設計書にトークンが残っている。
-    """
-    if evidence:
-        raise QualityError(
-            "設計書に evidence: は書けません。根拠トークンは置かず、観測した事実を本文に書く"
-        )
-
+    """text だけで決まる品質の床を検査する。evidence: トークンは呼び出し側が先に拒否する。"""
     not_applicable = 0
     confirm_total = 0
     total_chars = 0

@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import re
-import stat
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -20,7 +19,6 @@ if HERE not in sys.path:
 from inspect_local_repository import (  # noqa: E402
     InspectionError,
     RepositoryInspection,
-    _safe_git,
     inspect_repository,
 )
 import document_quality as dq  # noqa: E402
@@ -119,13 +117,6 @@ BINARY_EXTENSIONS = frozenset(
     }
 )
 
-# evidence token の完全な字句規則。引用あり・なしを同じ正規表現で扱う。
-EVIDENCE_TOKEN_RE = re.compile(
-    r"evidence:\s+(?:"
-    r"`(?P<quoted_path>[^\s`;,|)#]+)(?P<quoted_fragment>#L\d+(?:-L\d+)?)?`"
-    r"|(?P<plain_path>[^\s`;,|)#]+)(?P<plain_fragment>#L\d+(?:-L\d+)?)?"
-    r")(?=$|[\s;,|)])"
-)
 DECLARATION_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:\[要確認\]|該当なし):[ \t]*(?P<reason>[^\r\n]*)$")
 PART_RE = re.compile(r"^##\s+Part\s+([1-5])(?:\s*[:：].*)?\s*$")
 SECTION_RE = re.compile(r"^###\s+(\d+)\.\s*(.*)$")
@@ -161,16 +152,11 @@ class Frontmatter:
 
 
 @dataclass(frozen=True)
-class Evidence:
-    path: str
-    fragment: str | None
-    line_number: int
-
-
-@dataclass(frozen=True)
 class ValidationResult:
     frontmatter: Frontmatter
     inspection: RepositoryInspection | None
+    # evidence: トークンは本文に置けない（_reject_evidence_tokens が拒否する）ため常に 0。
+    # review_counts / CLI 出力 / 既存テストの署名互換のためだけに残している。
     evidence_count: int
 
 
@@ -431,24 +417,6 @@ def _reject_evidence_tokens(lines: Sequence[str]) -> None:
             )
 
 
-def _extract_evidence(masked: Sequence[str]) -> List[Evidence]:
-    evidence: List[Evidence] = []
-    for line_number, line in enumerate(masked, start=1):
-        cursor = 0
-        while True:
-            marker = line.find("evidence:", cursor)
-            if marker < 0:
-                break
-            match = EVIDENCE_TOKEN_RE.match(line, marker)
-            if match is None:
-                raise ValidationError(f"evidence の書式が不正です（line {line_number}）")
-            path = match.group("quoted_path") or match.group("plain_path")
-            fragment = match.group("quoted_fragment") or match.group("plain_fragment")
-            evidence.append(Evidence(path, fragment, line_number))
-            cursor = match.end()
-    return evidence
-
-
 def _reject_legacy_ledger_references(masked: Sequence[str]) -> None:
     for line_number, line in enumerate(masked, start=1):
         if LEGACY_LEDGER_REF_RE.search(line):
@@ -528,23 +496,6 @@ def _validate_section9(
             raise ValidationError("§9 のバージョン方針列が契約外です")
 
 
-def _tracked_files(source_root: Path) -> Set[str]:
-    try:
-        result = _safe_git(
-            source_root,
-            ["ls-files", "-z"],
-            git_executable="git",
-            env=None,
-        )
-    except InspectionError as exc:
-        raise ValidationError("source root の tracked files を取得できません", 2) from exc
-    return {
-        item.decode("utf-8", errors="surrogateescape")
-        for item in result.stdout.split(b"\0")
-        if item
-    }
-
-
 def _is_excluded(path: PurePosixPath) -> bool:
     parts = path.parts
     if any(part in EXCLUDED_DIR_NAMES for part in parts[:-1]):
@@ -563,48 +514,6 @@ def _is_excluded(path: PurePosixPath) -> bool:
 def is_excluded_evidence_path(path: PurePosixPath) -> bool:
     """survey など他 helper が同じ除外規則を共有するための公開入口。"""
     return _is_excluded(path)
-
-
-def _validate_evidence_path_syntax(evidence: Sequence[Evidence]) -> None:
-    for item in evidence:
-        value = item.path
-        if (
-            not value
-            or "\x00" in value
-            or "\\" in value
-            or value.startswith(("/", "~"))
-            or re.match(r"^[A-Za-z]:", value)
-        ):
-            raise ValidationError("evidence は安全な相対 POSIX path 必須です")
-        pure = PurePosixPath(value)
-        if pure.is_absolute() or ".." in pure.parts or "." in pure.parts or _is_excluded(pure):
-            raise ValidationError("evidence path が許可範囲外です")
-
-
-def _validate_evidence_files(
-    evidence: Sequence[Evidence],
-    source_root: Path,
-    tracked: Set[str],
-) -> None:
-    root_real = os.path.realpath(source_root)
-    for item in evidence:
-        value = item.path
-        pure = PurePosixPath(value)
-        if value not in tracked:
-            raise ValidationError("evidence は tracked file との完全一致が必要です")
-        current = source_root
-        try:
-            for component in pure.parts:
-                current = current / component
-                metadata = os.lstat(current)
-                if stat.S_ISLNK(metadata.st_mode):
-                    raise ValidationError("evidence の経路に symlink を使用できません")
-        except OSError as exc:
-            raise ValidationError("evidence file を安全に参照できません") from exc
-        if os.path.commonpath((root_real, os.path.realpath(current))) != root_real:
-            raise ValidationError("evidence file が source root 外です")
-        if not stat.S_ISREG(os.lstat(current).st_mode):
-            raise ValidationError("evidence は通常ファイル必須です")
 
 
 def _validate_provenance(frontmatter: Frontmatter, inspection: RepositoryInspection) -> None:
@@ -645,7 +554,7 @@ def review_counts(text: str) -> Tuple[int, int, int, int]:
         sum(1 for line in masked if "宣言:" in line),
         sum(line.count("[要確認]") for line in masked),
         sum(1 for line in masked if "該当なし:" in line),
-        len(_extract_evidence(masked)),
+        0,  # evidence: は本文に置けないため常に 0（署名互換のため残す）
     )
 
 
@@ -665,20 +574,17 @@ def validate_text(
     section_lines = _validate_structure(masked, frontmatter.end_line)
     section_ranges = _body_ranges(masked, section_lines)
     _reject_legacy_ledger_references(masked)
-    evidence = _extract_evidence(masked)
-    _validate_evidence_path_syntax(evidence)
     _validate_bodies(masked, section_ranges)
     _validate_section9(lines, section_ranges, fenced_lines)
 
-    evidence_positions = [(item.path, item.line_number - 1) for item in evidence]
     if quality and syntax_only:
         selected = dq.select_profile("standard" if profile == "auto" else profile, None)
         try:
-            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, evidence_positions, selected)
+            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, selected)
         except dq.QualityError as exc:
             raise ValidationError(str(exc)) from exc
     if syntax_only:
-        return ValidationResult(frontmatter, None, len(evidence))
+        return ValidationResult(frontmatter, None, 0)
     if source_root is None:
         raise ValidationError("--source-root は必須です", 2)
     if quality and survey_dir is None:
@@ -689,8 +595,6 @@ def validate_text(
         raise ValidationError(str(exc), exc.code) from exc
     _validate_provenance(frontmatter, inspection)
     _validate_non_inclusion(text, inspection)
-    tracked = _tracked_files(Path(source_root))
-    _validate_evidence_files(evidence, Path(source_root), tracked)
     if quality:
         assert survey_dir is not None
         try:
@@ -701,12 +605,11 @@ def validate_text(
             raise ValidationError("survey の inventory.json を読み取れません（survey を先に実行してください）", 2) from exc
         selected = dq.select_profile(profile, stats["readable"])
         try:
-            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, evidence_positions, selected)
-            dq.verify_evidence_ranges(Path(source_root), [(item.path, item.fragment) for item in evidence])
+            dq.validate_text_quality(masked, lines, fenced_lines, section_ranges, selected)
             dq.validate_coverage_line(masked, survey_dir, source_root)
         except dq.QualityError as exc:
             raise ValidationError(str(exc)) from exc
-    return ValidationResult(frontmatter, inspection, len(evidence))
+    return ValidationResult(frontmatter, inspection, 0)
 
 
 def validate_bytes(

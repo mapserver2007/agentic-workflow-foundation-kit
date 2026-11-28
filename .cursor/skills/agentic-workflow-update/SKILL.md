@@ -1,10 +1,10 @@
 ---
 name: agentic-workflow-update
 description: >
-  foundation/engineをvendorしないconsumerアプリへ、publicな
-  agentic-workflow-foundation-kit の生成成果物を安全に適用する。
+  consumerアプリへ、publicな agentic-workflow-foundation-kit の
+  kit本体（updaterを除く）と生成成果物を安全に適用する。
   固定URLからkitを取得し、アプリ固有のmanifest overlayで一時生成・監査した後、
-  計画全体の承認とpreimage再検証を経て生成成果物とlockだけを適用する。
+  計画全体の承認とpreimage再検証を経て、kit本体のミラー同期、生成成果物、lockを適用する。
   Use when - 「kit をインストール」「kit を更新」「kit-update」等の指示。
   Do NOT use for - 通常の基盤生成、Domain docs の更新、アプリコードの変更、PR/commit。
 disable-model-invocation: true
@@ -12,9 +12,11 @@ disable-model-invocation: true
 
 # agentic-workflow-update — consumer
 
-foundation/engineを対象アプリへ保持しないconsumerアプリへ、kitの生成成果物を反映する更新専用スキル。
+consumerアプリへ、kit本体（foundation / engine / technology-stack-unified-design / upstream design docs）を
+cloneとの直接比較でミラー同期し、生成成果物を反映する更新専用スキル。
+適用後は、対象アプリ内のfoundationで再生成差分がゼロ（`check`）であることを確認する。
 
-このスキルは対象アプリへvendorされない。kitのcloneに含まれる最新版を、
+このスキル自身（`agentic-workflow-update`）は対象アプリへ同期しない。kitのcloneに含まれる最新版を、
 適用成功後にホスト個人スキルへ原子的に配置する。
 
 ## 不変条件
@@ -26,12 +28,18 @@ foundation/engineを対象アプリへ保持しないconsumerアプリへ、kit�
   updater所有markerを確認して一時rootを削除する。
 - root `manifest.yaml` はfetch前に検証する。欠落・不正形式は `KU-OVERLAY-001` / exit 2で停止する。
 - 承認前に対象アプリへ書き込まない。
-- root `manifest.yaml`、Domain docs、ADR/GOTCHAS、reports、seed、アプリコード、foundation/engine、upstream design docsは適用対象外。
-- `.cursor/agentic-workflow-update.lock.yaml` はupdaterの生成状態であり、計画全体の承認後に生成成果物と同時に適用する。
-- lockなし初回adoptではorphan、rename、削除を推測しない。
-- orphan または rename がある plan は、`retirement` が `delete` または `keep` のときだけ apply できる。未指定では apply しない。
+- kit本体（`KIT_BODY_ROOTS`: foundation / engine / technology-stack-unified-design / upstream design docs 2本）は、
+  kit cloneとの直接比較でミラー同期する。cloneに無いファイルは削除対象になる。
+  `__pycache__` と `*.pyc` は比較に含めない。symlinkと通常ファイルでないものは `KU-KITBODY-001` で拒否する。
+- root `manifest.yaml`、`init.yaml`、技術ブループリント、Domain docs、ADR/GOTCHAS、reports、seed、アプリコードは適用対象外。
+- `.cursor/agentic-workflow-update.lock.yaml` はupdaterの生成状態であり、計画全体の承認後に生成成果物と同時に適用する。lockはv1のまま、kit本体は記録しない。
+- lockなし初回adoptでは、生成成果物のorphan、rename、削除を推測しない。kit本体と `mode: split` の出力は、lockに依らずミラーで削除候補を決める。
+- orphan、rename、kit本体またはsplitの削除候補がある plan は、`retirement` が指定されたときだけ apply できる。未指定では apply しない。
+  kit本体とsplitの削除は `retirement=delete` のときだけ実行する。`keep` ではミラーが収束しないため `KU-ORPHAN-001` で停止する。
 - preimage不一致、未承認の計画はapplyしない。
-- updater自身を対象アプリの `.cursor/skills/` や Git履歴へ配置しない。
+- updater自身（`.cursor/skills/agentic-workflow-update`）は対象アプリへ同期も削除もしない。対象アプリに既にあるときは plan の `warnings` に出す。
+- 適用後の検証は、対象アプリ内のfoundationの `run_resolved_engine.py check` だけを実行する。`generate` は実行しない
+  （manifest移行、legacy cleanup、host配置は承認計画の対象外）。
 - 自動 commit / push はしない。
 
 更新責務の詳細は [README.md](README.md) を参照する。
@@ -54,15 +62,20 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
 
 1. fetch前にoverlayの存在・形式を検証し、アプリ直下の `manifest.yaml` と同一パスまたは同一 sha256 であることを確認する。
 2. 固定public URLから plan 固有一時rootの `kit/` へcloneする。
-3. 対象アプリを同一rootの `work/` へコピーする。同一内容の別パスを渡したときは、そのバイト列を一時 `work/manifest.yaml` へコピーする。アプリ直下の `manifest.yaml` は変更しない。
+3. 対象アプリを同一rootの `work/` へコピーし、`work/` のkit本体ルートをcloneと同じ内容に置き換える（updaterは除く）。同一内容の別パスを渡したときは、そのバイト列を一時 `work/manifest.yaml` へコピーする。アプリ直下の `manifest.yaml` は変更しない。
 4. clone版のseed/engineと対象overlayから resolved manifestを作り、一時作業ツリーで生成・check・auditを実行する。
    consumer の audit は `--skip-seed-required-sections` を指定する。denylist または
    `mode: seed` の既存ファイル（ADR / GOTCHAS / Domain docs / skill config）は
    適用・再生成せず、ファイルの存在だけを確認する。render / marker の drift と
    required_sections、seed の不在、未知の mode、テンプレート不在、描画失敗は検査対象に残る。
 5. 対象アプリの `bin/quality-gate verify` を一時作業ツリーで実行する。
-6. resolved output catalogと既存lockを比較し、生成成果物の差分とlock候補だけをplanへ出す。
-7. foundation/engine、upstream design docs、root manifest、Domain docs、アプリコードは変更候補に含めない。
+6. 次の3つを、それぞれの所有者を基準に比較して plan へ出す。
+   - kit本体: **cloneと対象アプリを直接比較**する（add / update / delete、モードビット含む）。`work/` は比較に使わない。
+   - `mode: split` の出力（`docs/tech-stack.md` と `docs/tech-stack/`）: **`work/` で生成した結果と対象アプリを比較**する。
+     splitの正本は対象アプリ自身の技術ブループリントであり、cloneとは比較しない。
+     出力ディレクトリに下位ディレクトリやsymlinkがあるとengineが止まり、plan の失敗として表面化する。
+   - render / marker: resolved output catalogと既存lockを比較する。lock候補もここで出す。
+7. root manifest、Domain docs、アプリコードは変更候補に含めない。plan の schema は v2（change の `kind` に `kit_body` と `split` を追加）で、lockは v1 のまま。
 
 ### 初回利用時の host updater bootstrap
 
@@ -84,7 +97,8 @@ python3 /tmp/agentic-workflow-foundation-kit/.cursor/skills/agentic-workflow-fou
 host updater が更新されたことを確認してから、対象アプリで `plan` を実行する。
 `apply` は plan が成功した後の更新経路なので、host updater の bootstrap 手段には使わない。
 
-orphan または rename がある場合は、計画全体の承認の前に delete か keep を選ぶ。
+orphan、rename、またはkit本体・splitの削除候補がある場合は、計画全体の承認の前に delete か keep を選ぶ。
+kit本体とsplitの削除候補がある plan では、`keep` を選べない（`delete` のときだけ plan が通る）。
 エージェント実行時は AskQuestion で選ばせ、選んだ値で plan を作り直す。
 CLI を直接実行するときは、次のどちらかを付けて plan する。
 
@@ -95,7 +109,9 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py plan \
   --plan-file /tmp/kit-update-plan.json
 ```
 
-`delete` は lock に記録されていた旧生成ファイルを削除する。rename では旧パスだけを削除し、新しいパスは通常の追加または更新として残す。`keep` はファイルを残し、新しい lock の管理から外す。`seed` のドメイン文書、lock に入ったことのないアプリ独自ファイル、保護対象は削除しない。`apply` は plan 内の `retirement` だけを使い、別フラグでは上書きできない。
+`delete` は lock に記録されていた旧生成ファイルを削除する。rename では旧パスだけを削除し、新しいパスは通常の追加または更新として残す。さらに、kit本体のルート配下でcloneに無いファイルと、splitの出力ディレクトリで生成結果に無いファイルを削除する（lockに入ったことがなくても削除する。ルートはkit専有・engine専有のため）。
+`keep` はファイルを残し、新しい lock の管理から外す。ただしkit本体とsplitの削除候補には使えない。
+`seed` のドメイン文書、lock に入ったことのないアプリ独自ファイル（kit本体とsplitのルート外）、保護対象は削除しない。`apply` は plan 内の `retirement` だけを使い、別フラグでは上書きできない。
 
 表示された計画全体の `plan_digest` と差分を確認し、POの計画全体承認を得る。
 ファイル単位の部分承認・部分適用は行わない。
@@ -113,9 +129,13 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
 `apply` は計画digest、kit revision、overlay preimage、候補ファイル、対象アプリの
 preimage、保護対象digestを再検証する。不一致時は `KU-PREIMAGE-001` で停止し、
 対象アプリへ書かない。
-適用対象は生成されたrender/marker成果物と `.cursor/agentic-workflow-update.lock.yaml` だけである。
-ファイル適用、application quality gate、host 個人スキルへの updater 配置は一つのトランザクションである。
-いずれかが例外で失敗した場合は、アプリと host を適用前へ戻す。
+適用対象は、kit本体、生成されたrender/marker成果物、splitの出力、`.cursor/agentic-workflow-update.lock.yaml` だけである。
+kit本体の候補はcloneから直接読む（cloneのrevisionは plan と一致することを検証済み）。
+
+ファイル適用、適用後 `check`、application quality gate、host 個人スキルへの updater 配置は一つのトランザクションである。
+適用後 `check` は、対象アプリ内のfoundationの `run_resolved_engine.py check`（`PYTHONDONTWRITEBYTECODE=1`）を実行し、
+再生成差分がゼロであることを確認する。`check` はhost配置より前に走るため、失敗時はアプリだけを適用前へ戻し、hostは未変更のままである。
+host配置などが例外で失敗した場合は、アプリと host を適用前へ戻す。
 
 ## 生成経路
 
@@ -132,15 +152,19 @@ python3 <plan-temp-root>/kit/.cursor/skills/agentic-workflow-foundation/scripts/
 kit updater は plan ごとにこの work root を割り当て、dry-run中の個人updater自己更新を防ぐ。
 foundation/engineとupstream design docsは生成依存としてclone側から読み、
 テンプレートから展開された候補は plan 固有の `work/` にのみ書かれる。
+`work/` のkit本体はcloneと同一バイトなので、生成物は適用後の対象アプリ内で生成した結果と一致する。
+ただし副作用（manifest移行、legacy cleanup、host配置）は `work_root == ROOT` の `generate` だけが実行し、この経路では実行されない。
+これらは承認計画の対象外で、updaterは実行しない。
 
 ## 検査 ID
 
 - `KU-OVERLAY-001`: fetch前にoverlayを検証し、アプリの manifest と違う外部ファイルを拒否した
-- `KU-SCOPE-001`: 生成成果物とlockだけが適用対象になった
+- `KU-SCOPE-001`: 適用対象が、kit本体・生成成果物・split・lockの範囲に収まった
+- `KU-KITBODY-001`: kit本体の同期範囲違反を拒否した（updater混入、ルート外パス、symlink、cloneのルート欠落、生成物とkit本体の重なり）
 - `KU-PREIMAGE-001`: 承認後の対象変更を検出して無変更で停止した
-- `KU-ORPHAN-001`: orphan / rename を検出し、delete または keep が計画に含まれるときだけ解消した
+- `KU-ORPHAN-001`: orphan / rename / kit本体・splitの削除候補を検出し、delete（kit本体とsplitは delete のみ）が計画に含まれるときだけ解消した
 - `KU-DENY-001`: denylist のバイト列が不変だった
-- `KU-HOST-001`: 個人スキルがホストに配置され、対象アプリには存在しなかった
+- `KU-HOST-001`: 個人スキルがホストに配置された。対象アプリにupdaterが既にあるときは、触らず plan の `warnings` に警告する
 
 ## 失敗時
 

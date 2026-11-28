@@ -112,8 +112,8 @@ _preflight() {
   "$ROOT_DIR/bin/project-setup" --preflight
 }
 {{else}}
-# foundation.enabled: false — foundation/engine を vendor しない構成。
-# contract status と provisioning preflight は foundation scripts に依存するため
+# foundation.enabled: false — 基盤保守ゲートを生成しない構成（kit 本体は kit updater が同期する）。
+# contract status と provisioning preflight は基盤保守側の実行に依存するため
 # この構成では実行せず、承認済み backend argv だけを実行する。
 _contract_status() {
   return 0

@@ -342,6 +342,7 @@ class EvidenceContractTests(FixtureCase):
     def document_with_section1(self, declaration: str) -> str:
         return make_document(self.inspection, declarations={1: declaration})
 
+    # evidence: トークンは書式・参照先にかかわらず本文に置けない（パス実在検査は持たない）。
     def test_token_terminators_and_fragments(self) -> None:
         rejected = (
             "evidence: tracked.txt 説明",
@@ -361,77 +362,6 @@ class EvidenceContractTests(FixtureCase):
         for declaration in rejected:
             with self.subTest(declaration=declaration):
                 self.assert_invalid(self.document_with_section1(declaration))
-
-    def test_tracked_exact_names_non_ascii_and_pathspec_magic(self) -> None:
-        for name in ("*", ":(top)", "証跡.txt"):
-            (self.repo / name).write_text(name, encoding="utf-8")
-        commit(self.repo, "pathspec names")
-        self.inspection = inspect_mod.inspect_repository(os.fspath(self.repo))
-        for name in ("*", "証跡.txt"):
-            with self.subTest(name=name):
-                self.assert_invalid(self.document_with_section1(f"evidence: `{name}`"))
-        # `)` は v1 token の終端なので文書には書けないが、tracked 判定自体が
-        # pathspec を渡さない完全一致 set であることは内部契約を直接固定する。
-        tracked = validate_mod._tracked_files(self.repo)
-        validate_mod._validate_evidence_files(
-            [validate_mod.Evidence(":(top)", None, 1)],
-            self.repo,
-            tracked,
-        )
-
-    def test_missing_absolute_parent_directory_untracked_and_excluded(self) -> None:
-        (self.repo / "untracked.txt").write_text("x", encoding="utf-8")
-        (self.repo / ".env").write_text("SECRET=x", encoding="utf-8")
-        directory = self.repo / "folder"
-        directory.mkdir()
-        cases = (
-            "missing.txt",
-            "/etc/hosts",
-            "../tracked.txt",
-            "folder",
-            "untracked.txt",
-            ".env",
-        )
-        for value in cases:
-            with self.subTest(value=value):
-                self.assert_invalid(
-                    self.document_with_section1(f"evidence: `{value}`"),
-                    syntax_only=False,
-                )
-
-    def test_symlink_evidence_is_rejected(self) -> None:
-        link = self.repo / "linked.txt"
-        link.symlink_to("tracked.txt")
-        commit(self.repo, "symlink")
-        self.inspection = inspect_mod.inspect_repository(os.fspath(self.repo))
-        self.assert_invalid(
-            self.document_with_section1("evidence: linked.txt"),
-            syntax_only=False,
-        )
-
-    def test_intermediate_symlink_evidence_is_rejected(self) -> None:
-        external = self.base / "external-evidence"
-        external.mkdir()
-        (external / "nested.txt").write_text("outside\n", encoding="utf-8")
-        (self.repo / "linked-dir").symlink_to(external, target_is_directory=True)
-        with self.assertRaises(validate_mod.ValidationError):
-            validate_mod._validate_evidence_files(
-                [validate_mod.Evidence("linked-dir/nested.txt", None, 1)],
-                self.repo,
-                {"linked-dir/nested.txt"},
-            )
-
-    def test_ignored_file_is_rejected(self) -> None:
-        (self.repo / ".gitignore").write_text("*.ignored\n", encoding="utf-8")
-        commit(self.repo, "ignore fixture")
-        ignored = self.repo / "secret.ignored"
-        ignored.write_text("ignored\n", encoding="utf-8")
-        self.assertEqual(git(self.repo, "check-ignore", "secret.ignored").strip(), b"secret.ignored")
-        self.inspection = inspect_mod.inspect_repository(os.fspath(self.repo))
-        self.assert_invalid(
-            self.document_with_section1("evidence: secret.ignored"),
-            syntax_only=False,
-        )
 
     def test_validator_sanitizes_git_environment_and_fsmonitor(self) -> None:
         marker = self.base / "validator-fsmonitor-ran"

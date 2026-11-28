@@ -803,9 +803,25 @@ def _run_worker_contract_validator(
         return 2
 
 
-def _install_update_skill(destination_root: str | None = None) -> int:
-    """kit 内の updater 正本を個人スキルへ原子的に配置する。"""
+def _install_update_skill(
+    destination_root: str | None = None,
+    *,
+    skip_if_source_absent: bool = False,
+) -> int:
+    """kit 内の updater 正本を個人スキルへ原子的に配置する。
+
+    skip_if_source_absent=True のとき、updater 正本が ROOT に無ければ配置を省略して 0 を返す。
+    updater は host 個人スキルとして配置する前提で、kit 本体を同期した対象アプリには
+    置かれない。その対象アプリ内の generate が、生成後に配置失敗で exit 2 にならないようにする。
+    配置先を明示した呼び出し（--update-skill-home）は、正本が無ければ従来どおり失敗させる。
+    """
     source = Path(os.path.dirname(SKILL_DIR)) / "agentic-workflow-update"
+    if skip_if_source_absent and not source.is_dir():
+        print(
+            "[KU-HOST-001] SKIP: updater 正本が無いため個人スキルの配置を省略します: "
+            f"{source}"
+        )
+        return 0
     update_scripts = source / "scripts"
     if str(update_scripts) not in sys.path:
         sys.path.insert(0, str(update_scripts))
@@ -974,7 +990,10 @@ def main(argv=None) -> int:
                 and not args.skip_host_update
                 and (work_root == ROOT or args.update_skill_home is not None)
             ):
-                rc = _install_update_skill(args.update_skill_home)
+                rc = _install_update_skill(
+                    args.update_skill_home,
+                    skip_if_source_absent=args.update_skill_home is None,
+                )
                 if rc != 0:
                     return rc
             return 0

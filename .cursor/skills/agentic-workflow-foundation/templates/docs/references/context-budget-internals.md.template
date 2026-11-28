@@ -42,7 +42,7 @@ summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運
 {{#if foundation.enabled}}
 閾値を変更する場合は `project.context_budget.min_context_window_tokens` を更新し、`python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.py generate` と `audit` を実行する。`framework.budget_thresholds` の直接編集は生成に使われない。Hook スクリプトを直接編集すると audit で drift として検出される。
 {{else}}
-閾値を変更する場合は root `manifest.yaml` の overlay（`project.context_budget.min_context_window_tokens`）を更新し、kit updater（`agentic-workflow-update`）の plan → 計画全体承認 → apply で再生成する。Hook スクリプトを直接編集しない。本リポジトリは foundation scripts を保持しないため、`generate` / `audit` は実行しない。
+閾値を変更する場合は root `manifest.yaml` の overlay（`project.context_budget.min_context_window_tokens`）を更新し、kit updater（`agentic-workflow-update`）の plan → 計画全体承認 → apply で再生成する。Hook スクリプトを直接編集しない。kit 本体（foundation / engine など）は kit updater が同期し、再生成後の確認（check）も updater の apply が実行するため、本リポジトリで `generate` / `audit` を手動実行しない。
 {{/if}}
 
 ## 閾値の決定根拠
@@ -55,7 +55,7 @@ summary の上限は 1 イベントあたり最大 1000 UTF-8 bytes の暫定運
 {{#if foundation.enabled}}
 | 算出スクリプト | `.cursor/skills/agentic-workflow-foundation/scripts/resolve_budget_thresholds.py` |
 {{else}}
-| 算出スクリプト | kit 内 `resolve_budget_thresholds.py`（本リポジトリには保持しない。updater の generate 時に実行される） |
+| 算出スクリプト | kit 内 `resolve_budget_thresholds.py`（kit 本体として kit updater が同期する。updater の plan 時の生成で実行される） |
 {{/if}}
 | 算出フェーズ | Phase 1.55（Phase 1.5 直後、Phase 1.65 の前） |
 

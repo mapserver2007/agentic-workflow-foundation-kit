@@ -267,7 +267,7 @@ Cursor では対象プロジェクトで「Agentic 基盤を生成して」「�
 初回導入と継続更新は別の操作です。更新専用スキルの正本
 `.cursor/skills/agentic-workflow-update/` は
 `~/.cursor/skills/agentic-workflow-update/` へ原子的に配置されます。更新専用スキル自体は
-対象アプリへ vendor しません。
+対象アプリへ同期しません（kit 本体のうち、updater だけがホスト個人スキル専用です）。
 
 初回利用時は、clone に root manifest がある場合は throwaway work root へ生成し、
 host updater だけを更新します。公開 clone のように root manifest がない場合は
@@ -309,24 +309,34 @@ python3 ~/.cursor/skills/agentic-workflow-update/scripts/kit_update.py apply \
   --approve-plan <plan_digest>
 ```
 
-同期対象はアプリ overlay から再生成された render / marker 成果物と lock だけです。
-foundation / engine / upstream design docs は適用しません。`init.yaml`、root
-`manifest.yaml`、技術スタック設計書、`docs/spec/**`、ADR / GOTCHAS、reports、
-seed、アプリコードは保護されます。orphan / rename は plan の `retirement` が
-`delete` または `keep` のときだけ、計画全体の承認後に解消します。ただし `mode: split` の
-索引（`docs/tech-stack.md`）は orphan にしません。以前の kit では同じパスが `render` で、
-旧 lock に残っていても、所有が render から split へ移っただけだからです。split の出力
-（`docs/tech-stack.md` と `docs/tech-stack/`）は updater の対象外なので、更新後は対象アプリ側で
-`generate` を実行して生成してください。未指定、allowlist
-外の差分、preimage 不一致、生成・監査・quality gate の失敗は自動解決せず、適用を停止します。
-ファイル適用、quality gate、host 配置は一つのトランザクションです。いずれかが例外で失敗した場合は、
-同期済みファイルと host 個人スキルを適用前へ戻します。プロセスが強制終了された場合は復元されず、
+同期対象は次の3つと lock です。
+
+- **kit 本体**（foundation / engine / `technology-stack-unified-design` / upstream design docs 2 本）:
+  kit の clone と対象アプリを直接比較してミラーします。clone に無いファイルは削除対象です。
+  updater（`agentic-workflow-update`）自身は同期しません。
+- **アプリ overlay から再生成された render / marker 成果物**: 従来どおり lock と比較します。
+- **`mode: split` の出力**（`docs/tech-stack.md` と `docs/tech-stack/`）: 対象アプリのブループリントから
+  生成した結果と比較します。kit の clone とは比較しません。
+
+`init.yaml`、root `manifest.yaml`、技術スタック設計書、`docs/spec/**`、ADR / GOTCHAS、reports、
+seed、アプリコードは保護されます。orphan / rename、kit 本体と split の削除候補は、
+plan の `retirement` が指定されたときだけ、計画全体の承認後に解消します。kit 本体と split の
+削除は `delete` のときだけ実行し、`keep` は使えません（ミラーが収束しないため）。
+`mode: split` の索引（`docs/tech-stack.md`）は orphan にしません。以前の kit では同じパスが
+`render` で、旧 lock に残っていても、所有が render から split へ移っただけだからです。
+
+適用後は、対象アプリ内の foundation で `run_resolved_engine.py check` を実行し、再生成差分が
+ゼロであることを確認します（`generate` は実行しません）。未指定、allowlist外の差分、
+preimage 不一致、生成・監査・`check`・quality gate の失敗は自動解決せず、適用を停止します。
+ファイル適用、`check`、quality gate、host 配置は一つのトランザクションです。いずれかが例外で
+失敗した場合は、同期済みファイルと host 個人スキルを適用前へ戻します（`check` は host 配置より
+前に走るため、`check` が失敗しても host は未変更です）。プロセスが強制終了された場合は復元されず、
 同期済みファイルや host 個人スキルに混在状態が残ります。次回の apply は preimage 不一致で停止します。
 自動 commit / push は行いません。
 
 更新時の検査 ID は `KU-OVERLAY-001`（アプリ overlay）、`KU-SCOPE-001`
-（所有範囲）、`KU-PREIMAGE-001`（承認後変更）、`KU-ORPHAN-001`
-（削除・rename・orphan）、`KU-DENY-001`（seed / denylist 保護）、
+（所有範囲）、`KU-KITBODY-001`（kit 本体の同期範囲）、`KU-PREIMAGE-001`（承認後変更）、
+`KU-ORPHAN-001`（削除・rename・orphan）、`KU-DENY-001`（seed / denylist 保護）、
 `KU-LOCK-001`（lock 構造）、`KU-HOST-001`（ホスト個人スキル配置）です。
 
 ## 手動実行
