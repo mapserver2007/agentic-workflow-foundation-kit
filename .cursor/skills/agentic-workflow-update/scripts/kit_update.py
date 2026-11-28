@@ -31,7 +31,10 @@ from host_install import (  # noqa: E402
 )
 
 
-SCHEMA_VERSION = 1
+# plan の schema（kit_body / split の change kind と warnings を追加した v2）。
+# plan は同一版の updater が生成して消費する一時ファイルなので、版は plan だけを上げる。
+# lock は旧版 host updater が v2 を読めないため v1 のまま据え置く。
+SCHEMA_VERSION = 2
 LOCK_SCHEMA_VERSION = 1
 LOCK_PATH = Path(".cursor/agentic-workflow-update.lock.yaml")
 DEFAULT_CLONE_ROOT = Path("/tmp/agentic-workflow-foundation-kit")
@@ -64,12 +67,23 @@ DENY_PREFIXES = (
     Path("docs/agent-tasks/reports"),
     Path("docs/agent-tasks/reviews"),
 )
-NON_APPLY_PREFIXES = (
+# kit 本体: clone との直接比較でミラー同期する（上書きと、clone に無いファイルの削除）。
+# 生成物（render / marker / split）はここに置けない。
+KIT_BODY_ROOTS = (
     Path(".cursor/skills/agentic-workflow-foundation"),
     Path(".cursor/skills/agentic-workflow-engine"),
+    Path(".cursor/skills/technology-stack-unified-design"),
     Path(".cursor/docs/AI_AGENT_UNIFIED_DESIGN.md"),
     Path(".cursor/docs/AI_BUSINESS_AGENT_SUITE.md"),
 )
+# 同期も削除もしない（host 個人スキルとして配置する前提。対象アプリには置かない）。
+EXCLUDED = (
+    Path(".cursor/skills/agentic-workflow-update"),
+)
+FOUNDATION_ROOT = Path(".cursor/skills/agentic-workflow-foundation")
+POST_APPLY_RUNNER = FOUNDATION_ROOT / "scripts/run_resolved_engine.py"
+IGNORED_DIR_NAMES = {"__pycache__"}
+IGNORED_SUFFIXES = (".pyc",)
 
 
 class UpdateError(RuntimeError):
@@ -297,8 +311,10 @@ def _catalog_from_manifest(manifest: dict[str, Any]) -> dict[Path, dict[str, Any
         if mode not in {"render", "marker"}:
             continue
         rel = _safe_rel(output["path"])
-        if any(rel == prefix or prefix in rel.parents for prefix in NON_APPLY_PREFIXES):
-            raise FatalUpdateError(f"KU-SCOPE-001: kit source を output catalog に含められません: {rel}")
+        if _in_roots(rel, KIT_BODY_ROOTS + EXCLUDED):
+            raise FatalUpdateError(
+                f"KU-KITBODY-001: kit 本体の範囲を output catalog に含められません: {rel}"
+            )
         if rel == LOCK_PATH:
             raise FatalUpdateError(f"KU-SCOPE-001: lock path を output catalog に含められません: {rel}")
         result[rel] = {"path": str(rel), "mode": mode}
@@ -360,8 +376,10 @@ def _prepare_work_tree(
         shutil.copy2(overlay_path, target)
 
 
-def _run(command: list[str], cwd: Path) -> None:
-    result = subprocess.run(command, cwd=str(cwd), capture_output=True, text=True)
+def _run(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> None:
+    result = subprocess.run(
+        command, cwd=str(cwd), capture_output=True, text=True, env=env
+    )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip().splitlines()
         summary = detail[-1] if detail else "出力なし"
@@ -482,11 +500,208 @@ def _is_protected_path(relative: Path, protected: Iterable[Path]) -> bool:
     return any(relative == prefix or prefix in relative.parents for prefix in protected)
 
 
+def _in_roots(relative: Path, roots: Iterable[Path]) -> bool:
+    return any(relative == root or root in relative.parents for root in roots)
+
+
+def _is_ignored_name(name: str) -> bool:
+    return name in IGNORED_DIR_NAMES or name.endswith(IGNORED_SUFFIXES)
+
+
+def _collect_files(base: Path, root: Path) -> dict[Path, Path]:
+    """base 配下の root（ファイルまたはディレクトリ）に含まれる通常ファイルを集める。
+
+    戻り値は base からの相対パス → 絶対パス。`__pycache__` と `*.pyc` は無視する。
+    symlink と通常ファイルでないものは KU-KITBODY-001 で拒否する。
+    """
+    start = base / root
+    if not os.path.lexists(start):
+        return {}
+    if start.is_symlink():
+        raise UpdateError(f"KU-KITBODY-001: symlink は同期できません: {root}")
+    if start.is_file():
+        return {root: start}
+    if not start.is_dir():
+        raise UpdateError(f"KU-KITBODY-001: 通常ファイルでもディレクトリでもありません: {root}")
+    result: dict[Path, Path] = {}
+    for current, dir_names, file_names in os.walk(start, followlinks=False):
+        dir_names[:] = sorted(name for name in dir_names if not _is_ignored_name(name))
+        current_path = Path(current)
+        for name in list(dir_names):
+            if (current_path / name).is_symlink():
+                raise UpdateError(
+                    "KU-KITBODY-001: symlink は同期できません: "
+                    f"{(current_path / name).relative_to(base)}"
+                )
+        for name in sorted(file_names):
+            if _is_ignored_name(name):
+                continue
+            path = current_path / name
+            if path.is_symlink() or not path.is_file():
+                raise UpdateError(
+                    "KU-KITBODY-001: symlink または通常ファイルでないものは同期できません: "
+                    f"{path.relative_to(base)}"
+                )
+            result[path.relative_to(base)] = path
+    return result
+
+
+def _mirror_kit_body(clone_root: Path, work_root: Path, roots: Iterable[Path]) -> None:
+    """work の kit 本体ルートを clone と同じ内容に置き換える（生成入力を apply 後と揃える）。"""
+    for root in roots:
+        source = clone_root / root
+        if not os.path.lexists(source):
+            raise FatalUpdateError(f"KU-KITBODY-001: clone に kit 本体のルートがありません: {root}")
+        destination = _safe_target(work_root, root)
+        if destination.is_symlink():
+            raise UpdateError(f"KU-KITBODY-001: work の kit 本体が symlink です: {root}")
+        if destination.is_dir():
+            shutil.rmtree(destination)
+        elif destination.exists():
+            destination.unlink()
+        files = _collect_files(clone_root, root)
+        for relative, path in files.items():
+            target = work_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
+def _file_change(
+    app_root: Path,
+    relative: Path,
+    candidate: Path,
+    *,
+    kind: str,
+) -> dict[str, Any] | None:
+    """candidate と app の現在の状態が同じなら None、違えば add / update の change を返す。"""
+    target = _safe_target(app_root, relative)
+    current = _current_file_state(app_root, relative)
+    candidate_state = {"sha256": _sha256(candidate), "mode": _mode(candidate)}
+    if current == candidate_state:
+        return None
+    return {
+        "path": str(relative),
+        "kind": kind,
+        "mode": kind,
+        "candidate_path": str(candidate),
+        "candidate_sha256": candidate_state["sha256"],
+        "candidate_mode": candidate_state["mode"],
+        "preimage_sha256": current["sha256"],
+        "preimage_mode": current["mode"],
+        "action": "add" if not target.exists() else "update",
+    }
+
+
+def _delete_change(app_root: Path, relative: Path, *, kind: str) -> dict[str, Any]:
+    current = _current_file_state(app_root, relative)
+    return {
+        "path": str(relative),
+        "kind": kind,
+        "mode": kind,
+        "action": "delete",
+        "candidate_path": "",
+        "candidate_sha256": "",
+        "candidate_mode": None,
+        "preimage_sha256": current["sha256"],
+        "preimage_mode": current["mode"],
+    }
+
+
+def _kit_body_changes(
+    app_root: Path,
+    clone_root: Path,
+    roots: Iterable[Path],
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    """kit 本体を clone と app で直接比較する。戻り値は (add / update の change, 削除候補)。
+
+    work は比較に使わない。clone に無い app 側のファイルは削除候補になる（ミラー）。
+    """
+    changes: list[dict[str, Any]] = []
+    removed: list[Path] = []
+    for root in roots:
+        if _in_roots(root, EXCLUDED):
+            raise FatalUpdateError(f"KU-KITBODY-001: updater は kit 本体として同期できません: {root}")
+        if not os.path.lexists(clone_root / root):
+            raise FatalUpdateError(f"KU-KITBODY-001: clone に kit 本体のルートがありません: {root}")
+        source_files = _collect_files(clone_root, root)
+        if not source_files:
+            raise FatalUpdateError(f"KU-KITBODY-001: clone の kit 本体が空です: {root}")
+        for relative, path in source_files.items():
+            record = _file_change(app_root, relative, path, kind="kit_body")
+            if record is not None:
+                changes.append(record)
+        for relative in _collect_files(app_root, root):
+            if relative not in source_files:
+                removed.append(relative)
+    return changes, sorted(set(removed))
+
+
+def _split_specs(manifest: dict[str, Any]) -> list[tuple[Path, Path]]:
+    """resolved manifest の `mode: split` 出力（出力ディレクトリ, 索引）を返す。"""
+    specs: list[tuple[Path, Path]] = []
+    for output in manifest.get("outputs") or []:
+        if (
+            isinstance(output, dict)
+            and output.get("mode") == "split"
+            and isinstance(output.get("path"), str)
+            and isinstance(output.get("index_path"), str)
+        ):
+            directory = _safe_rel(output["path"].rstrip("/"))
+            specs.append((directory, _safe_rel(output["index_path"])))
+    return specs
+
+
+def _split_changes(
+    app_root: Path,
+    work_root: Path,
+    specs: Iterable[tuple[Path, Path]],
+) -> tuple[list[dict[str, Any]], list[Path], list[str]]:
+    """split 出力を、work で生成した結果と app で比較する。
+
+    split の正本は対象アプリ自身のブループリントであり、kit の clone とは比較しない。
+    work に出力ディレクトリが無いとき（生成していないとき）は、その split を比較しない。
+    戻り値は (add / update の change, 削除候補, split のルート一覧)。
+    """
+    changes: list[dict[str, Any]] = []
+    removed: list[Path] = []
+    roots: list[str] = []
+    for directory, index in specs:
+        roots.extend([str(directory), str(index)])
+        work_dir = _safe_target(work_root, directory)
+        if work_dir.is_dir() and not work_dir.is_symlink():
+            produced: set[str] = set()
+            for entry in sorted(work_dir.iterdir()):
+                if entry.is_symlink() or not entry.is_file():
+                    raise UpdateError(
+                        f"KU-KITBODY-001: split 出力に通常ファイルでないものがあります: {directory / entry.name}"
+                    )
+                produced.add(entry.name)
+                record = _file_change(app_root, directory / entry.name, entry, kind="split")
+                if record is not None:
+                    changes.append(record)
+            app_dir = _safe_target(app_root, directory)
+            if app_dir.is_dir():
+                for entry in sorted(app_dir.iterdir()):
+                    if entry.is_symlink() or not entry.is_file():
+                        raise UpdateError(
+                            "KU-KITBODY-001: split 出力ディレクトリに通常ファイルでないものがあります: "
+                            f"{directory / entry.name}"
+                        )
+                    if entry.name not in produced:
+                        removed.append(directory / entry.name)
+        work_index = _safe_target(work_root, index)
+        if work_index.is_file() and not work_index.is_symlink():
+            record = _file_change(app_root, index, work_index, kind="split")
+            if record is not None:
+                changes.append(record)
+    return changes, sorted(set(removed)), roots
+
+
 def _protected_paths(old_outputs: dict[Path, dict[str, Any]],
                      new_outputs: dict[Path, dict[str, Any]],
                      seed_paths: Iterable[Path] = ()) -> set[Path]:
     paths = set(DENY_EXACT)
-    paths.update(NON_APPLY_PREFIXES)
+    paths.update(EXCLUDED)
     paths.update(seed_paths)
     for prefix in DENY_PREFIXES:
         paths.add(prefix)
@@ -525,8 +740,8 @@ def _load_lock(app_root: Path, kit_root: Path) -> dict[str, Any] | None:
         digest = item.get("sha256")
         if mode not in {"render", "marker"} or not isinstance(digest, str):
             raise FatalUpdateError(f"KU-LOCK-001: lock catalog item が不正です: {rel}")
-        if any(rel == prefix or prefix in rel.parents for prefix in NON_APPLY_PREFIXES):
-            raise FatalUpdateError(f"KU-LOCK-001: kit source を lock に記録できません: {rel}")
+        if _in_roots(rel, KIT_BODY_ROOTS + EXCLUDED):
+            raise FatalUpdateError(f"KU-LOCK-001: kit 本体の範囲を lock に記録できません: {rel}")
         if rel in catalog:
             raise FatalUpdateError(f"KU-LOCK-001: lock catalog に重複があります: {rel}")
         catalog[rel] = {"path": str(rel), "mode": mode, "sha256": digest}
@@ -712,11 +927,16 @@ def _build_plan(
     kit_revision: str = "",
     ephemeral_root: Path | None = None,
     retirement: str | None = None,
+    kit_body_roots: Iterable[Path] | None = None,
 ) -> dict[str, Any]:
     app_root = app_root.resolve()
     clone_root = clone_root.resolve()
     work_root = work_root.resolve()
     overlay_path = overlay_path.resolve()
+    roots = tuple(_safe_rel(root) for root in (KIT_BODY_ROOTS if kit_body_roots is None else kit_body_roots))
+    for root in roots:
+        if not _in_roots(root, KIT_BODY_ROOTS) or _in_roots(root, EXCLUDED):
+            raise FatalUpdateError(f"KU-KITBODY-001: 同期できる kit 本体の範囲ではありません: {root}")
     _preflight_overlay(overlay_path)
     _assert_overlay_matches_app_manifest(app_root, overlay_path)
     if overlay_path == (clone_root / "manifest.yaml").resolve():
@@ -727,6 +947,7 @@ def _build_plan(
         raise FatalUpdateError("KU-SCOPE-001: kit revision がありません")
     if validate:
         _prepare_work_tree(app_root, overlay_path, work_root)
+        _mirror_kit_body(clone_root, work_root, roots)
         resolved_manifest = _run_candidate_validation(clone_root, work_root)
     else:
         if not work_root.is_dir():
@@ -748,21 +969,47 @@ def _build_plan(
         app_root, work_root, old_catalog, new_catalog,
         transferred=_split_index_paths(resolved_manifest),
     )
-    has_retirement_targets = bool(output_orphans or rename_candidates)
+    kit_body_changes, kit_body_removed = _kit_body_changes(app_root, clone_root, roots)
+    split_specs = _split_specs(resolved_manifest)
+    split_changes, split_removed, split_roots = _split_changes(app_root, work_root, split_specs)
+    for relative in [Path(change["path"]) for change in split_changes] + split_removed:
+        if _in_roots(relative, KIT_BODY_ROOTS + EXCLUDED):
+            raise FatalUpdateError(
+                f"KU-KITBODY-001: split 出力が kit 本体の範囲にあります: {relative}"
+            )
+    has_retirement_targets = bool(
+        output_orphans or rename_candidates or kit_body_removed or split_removed
+    )
     if retirement and not has_retirement_targets:
         raise FatalUpdateError("KU-ORPHAN-001: 解消対象がないのに retirement が指定されています")
     protected = _protected_paths(old_catalog, new_catalog, seed_paths)
     retirement_denied: list[Path] = []
     extra_deletes: list[dict[str, Any]] = []
-    if retirement == "delete" and has_retirement_targets:
+    if retirement == "delete" and (output_orphans or rename_candidates):
         extra_deletes, retirement_denied = _orphan_delete_changes(
             app_root, output_orphans, old_catalog, protected
+        )
+    mirror_deletes: list[dict[str, Any]] = []
+    if retirement == "delete":
+        mirror_deletes.extend(
+            _delete_change(app_root, relative, kind="kit_body") for relative in kit_body_removed
+        )
+        mirror_deletes.extend(
+            _delete_change(app_root, relative, kind="split") for relative in split_removed
         )
     lock_change = _lock_change_record(app_root, work_root)
     changes = list(output_changes)
     changes.extend(extra_deletes)
+    changes.extend(kit_body_changes)
+    changes.extend(split_changes)
+    changes.extend(mirror_deletes)
     if lock_change is not None:
         changes.append(lock_change)
+    warnings = [
+        f"KU-HOST-001: 対象アプリに updater があります。同期も削除もしません: {path}"
+        for path in EXCLUDED
+        if os.path.lexists(app_root / path)
+    ]
     plan: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "app_root": str(app_root),
@@ -788,11 +1035,20 @@ def _build_plan(
             {"old": str(old), "new": str(new)}
             for old, new in rename_candidates
         ],
+        "kit_body_roots": [str(root) for root in roots],
+        "kit_body_removed": [str(path) for path in kit_body_removed],
+        "split_roots": split_roots,
+        "split_removed": [str(path) for path in split_removed],
+        "post_apply_check": FOUNDATION_ROOT in roots,
+        "warnings": warnings,
         "protected": _snapshot_protected(app_root, protected),
         "retirement": retirement,
         "blocking_issues": [],
     }
     if (plan["orphan"] or plan["rename_candidates"]) and retirement is None:
+        plan["blocking_issues"].append("KU-ORPHAN-001")
+    # kit 本体と split の削除はミラーで決まるため、keep（lock から外す）では収束しない。
+    if (plan["kit_body_removed"] or plan["split_removed"]) and retirement != "delete":
         plan["blocking_issues"].append("KU-ORPHAN-001")
     if retirement_denied:
         plan["blocking_issues"].append("KU-DENY-001")
@@ -869,12 +1125,20 @@ def _validate_plan(plan: dict[str, Any], app_root: Path, approved: str) -> None:
         if not isinstance(change, dict):
             raise FatalUpdateError("KU-PREIMAGE-001: plan change が mapping ではありません")
         _validate_change_scope(change)
+    _validate_plan_roots(plan, changes)
     retirement = plan.get("retirement", None)
     if retirement not in (None, "delete", "keep"):
         raise FatalUpdateError("KU-ORPHAN-001: retirement は delete または keep です")
-    needs_retirement = bool(plan.get("orphan") or plan.get("rename_candidates"))
+    mirror_removed = bool(plan.get("kit_body_removed") or plan.get("split_removed"))
+    needs_retirement = bool(
+        plan.get("orphan") or plan.get("rename_candidates") or mirror_removed
+    )
     if needs_retirement and retirement not in ("delete", "keep"):
         raise UpdateError("KU-ORPHAN-001: retirement が未指定です")
+    if mirror_removed and retirement != "delete":
+        raise UpdateError(
+            "KU-ORPHAN-001: kit 本体と split の削除は retirement=delete のときだけ適用できます"
+        )
     if retirement and not needs_retirement:
         raise FatalUpdateError("KU-ORPHAN-001: 解消対象がないのに retirement が指定されています")
     if plan.get("blocking_issues"):
@@ -891,18 +1155,47 @@ def _validate_change_scope(change: dict[str, Any]) -> None:
         if relative != LOCK_PATH:
             raise UpdateError(f"KU-SCOPE-001: 不正な lock 適用先です: {relative}")
         return
-    if kind != "generated":
+    if kind not in {"generated", "kit_body", "split"}:
         raise UpdateError(f"KU-SCOPE-001: 不正な変更種別です: {kind}")
-    if any(
-        relative == prefix or prefix in relative.parents
-        for prefix in tuple(DENY_EXACT) + DENY_PREFIXES
-    ):
+    if _in_roots(relative, tuple(DENY_EXACT) + DENY_PREFIXES):
         raise UpdateError(f"KU-DENY-001: 保護対象は適用できません: {relative}")
-    if any(
-        relative == prefix or prefix in relative.parents
-        for prefix in NON_APPLY_PREFIXES
-    ):
-        raise UpdateError(f"KU-SCOPE-001: kit source は適用できません: {relative}")
+    if _in_roots(relative, EXCLUDED):
+        raise UpdateError(f"KU-KITBODY-001: updater は対象アプリへ適用できません: {relative}")
+    if kind == "kit_body":
+        if not _in_roots(relative, KIT_BODY_ROOTS):
+            raise UpdateError(f"KU-KITBODY-001: kit 本体の範囲外は適用できません: {relative}")
+    elif _in_roots(relative, KIT_BODY_ROOTS):
+        raise UpdateError(
+            f"KU-KITBODY-001: 生成物は kit 本体の範囲へ適用できません: {relative}"
+        )
+
+
+def _validate_plan_roots(plan: dict[str, Any], changes: list[Any]) -> None:
+    """kit_body / split の change が、plan に記録されたルートの内側にあることを検査する。"""
+    raw_roots = plan.get("kit_body_roots")
+    raw_split = plan.get("split_roots")
+    if not isinstance(raw_roots, list) or not isinstance(raw_split, list):
+        raise FatalUpdateError("KU-KITBODY-001: plan の kit_body_roots / split_roots が配列ではありません")
+    kit_roots = tuple(_safe_rel(root) for root in raw_roots)
+    for root in kit_roots:
+        if not _in_roots(root, KIT_BODY_ROOTS) or _in_roots(root, EXCLUDED):
+            raise UpdateError(f"KU-KITBODY-001: 同期できる kit 本体の範囲ではありません: {root}")
+    split_roots = tuple(_safe_rel(root) for root in raw_split)
+    for change in changes:
+        relative = _safe_rel(change["path"])
+        kind = change.get("kind")
+        if kind == "kit_body" and not _in_roots(relative, kit_roots):
+            raise UpdateError(f"KU-KITBODY-001: plan の kit 本体ルート外です: {relative}")
+        if kind == "split" and not _in_roots(relative, split_roots):
+            raise UpdateError(f"KU-KITBODY-001: plan の split ルート外です: {relative}")
+    for key in ("kit_body_removed", "split_removed"):
+        removed = plan.get(key)
+        if not isinstance(removed, list):
+            raise FatalUpdateError(f"KU-KITBODY-001: plan の {key} が配列ではありません")
+        roots = kit_roots if key == "kit_body_removed" else split_roots
+        for item in removed:
+            if not _in_roots(_safe_rel(item), roots):
+                raise UpdateError(f"KU-KITBODY-001: plan のルート外の削除です: {item}")
 
 
 def _rollback_applied(
@@ -981,7 +1274,12 @@ def _apply_plan(plan: dict[str, Any]) -> list[tuple[Path, bytes | None, int | No
                     target.unlink()
                 continue
             candidate = Path(change["candidate_path"])
-            candidate_roots = (Path(plan["work_root"]).resolve(),)
+            # kit 本体の candidate は clone から直接読む（revision は plan と一致を検証済み）。
+            # それ以外（生成物・split・lock）は plan 固有の work から読む。
+            if change.get("kind") == "kit_body":
+                candidate_roots = (Path(plan["clone_root"]).resolve(),)
+            else:
+                candidate_roots = (Path(plan["work_root"]).resolve(),)
             candidate_root = None
             candidate_relative = None
             for root in candidate_roots:
@@ -1099,13 +1397,32 @@ def _restore_host_after_failure(host_result: HostInstallResult | None) -> str | 
     return None
 
 
+def _run_post_apply_check(app_root: Path) -> None:
+    """適用後の対象アプリ内の foundation で `check` を実行し、再生成差分ゼロを確認する。
+
+    `generate` は実行しない（manifest 移行・legacy cleanup・host 配置は承認計画の対象外）。
+    kit 本体に `__pycache__` を残さないため、バイトコードを書かない。
+    """
+    runner = _safe_target(app_root, POST_APPLY_RUNNER)
+    if not runner.is_file():
+        raise UpdateError(
+            f"KU-KITBODY-001: 適用後の foundation の runner がありません: {POST_APPLY_RUNNER}"
+        )
+    env = dict(os.environ)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    _run([sys.executable, str(runner), "check"], app_root, env=env)
+
+
 def _apply_transaction(plan: dict[str, Any]) -> None:
-    """アプリ適用、quality gate、host 配置を一つのトランザクションとして実行する。"""
+    """アプリ適用、適用後 check、quality gate、host 配置を一つのトランザクションとして実行する。"""
     app_root = Path(plan["app_root"]).resolve()
     applied = _apply_plan(plan)
     host_result: HostInstallResult | None = None
     commit_preserved = False
     try:
+        # check は host 配置より前に走る。失敗時は app を戻し、host は未変更のまま。
+        if plan.get("post_apply_check"):
+            _run_post_apply_check(app_root)
         _run_application_validation(
             app_root,
             Path(plan["clone_root"]).resolve(),

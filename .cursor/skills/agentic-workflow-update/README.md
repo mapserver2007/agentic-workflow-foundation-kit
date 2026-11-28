@@ -9,7 +9,18 @@
 - `render`: ファイル全体を再生成結果で置き換えます。人間の直接編集は次回 apply で消えます。変更は seed manifest、templates、root `manifest.yaml`、承認済み `tech_contract` を更新して再生成します。
 - `marker`: `marker_id` の管理ブロックだけを upsert します。ブロック外の既存内容は残します。
 
-適用カタログに入るのは `render` と `marker`、および `.cursor/agentic-workflow-update.lock.yaml` です。
+適用カタログ（lock に記録するもの）に入るのは `render` と `marker`、および `.cursor/agentic-workflow-update.lock.yaml` です。
+
+次の2つは lock に記録せず、updater がミラーで適用します。
+
+- **kit 本体**: kit の clone と対象アプリを直接比較し、上書きと、clone に無いファイルの削除を行います。対象は `.cursor/skills/agentic-workflow-foundation/`、`.cursor/skills/agentic-workflow-engine/`、`.cursor/skills/technology-stack-unified-design/`、`.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md`、`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` です。`__pycache__` と `*.pyc` は比較しません。
+- **`mode: split` の出力**: 対象アプリ自身のブループリントから生成した結果（plan の一時作業ツリー）と比較し、追加・更新・削除を行います。kit の clone とは比較しません。
+
+`agentic-workflow-update` 自身は、ホスト個人スキルとして配置する前提なので、対象アプリへ同期も削除もしません。対象アプリに既にあるときは、plan の `warnings` に出すだけです。
+
+kit 本体と split の削除は、plan に表示し、`retirement=delete` の承認があるときだけ実行します。`keep` はミラーが収束しないため使えません。
+
+適用後は、対象アプリ内の foundation で `run_resolved_engine.py check` を実行し、再生成差分がゼロであることを確認します（`generate` は実行しません）。
 
 ## 人間が維持する
 
@@ -24,7 +35,9 @@
 | スキル設定（seed） | `campaign-cleanup` / `workflow-orchestrator` / `deep-thinking` / `requirement-analysis` / `agent-kaizen` の `config.yaml`、`cross-repository-knowledge-link/config.json` | 初回生成後のモデルや閾値を人間が編集する | 適用しない。denylist でバイト列を保護する |
 | キュー（seed / denylist） | `docs/agent-tasks/reports/**`、`docs/agent-tasks/reviews/**`、`docs/agent-tasks/maintenance-docs/.gitkeep` | キャンペーン成果物と起票を人間が維持する | `reports/**` と `reviews/**` は denylist。`maintenance-docs/.gitkeep` は seed で、既存なら適用しない |
 | Meta / 生成物（render） | `docs/QUALITY_GATE.md`、`docs/CONTEXT_BUDGET.md`、`docs/AGENT_RUNBOOK.md`、`docs/references/context-budget-internals.md`、`docs/agent-tasks/agent-workflow/**`、`.cursor/skills/domain-docs/SKILL.md`、`.cursor/skills/campaign-cleanup/SKILL.md`、`bin/quality-gate`、`bin/foundation-gate`、`bin/project-setup`、`.cursor/hooks/session-progress-emitter.sh` | 直接編集は drift。次回生成で消える | テンプレートから上書きする |
-| Domain 名でも split | `docs/tech-stack.md`、`docs/tech-stack/` | 直接編集しない。ブループリントの正本を更新して `generate` で再生成する（`mode: split` は updater の対象外） | 触れない（consumer 側の `generate` が生成する）。以前の `render` として lock に残る `docs/tech-stack.md` は、所有が split へ移っただけなので orphan にしない |
+| Domain 名でも split | `docs/tech-stack.md`、`docs/tech-stack/` | 直接編集しない。ブループリントの正本（`.cursor/docs/<設計書名>`）を更新して、updater の plan → apply で反映する | 対象アプリのブループリントから生成した結果と比較して、追加・更新・削除する。以前の `render` として lock に残る `docs/tech-stack.md` は、所有が split へ移っただけなので orphan にしない |
+| kit 本体 | `.cursor/skills/agentic-workflow-foundation/**`、`.cursor/skills/agentic-workflow-engine/**`、`.cursor/skills/technology-stack-unified-design/**`、`.cursor/docs/AI_AGENT_UNIFIED_DESIGN.md`、`.cursor/docs/AI_BUSINESS_AGENT_SUITE.md` | 直接編集しない（次回の更新で上書き・削除される） | kit の clone と直接比較してミラーする。削除は `retirement=delete` のときだけ |
+| updater 自身 | `.cursor/skills/agentic-workflow-update/**` | 対象アプリには置かない（ホスト個人スキル） | 同期も削除もしない。対象アプリにあれば `warnings` に出す |
 
 ## 境界
 
@@ -33,4 +46,6 @@
 - `docs/spec/**`、`docs/agent-tasks/reports/**`、`docs/agent-tasks/reviews/**` は denylist です。`reviews/.gitkeep` は `code_review.enabled: true` のときだけ seed で作られます。`maintenance-docs/.gitkeep` と `maintenance-docs/archives/.gitkeep` は `agent_workflow.maintenance_docs.enabled: true` のとき seed です。
 - `.cursor/skills/domain-docs/SKILL.md` と `.cursor/skills/campaign-cleanup/SKILL.md`、`campaign-cleanup.sh` は render です。`campaign-cleanup/config.yaml` は seed かつ denylist です。
 - `bin/quality-gate` は常時の render です。`bin/foundation-gate` と `bin/project-setup` は `foundation.enabled: true` のときだけ render されます。
+- `foundation.enabled` は変更しません（`manifest.yaml` は保護対象）。このフラグは `bin/foundation-gate` と `bin/project-setup` の生成、および `bin/quality-gate` の contract 検査分岐だけを制御します。kit 本体が対象アプリにあっても、`foundation.enabled: false` の `bin/quality-gate` の挙動は変わりません。
+- root `manifest.yaml` の `framework:` の同期（bootstrap）は updater の対象外です。root に `framework.accd_axes` を持つ場合、root の値が seed の値より優先されます。
 - consumer updater の audit は `--skip-seed-required-sections` により、既存 seed の必須見出しを要求しません。kit 自身の `bin/foundation-gate audit` は seed の `required_sections` を検査します。

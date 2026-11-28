@@ -253,7 +253,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress
 python3 .cursor/skills/agentic-workflow-foundation/scripts/test_session_progress_append.py
 ```
 {{else}}
-Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は kit 側の `bin/foundation-gate scripts` が機械テストする。本リポジトリは foundation/engine を保持しないため、ローカルでは Cursor Settings > Hooks の発火確認に留める。
+Hook の deny / ask / allow、fail-open / fail-closed を含む回帰は kit 側の `bin/foundation-gate scripts` が機械テストする。本リポジトリは `foundation.enabled: false` で基盤保守ゲートを持たないため、ローカルでは Cursor Settings > Hooks の発火確認に留める（kit 本体は kit updater が同期する）。
 {{/if}}
 
 {{#if agent_workflow.gate_scripts}}review-start 境界のスモーク:
@@ -302,7 +302,7 @@ Hook ではない明示実行 helper を追加する際は以下を確認する�
 {{#if foundation.enabled}}
 6. [ ] `test_session_progress_append.py` が PASS する
 {{else}}
-6. [ ] kit 側で `test_session_progress_append.py` が PASS することを確認した（本リポジトリでは foundation scripts を実行しない）
+6. [ ] kit 側で `test_session_progress_append.py` が PASS することを確認した（本リポジトリでは基盤保守ゲートを持たないため、テストは kit 側で実行する）
 {{/if}}
 
 ## Cursor 統合確認

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """foundation.enabled: false の consumer 構成で実行可能生成物が foundation scripts に依存しないことを検査。
 
-consumer（foundation/engine を vendor しない構成）では
+consumer（foundation.enabled: false）では、基盤保守ゲート（bin/foundation-gate / bin/project-setup）を
+生成しない。kit 本体は kit updater が同期するが、初回の更新前や updater 未導入の consumer では
 .cursor/skills/agentic-workflow-foundation/scripts/ が存在しない。
 executable な生成物がこのパスを無条件に参照すると、生成直後に gate が exit 2 で落ちる。
+この検査は、kit 本体が無い consumer を守るため、同期後も維持する。
 """
 from __future__ import annotations
 

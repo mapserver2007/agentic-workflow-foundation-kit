@@ -226,7 +226,13 @@ def _plan(
     *,
     overlay: Path | None = None,
     retirement: str | None = None,
+    kit_body_roots: tuple[Path, ...] = (),
 ) -> dict:
+    """既定は kit 本体の同期を無効（空のルート）にする。
+
+    fixture の clone は実物の foundation scripts / engine scripts / updater を持つだけで、
+    kit 本体の全ルートを備えない。kit 本体を検査するテストだけが、ルートを明示する。
+    """
     return UPDATE._build_plan(
         app,
         clone,
@@ -235,7 +241,30 @@ def _plan(
         validate=False,
         kit_revision=_revision(clone),
         retirement=retirement,
+        kit_body_roots=kit_body_roots,
     )
+
+
+ENGINE_SCRIPTS = Path(".cursor/skills/agentic-workflow-engine/scripts")
+FOUNDATION_SKILL = Path(".cursor/skills/agentic-workflow-foundation")
+UPDATER_SKILL = Path(".cursor/skills/agentic-workflow-update")
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
+    shutil.copytree(
+        source,
+        destination,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+
+
+def _read_tree(root: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+    }
 
 
 def test_public_fetch_contract() -> None:
@@ -248,25 +277,46 @@ def test_public_fetch_contract() -> None:
     assert "credential.helper=" in content
 
 
-def test_consumer_plan_and_apply_exclude_kit_sources() -> None:
+def test_consumer_plan_and_apply_sync_kit_body_except_updater() -> None:
     app, clone, work, temp = _fixture()
     try:
-        plan = _plan(app, clone, work)
+        roots = (FOUNDATION_SKILL, Path(".cursor/skills/agentic-workflow-engine"))
+        plan = _plan(app, clone, work, kit_body_roots=roots)
         paths = {item["path"] for item in plan["changes"]}
         assert "AGENTS.md" in paths
         assert ".gitignore" in paths
         assert ".cursor/agentic-workflow-update.lock.yaml" in paths
-        assert not any(path.startswith(".cursor/skills/agentic-workflow-") for path in paths)
-        assert not any(path.startswith(".cursor/docs/AI_") for path in paths)
+        kit_paths = {item["path"] for item in plan["changes"] if item["kind"] == "kit_body"}
+        assert f"{FOUNDATION_SKILL}/scripts/run_resolved_engine.py" in kit_paths
+        assert f"{ENGINE_SCRIPTS}/genlib.py" in kit_paths
+        assert not any(path.startswith(str(UPDATER_SKILL)) for path in paths)
         assert plan["baseline"] == "adopt"
+        assert plan["post_apply_check"] is True
+        assert plan["schema_version"] == 2
         assert not plan["blocking_issues"], plan
         UPDATE._validate_plan(plan, app, plan["plan_digest"])
         UPDATE._apply_plan(plan)
         assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
         assert (app / ".cursor/agentic-workflow-update.lock.yaml").is_file()
-        assert not (app / ".cursor/skills/agentic-workflow-foundation").exists()
-        assert not (app / ".cursor/skills/agentic-workflow-engine").exists()
+        assert _read_tree(app / FOUNDATION_SKILL) == _read_tree(clone / FOUNDATION_SKILL)
+        assert _read_tree(app / ".cursor/skills/agentic-workflow-engine") == _read_tree(
+            clone / ".cursor/skills/agentic-workflow-engine"
+        )
+        assert not (app / UPDATER_SKILL).exists()
         UPDATE._run_application_validation(app, clone, app / "manifest.yaml")
+    finally:
+        temp.cleanup()
+
+
+def test_empty_kit_body_roots_leave_kit_body_untouched() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        plan = _plan(app, clone, work)
+        assert plan["kit_body_roots"] == []
+        assert plan["post_apply_check"] is False
+        assert not any(item["kind"] == "kit_body" for item in plan["changes"])
+        UPDATE._apply_plan(plan)
+        assert not (app / FOUNDATION_SKILL).exists()
     finally:
         temp.cleanup()
 
@@ -1236,11 +1286,18 @@ def test_transaction_success_commits_app_and_host() -> None:
         temp.cleanup()
 
 
-def test_skill_contract_excludes_vendor_flow() -> None:
+def test_skill_contract_mirrors_kit_body_except_updater() -> None:
     content = SKILL_FILE.read_text(encoding="utf-8")
     assert "固定public URL" in content
     assert "並置 kit の `origin`" not in content
-    assert "foundation/engine" in content
+    assert "foundation / engine" in content
+    assert "KIT_BODY_ROOTS" in content
+    assert "cloneとの直接比較" in content
+    assert "KU-KITBODY-001" in content
+    assert "retirement=delete" in content
+    assert "run_resolved_engine.py check" in content
+    assert "agentic-workflow-update" in content
+    assert "foundation/engineをvendorしない" not in content
     assert ".cursor/agentic-workflow-update.lock.yaml" in content
     assert "--root-manifest" in content
     assert "--retire" in content
@@ -1262,6 +1319,10 @@ def test_skill_contract_excludes_vendor_flow() -> None:
     assert "--kit-root" not in update_section
     assert "bin/foundation-gate generate" not in update_section
     assert "対象アプリへ配置" not in update_section
+    assert "対象アプリへ vendor しません" not in update_section
+    assert "KU-KITBODY-001" in update_section
+    assert "kit 本体" in update_section
+    assert "run_resolved_engine.py check" in update_section
     assert "--update-skill-home" in update_section
 
 
@@ -1372,10 +1433,495 @@ def test_fresh_clone_bootstrap_installs_host_updater() -> None:
         assert (host / "agentic-workflow-update/SKILL.md").is_file()
 
 
+def _tamper_plan(plan: dict) -> dict:
+    plan["plan_digest"] = UPDATE._plan_digest(plan)
+    return plan
+
+
+def _prepare_engine_app(app: Path, clone: Path) -> Path:
+    """app の engine scripts を clone と同じにしたうえで、add / update / delete / mode の差を作る。"""
+    _copy_tree(clone / ENGINE_SCRIPTS, app / ENGINE_SCRIPTS)
+    scripts = app / ENGINE_SCRIPTS
+    (scripts / "genlib.py").write_text("local-edit\n", encoding="utf-8")
+    (scripts / "audit.py").unlink()
+    (scripts / "extra.py").write_text("app-only\n", encoding="utf-8")
+    clone_mode = UPDATE._mode(clone / ENGINE_SCRIPTS / "generate.py")
+    (scripts / "generate.py").chmod(0o600 if clone_mode != 0o600 else 0o644)
+    return scripts
+
+
+def test_kit_body_add_update_delete_and_mode() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        scripts = _prepare_engine_app(app, clone)
+        roots = (ENGINE_SCRIPTS,)
+        plan = _plan(app, clone, work, kit_body_roots=roots)
+        kit_changes = {item["path"]: item for item in plan["changes"] if item["kind"] == "kit_body"}
+        assert kit_changes[f"{ENGINE_SCRIPTS}/genlib.py"]["action"] == "update"
+        assert kit_changes[f"{ENGINE_SCRIPTS}/audit.py"]["action"] == "add"
+        assert kit_changes[f"{ENGINE_SCRIPTS}/generate.py"]["action"] == "update"
+        assert f"{ENGINE_SCRIPTS}/extra.py" not in kit_changes
+        assert plan["baseline"] == "adopt"
+        assert plan["kit_body_removed"] == [f"{ENGINE_SCRIPTS}/extra.py"]
+        assert plan["post_apply_check"] is False
+        # 初回 adopt でも、kit 本体の余剰ファイルは計画に出る。未承認では停止する。
+        assert "KU-ORPHAN-001" in plan["blocking_issues"]
+        for retirement in (None, "keep"):
+            blocked = _plan(app, clone, work, retirement=retirement, kit_body_roots=roots)
+            assert "KU-ORPHAN-001" in blocked["blocking_issues"], retirement
+            assert not any(item["action"] == "delete" for item in blocked["changes"])
+        assert (scripts / "extra.py").is_file()
+
+        deleting = _plan(app, clone, work, retirement="delete", kit_body_roots=roots)
+        assert "KU-ORPHAN-001" not in deleting["blocking_issues"], deleting["blocking_issues"]
+        assert any(
+            item["path"] == f"{ENGINE_SCRIPTS}/extra.py"
+            and item["kind"] == "kit_body"
+            and item["action"] == "delete"
+            for item in deleting["changes"]
+        )
+        UPDATE._validate_plan(deleting, app, deleting["plan_digest"])
+        UPDATE._apply_plan(deleting)
+        assert not (scripts / "extra.py").exists()
+        assert _read_tree(scripts) == _read_tree(clone / ENGINE_SCRIPTS)
+        assert UPDATE._mode(scripts / "generate.py") == UPDATE._mode(
+            clone / ENGINE_SCRIPTS / "generate.py"
+        )
+        assert not (app / UPDATER_SKILL).exists()
+    finally:
+        temp.cleanup()
+
+
+def test_kit_body_deletion_without_delete_approval_cannot_apply() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        scripts = _prepare_engine_app(app, clone)
+        plan = _plan(app, clone, work, retirement="keep", kit_body_roots=(ENGINE_SCRIPTS,))
+        plan["blocking_issues"] = []
+        _tamper_plan(plan)
+        try:
+            UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        except UPDATE.UpdateError as exc:
+            assert "KU-ORPHAN-001" in str(exc)
+            assert "retirement=delete" in str(exc)
+        else:
+            raise AssertionError("keep のまま kit 本体の削除が受理された")
+        assert (scripts / "extra.py").is_file()
+    finally:
+        temp.cleanup()
+
+
+def test_kit_body_never_includes_updater_or_outside_roots() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        for bad in (UPDATER_SKILL, Path("docs"), Path(".cursor/docs/APP_DESIGN_BESTPRACTICE.md")):
+            try:
+                _plan(app, clone, work, kit_body_roots=(bad,))
+            except UPDATE.FatalUpdateError as exc:
+                assert "KU-KITBODY-001" in str(exc), bad
+            else:
+                raise AssertionError(f"同期できない範囲が受理された: {bad}")
+        _write(app, f"{UPDATER_SKILL}/SKILL.md", "app-copy\n")
+        plan = _plan(app, clone, work)
+        assert any("KU-HOST-001" in item for item in plan["warnings"]), plan["warnings"]
+        assert not any(item["path"].startswith(str(UPDATER_SKILL)) for item in plan["changes"])
+        UPDATE._apply_plan(plan)
+        assert (app / UPDATER_SKILL / "SKILL.md").read_text(encoding="utf-8") == "app-copy\n"
+        # 改ざんされた plan でも、updater の change は適用できない。
+        tampered = _plan(app, clone, work)
+        tampered["changes"].append({
+            "path": f"{UPDATER_SKILL}/SKILL.md",
+            "kind": "kit_body",
+            "mode": "kit_body",
+            "action": "delete",
+            "candidate_path": "",
+            "candidate_sha256": "",
+            "candidate_mode": None,
+            "preimage_sha256": UPDATE._sha256(app / UPDATER_SKILL / "SKILL.md"),
+            "preimage_mode": UPDATE._mode(app / UPDATER_SKILL / "SKILL.md"),
+        })
+        try:
+            UPDATE._apply_plan(tampered)
+        except UPDATE.UpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("updater を含む plan が適用された")
+        assert (app / UPDATER_SKILL / "SKILL.md").is_file()
+    finally:
+        temp.cleanup()
+
+
+def test_kit_body_catalog_rejects_kit_roots() -> None:
+    for root in (FOUNDATION_SKILL / "x.md", UPDATER_SKILL / "x.md"):
+        try:
+            UPDATE._catalog_from_manifest({"outputs": [{"path": str(root), "mode": "render"}]})
+        except UPDATE.FatalUpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError(f"kit 本体の範囲の出力が catalog に入った: {root}")
+
+
+def test_kit_body_clone_root_missing_is_fatal() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        try:
+            _plan(
+                app,
+                clone,
+                work,
+                kit_body_roots=(Path(".cursor/skills/technology-stack-unified-design"),),
+            )
+        except UPDATE.FatalUpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("clone に無い kit 本体のルートが受理された")
+        assert not (app / ".cursor/skills/technology-stack-unified-design").exists()
+    finally:
+        temp.cleanup()
+
+
+def test_kit_body_ignores_bytecode_and_rejects_symlinks() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        scripts = app / ENGINE_SCRIPTS
+        _copy_tree(clone / ENGINE_SCRIPTS, scripts)
+        (scripts / "__pycache__").mkdir()
+        (scripts / "__pycache__" / "genlib.cpython-311.pyc").write_bytes(b"\x00")
+        (scripts / "stale.pyc").write_bytes(b"\x00")
+        (clone / ENGINE_SCRIPTS / "__pycache__").mkdir()
+        (clone / ENGINE_SCRIPTS / "__pycache__" / "only-clone.pyc").write_bytes(b"\x01")
+        plan = _plan(app, clone, work, kit_body_roots=(ENGINE_SCRIPTS,))
+        assert plan["kit_body_removed"] == []
+        assert not any(item["kind"] == "kit_body" for item in plan["changes"]), plan["changes"]
+        assert not plan["blocking_issues"], plan["blocking_issues"]
+
+        (scripts / "link.py").symlink_to(scripts / "genlib.py")
+        try:
+            _plan(app, clone, work, kit_body_roots=(ENGINE_SCRIPTS,))
+        except UPDATE.UpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("kit 本体の symlink が受理された")
+    finally:
+        temp.cleanup()
+
+
+def test_plan_kit_body_changes_must_stay_inside_plan_roots() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        _prepare_engine_app(app, clone)
+        plan = _plan(app, clone, work, retirement="delete", kit_body_roots=(ENGINE_SCRIPTS,))
+        outside = Path(f"{FOUNDATION_SKILL}/scripts/run_resolved_engine.py")
+        plan["changes"].append({
+            "path": str(outside),
+            "kind": "kit_body",
+            "mode": "kit_body",
+            "action": "add",
+            "candidate_path": str(clone / outside),
+            "candidate_sha256": UPDATE._sha256(clone / outside),
+            "candidate_mode": UPDATE._mode(clone / outside),
+            "preimage_sha256": None,
+            "preimage_mode": None,
+        })
+        _tamper_plan(plan)
+        try:
+            UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        except UPDATE.UpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("plan のルート外の kit_body change が受理された")
+    finally:
+        temp.cleanup()
+
+
+def test_mirror_kit_body_makes_work_equal_to_clone() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        _copy_tree(clone / ENGINE_SCRIPTS, work / ENGINE_SCRIPTS)
+        (work / ENGINE_SCRIPTS / "extra.py").write_text("work-only\n", encoding="utf-8")
+        (work / ENGINE_SCRIPTS / "genlib.py").write_text("stale\n", encoding="utf-8")
+        UPDATE._mirror_kit_body(clone, work, (ENGINE_SCRIPTS,))
+        assert _read_tree(work / ENGINE_SCRIPTS) == _read_tree(clone / ENGINE_SCRIPTS)
+        try:
+            UPDATE._mirror_kit_body(
+                clone, work, (Path(".cursor/skills/technology-stack-unified-design"),)
+            )
+        except UPDATE.FatalUpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("clone に無いルートのミラーが受理された")
+    finally:
+        temp.cleanup()
+
+
+def _split_manifest(outputs: list[tuple[str, str, str | None]]) -> str:
+    return _manifest(outputs) + (
+        '  - path: "docs/tech-stack/"\n'
+        '    template: "docs/tech-stack.md.template"\n'
+        "    mode: split\n"
+        '    index_path: "docs/tech-stack.md"\n'
+    )
+
+
+def _split_fixture() -> tuple[Path, Path, Path, tempfile.TemporaryDirectory[str]]:
+    outputs = [("AGENTS.md", "render", None)]
+    app, clone, work, temp = _fixture(
+        outputs=outputs, candidate_updates={"AGENTS.md": "generated-v2\n"}
+    )
+    _write(clone, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", _split_manifest(outputs))
+    # kit 自身のブループリントから生成された split 出力。対象アプリの比較には使わない。
+    _write(clone, "docs/tech-stack/from-kit.md", "kit-doc\n")
+    _write(clone, "docs/tech-stack.md", "kit-index\n")
+    _write(work, "docs/tech-stack/01-a.md", "A\n")
+    _write(work, "docs/tech-stack/02-b.md", "B\n")
+    _write(work, "docs/tech-stack.md", "app-index-new\n")
+    _write(app, ".cursor/docs/APP_DESIGN_BESTPRACTICE.md", "blueprint\n")
+    _write(app, "docs/tech-stack/02-b.md", "B-old\n")
+    _write(app, "docs/tech-stack/stale.md", "stale\n")
+    _write(app, "docs/tech-stack.md", "app-index-old\n")
+    return app, clone, work, temp
+
+
+def test_split_output_follows_work_result_not_clone() -> None:
+    app, clone, work, temp = _split_fixture()
+    try:
+        plan = _plan(app, clone, work)
+        split = {item["path"]: item for item in plan["changes"] if item["kind"] == "split"}
+        assert split["docs/tech-stack/01-a.md"]["action"] == "add"
+        assert split["docs/tech-stack/02-b.md"]["action"] == "update"
+        assert split["docs/tech-stack.md"]["action"] == "update"
+        assert "docs/tech-stack/from-kit.md" not in split
+        assert plan["split_removed"] == ["docs/tech-stack/stale.md"]
+        assert "KU-ORPHAN-001" in plan["blocking_issues"]
+        assert not any(item["path"].startswith("docs/tech-stack") for item in plan["catalog"])
+        assert plan["orphan"] == []
+
+        keep = _plan(app, clone, work, retirement="keep")
+        assert "KU-ORPHAN-001" in keep["blocking_issues"]
+
+        approved = _plan(app, clone, work, retirement="delete")
+        assert not approved["blocking_issues"], approved["blocking_issues"]
+        UPDATE._validate_plan(approved, app, approved["plan_digest"])
+        UPDATE._apply_plan(approved)
+        assert _read_tree(app / "docs/tech-stack") == {
+            "01-a.md": b"A\n",
+            "02-b.md": b"B\n",
+        }
+        assert (app / "docs/tech-stack.md").read_text(encoding="utf-8") == "app-index-new\n"
+        assert (app / ".cursor/docs/APP_DESIGN_BESTPRACTICE.md").read_text(encoding="utf-8") == "blueprint\n"
+    finally:
+        temp.cleanup()
+
+
+def test_split_output_directory_with_subdirectory_is_a_plan_failure() -> None:
+    app, clone, work, temp = _split_fixture()
+    try:
+        _write(app, "docs/tech-stack/sub/x.md", "nested\n")
+        try:
+            _plan(app, clone, work)
+        except UPDATE.UpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("split 出力ディレクトリの下位ディレクトリが受理された")
+        assert (app / "docs/tech-stack/sub/x.md").is_file()
+    finally:
+        temp.cleanup()
+
+
+def test_split_without_work_output_is_not_compared() -> None:
+    outputs = [("AGENTS.md", "render", None)]
+    app, clone, work, temp = _fixture(
+        outputs=outputs, candidate_updates={"AGENTS.md": "generated-v2\n"}
+    )
+    try:
+        _write(clone, ".cursor/skills/agentic-workflow-foundation/manifest.yaml", _split_manifest(outputs))
+        _write(app, "docs/tech-stack/keep.md", "app\n")
+        plan = _plan(app, clone, work)
+        assert plan["split_removed"] == []
+        assert not any(item["kind"] == "split" for item in plan["changes"])
+    finally:
+        temp.cleanup()
+
+
+def test_plan_schema_v2_and_lock_stays_v1() -> None:
+    assert UPDATE.SCHEMA_VERSION == 2
+    assert UPDATE.LOCK_SCHEMA_VERSION == 1
+    app, clone, work, temp = _fixture()
+    try:
+        plan = _plan(app, clone, work)
+        assert plan["schema_version"] == 2
+        lock = (work / ".cursor/agentic-workflow-update.lock.yaml").read_text(encoding="utf-8")
+        assert lock.startswith("version: 1\n")
+        assert "kit_body" not in lock
+        assert not any(
+            item["path"].startswith(str(FOUNDATION_SKILL)) for item in plan["catalog"]
+        )
+        UPDATE._validate_plan(plan, app, plan["plan_digest"])
+        UPDATE._apply_plan(plan)
+        loaded = UPDATE._load_lock(app, clone)
+        assert loaded is not None and loaded["kit_revision"] == _revision(clone)
+    finally:
+        temp.cleanup()
+
+
+def _write_stub_runner(app: Path) -> None:
+    runner = app / UPDATE.POST_APPLY_RUNNER
+    runner.parent.mkdir(parents=True, exist_ok=True)
+    runner.write_text(
+        "import json, os, sys\n"
+        "with open('seen.json', 'w', encoding='utf-8') as stream:\n"
+        "    json.dump({'argv': sys.argv[1:], 'bytecode': os.environ.get('PYTHONDONTWRITEBYTECODE'),"
+        " 'cwd': os.getcwd()}, stream)\n"
+        "sys.exit(int(os.environ.get('STUB_EXIT', '0')))\n",
+        encoding="utf-8",
+    )
+
+
+def test_post_apply_check_runs_check_only_in_app() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-post-check-") as temp_dir:
+        app = Path(temp_dir) / "app"
+        app.mkdir()
+        try:
+            UPDATE._run_post_apply_check(app)
+        except UPDATE.UpdateError as exc:
+            assert "KU-KITBODY-001" in str(exc)
+        else:
+            raise AssertionError("runner が無いのに post-apply check が成功した")
+        _write_stub_runner(app)
+        UPDATE._run_post_apply_check(app)
+        seen = json.loads((app / "seen.json").read_text(encoding="utf-8"))
+        assert seen["argv"] == ["check"], seen
+        assert seen["bytecode"] == "1", seen
+        assert Path(seen["cwd"]).resolve() == app.resolve(), seen
+        for exit_code, expected in (("1", 1), ("2", 2)):
+            with patch.dict(os.environ, {"STUB_EXIT": exit_code}):
+                try:
+                    UPDATE._run_post_apply_check(app)
+                except UPDATE.CommandUpdateError as exc:
+                    assert exc.exit_code == expected
+                else:
+                    raise AssertionError(f"check の exit {exit_code} が成功になった")
+
+
+def test_post_apply_check_failure_restores_app_and_leaves_host() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        _write(host, "agentic-workflow-update/SKILL.md", "old-host\n")
+        plan = _plan(app, clone, work)
+        plan["post_apply_check"] = True
+        with (
+            patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}),
+            patch.object(
+                UPDATE, "_run_post_apply_check", side_effect=UPDATE.UpdateError("drift detected")
+            ),
+            patch.object(
+                UPDATE, "_stage_host_updater", side_effect=AssertionError("host に触れた")
+            ),
+            patch.object(
+                UPDATE, "_run_application_validation", side_effect=AssertionError("gate に進んだ")
+            ),
+        ):
+            try:
+                UPDATE._apply_transaction(plan)
+            except UPDATE.UpdateError as exc:
+                assert "drift detected" in str(exc)
+            else:
+                raise AssertionError("check 失敗が適用成功になった")
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v1\n"
+        assert (host / "agentic-workflow-update/SKILL.md").read_text(encoding="utf-8") == "old-host\n"
+        assert not list(host.glob(".agentic-workflow-update.previous.*"))
+    finally:
+        temp.cleanup()
+
+
+def test_post_apply_check_runs_before_gate_and_host() -> None:
+    app, clone, work, temp = _fixture()
+    try:
+        host = Path(temp.name) / "host"
+        plan = _plan(app, clone, work)
+        plan["post_apply_check"] = True
+        calls: list[str] = []
+        real_gate = UPDATE._run_application_validation
+
+        def gate(*args, **kwargs):
+            calls.append("gate")
+            return real_gate(*args, **kwargs)
+
+        with (
+            patch.dict(os.environ, {"AGENTIC_WORKFLOW_UPDATE_HOME": str(host)}),
+            patch.object(
+                UPDATE, "_run_post_apply_check", side_effect=lambda root: calls.append(f"check:{root}")
+            ),
+            patch.object(UPDATE, "_run_application_validation", side_effect=gate),
+        ):
+            UPDATE._apply_transaction(plan)
+        assert calls == [f"check:{app.resolve()}", "gate"], calls
+        assert (app / "AGENTS.md").read_text(encoding="utf-8") == "generated-v2\n"
+        assert (host / "agentic-workflow-update/SKILL.md").is_file()
+    finally:
+        temp.cleanup()
+
+
+def test_install_update_skill_skips_only_when_source_absent_and_implicit() -> None:
+    with tempfile.TemporaryDirectory(prefix="kit-update-no-updater-") as temp_dir:
+        base = Path(temp_dir)
+        skill_dir = base / ".cursor/skills/agentic-workflow-foundation"
+        skill_dir.mkdir(parents=True)
+        host = base / "host"
+        with patch.object(RUNNER, "SKILL_DIR", str(skill_dir)):
+            assert RUNNER._install_update_skill(str(host), skip_if_source_absent=True) == 0
+            assert not host.exists()
+            assert RUNNER._install_update_skill(str(host)) == 2
+            assert not (host / "agentic-workflow-update").exists()
+
+
+def test_generate_passes_skip_flag_only_without_explicit_host() -> None:
+    def run(extra: list[str]) -> object:
+        install = patch.object(RUNNER, "_install_update_skill", return_value=0)
+        with (
+            patch.object(RUNNER, "_migrate_root_manifest_file", return_value=0),
+            patch.object(RUNNER, "_cleanup_legacy_workflow_docs", return_value=0),
+            patch.object(RUNNER, "_cleanup_legacy_skill_dir", return_value=0),
+            patch.object(RUNNER, "_cleanup_legacy_decisions_record", return_value=0),
+            patch.object(RUNNER, "_cleanup_legacy_workflow_triage", return_value=0),
+            patch.object(RUNNER, "run_engine", return_value=0),
+            patch.object(RUNNER, "resolved_manifest", return_value={}),
+            patch.object(RUNNER, "prepare_skill_dir", side_effect=lambda path, manifest: path),
+            install as mocked,
+        ):
+            # root manifest は存在するファイルを指す（bootstrap 専用経路に入らないため）。
+            assert RUNNER.main(["generate", "--root-manifest", __file__, *extra]) == 0
+        return mocked
+
+    implicit = run([])
+    implicit.assert_called_once_with(None, skip_if_source_absent=True)
+    explicit = run(["--update-skill-home", "/tmp/host-home-for-test"])
+    explicit.assert_called_once_with("/tmp/host-home-for-test", skip_if_source_absent=False)
+
+
 def main() -> int:
     tests = (
         ("public fetch contract", test_public_fetch_contract),
-        ("consumer plan and apply", test_consumer_plan_and_apply_exclude_kit_sources),
+        ("consumer plan and apply", test_consumer_plan_and_apply_sync_kit_body_except_updater),
+        ("empty kit body roots", test_empty_kit_body_roots_leave_kit_body_untouched),
+        ("kit body add update delete", test_kit_body_add_update_delete_and_mode),
+        ("kit body deletion needs delete", test_kit_body_deletion_without_delete_approval_cannot_apply),
+        ("kit body excludes updater", test_kit_body_never_includes_updater_or_outside_roots),
+        ("kit body catalog roots", test_kit_body_catalog_rejects_kit_roots),
+        ("kit body clone root missing", test_kit_body_clone_root_missing_is_fatal),
+        ("kit body bytecode and symlink", test_kit_body_ignores_bytecode_and_rejects_symlinks),
+        ("kit body plan roots", test_plan_kit_body_changes_must_stay_inside_plan_roots),
+        ("kit body mirror work", test_mirror_kit_body_makes_work_equal_to_clone),
+        ("split follows work", test_split_output_follows_work_result_not_clone),
+        ("split subdirectory", test_split_output_directory_with_subdirectory_is_a_plan_failure),
+        ("split without work output", test_split_without_work_output_is_not_compared),
+        ("plan schema v2 lock v1", test_plan_schema_v2_and_lock_stays_v1),
+        ("post apply check", test_post_apply_check_runs_check_only_in_app),
+        ("post apply check failure", test_post_apply_check_failure_restores_app_and_leaves_host),
+        ("post apply check order", test_post_apply_check_runs_before_gate_and_host),
+        ("install update skill skip", test_install_update_skill_skips_only_when_source_absent_and_implicit),
+        ("generate skip flag", test_generate_passes_skip_flag_only_without_explicit_host),
         ("lock without cursor dir", test_plan_creates_lock_when_cursor_directory_is_absent),
         ("resolved catalog", test_resolved_catalog_applies_overlay_features),
         ("split mode catalog", test_split_mode_is_not_in_catalog_and_blueprint_is_denied),
@@ -1414,7 +1960,7 @@ def main() -> int:
         ("candidate validation audit scope", test_candidate_validation_scopes_seed_audit),
         ("candidate validation rehearsal", test_candidate_validation_rehearses_existing_seed),
         ("worker contract work root", test_worker_contract_uses_work_root_and_exit_boundaries),
-        ("skill contract", test_skill_contract_excludes_vendor_flow),
+        ("skill contract", test_skill_contract_mirrors_kit_body_except_updater),
         ("host install and check", test_host_install_and_check_do_not_update_host),
         ("generate host flags", test_generate_host_flags),
         ("fresh clone bootstrap", test_fresh_clone_bootstrap_installs_host_updater),
