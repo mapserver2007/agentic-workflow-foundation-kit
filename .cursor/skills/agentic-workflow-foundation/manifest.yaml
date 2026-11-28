@@ -314,7 +314,7 @@ coderabbit:
     - name: "github-checks"
     - name: "ast-grep"
     - name: "skillspector"
-    - name: "osv-scanner"
+    - name: "osvScanner"
     - name: "actionlint"
     - name: "eslint"
     - name: "biome"
@@ -338,7 +338,7 @@ coderabbit:
     - name: "fbinfer"
     - name: "clang"
     - name: "cppcheck"
-    - name: "fortitude-lint"
+    - name: "fortitudeLint"
     - name: "luacheck"
   path_filters:
     - "!**/*.lock"

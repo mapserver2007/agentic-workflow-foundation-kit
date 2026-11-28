@@ -107,5 +107,5 @@ gen:
     maintenance-gotchas-workflow: true
     requirement-analysis: true
     deep-thinking: true
-    agent-kaizen: true
+    agent-kaizen: false
     cross-repository-knowledge-link: true
