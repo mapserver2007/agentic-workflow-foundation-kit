@@ -531,14 +531,17 @@ def _resolve_required_sections(manifest: dict, out: dict) -> None:
             continue
         text = item.get("text")
         feature = item.get("feature")
-        if not isinstance(text, str) or not text or feature in (None, "", []):
+        features = feature if isinstance(feature, list) else [feature]
+        valid_features = bool(features) and all(
+            isinstance(f, str) and bool(f) for f in features
+        )
+        if not isinstance(text, str) or not text or not valid_features:
             print(
                 f"FATAL: {out.get('path')} の required_sections は文字列か "
                 f"{{text, feature}} である必要があります: {item!r}",
                 file=sys.stderr,
             )
             sys.exit(2)
-        features = feature if isinstance(feature, list) else [feature]
         if any(_is_feature_enabled(manifest, f) for f in features):
             resolved.append(text)
     out["required_sections"] = resolved

@@ -411,8 +411,10 @@ def _yaml_quote(value: str) -> str:
 
 def _find_top_block(lines: list[str], key: str):
     start = None
+    # `key:` か `key: # コメント`。genlib のローダーと同じく、空白に続く # 以降だけをコメントとする。
+    heading = re.compile(rf"{re.escape(key)}:(\s+#.*)?")
     for idx, line in enumerate(lines):
-        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
+        if _indent_of(line) == 0 and heading.fullmatch(line.rstrip()):
             start = idx
             break
     if start is None:

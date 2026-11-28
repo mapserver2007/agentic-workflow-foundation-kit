@@ -131,7 +131,13 @@ def test_conditional_required_sections_follow_feature() -> None:
 
 
 def test_malformed_conditional_required_section_is_fatal() -> None:
-    for bad in ({"text": "x"}, {"feature": "code_review"}, {"text": "", "feature": "code_review"}):
+    for bad in (
+        {"text": "x"},
+        {"feature": "code_review"},
+        {"text": "", "feature": "code_review"},
+        {"text": "x", "feature": True},
+        {"text": "x", "feature": ["code_review", 1]},
+    ):
         manifest = {"code_review": {"enabled": True}, "outputs": [
             {"path": "a.md", "required_sections": [bad]},
         ]}

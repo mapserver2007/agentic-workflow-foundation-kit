@@ -460,6 +460,18 @@ def _test_gen_skills() -> list[str]:
         if needle not in out:
             errors.append(f"gen.skills comment keep: missing {needle!r}")
 
+    # G3b. 見出し行の末尾コメント（`key: # …`）があっても投影できる（genlib のローダーと同じ読み方）
+    commented = MANIFEST_WITH_FEATURES.replace(
+        "deep_thinking:\n", "deep_thinking: # 設定\n"
+    )
+    rc, out, log = _run(commented, _init_with_skills(_all_skills(deep_thinking=False)))
+    if rc != 0:
+        errors.append(f"gen.skills heading comment: expected exit 0, got {rc}\n{log}")
+    else:
+        check_flags("heading comment", out, _all_skills(deep_thinking=False), True)
+        if "deep_thinking: # 設定" not in out:
+            errors.append("gen.skills heading comment: heading comment was not kept")
+
     # G4. 土台の導出: workflow 系 4 つがすべて false → agent_workflow.enabled は false
     skills = _all_skills(
         workflow_orchestrator=False,
