@@ -314,7 +314,7 @@ coderabbit:
     - name: "github-checks"
     - name: "ast-grep"
     - name: "skillspector"
-    - name: "osv-scanner"
+    - name: "osvScanner"
     - name: "actionlint"
     - name: "eslint"
     - name: "biome"
@@ -338,7 +338,7 @@ coderabbit:
     - name: "fbinfer"
     - name: "clang"
     - name: "cppcheck"
-    - name: "fortitude-lint"
+    - name: "fortitudeLint"
     - name: "luacheck"
   path_filters:
     - "!**/*.lock"
@@ -405,7 +405,8 @@ quality_gate_contract:
 
 # ------------------------------------------------------------
 # (2f) code_review — agent-code-review スキル（オプション生成）
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: code_review エントリが生成対象になる。
 #   run_resolved_engine.py の _filter_outputs_by_features() が outputs[] をフィルタする。
 # ------------------------------------------------------------
@@ -417,7 +418,8 @@ code_review:
 
 # ------------------------------------------------------------
 # (2g) github_pr — agent-github-pr スキル（オプション生成）
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: github_pr エントリが生成対象になる。
 # ------------------------------------------------------------
 github_pr:
@@ -425,7 +427,8 @@ github_pr:
 
 # ------------------------------------------------------------
 # (2h) github_issue — agent-github-issue スキル（オプション生成）
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: github_issue エントリが生成対象になる。
 # ------------------------------------------------------------
 github_issue:
@@ -433,8 +436,12 @@ github_issue:
 
 # ------------------------------------------------------------
 # (2i) agent_workflow — タスク実行ワークフロー docs + orchestrator スキル
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: agent_workflow エントリが生成対象になる。
+#   gen.skills 指定時、enabled は workflow-orchestrator / maintenance-docs-workflow /
+#   maintenance-gotchas-workflow / requirement-analysis のいずれかが true なら true に導出される。
+#   orchestrator_skill / maintenance_docs.enabled / maintenance_gotchas.enabled は各 skill の gen.skills 値から投影される。
 #   docs/agent-tasks/agent-workflow/ 配下に 6 段階（①〜⑥、①の退出ゲートを内包）+ index + best-practices を生成する。
 #   docs 反映対象スコープは project.doc_navigation.domain を SoT として再利用する。
 #
@@ -546,7 +553,8 @@ agent_workflow:
 
 # ------------------------------------------------------------
 # (2k) deep_thinking — 多角評価スキル（オプション生成）
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: deep_thinking エントリが生成対象になる。
 #   A（推進視点）・B（反証視点）の並列 readonly subagent と C（統合裁定・親エージェント）で
 #   内部的に多角分析を行い、通常のチャット返答と同じ体裁で応答する。
@@ -593,6 +601,7 @@ deep_thinking:
 # ------------------------------------------------------------
 # (2k) requirement_analysis — 要求分析スキル（オプション生成）
 #   agent_workflow.enabled: true 時に自動有効化される子 feature。
+#   init.yaml の gen.skills.requirement-analysis で制御する。true なら agent_workflow.enabled も true に導出される。
 #   3 段階ガード（要求完全性・仕様整合性・実現性）と分析深度判定を統括する。
 #   deep 経路は deep_thinking.enabled: true を前提とする。
 #   deep_thinking.enabled: false の場合: deep 判定は standard に降格し警告を出す。
@@ -619,6 +628,7 @@ requirement_analysis:
 # (2m) agent_kaizen — kit 内部整合性検査スキル（オプション生成）
 #   kit 本体の manifest→生成物チェーンの整合性を検査し、defect を検出する。
 #   検査結果サマリと改善プランファイルを .cursor/plans/ に出力する。
+#   init.yaml の gen.skills.agent-kaizen で制御する。
 #   enabled: true の場合のみ outputs[] の feature: agent_kaizen エントリが生成対象になる。
 # ------------------------------------------------------------
 agent_kaizen:
@@ -647,7 +657,8 @@ github_access:
     service: "agentic-workflow-github-api"
     account: ""
 
-#   init.yaml では設定しない。seed default: true。変更は root manifest 直接編集。
+#   init.yaml の gen.skills で制御する（対応は apply_kit_init.py の SKILL_FEATURE_PATHS）。
+#   gen.skills を書かない場合は root manifest を直接編集する。seed default: true。
 #   enabled: true の場合のみ outputs[] の feature: cross_repo_knowledge エントリが生成対象になる。
 #   関連リポジトリの知識参照を wrapper（bin/cross-repo-sync-safe）経由で安全に実行する。
 #   git clone / fetch / checkout / pull はすべて wrapper 経由で行い、
@@ -899,10 +910,14 @@ outputs:
       - "フェーズ境界"
       - "campaign_id"
       - "親 = campaign"
-      - "G-REPORT-DOC-SCOPE-001"
+      # text + feature の形式は、feature が有効なときだけ必須とする（gen.skills で無効化できる skill の記述）。
+      # run_resolved_engine.py の _filter_outputs_by_features が、resolved manifest で文字列へ展開する。
+      - text: "G-REPORT-DOC-SCOPE-001"
+        feature: agent_workflow
       - "G-WRITE-SCOPE-DOMAIN-001"
       - "G-ARTIFACT-STEP3-UNTRACKED-001"
-      - "G-MDOCS-REASON-002"
+      - text: "G-MDOCS-REASON-002"
+        feature: agent_workflow.maintenance_docs
       - "cat ~/.config/gh/*"
       - "cat ~/.ssh/*"
       - "cat .env"
@@ -1145,7 +1160,8 @@ outputs:
     required_sections:
       - "=== archive gate ==="
       - "G-ARCHIVE-CHECK-001"
-      - "G-ARCHIVE-MDOCS-001"
+      - text: "G-ARCHIVE-MDOCS-001"
+        feature: agent_workflow.maintenance_docs
       - "G-WRITE-SCOPE-DOMAIN-001"
   - path: .cursor/skills/session-handover/scripts/gate-report.py
     template: skills/session-handover/scripts/gate-report.py.template
@@ -1572,7 +1588,8 @@ outputs:
     required_sections:
       - "既存実装の踏襲"
       - "設計判断が発生した場合"
-      - "Domain docs 本体を編集しない"
+      - text: "Domain docs 本体を編集しない"
+        feature: agent_workflow.maintenance_docs
   - path: docs/agent-tasks/agent-workflow/04-testing.md
     template: docs/agent-tasks/agent-workflow/04-testing.md.template
     mode: render
@@ -1597,7 +1614,8 @@ outputs:
     mode: render
     feature: agent_workflow
     required_sections:
-      - "maintenance-docs/"
+      - text: "maintenance-docs/"
+        feature: agent_workflow.maintenance_docs
       - "完了条件の確認"
       - "archives 移動"
   - path: docs/agent-tasks/agent-workflow/best-practices.md

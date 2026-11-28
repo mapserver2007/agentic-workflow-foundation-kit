@@ -1,6 +1,6 @@
 # agentic-workflow-foundation の初期設定。
 # このファイルを apply_kit_init.py が読み、root manifest.yaml へ反映する。
-# workflow は開発型固定。feature の有効・無効はこのファイルでは設定しない。
+# workflow は開発型固定。生成する skill の有効・無効は gen.skills で設定する。
 # 記法: block style のみ / インデントは半角スペース2。
 
 # 設定スキーマのバージョン。現在は 1 固定で変更しない。
@@ -84,3 +84,28 @@ context_budget:
   # 例: 200K モデルを含む場合は 200000、300K モデルのみなら 300000。
   # 省略時の既定値・推奨値は 200000。
   min_context_window_tokens: 256000
+
+# 生成ファイルの制御。現在のキーは skills のみ。
+gen:
+  # 生成する skills の選択（PO 明示の設定）。キーは生成される skill のディレクトリ名。
+  # - gen / gen.skills を書かない場合、root manifest.yaml の feature フラグには触れない。
+  # - gen.skills を書いた場合は、下記 10 項目すべての SoT になる。省略したキーは true。
+  # - true / false のみ指定できる。未知のキーはエラー。
+  # - session-planning / session-handover / campaign-cleanup / domain-docs は
+  #   常時生成のため指定できない（指定するとエラー）。
+  # - workflow-orchestrator / maintenance-docs-workflow / maintenance-gotchas-workflow /
+  #   requirement-analysis のどれかが true なら、workflow docs と gate スクリプト群（土台）も
+  #   自動で生成対象になる。すべて false なら土台も生成されない。
+  # - workflow 系 skill のどれかが true の間は、requirement-analysis を false にできない（エラー）。
+  # - false にしても、生成済みのファイルは削除されない。generate が残骸を WARN で列挙する。
+  skills:
+    agent-code-review: true
+    agent-github-pr: true
+    agent-github-issue: true
+    workflow-orchestrator: true
+    maintenance-docs-workflow: true
+    maintenance-gotchas-workflow: true
+    requirement-analysis: true
+    deep-thinking: true
+    agent-kaizen: false
+    cross-repository-knowledge-link: true

@@ -204,7 +204,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 
 ### Phase 1.5: init.yaml 適用（apply_kit_init.py）
 
-`init.yaml`（リポジトリ直下の初期入力 SoT）を読み込み、root `manifest.yaml` の `project.*` と `context_budget` を適用する。
+`init.yaml`（リポジトリ直下の初期入力 SoT）を読み込み、root `manifest.yaml` の `project.*` / `context_budget` / `github_access` と、生成する skill の feature フラグ（`gen.skills`）を適用する。
 
 ```bash
 python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
@@ -214,7 +214,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 
 - 配置: リポジトリ直下 `init.yaml`。kit 導入時から存在し、初回スキル実行前に PO が設定する。
 - 生成物ではない。`outputs[]` に含めず、generator は作成・上書きしない。
-- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve` / `provisioning.auto_approve`、`github_access` の provider / Keychain locator。token / PAT / JWT、`framework` / `quality_gate*` / feature フラグは書かない。
+- SoT 境界: `project.name`、`tech_stack_design.filename`、`context_budget.min_context_window_tokens`、任意の `tech_contract.auto_approve` / `provisioning.auto_approve`、`github_access` の provider / Keychain locator、任意の `gen.skills`（生成する skill の選択）。token / PAT / JWT、`framework` / `quality_gate*` は書かない。feature フラグは `gen.skills` 経由でのみ書き、`features` などの直接キーは書かない。
 
 **apply が書くもの**:
 
@@ -227,16 +227,61 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/apply_kit_init.py
 7. `project.provisioning_auto_approve`（`init.yaml > provisioning.auto_approve`。省略時 `false`）
 8. `github_access.api_credential_provider`（`github_app | keychain`。省略時 `github_app`）
 9. `github_access.keychain.service` / `account`（service 既定 `agentic-workflow-github-api`。provider=`keychain` は account 非空必須）
+10. 生成する skill の feature フラグ 10 項目と、導出した `agent_workflow.enabled`（`init.yaml > gen.skills` を書いたときのみ。「`gen.skills`（生成 skill の選択）」を参照）
 
-**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、feature フラグ一式（`code_review` / `github_pr` / `github_issue` / `coderabbit` / `agent_workflow` / `cross_repo_knowledge` / `deep_thinking` 等）、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（2つの `auto_approve` は project 側の対話承認ポリシー投影）。
+**apply が書かないもの**: `framework.accd_axes`（seed/bootstrap 固定値）、`gen.skills` の対象外の feature フラグ（`coderabbit` 等）と各 feature の `models` / `execution` などの子設定、`quality_gate*`、固定説明文（`one_liner` / `agent_role` / `priorities` / `boundaries` / `doc_navigation`）。sealed `tech_contract` ブロック本体も書かない（2つの `auto_approve` は project 側の対話承認ポリシー投影）。
 
-feature の seed default はいずれも `enabled: true`。無効化したい場合のみ root `manifest.yaml` を直接編集して再生成する（`init.yaml` では設定しない）。
+feature の seed default はいずれも `enabled: true`。`gen.skills` を書かない場合に限り、無効化は root `manifest.yaml` を直接編集して再生成する。
+
+#### `gen.skills`（生成 skill の選択）
+
+`init.yaml > gen` は生成ファイルの制御の入れ物であり、現在のキーは `skills` のみ。キーは生成される skill のディレクトリ名、値は bool。
+
+```yaml
+gen:
+  skills:
+    agent-code-review: true
+    agent-github-pr: true
+    agent-github-issue: true
+    workflow-orchestrator: true
+    maintenance-docs-workflow: true
+    maintenance-gotchas-workflow: true
+    requirement-analysis: true
+    deep-thinking: true
+    agent-kaizen: true
+    cross-repository-knowledge-link: true
+```
+
+| `gen.skills` のキー | root `manifest.yaml` の投影先 |
+| --- | --- |
+| `agent-code-review` | `code_review.enabled` |
+| `agent-github-pr` | `github_pr.enabled` |
+| `agent-github-issue` | `github_issue.enabled` |
+| `workflow-orchestrator` | `agent_workflow.orchestrator_skill` |
+| `maintenance-docs-workflow` | `agent_workflow.maintenance_docs.enabled` |
+| `maintenance-gotchas-workflow` | `agent_workflow.maintenance_gotchas.enabled` |
+| `requirement-analysis` | `requirement_analysis.enabled` |
+| `deep-thinking` | `deep_thinking.enabled` |
+| `agent-kaizen` | `agent_kaizen.enabled` |
+| `cross-repository-knowledge-link` | `cross_repo_knowledge.enabled` |
+
+- **省略時**: `gen` または `gen.skills` を書かなければ、root `manifest.yaml` の feature フラグには一切触れない（既に root を直接編集して無効化したプロジェクトを壊さないため）。`gen.skills` を書いた場合は 10 項目すべての SoT になり、書かなかったキーは `true`（seed 既定）。
+- **土台の導出**: `agent_workflow` に対応する skill は無く、`agent_workflow` は workflow docs（`docs/agent-tasks/agent-workflow/*`）と gate スクリプト群の土台である。`workflow-orchestrator` / `maintenance-docs-workflow` / `maintenance-gotchas-workflow` / `requirement-analysis` のいずれかが true なら `agent_workflow.enabled: true`、すべて false なら `false` に導出する（`_is_feature_enabled` は親 `agent_workflow.enabled` が false だとこれら 4 つを無効扱いにするため、導出しないと無音で無効化される）。土台が入る・外れるときは INFO で要因を表示する。
+- **`requirement-analysis` の依存**: workflow 系 skill（上記 4 つ）のいずれかが true の間は、`requirement-analysis: false` を指定できない（exit 2）。生成される `gate-artifact.py` は step1 envelope の requirement-analysis 系フィールドを無条件に必須とし、`requirement_analysis.enabled: false` の step 文書とは整合しないため、生成後の audit（`test_worker_contract`）が失敗する。workflow 系をすべて false にするか、`requirement-analysis` を true にする。
+- **audit の必須節**: skill の無効化でテンプレートが記述を省く節を audit が無条件に要求しないよう、seed の `outputs[].required_sections` は `{text, feature}` 形式の項目（feature が有効なときだけ必須）を持てる。`run_resolved_engine.py` の `_filter_outputs_by_features` が resolved manifest で文字列へ展開するため、engine（`audit.py`）は変更しない。`feature` を持つ skill を新規に条件生成にするときは、テンプレートが省く節を `{text, feature}` にする。
+- **常時生成の skill**: `session-planning` / `session-handover` / `campaign-cleanup` / `domain-docs` は feature 化しない（Session Protocol と Hook が前提。`domain-docs` は feature 化を禁止している）。`gen.skills` で指定すると exit 2。
+- **共有される生成物**: `bin/_github-*.sh` は `code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効なら生成される。4 つすべてを無効にすると `github_access` は未使用になる。
+- **許容する組み合わせ**: `requirement-analysis` 有効 + `deep-thinking` 無効は、deep 判定が standard に降格する（`requirement-analysis` の SKILL に明記）。
+- **残骸**: skill を無効にしても、以前に生成したファイルは削除しない。`run_resolved_engine.py generate` が、生成対象から外れた outputs のうち既存のファイルを WARN で列挙する（`split` / `marker` は対象外）。不要なら手動で削除する。kit updater 経由の consumer は lock ベースの `retirement` で扱う。
+- **投影の失敗**: 投影先のブロック・キーが root `manifest.yaml` に無い、または bool 以外の値のときは、無音でスキップせず exit 2。
+- **設計判断**: ADR は起票しない（本ツールキット内部の変更理由を必ず ADR 化する場所ではない。上記「`docs/DECISIONS.md` は…」参照）。判断の根拠は本節と `references/source-mapping.md` に残す。
 
 **バリデーション**:
 
 - `init.yaml` 不在時は exit 2（必須初期設定の欠落）
 - `version` は `1` 必須
-- `project.workflow_pattern` / `features` / `deep_thinking` / `cross_repo_knowledge` キーが `init.yaml` にあれば exit 2（禁止キー）
+- `project.workflow_pattern` / `features` / `deep_thinking` / `cross_repo_knowledge` キーが `init.yaml` にあれば exit 2（禁止キー）。トップレベルの `skills` も exit 2（`gen.skills` に書くこと）
+- `gen` は任意。キーは `skills` のみ。`gen` / `gen.skills` はマッピング必須（`gen:` / `skills:` だけを書いて値を空にすると exit 2）。`gen.skills` のキーは上表の 10 個のみ（未知キー・常時生成 skill は exit 2）で、値は bool。workflow 系 skill が true のときの `requirement-analysis: false` も exit 2
 - `project.name` は文字列または null（空文字 / 非 string は exit 2）
 - `tech_stack_design` は必須。`tech_stack_design.filename` は basename のみ（`/` `\` `..` 禁止）、`.md` 末端、非空（省略時 exit 2）
 - `tech_contract` は任意。キーは `auto_approve` のみ。`auto_approve` は bool（省略時 false）
@@ -465,6 +510,7 @@ python3 .cursor/skills/agentic-workflow-foundation/scripts/run_resolved_engine.p
 - `run_resolved_engine.py` は `.cursor/skills/` 配下に一時 resolved skill-dir を作り、統一設計書メタデータと root `manifest.yaml` の overlay を seed manifest へ deep merge した後、**承認済み `tech_contract` を検証して `project.quality_gate` / `coderabbit` / `domain_docs` / `quality_gate_contract` / `session.verification.gate_command` を contract から再投影**してから engine を呼ぶ。旧 root projection は上書きできない。終了時に一時ディレクトリは削除する。
 - engine は統一設計書や root `manifest.yaml` を直接読まない。unified design / root manifest overlay は foundation 固有の入力解決であり、engine の How 境界へ混ぜない。
 - manifest + templates から全出力ファイルを生成/上書きする（冪等）。生成ファイルの評価は PO が行う。
+- feature が無効で生成対象から外れた outputs のうち、出力先に既存ファイルが残っているものは WARN で列挙する（削除しない。`generate` のときだけ。`gen.skills` で skill を無効にした後の残骸の確認用）。
 - `.gitignore` / `.cursorignore` はマーカーブロックを upsert（既存内容は保持。`marker_id: agentic-foundation`）。
 - Hook スクリプトと `session-handover/scripts/verification-gate.sh` には実行ビットを付与する。
 - `bin/_github-auth.sh` / `bin/_github-{app,keychain}-auth.sh` は `code_review` / `github_pr` / `github_issue` / `cross_repo_knowledge` のいずれかが有効な場合に生成し、各 operation wrapper は対応 feature で条件生成する。API と Git は `init.yaml` の単一 provider を使用する。`github_app` は対象 owner/repo の installation を動的解決し、`keychain` は専用 service/account の PAT を完全一致で取得する。AI の clone/fetch/pull/push は wrapper 内で HTTPS + operation-scoped `GIT_ASKPASS` を使い、既存 credential helper と SSH remote を恒久変更しない。

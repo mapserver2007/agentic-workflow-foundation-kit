@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""init.yaml から root manifest.yaml の project.*、context_budget、github_access を適用する（Phase 1.5）。
+"""init.yaml から root manifest.yaml の project.*、context_budget、github_access、
+生成 skill の feature フラグ（gen.skills）を適用する（Phase 1.5）。
 
 init.yaml は生成物ではなく、初回実行前から存在する初期入力 SoT。
-workflow_pattern は "開発型" 固定。feature フラグは触らない。
+workflow_pattern は "開発型" 固定。
+feature フラグは gen.skills を書いた場合だけ書き換える（省略時は root manifest に触れない）。
 tech_stack_design.filename は必須で、project.tech_stack_design_filename に書き込む。
 
 exit code:
@@ -31,8 +33,9 @@ DEFAULT_INIT = os.path.join(ROOT, "init.yaml")
 
 ALLOWED_TOP_KEYS = {
     "version", "project", "context_budget", "tech_stack_design",
-    "tech_contract", "provisioning", "github_access",
+    "tech_contract", "provisioning", "github_access", "gen",
 }
+ALLOWED_GEN_KEYS = {"skills"}
 ALLOWED_PROJECT_KEYS = {"name"}
 ALLOWED_CONTEXT_BUDGET_KEYS = {"min_context_window_tokens"}
 ALLOWED_TECH_STACK_DESIGN_KEYS = {"filename"}
@@ -41,6 +44,38 @@ ALLOWED_PROVISIONING_KEYS = {"auto_approve"}
 ALLOWED_GITHUB_ACCESS_KEYS = {"api_credential_provider", "keychain"}
 ALLOWED_GITHUB_KEYCHAIN_KEYS = {"service", "account"}
 FORBIDDEN_TOP_KEYS = {"workflow_pattern", "features", "deep_thinking", "cross_repo_knowledge"}
+# 禁止キーのうち、移行先を案内するもの。
+FORBIDDEN_TOP_KEY_HINTS = {
+    "skills": "トップレベル skills は不可（gen.skills に書くこと）",
+}
+
+# gen.skills のキー（生成される skill のディレクトリ名）→ root manifest.yaml の feature フラグのパス。
+# outputs[].feature（run_resolved_engine._filter_outputs_by_features）が参照するキーと一致させる。
+SKILL_FEATURE_PATHS = {
+    "agent-code-review": ("code_review", "enabled"),
+    "agent-github-pr": ("github_pr", "enabled"),
+    "agent-github-issue": ("github_issue", "enabled"),
+    "workflow-orchestrator": ("agent_workflow", "orchestrator_skill"),
+    "maintenance-docs-workflow": ("agent_workflow", "maintenance_docs", "enabled"),
+    "maintenance-gotchas-workflow": ("agent_workflow", "maintenance_gotchas", "enabled"),
+    "requirement-analysis": ("requirement_analysis", "enabled"),
+    "deep-thinking": ("deep_thinking", "enabled"),
+    "agent-kaizen": ("agent_kaizen", "enabled"),
+    "cross-repository-knowledge-link": ("cross_repo_knowledge", "enabled"),
+}
+# 常時生成（feature 化しない）skill。gen.skills での指定はエラー。
+ALWAYS_ON_SKILLS = (
+    "session-planning", "session-handover", "campaign-cleanup", "domain-docs",
+)
+# agent_workflow の土台（workflow docs と gate スクリプト群）に依存する skill。
+# どれかが true なら agent_workflow.enabled を true に導出する。
+AGENT_WORKFLOW_PATH = ("agent_workflow", "enabled")
+AGENT_WORKFLOW_CHILD_SKILLS = (
+    "workflow-orchestrator",
+    "maintenance-docs-workflow",
+    "maintenance-gotchas-workflow",
+    "requirement-analysis",
+)
 
 FIXED_WORKFLOW_PATTERN = "開発型"
 MIN_CONTEXT_WINDOW = 50000
@@ -80,7 +115,9 @@ def _validate_init(init: dict) -> list[str]:
         errors.append(f"version は 1 必須（実際: {version!r}）")
 
     for key in init:
-        if key in FORBIDDEN_TOP_KEYS:
+        if key in FORBIDDEN_TOP_KEY_HINTS:
+            errors.append(f"禁止キー: {key}（{FORBIDDEN_TOP_KEY_HINTS[key]}）")
+        elif key in FORBIDDEN_TOP_KEYS:
             errors.append(f"禁止キー: {key}（init.yaml では設定不可）")
         elif key not in ALLOWED_TOP_KEYS:
             errors.append(f"未知トップレベルキー: {key}")
@@ -218,7 +255,77 @@ def _validate_init(init: dict) -> list[str]:
                         "provider=keychain では github_access.keychain.account は非空必須"
                     )
 
+    errors.extend(_validate_gen(init))
+
     return errors
+
+
+def _validate_gen(init: dict) -> list[str]:
+    """gen（生成ファイルの制御）のバリデーション。gen が無ければ検査しない。"""
+    errors: list[str] = []
+    if "gen" not in init:
+        return errors
+    gen = init["gen"]
+    if not isinstance(gen, dict):
+        errors.append(
+            f"gen はマッピング必須（実際: {type(gen).__name__}）。使わないなら gen ごと削除すること"
+        )
+        return errors
+    for key in gen:
+        if key not in ALLOWED_GEN_KEYS:
+            errors.append(f"未知キー gen.{key}")
+    if "skills" not in gen:
+        return errors
+    skills = gen["skills"]
+    if not isinstance(skills, dict):
+        errors.append(
+            f"gen.skills はマッピング必須（実際: {type(skills).__name__}）。"
+            "使わないなら gen.skills ごと削除すること"
+        )
+        return errors
+    for name, value in skills.items():
+        if name in ALWAYS_ON_SKILLS:
+            errors.append(f"gen.skills.{name} は常時生成のため指定不可")
+        elif name not in SKILL_FEATURE_PATHS:
+            errors.append(
+                f"未知キー gen.skills.{name}（指定可能: {sorted(SKILL_FEATURE_PATHS)}）"
+            )
+        elif not isinstance(value, bool):
+            errors.append(
+                f"gen.skills.{name} は bool 必須（実際: {type(value).__name__}）"
+            )
+    if errors:
+        return errors
+    # skill 間の依存。個別の値が妥当なときだけ評価する。
+    resolved = _resolve_skills(init)
+    workflow_on, _ = _derive_agent_workflow(resolved)
+    if workflow_on and not resolved["requirement-analysis"]:
+        errors.append(
+            "gen.skills.requirement-analysis: false は、workflow 系 skill "
+            f"{list(AGENT_WORKFLOW_CHILD_SKILLS)} のいずれかが true の間は指定不可。"
+            "gate-artifact.py が step1 の requirement-analysis 系フィールドを必須とするため、"
+            "生成後の audit（test_worker_contract）が失敗する。"
+            "requirement-analysis を true にするか、workflow 系 skill をすべて false にすること"
+        )
+    return errors
+
+
+def _resolve_skills(init: dict) -> dict | None:
+    """gen.skills を全 skill の bool へ解決する。gen.skills が無ければ None（root に触れない）。
+
+    書いた場合は全項目の SoT になり、省略したキーは true（seed 既定）。
+    """
+    gen = init.get("gen")
+    if not isinstance(gen, dict) or "skills" not in gen:
+        return None
+    given = gen["skills"] or {}
+    return {name: bool(given.get(name, True)) for name in SKILL_FEATURE_PATHS}
+
+
+def _derive_agent_workflow(skills: dict) -> tuple[bool, list[str]]:
+    """agent_workflow.enabled を子 skill の OR で導出する。要因（true の子 skill）も返す。"""
+    causes = [name for name in AGENT_WORKFLOW_CHILD_SKILLS if skills.get(name)]
+    return bool(causes), causes
 
 
 def _resolve_values(init: dict, manifest_dir: str) -> dict:
@@ -268,7 +375,16 @@ def _resolve_values(init: dict, manifest_dir: str) -> dict:
     )
     github_keychain_account = keychain.get("account", "")
 
+    skills = _resolve_skills(init)
+    agent_workflow_enabled = None
+    agent_workflow_causes: list[str] = []
+    if skills is not None:
+        agent_workflow_enabled, agent_workflow_causes = _derive_agent_workflow(skills)
+
     return {
+        "skills": skills,
+        "agent_workflow_enabled": agent_workflow_enabled,
+        "agent_workflow_causes": agent_workflow_causes,
         "name": name,
         "slug": slug,
         "workflow_pattern": FIXED_WORKFLOW_PATTERN,
@@ -295,8 +411,10 @@ def _yaml_quote(value: str) -> str:
 
 def _find_top_block(lines: list[str], key: str):
     start = None
+    # `key:` か `key: # コメント`。genlib のローダーと同じく、空白に続く # 以降だけをコメントとする。
+    heading = re.compile(rf"{re.escape(key)}:(\s+#.*)?")
     for idx, line in enumerate(lines):
-        if line.rstrip() == f"{key}:" and _indent_of(line) == 0:
+        if _indent_of(line) == 0 and heading.fullmatch(line.rstrip()):
             start = idx
             break
     if start is None:
@@ -416,6 +534,102 @@ def _set_github_access(lines: list[str], values: dict) -> list[str]:
     return lines[:insert_at] + prefix + block + suffix + lines[insert_at:]
 
 
+class ProjectionError(ValueError):
+    """root manifest へ投影できない（対象ブロック・キーの欠落や bool 以外の値）。"""
+
+
+_BOOL_VALUE_LINE = re.compile(r"^(\s*\S+:\s+)(true|false)(\s*(?:#.*)?)$")
+
+
+def _direct_child_indent(lines: list[str], start: int, last: int) -> int | None:
+    """start ブロック直下の子キーのインデント幅（最初の非空・非コメント行）を返す。"""
+    for idx in range(start + 1, last + 1):
+        stripped = lines[idx].strip()
+        if stripped == "" or stripped.startswith("#"):
+            continue
+        return _indent_of(lines[idx])
+    return None
+
+
+def _find_child_block(lines: list[str], start: int, last: int, key: str):
+    """start ブロック直下の key ブロック（値なしの `key:` 行）の (開始, 終了) を返す。"""
+    indent = _direct_child_indent(lines, start, last)
+    if indent is None:
+        return None
+    pattern = re.compile(rf"^ {{{indent}}}{re.escape(key)}:\s*(#.*)?$")
+    for idx in range(start + 1, last + 1):
+        if not pattern.match(lines[idx]):
+            continue
+        child_last = idx
+        j = idx + 1
+        while j <= last:
+            if lines[j].strip() == "":
+                j += 1
+                continue
+            if _indent_of(lines[j]) > indent:
+                child_last = j
+                j += 1
+                continue
+            break
+        return idx, child_last
+    return None
+
+
+def _find_direct_child_line(lines: list[str], start: int, last: int, key: str) -> int | None:
+    """start ブロック直下（孫は対象外）の `key: value` 行の位置を返す。"""
+    indent = _direct_child_indent(lines, start, last)
+    if indent is None:
+        return None
+    pattern = re.compile(rf"^ {{{indent}}}{re.escape(key)}:\s")
+    for idx in range(start + 1, last + 1):
+        if pattern.match(lines[idx]):
+            return idx
+    return None
+
+
+def _set_bool_at_path(lines: list[str], path: tuple, value: bool) -> bool:
+    """path（トップレベルキーから葉まで）の bool 行を書き換える。見つからなければ False。
+
+    既存の _set_scalar は対象が無いと何もせず返るため、投影の成否を呼び出し側が判定できるよう
+    本関数は書き換えの有無を返す。インラインコメントは保持する。
+    """
+    start, last = _find_top_block(lines, path[0])
+    if start is None:
+        return False
+    for key in path[1:-1]:
+        child = _find_child_block(lines, start, last, key)
+        if child is None:
+            return False
+        start, last = child
+    leaf = _find_direct_child_line(lines, start, last, path[-1])
+    if leaf is None:
+        return False
+    match = _BOOL_VALUE_LINE.match(lines[leaf])
+    if not match:
+        return False
+    lines[leaf] = f"{match.group(1)}{'true' if value else 'false'}{match.group(3)}"
+    return True
+
+
+def _set_skill_features(lines: list[str], values: dict) -> list[str]:
+    """gen.skills を root manifest の feature フラグへ投影する。投影できなければ ProjectionError。"""
+    skills = values.get("skills")
+    if skills is None:
+        return lines
+    missing: list[str] = []
+    for name, enabled in skills.items():
+        path = SKILL_FEATURE_PATHS[name]
+        if not _set_bool_at_path(lines, path, enabled):
+            missing.append(f"{name} -> {'.'.join(path)}")
+    if not _set_bool_at_path(lines, AGENT_WORKFLOW_PATH, values["agent_workflow_enabled"]):
+        missing.append(f"(導出) -> {'.'.join(AGENT_WORKFLOW_PATH)}")
+    if missing:
+        raise ProjectionError(
+            "root manifest に投影先の bool キーが無い、または bool 以外の値: " + ", ".join(missing)
+        )
+    return lines
+
+
 def _render_manifest(content: str, values: dict) -> str:
     newline = "\r\n" if "\r\n" in content else "\n"
     lines = [ln.rstrip("\r") for ln in content.split("\n")]
@@ -443,6 +657,7 @@ def _render_manifest(content: str, values: dict) -> str:
         "min_context_window_tokens", str(values["min_context_window_tokens"])
     )
     lines = _set_github_access(lines, values)
+    lines = _set_skill_features(lines, values)
 
     return newline.join(lines)
 
@@ -508,8 +723,58 @@ def _verify_owned_keys(manifest: dict, expected: dict | None = None) -> list[str
                 issues.append(
                     f"{key} の投影不一致: expected={expected[key]!r}, actual={actual_value!r}"
                 )
+        issues.extend(_verify_skill_features(manifest, expected))
 
     return issues
+
+
+def _manifest_value_at(manifest: dict, path: tuple):
+    node: object = manifest
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node
+
+
+def _verify_skill_features(manifest: dict, expected: dict) -> list[str]:
+    """gen.skills の投影結果（10 項目 + 導出した agent_workflow.enabled）が root と一致するか検査する。"""
+    skills = expected.get("skills")
+    if skills is None:
+        return []
+    issues: list[str] = []
+    checks = [(name, SKILL_FEATURE_PATHS[name], enabled) for name, enabled in skills.items()]
+    checks.append(("(導出)", AGENT_WORKFLOW_PATH, expected["agent_workflow_enabled"]))
+    for name, path, enabled in checks:
+        actual = _manifest_value_at(manifest, path)
+        if actual is not enabled:
+            issues.append(
+                f"{'.'.join(path)} の投影不一致（{name}）: expected={enabled!r}, actual={actual!r}"
+            )
+    return issues
+
+
+def _report_skills(values: dict) -> None:
+    """gen.skills の解決結果と、導出した agent_workflow の土台を表示する。"""
+    skills = values.get("skills")
+    if skills is None:
+        _out("INFO", "gen.skills 未指定。feature フラグ（root manifest）には触れない")
+        return
+    enabled = [name for name, flag in skills.items() if flag]
+    disabled = [name for name, flag in skills.items() if not flag]
+    _out("INFO", f"gen.skills: 有効={enabled} 無効={disabled}")
+    if values["agent_workflow_enabled"]:
+        _out(
+            "INFO",
+            "agent_workflow.enabled=true を導出（要因: "
+            f"{values['agent_workflow_causes']}）。workflow docs と gate スクリプト群が生成対象になる",
+        )
+    else:
+        _out(
+            "INFO",
+            "agent_workflow.enabled=false を導出（workflow 系 skill がすべて無効）。"
+            "workflow docs と gate スクリプト群は生成対象から外れる",
+        )
 
 
 def main(argv=None) -> int:
@@ -560,6 +825,7 @@ def main(argv=None) -> int:
          f"github_keychain_service={values['github_keychain_service']!r} "
          f"github_keychain_account={values['github_keychain_account']!r} "
          f"min_context_window_tokens={values['min_context_window_tokens']}")
+    _report_skills(values)
 
     if args.check:
         _out("INFO", "--check モード。書き込みスキップ")
@@ -567,7 +833,11 @@ def main(argv=None) -> int:
 
     with open(args.manifest, "r", encoding="utf-8") as f:
         content = f.read()
-    new_content = _render_manifest(content, values)
+    try:
+        new_content = _render_manifest(content, values)
+    except ProjectionError as e:
+        _out("ERROR", str(e))
+        return 2
     changed = new_content != content
 
     if changed:
